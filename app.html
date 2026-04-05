@@ -472,12 +472,12 @@ async function saveGuest() {
     guests:    document.getElementById('fmGuests').value  || null,
     nat:       document.getElementById('fmNat').value     || null,
     price:     document.getElementById('fmPrice').value   || null,
-    comm:      document.getElementById('fmComm').value    || null,
+    commission: document.getElementById('fmComm').value || null,
     comm_mode: document.getElementById('commMode').value,
     source:    document.getElementById('fmSource').value  || 'Airbnb',
     phone:     document.getElementById('fmPhone').value   || null,
     notes:     document.getElementById('fmNotes').value   || null,
-    updated_at: new Date().toISOString(),
+    
   };
 
   const c = getCfg();
@@ -486,13 +486,6 @@ async function saveGuest() {
   if (c.sbUrl && c.sbKey) {
     setSyncDot('busy');
     try {
-      const r = await sbFetch('POST',
-        `${c.sbUrl}/rest/v1/crm_clients?on_conflict=id`,
-        c.sbKey,
-        guest,
-        { extra: { 'Prefer': 'resolution=merge-duplicates,return=minimal' } }
-      );
-      // Prefer header needs special handling
       const resp = await fetch(`${c.sbUrl}/rest/v1/crm_clients?on_conflict=id`, {
         method: 'POST',
         headers: { ...sbHeaders(c.sbKey), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
@@ -554,7 +547,7 @@ function guestStatus(g) {
 
 function netAmt(g) {
   const p = parseFloat(g.price) || 0;
-  const comm = parseFloat(g.comm) || 0;
+  const comm = parseFloat(g.commission) || 0;
   return g.comm_mode === 'fixed' ? Math.round(p - comm) : Math.round(p * (1 - comm / 100));
 }
 
@@ -697,7 +690,7 @@ function openForm(id) {
       document.getElementById('fmGuests').value = g.guests    || '';
       document.getElementById('fmNat').value    = g.nat       || '';
       document.getElementById('fmPrice').value  = g.price     || '';
-      document.getElementById('fmComm').value   = g.comm      || '';
+      document.getElementById('fmComm').value = g.commission || '';
       document.getElementById('fmSource').value = g.source    || 'Airbnb';
       document.getElementById('fmPhone').value  = g.phone     || '';
       document.getElementById('fmNotes').value  = g.notes     || '';
@@ -833,10 +826,10 @@ function parse(raw) {
   else { const pm = clean.match(/(\d[\d\s]*)\s*€(?!\s*\/)/); if (pm) d.price = pm[1].replace(/\s/g, ''); }
 
   // Source & comm
-  if (/airbnb/i.test(clean))        { d.source = 'Airbnb';  d.comm = '3.6'; d.comm_mode = 'percent'; }
-  else if (/booking/i.test(clean))  { d.source = 'Booking'; d.comm = '15';  d.comm_mode = 'percent'; }
-  else if (isWA)                    { d.source = 'WhatsApp'; d.comm = '0';   d.comm_mode = 'percent'; }
-  else                              { d.source = 'Direct';  d.comm = '0';   d.comm_mode = 'percent'; }
+  if (/airbnb/i.test(clean))        { d.source = 'Airbnb';  d.commission = '3.6'; d.comm_mode = 'percent'; }
+  else if (/booking/i.test(clean))  { d.source = 'Booking'; d.commission = '15'; d.comm_mode = 'percent'; }
+  else if (isWA)                    { d.source = 'WhatsApp'; d.commission = '0';   d.comm_mode = 'percent'; }
+  else                              { d.source = 'Direct'; d.commission = '0';   d.comm_mode = 'percent'; }
 
   // Phone
   const tm = clean.match(/(\+?\d[\d\s\-]{9,14}\d)/);
@@ -865,7 +858,7 @@ function fillForm(d) {
   if (d.guests)    document.getElementById('fmGuests').value = d.guests;
   if (d.nat)       document.getElementById('fmNat').value    = d.nat;
   if (d.price)     document.getElementById('fmPrice').value  = d.price;
-  if (d.comm)      document.getElementById('fmComm').value   = d.comm;
+  if (d.commission) document.getElementById('fmComm').value = d.commission;
   if (d.source)    document.getElementById('fmSource').value = d.source;
   if (d.phone)     document.getElementById('fmPhone').value  = d.phone;
   if (d.notes)     document.getElementById('fmNotes').value  = d.notes;
