@@ -856,60 +856,69 @@ async function analyze() {
       clients.map(c => `- ID:${c.id} | Name:${c.name} | Arrival:${c.arrival||'?'} | Source:${c.source||'?'} | Phone:${c.phone||'?'}`).join('\n')
     : 'No existing clients yet.';
 
-  const systemPrompt = `You are an intelligent assistant for ${cfg.villa || 'a luxury staffed villa'} in ${cfg.city || 'Marrakech'}, managed by ${cfg.owner || 'the owner'}.
-Staff: ${cfg.staff || 'Said (butler), Faiza (chef), Bouchra (housekeeping)'}.
-Today: ${today}.
-${inHouse ? `Currently in house: ${inHouse.name} until ${inHouse.departure}.` : 'No current guests.'}
-${clientContext}
+  // Build system prompt safely — no nested template literals
+  const villaName  = cfg.villa  || 'a luxury staffed villa';
+  const ownerName  = cfg.owner  || 'the owner';
+  const cityName   = cfg.city   || 'Marrakech';
+  const staffNames = cfg.staff  || 'Said (butler), Faiza (chef), Bouchra (housekeeping)';
+  const staffFirst = staffNames.split('\n')[0].replace(/\(.*?\)/g,'').trim();
+  const gpsInfo    = cfg.gps    || 'to be confirmed';
+  const langRule   = fr ? 'French' : 'English';
+  const inHouseLine = inHouse
+    ? 'Currently in house: ' + inHouse.name + ' until ' + inHouse.departure + '.'
+    : 'No current guests.';
 
-Analyze the pasted message and respond ONLY with a valid JSON object (no markdown, no explanation) in this exact structure:
-{
-  "guest": {
-    "existing_id": "client ID if this matches an existing client, else null",
-    "match_confidence": "high|medium|low|none",
-    "name": "Full Name",
-    "nat": "🇫🇷 Français",
-    "arrival": "2026-04-23",
-    "departure": "2026-04-27",
-    "nights": 4,
-    "guests": 3,
-    "price": 2116,
-    "commission": 3.6,
-    "source": "Airbnb",
-    "phone": "",
-    "returning": false,
-    "new_info": "Brief description of what new information this message adds"
-  },
-  "alerts": [
-    {"type": "urgent|warn|good|info", "text": "Alert message"},
-    {"type": "info", "text": "Another alert"}
-  ],
-  "price_advice": {
-    "amount": 750,
-    "reason": "Normal season, good weather expected"
-  },
-  "messages": {
-    "airbnb": "Full Airbnb reply message text...",
-    "welcome": "Full WhatsApp welcome message...",
-    "driver": "Full driver brief message...",
-    "staff": "Full staff brief for ${cfg.staff ? cfg.staff.split('\n')[0].split('(')[0].trim() : 'Said'} and team...",
-    "passport": "Full passport request message...",
-    "checkout": "Full checkout/review request message..."
-  }
-}
+  const jsonSchema = '{'
+    + '\n  "guest": {'
+    + '\n    "existing_id": "client ID if match found, else null",'
+    + '\n    "match_confidence": "high|medium|low|none",'
+    + '\n    "name": "Full Name",'
+    + '\n    "nat": "nationality with flag emoji",'
+    + '\n    "arrival": "YYYY-MM-DD",'
+    + '\n    "departure": "YYYY-MM-DD",'
+    + '\n    "nights": 7,'
+    + '\n    "guests": 3,'
+    + '\n    "price": 2116,'
+    + '\n    "commission": 3.6,'
+    + '\n    "source": "Airbnb",'
+    + '\n    "phone": "",'
+    + '\n    "returning": false,'
+    + '\n    "new_info": "brief description of new info in this message"'
+    + '\n  },'
+    + '\n  "alerts": [{"type": "urgent|warn|good|info", "text": "..."}],'
+    + '\n  "price_advice": {"amount": 750, "reason": "..."},'
+    + '\n  "messages": {'
+    + '\n    "airbnb": "full reply text",'
+    + '\n    "welcome": "full welcome WhatsApp message",'
+    + '\n    "driver": "full driver brief",'
+    + '\n    "staff": "full staff brief for ' + '" + staffFirst + "' + ' and team",'
+    + '\n    "passport": "full passport request",'
+    + '\n    "checkout": "full checkout / review request"'
+    + '\n  }'
+    + '\n}';
 
-Rules:
-- If you recognize an existing client (same name, phone, or overlapping dates), set existing_id to their ID and match_confidence to high/medium
-- If existing_id is set, only include fields that have NEW information (don't repeat what's already stored)
-- new_info should describe what this message adds: "Added meal preferences from WhatsApp", "Confirmed arrival time", etc.
-- Respond in ${fr ? 'French' : 'English'} for all message content
-- Use villa name "${cfg.villa || 'our villa'}" and owner name "${cfg.owner || 'the owner'}" in messages
-- Staff names from: ${cfg.staff || 'Said, Faiza, Bouchra'}
-- GPS/address if available: ${cfg.gps || 'to be confirmed'}
-- Price advice should consider: season (April=normal 750€, July-Aug=high 850€, Dec-Mar=high 900€+, Christmas=1500€), weekends (+50-100€), long stays (-15-20%)
-- Alerts should be specific and actionable: missing passports, check-in tomorrow, returning guest, special requests detected
-- If the message is WhatsApp conversation, extract dates from context
-- Always include ALL 6 message types even if some info is missing (use placeholders)`;
+  const systemPrompt = [
+    'You are an intelligent assistant for ' + villaName + ' in ' + cityName + ', managed by ' + ownerName + '.',
+    'Staff: ' + staffNames + '.',
+    'Today: ' + today + '.',
+    inHouseLine,
+    clientContext,
+    '',
+    'Analyze the pasted message and respond ONLY with a valid JSON object (no markdown, no preamble):',
+    jsonSchema,
+    '',
+    'Rules:',
+    '- If you recognise an existing client (same name, phone, or overlapping dates), set existing_id to their ID.',
+    '- If existing_id is set, only include NEW information fields.',
+    '- new_info: brief note on what this message adds (e.g. "Meal preferences from WhatsApp").',
+    '- Respond in ' + langRule + ' for all message content.',
+    '- Use villa name "' + villaName + '" and owner "' + ownerName + '" in messages.',
+    '- Staff names: ' + staffNames + '.',
+    '- GPS/address: ' + gpsInfo + '.',
+    '- Pricing guide: April=750, Jul-Aug=850, Dec=950, Xmas/NY=1500, weekends+50-100, long stay(28n)-20%.',
+    '- Alerts must be specific and actionable.',
+    '- Always include ALL 6 message types even with missing info.'
+  ].join('\n');
 
   try {
     const cfg2 = getCfg();
@@ -929,30 +938,59 @@ Rules:
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
+        max_tokens: 2000,
         system: systemPrompt,
         messages: [{ role: 'user', content: text }]
       })
     });
 
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      const errMsg = errData?.error?.message || response.statusText;
+      throw new Error('API ' + response.status + ': ' + errMsg);
+    }
     const data = await response.json();
     const raw = data.content?.[0]?.text || '';
+    if (!raw) throw new Error('Empty response from API');
 
-    // Parse JSON — strip markdown if present
+    // Parse JSON — robustly extract JSON from response
     let json;
     try {
-      const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
-      json = JSON.parse(cleaned);
+      // Try 1: direct parse after stripping markdown
+      let cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+      try {
+        json = JSON.parse(cleaned);
+      } catch(e1) {
+        // Try 2: extract the first {...} block
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (match) {
+          json = JSON.parse(match[0]);
+        } else {
+          throw new Error('No JSON found in response');
+        }
+      }
     } catch(e) {
-      throw new Error('Invalid AI response: ' + raw.slice(0, 100));
+      // Show the actual response for debugging
+      console.error('Raw API response:', raw);
+      throw new Error('Invalid AI response: ' + raw.slice(0, 150));
     }
 
     renderResult(json);
     document.getElementById('aiResult').classList.add('show');
 
   } catch(e) {
-    toast('Erreur: ' + e.message);
-    console.error(e);
+    const msg = e.message || 'Unknown error';
+    // Check for common issues
+    if (msg.includes('401') || msg.includes('auth')) {
+      toast(lang==='fr' ? '⚠ Clé API invalide — vérifiez dans ⚙ Réglages' : '⚠ Invalid API key — check ⚙ Settings');
+    } else if (msg.includes('429')) {
+      toast(lang==='fr' ? '⚠ Limite API atteinte — réessayez dans 1 min' : '⚠ API rate limit — retry in 1 min');
+    } else if (msg.includes('fetch')) {
+      toast(lang==='fr' ? '⚠ Erreur réseau — vérifiez votre connexion' : '⚠ Network error — check your connection');
+    } else {
+      toast('⚠ ' + msg.slice(0, 80));
+    }
+    console.error('Analyze error:', e);
   }
 
   btn.disabled = false;
