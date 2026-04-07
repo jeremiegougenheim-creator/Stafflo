@@ -338,6 +338,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
   <!-- NEXT STAYS BAR -->
   <div class="stays-bar" id="staysBar">
     <span style="font-size:11px;color:rgba(255,255,255,.3);font-style:italic" data-fr="Aucune réservation à venir" data-en="No upcoming stays">Aucune réservation à venir</span>
+    <button class="btn-new-chip" onclick="openForm()" style="margin-left:auto">+ <span data-fr="Nouveau" data-en="New">Nouveau</span></button>
   </div>
 
 
@@ -630,8 +631,27 @@ main{max-width:760px;margin:0 auto;padding:16px}
     <div class="settings-title" style="color:var(--gold)">CLAUDE AI — CLÉ API</div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6" data-fr="Nécessaire pour l'analyse des messages. Obtenez votre clé sur console.anthropic.com → API Keys." data-en="Required for message analysis. Get your key at console.anthropic.com → API Keys.">Nécessaire pour l'analyse des messages. Obtenez votre clé sur console.anthropic.com → API Keys.</div>
     <div class="field">
-      <label>API Key</label>
+      <label data-fr="Fournisseur IA" data-en="AI Provider">Fournisseur IA</label>
+      <select id="cfgAiProvider" onchange="toggleProviderFields()" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;background:var(--paper);outline:none">
+        <option value="gemini">Gemini (Google) — GRATUIT</option>
+        <option value="anthropic">Claude (Anthropic)</option>
+        <option value="deepseek">DeepSeek — ~$0.001/analyse</option>
+      </select>
+    </div>
+    <div class="field" id="geminiKeyField" style="display:none">
+      <label>Gemini API Key</label>
+      <input id="cfgGeminiKey" placeholder="AIza..." type="password" autocomplete="off">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">→ <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--gold)">aistudio.google.com</a> → Get API Key · Gratuit 1500 req/jour</div>
+    </div>
+    <div class="field" id="anthropicKeyField">
+      <label>Claude API Key</label>
       <input id="cfgAnthropicKey" placeholder="sk-ant-api03-..." type="password" autocomplete="off">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">→ <a href="https://console.anthropic.com" target="_blank" style="color:var(--gold)">console.anthropic.com</a> → API Keys</div>
+    </div>
+    <div class="field" id="deepseekKeyField" style="display:none">
+      <label>DeepSeek API Key</label>
+      <input id="cfgDeepseekKey" placeholder="sk-..." type="password" autocomplete="off">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">→ <a href="https://platform.deepseek.com/api_keys" target="_blank" style="color:var(--gold)">platform.deepseek.com</a> → API Keys · ~$0.001/analyse</div>
     </div>
     <div style="font-size:11px;color:var(--muted);margin-top:4px" data-fr="⚠ La clé est stockée localement dans votre navigateur uniquement." data-en="⚠ Key stored locally in your browser only.">⚠ Key stored locally in your browser only.</div>
     <button onclick="saveApiKey()" style="width:100%;margin-top:12px;background:var(--gold);color:var(--green3);border:none;border-radius:10px;padding:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.5px" data-fr="Enregistrer la clé →" data-en="Save key →">Save key →</button>
@@ -704,6 +724,21 @@ main{max-width:760px;margin:0 auto;padding:16px}
     </div>
     <div class="modal-body">
       <input type="hidden" id="fId">
+
+      <!-- AI PASTE ZONE in form -->
+      <div style="background:rgba(27,58,45,.05);border-radius:10px;padding:12px;margin-bottom:14px;border:1.5px dashed var(--border)">
+        <div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:8px" data-fr="⚡ COLLER UN MESSAGE — extraction automatique" data-en="⚡ PASTE A MESSAGE — auto-fill">⚡ COLLER UN MESSAGE — extraction automatique</div>
+        <textarea id="fPasteInput" rows="3" placeholder="Collez un email Airbnb, message WhatsApp, ou résumé de séjour..." style="width:100%;padding:9px 11px;border:1.5px solid var(--border);border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--card);color:var(--ink);resize:none;outline:none"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="extractFormAI()" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px" id="fExtractBtn">
+            <span id="fExtractSpinner" style="display:none;width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite"></span>
+            <span id="fExtractLabel" data-fr="✦ Remplir avec l'IA" data-en="✦ Fill with AI">✦ Remplir avec l'IA</span>
+          </button>
+          <button onclick="document.getElementById('fPasteInput').value=''" style="background:none;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;cursor:pointer;color:var(--muted)">✕</button>
+        </div>
+        <div id="fExtractMsg" style="font-size:11px;color:var(--green);margin-top:6px;display:none">✓ Champs remplis — vérifiez et ajustez</div>
+      </div>
+
       <div class="field"><label data-fr="Nom *" data-en="Name *">Nom *</label><input id="fName" placeholder="Jean Dupont"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div class="field"><label data-fr="Arrivée" data-en="Arrival">Arrivée</label><input type="date" id="fArr"></div>
@@ -922,27 +957,61 @@ async function analyze() {
 
   try {
     const cfg2 = getCfg();
-    const apiKey = cfg2.anthropicKey || '';
+    const provider = cfg2.aiProvider || 'gemini';
+    const apiKey = provider === 'gemini' ? (cfg2.geminiKey || '') : provider === 'deepseek' ? (cfg2.deepseekKey || '') : (cfg2.anthropicKey || '');
+    
     if (!apiKey) {
-      toast(lang==='fr' ? '⚙ Ajoutez votre clé API Claude dans Réglages' : '⚙ Add your Claude API key in Settings');
+      toast(lang==='fr' ? '⚙ Ajoutez votre clé API dans Réglages' : '⚙ Add your API key in Settings');
       btn.disabled = false; btn.classList.remove('loading');
       return;
     }
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: text }]
-      })
-    });
+
+    let response;
+    if (provider === 'gemini') {
+      // Gemini API — free tier
+      response = await fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: systemPrompt + '\n\nMessage to analyse:\n' + text }] }],
+            generationConfig: { maxOutputTokens: 2000, temperature: 0.3 }
+          })
+        }
+      );
+    } else if (provider === 'deepseek') {
+      // DeepSeek API (OpenAI-compatible)
+      response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          max_tokens: 2000,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text }
+          ]
+        })
+      });
+    } else {
+      // Anthropic Claude
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2000,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: text }]
+        })
+      });
+    }
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
@@ -950,7 +1019,8 @@ async function analyze() {
       throw new Error('API ' + response.status + ': ' + errMsg);
     }
     const data = await response.json();
-    const raw = data.content?.[0]?.text || '';
+    // Extract text from Anthropic, OpenAI/DeepSeek, or Gemini format
+    const raw = data.content?.[0]?.text || data.choices?.[0]?.message?.content || data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     if (!raw) throw new Error('Empty response from API');
 
     // Parse JSON — robustly extract JSON from response
@@ -1250,7 +1320,7 @@ function renderStaysBar() {
 
   if (!inHouse && !upcoming.length) {
     bar.innerHTML = `<span style="font-size:11px;color:rgba(255,255,255,.3);font-style:italic">${lang==='fr'?'Aucune réservation à venir':'No upcoming stays'}</span>
-    <button class="btn-new-chip" onclick="goTab('today')">${lang==='fr'?'+ Nouveau':'+ New'}</button>`;
+    <button class="btn-new-chip" onclick="openForm()">${lang==='fr'?'+ Nouveau':'+ New'}</button>`;
     return;
   }
 
@@ -1265,7 +1335,7 @@ function renderStaysBar() {
     if (i>0 || inHouse) html += '<span class="stay-sep">·</span>';
     html += `<div class="stay-chip"><strong>${c.name}</strong> <span style="color:var(--gold)">${lang==='fr'?'dans':'in'} ${dTo}j</span> <span>${n}n · ${c.guests||'?'}p</span></div>`;
   });
-  html += `<button class="btn-new-chip" onclick="goTab('today')">${lang==='fr'?'+ Nouveau':'+ New'}</button>`;
+  html += `<button class="btn-new-chip" onclick="openForm()">${lang==='fr'?'+ Nouveau':'+ New'}</button>`;
   bar.innerHTML = html;
 }
 
@@ -1466,6 +1536,10 @@ function loadSettingsUI() {
   document.getElementById('cfgSbUrl').value = cfg.sbUrl || '';
   document.getElementById('cfgSbKey').value = cfg.sbKey || '';
   document.getElementById('cfgAnthropicKey').value = cfg.anthropicKey || '';
+  document.getElementById('cfgDeepseekKey').value = cfg.deepseekKey || '';
+  document.getElementById('cfgGeminiKey').value = cfg.geminiKey || '';
+  const provSel = document.getElementById('cfgAiProvider');
+  if (provSel) { provSel.value = cfg.aiProvider || 'gemini'; toggleProviderFields(); }
 }
 
 async function saveSettings() {
@@ -1613,6 +1687,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const savedTab = localStorage.getItem('stafflo_tab') || 'today';
   goTab(savedTab);
   loadFromSupabase();
+  // Load weather & generate alerts on startup
+  setTimeout(() => {
+    if (typeof loadWeather === 'function') loadWeather();
+    if (typeof generateAlerts === 'function') generateAlerts(null);
+  }, 500);
 });
 
 
@@ -2275,6 +2354,22 @@ function renderTodayQV() {
     </div>`;
   }
 
+  // ── WEATHER STRIP ──
+  let weatherHtml = '';
+  const weatherEl = document.getElementById('weatherContent');
+  if (weatherEl && weatherEl.textContent.trim() && !weatherEl.querySelector('.loading')) {
+    const wTemp = document.getElementById('factorWeather')?.textContent || '';
+    if (wTemp && wTemp !== '—') {
+      weatherHtml = `<div style="background:var(--card);border-radius:10px;padding:9px 14px;margin-bottom:10px;box-shadow:var(--shadow);display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap">
+        <span style="font-size:16px">🌤</span>
+        <span style="color:var(--ink)">${wTemp}</span>
+        <span style="color:var(--muted);padding:0 4px">·</span>
+        <span style="color:var(--muted)">${fr?'Marrakech aujourd\'hui':'Marrakech today'}</span>
+      </div>`;
+    }
+  }
+  html += weatherHtml;
+
   // ── PRICE + ALERTS ROW ──
   // Get price for tonight
   let priceHtml = '';
@@ -2336,17 +2431,106 @@ function generateBriefToast(clientId) {
 
 
 function saveApiKey() {
-  const key = document.getElementById('cfgAnthropicKey').value.trim();
+  const prov = document.getElementById('cfgAiProvider')?.value || 'anthropic';
+  const key = prov === 'deepseek'
+    ? document.getElementById('cfgDeepseekKey').value.trim()
+    : prov === 'gemini'
+    ? document.getElementById('cfgGeminiKey').value.trim()
+    : document.getElementById('cfgAnthropicKey').value.trim();
   if (!key) { toast(lang==='fr' ? 'Clé vide' : 'Key is empty'); return; }
-  if (!key.startsWith('sk-ant')) { toast(lang==='fr' ? 'Clé invalide — doit commencer par sk-ant' : 'Invalid key — must start with sk-ant'); return; }
   const cfg = getCfg();
-  cfg.anthropicKey = key;
+  cfg.aiProvider = prov;
+  if (prov === 'deepseek') cfg.deepseekKey = key; else if (prov === 'gemini') cfg.geminiKey = key; else cfg.anthropicKey = key;
   setCfg(cfg);
   const saved = document.getElementById('apiKeySaved');
   if (saved) { saved.style.display = 'block'; setTimeout(() => saved.style.display = 'none', 3000); }
   const hint = document.getElementById('apiKeyHint');
   if (hint) hint.style.display = 'none';
   toast(lang==='fr' ? '✓ Clé API enregistrée' : '✓ API key saved');
+}
+
+function toggleProviderFields() {
+  const prov = document.getElementById('cfgAiProvider')?.value || 'gemini';
+  const gf = document.getElementById('geminiKeyField');
+  const af = document.getElementById('anthropicKeyField');
+  const df = document.getElementById('deepseekKeyField');
+  if (gf) gf.style.display = prov === 'gemini' ? 'block' : 'none';
+  if (af) af.style.display = prov === 'anthropic' ? 'block' : 'none';
+  if (df) df.style.display = prov === 'deepseek' ? 'block' : 'none';
+}
+
+async function extractFormAI() {
+  const text = document.getElementById('fPasteInput').value.trim();
+  if (!text) { toast(lang==='fr' ? 'Collez un message d\'abord' : 'Paste a message first'); return; }
+
+  const btn = document.getElementById('fExtractBtn');
+  const spinner = document.getElementById('fExtractSpinner');
+  const label = document.getElementById('fExtractLabel');
+  spinner.style.display = 'inline-block';
+  label.style.display = 'none';
+  btn.disabled = true;
+
+  const cfg = getCfg();
+  const provider = cfg.aiProvider || 'gemini';
+  const apiKey = provider === 'gemini' ? (cfg.geminiKey || '') : provider === 'deepseek' ? (cfg.deepseekKey || '') : (cfg.anthropicKey || '');
+
+  if (!apiKey) {
+    toast(lang==='fr' ? '⚙ Ajoutez votre clé API dans Réglages' : '⚙ Add your API key in Settings');
+    spinner.style.display = 'none'; label.style.display = 'inline'; btn.disabled = false;
+    return;
+  }
+
+  const today = new Date().toISOString().slice(0,10);
+  const prompt = 'Extract guest info from this message and return ONLY valid JSON (no markdown):\n{"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":3.6,"source":"Airbnb","phone":""}\nToday is ' + today + '. Message:\n' + text;
+
+  try {
+    let raw = '';
+    if (provider === 'gemini') {
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:500,temperature:0.1} })
+      });
+      const d = await r.json();
+      raw = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else if (provider === 'deepseek') {
+      const r = await fetch('https://api.deepseek.com/chat/completions', {
+        method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
+        body: JSON.stringify({ model:'deepseek-chat', max_tokens:500, messages:[{role:'user',content:prompt}] })
+      });
+      const d = await r.json();
+      raw = d.choices?.[0]?.message?.content || '';
+    } else {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST', headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:500, messages:[{role:'user',content:prompt}] })
+      });
+      const d = await r.json();
+      raw = d.content?.[0]?.text || '';
+    }
+
+    const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    const g = JSON.parse(match ? match[0] : cleaned);
+
+    if (g.name) document.getElementById('fName').value = g.name;
+    if (g.arrival) document.getElementById('fArr').value = g.arrival;
+    if (g.departure) document.getElementById('fDep').value = g.departure;
+    if (g.guests) document.getElementById('fGuests').value = g.guests;
+    if (g.price) { document.getElementById('fPrice').value = g.price; updateNetPreview(); }
+    if (g.commission) document.getElementById('fComm').value = g.commission;
+    if (g.source) document.getElementById('fSource').value = g.source;
+    if (g.phone) document.getElementById('fPhone').value = g.phone;
+    if (g.nat) document.getElementById('fNat').value = g.nat;
+
+    const msg = document.getElementById('fExtractMsg');
+    msg.style.display = 'block';
+    setTimeout(() => msg.style.display = 'none', 3000);
+    autoComm();
+  } catch(e) {
+    toast('⚠ ' + (e.message || 'Extraction failed').slice(0,60));
+  }
+
+  spinner.style.display = 'none'; label.style.display = 'inline'; btn.disabled = false;
 }
 </script>
 </body>
