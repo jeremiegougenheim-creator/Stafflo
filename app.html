@@ -349,6 +349,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
     <div class="ai-zone-header">
       <div>
         <div class="ai-zone-title" data-fr="Analyser un message" data-en="Analyse a message">Analyser un message</div>
+        <div id="apiKeyHint" style="display:none;font-size:11px;color:#F09595;margin-top:4px" data-fr="⚠ Clé API manquante — configurez dans ⚙ Réglages" data-en="⚠ API key missing — configure in ⚙ Settings">⚠ Clé API manquante — configurez dans ⚙ Réglages</div>
         <div style="font-size:11px;color:rgba(255,255,255,.45);margin-top:3px" data-fr="Airbnb · WhatsApp · Email — l'IA fait tout" data-en="Airbnb · WhatsApp · Email — AI handles everything">Airbnb · WhatsApp · Email — l'IA fait tout</div>
       </div>
       <div class="ai-badge">AI</div>
@@ -625,6 +626,16 @@ main{max-width:760px;margin:0 auto;padding:16px}
     <button onclick="closeSettings()" style="background:none;border:none;color:rgba(255,255,255,.6);font-size:22px;cursor:pointer;line-height:1">✕</button>
   </div>
   <div style="padding:16px">
+  <div class="settings-section" style="border:1.5px solid rgba(201,150,58,.3);background:rgba(201,150,58,.04)">
+    <div class="settings-title" style="color:var(--gold)">CLAUDE AI — CLÉ API</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6" data-fr="Nécessaire pour l'analyse des messages. Obtenez votre clé sur console.anthropic.com → API Keys." data-en="Required for message analysis. Get your key at console.anthropic.com → API Keys.">Nécessaire pour l'analyse des messages. Obtenez votre clé sur console.anthropic.com → API Keys.</div>
+    <div class="field">
+      <label>API Key</label>
+      <input id="cfgAnthropicKey" placeholder="sk-ant-api03-..." type="password" autocomplete="off">
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px" data-fr="⚠ La clé est stockée localement dans votre navigateur uniquement." data-en="⚠ Key stored locally in your browser only.">⚠ La clé est stockée localement dans votre navigateur uniquement.</div>
+  </div>
+
   <div class="settings-section">
     <div class="settings-title" data-fr="VOTRE VILLA" data-en="YOUR VILLA">VOTRE VILLA</div>
     <div class="field"><label data-fr="Nom de la villa" data-en="Villa name">Nom de la villa</label><input id="cfgVilla" placeholder="Villa DarJ"></div>
@@ -634,6 +645,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
     <div class="field"><label>WhatsApp villa</label><input id="cfgWa" placeholder="+212 6..."></div>
     <div class="field"><label>GPS</label><input id="cfgGps" placeholder="31.6295, -7.9811"></div>
   </div>
+
 
   <div class="settings-section">
     <div class="settings-title">SUPABASE</div>
@@ -898,9 +910,21 @@ Rules:
 - Always include ALL 6 message types even if some info is missing (use placeholders)`;
 
   try {
+    const cfg2 = getCfg();
+    const apiKey = cfg2.anthropicKey || '';
+    if (!apiKey) {
+      toast(lang==='fr' ? '⚙ Ajoutez votre clé API Claude dans Réglages' : '⚙ Add your Claude API key in Settings');
+      btn.disabled = false; btn.classList.remove('loading');
+      return;
+    }
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1500,
@@ -1401,6 +1425,7 @@ function loadSettingsUI() {
   document.getElementById('cfgGps').value = cfg.gps || '';
   document.getElementById('cfgSbUrl').value = cfg.sbUrl || '';
   document.getElementById('cfgSbKey').value = cfg.sbKey || '';
+  document.getElementById('cfgAnthropicKey').value = cfg.anthropicKey || '';
 }
 
 async function saveSettings() {
@@ -1412,7 +1437,8 @@ async function saveSettings() {
     wa: document.getElementById('cfgWa').value.trim(),
     gps: document.getElementById('cfgGps').value.trim(),
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
-    sbKey: document.getElementById('cfgSbKey').value.trim()
+    sbKey: document.getElementById('cfgSbKey').value.trim(),
+    anthropicKey: document.getElementById('cfgAnthropicKey').value.trim()
   };
   setCfg(cfg);
 
@@ -1488,7 +1514,12 @@ function goTab(t) {
 
   if (t === 'clients') renderClients();
   if (t === 'home') loadHomeData();
-  if (t === 'today') { renderTodayQV(); }
+  if (t === 'today') {
+    renderTodayQV();
+    const cfg3 = getCfg();
+    const hint = document.getElementById('apiKeyHint');
+    if (hint) hint.style.display = cfg3.anthropicKey ? 'none' : 'block';
+  }
   localStorage.setItem('stafflo_tab', t);
 }
 
