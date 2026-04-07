@@ -1013,6 +1013,23 @@ async function analyze() {
       });
     }
 
+    if (response.status === 429) {
+      // Rate limit — auto-retry after 60s
+      btn.disabled = true; btn.classList.remove('loading');
+      let secs = 60;
+      const interval = setInterval(() => {
+        secs--;
+        btn.querySelector('.btn-label').textContent = '⏳ ' + (lang==='fr' ? 'Réessai dans ' : 'Retry in ') + secs + 's';
+        if (secs <= 0) {
+          clearInterval(interval);
+          btn.disabled = false;
+          btn.querySelector('.btn-label').textContent = lang==='fr' ? '✦ Analyser & générer tout' : '✦ Analyse & generate everything';
+          toast(lang==='fr' ? '↻ Prêt — réessayez maintenant' : '↻ Ready — try again now');
+        }
+      }, 1000);
+      btn.classList.remove('loading');
+      return;
+    }
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
       const errMsg = errData?.error?.message || response.statusText;
@@ -1054,7 +1071,7 @@ async function analyze() {
     if (msg.includes('401') || msg.includes('auth')) {
       toast(lang==='fr' ? '⚠ Clé API invalide — vérifiez dans ⚙ Réglages' : '⚠ Invalid API key — check ⚙ Settings');
     } else if (msg.includes('429')) {
-      toast(lang==='fr' ? '⚠ Limite API atteinte — réessayez dans 1 min' : '⚠ API rate limit — retry in 1 min');
+      toast(lang==='fr' ? '⚠ Limite Gemini gratuit — 15 req/min. Passez à DeepSeek ~0.001$/analyse' : '⚠ Gemini free limit — 15 req/min. Switch to DeepSeek ~$0.001/analysis');
     } else if (msg.includes('fetch')) {
       toast(lang==='fr' ? '⚠ Erreur réseau — vérifiez votre connexion' : '⚠ Network error — check your connection');
     } else {
@@ -1689,26 +1706,54 @@ document.addEventListener('DOMContentLoaded', () => {
   loadFromSupabase();
   // Load weather & generate alerts on startup
   setTimeout(() => {
-    if (typeof loadWeather === 'function') loadWeather();
-    if (typeof generateAlerts === 'function') generateAlerts(null);
-  }, 500);
+    if (typeof loadWeather === 'function') {
+      loadWeather().then(() => {
+        const wText = document.getElementById('factorWeather')?.textContent || '';
+        const match = wText.match(/(\d+)/);
+        generateAlerts(match ? parseInt(match[1]) : null);
+      }).catch(() => generateAlerts(null));
+    } else {
+      generateAlerts(null);
+    }
+  }, 800);
 });
 
 
+// Enriched Marrakech events calendar with specific dates
 const MARRAKECH_EVENTS = [
-  {month:4, name:'Printemps / Ramadan possible', impact:'+10-20%'},
-  {month:5, name:'Fête du Travail', impact:'+15%'},
-  {month:6, name:'Festival Gnaoua', impact:'+5%'},
-  {month:7, name:'Vacances été Europe', impact:'+20%'},
-  {month:8, name:'Peak été', impact:'+25%'},
-  {month:9, name:'Rentrée premium', impact:'+10%'},
-  {month:10, name:'Festival du Film Marrakech', impact:'+20%'},
-  {month:11, name:'Haute saison', impact:'+15%'},
-  {month:12, name:'Noël & Réveillon', impact:'+80-120%'},
-  {month:1, name:'Nouvel An', impact:'+40%'},
-  {month:2, name:'Saint-Valentin', impact:'+15%'},
-  {month:3, name:'Pâques + fashion weeks', impact:'+20%'},
+  {month:1, week:1, name:"Nouvel An - Late bookings", impact:"+40%", tip:"Proposez hammam, feu de cheminee, activites Nouvel An berbere"},
+  {month:1, week:3, name:"Fashion week Milan", impact:"+10%", tip:"Profil client fashion/luxury, budget eleve"},
+  {month:2, week:2, name:"Saint-Valentin", impact:"+20%", tip:"Decorations romantiques, diner aux chandelles avec Faiza"},
+  {month:2, week:3, name:"Carnaval Europe - long weekends", impact:"+15%", tip:"Forte demande familles belges et neerlandaises"},
+  {month:3, week:1, name:"Fashion week Paris - clientele luxe", impact:"+15%", tip:"Post-fashion week: clients cherchent detox et repos"},
+  {month:3, week:3, name:"Paques anticipe - primo-arrivants", impact:"+25%", tip:"Forte demande familles francaises et britanniques"},
+  {month:4, week:1, name:"Paques & Vacances scolaires", impact:"+30%", tip:"Se loue en 48h - reservez les creneaux des janvier"},
+  {month:4, week:2, name:"Ramadan possible (2026: ~20 mars-19 avr)", impact:"+5%", tip:"Restaurants fermes le jour - preparez repas villa, iftar en groupe"},
+  {month:5, week:1, name:"1er Mai + ponts", impact:"+20%", tip:"Long weekends francais tres populaires"},
+  {month:5, week:2, name:"Mawazine Festival Rabat", impact:"+10%", tip:"Certains clients combinent Marrakech et Rabat"},
+  {month:6, week:1, name:"Festival Gnaoua Essaouira", impact:"+8%", tip:"Excursion possible depuis la villa - mentionnez-le aux clients"},
+  {month:6, week:3, name:"Fetes de fin d'ecole Europe", impact:"+10%", tip:"Familles en voyage recompense"},
+  {month:7, week:1, name:"Vacances scolaires Europe - Peak ete", impact:"+25%", tip:"Montez les prix min 850 euros la nuit - forte demande"},
+  {month:7, week:3, name:"Eid al-Adha possible (2026: ~6 juin)", impact:"+10%", tip:"Clients arabes du Golfe - haute saison pour eux"},
+  {month:8, week:1, name:"Peak absolu - Aout", impact:"+30%", tip:"Votre creneau le plus cher - pas moins de 900 euros la nuit"},
+  {month:8, week:3, name:"Bank Holiday UK", impact:"+15%", tip:"Forte demande britannique late-booking"},
+  {month:9, week:1, name:"Rentree - clientele premium adults-only", impact:"+15%", tip:"Couples sans enfants post-vacances - profil ideal villa DarJ"},
+  {month:9, week:3, name:"Fashion Week NY + Milan", impact:"+10%", tip:"Clientele mode et luxe en transit"},
+  {month:10, week:1, name:"Vacances Toussaint France", impact:"+25%", tip:"2eme pic familial de l'annee - reserve 2-3 mois a l'avance"},
+  {month:10, week:2, name:"Festival International du Film Marrakech", impact:"+25%", tip:"Celebrites et presse internationale - prix premium justifies"},
+  {month:10, week:4, name:"Halloween / long weekend UK", impact:"+10%", tip:"Clients britanniques - decorations thematiques optionnelles"},
+  {month:11, week:1, name:"Haute saison - meteo parfaite", impact:"+20%", tip:"20-25 degres, pas de chaleur - ideal pour les hotes exigeants"},
+  {month:11, week:4, name:"Thanksgiving US", impact:"+10%", tip:"Clients americains - mentionnez l'anglais dans les annonces"},
+  {month:12, week:1, name:"Pre-Noel - sejours detox", impact:"+20%", tip:"Couples et familles cherchent chaleur avant fetes"},
+  {month:12, week:3, name:"Noel & Reveillon", impact:"+80-120%", tip:"PRIX MAXIMUM - 1500 euros+ justifie. Reserve 6 mois a l'avance"},
+  {month:12, week:4, name:"Nouvel An", impact:"+100%", tip:"Nuit du 31 decembre = votre nuit la plus chere de l'annee"},
 ];
+
+
+// Helper: get current week of month (1-4)
+function getWeekOfMonth() {
+  return Math.ceil(new Date().getDate() / 7);
+}
 
 const mods = {event:false, weekend:false, lastmin:false, longstay:true};
 
@@ -1907,31 +1952,184 @@ function renderScenarios(pricePN) {
   }).join('');
 }
 
-function generateAlerts(weatherTemp) {
+async function generateAlerts(weatherTemp) {
   const alerts = [];
-  const month = new Date().getMonth() + 1;
-  const event = MARRAKECH_EVENTS.find(e => e.month === month);
+  const fr = lang === 'fr';
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const week = getWeekOfMonth();
+  const today = now.toISOString().slice(0,10);
+  const day = now.getDay(); // 0=sun, 6=sat
 
-  if (event) alerts.push({type:'warn',title:'Événement détecté — ' + event.name, sub:'Impact prix estimé: ' + event.impact + ' · Activez le modificateur "Événement"'});
+  // ── 1. CRM-BASED ALERTS (highest priority) ──
+  const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
+  const checkoutToday = clients.filter(c => c.departure === today);
+  const checkinToday = clients.filter(c => c.arrival === today);
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  const tomorrowStr = tomorrow.toISOString().slice(0,10);
+  const checkinTomorrow = clients.filter(c => c.arrival === tomorrowStr);
 
-  if (weatherTemp !== null) {
-    if (weatherTemp > 35) alerts.push({type:'info',title:'Canicule à Marrakech ('+weatherTemp+'°C)',sub:'La piscine devient argument majeur — mentionnez-la en avant dans vos messages'});
-    else if (weatherTemp >= 20 && weatherTemp <= 30) alerts.push({type:'good',title:'Météo idéale ('+weatherTemp+'°C)',sub:'Conditions parfaites — période favorable pour les réservations'});
+  if (checkoutToday.length) alerts.push({type:'urgent',
+    title:'🧳 ' + (fr?'Départ aujourd\'hui':'Checkout today') + ' — ' + checkoutToday.map(c=>c.name).join(', '),
+    sub: fr?'Préparez le ménage, vérifiez l\'inventaire, envoyez le message de départ.':'Prepare cleaning, check inventory, send checkout message.'});
+  if (checkinToday.length) alerts.push({type:'urgent',
+    title:'🏡 ' + (fr?'Arrivée aujourd\'hui':'Arrival today') + ' — ' + checkinToday.map(c=>c.name).join(', '),
+    sub: fr?'Vérifiez: chambres, piscine, fleurs, courses, accueil.':'Check: rooms, pool, flowers, groceries, welcome.'});
+  if (checkinTomorrow.length) alerts.push({type:'warn',
+    title:'📅 ' + (fr?'Arrivée demain':'Arriving tomorrow') + ' — ' + checkinTomorrow.map(c=>c.name).join(', '),
+    sub: fr?'Confirmez le transfert, les repas et la préparation villa.':'Confirm transfer, meals and villa preparation.'});
+
+  // ── 2. FLIGHT DELAY ALERT (AviationStack) ──
+  if (inHouse && inHouse.arrival === today) {
+    try {
+      const flightRes = await fetch(`https://api.aviationstack.com/v1/flights?access_key=${AVIATION_KEY}&arr_iata=RAK&limit=20`);
+      const flightData = await flightRes.json();
+      if (flightData.data) {
+        const delayed = flightData.data.filter(f => f.arrival?.delay > 30);
+        if (delayed.length) {
+          delayed.forEach(f => {
+            alerts.push({type:'warn',
+              title:'✈️ Vol retardé: ' + f.flight?.iata + ' (' + (f.departure?.airport||'?') + ')',
+              sub: 'Retard de ' + f.arrival.delay + ' min → nouvelle ETA: ' + (f.arrival?.estimated||'?').slice(11,16) + '. Prévenez le chauffeur.'});
+          });
+        } else {
+          alerts.push({type:'good',
+            title:'✈️ ' + (fr?'Vols RAK — trafic normal':'RAK Flights — on schedule'),
+            sub: fr?'Aucun retard significatif détecté à l\'arrivée.':'No significant arrival delays detected.'});
+        }
+      }
+    } catch(e) {
+      // silently fail
+    }
   }
 
-  if (month >= 4 && month <= 6) alerts.push({type:'info',title:'Saison creuse — activez la réduction 28 nuits',sub:'Digital nomads et télétravailleurs cherchent des villas longue durée'});
+  // ── 3. EXCHANGE RATE ALERT ──
+  try {
+    const fxRes = await fetch('https://api.exchangerate-api.com/v4/latest/EUR');
+    const fx = await fxRes.json();
+    if (fx.rates) {
+      const gbp = fx.rates.GBP;
+      const usd = fx.rates.USD;
+      const britishClients = clients.filter(c => c.nat && c.nat.includes('Brit') || (c.nat||'').includes('🇬🇧'));
+      const usClients = clients.filter(c => (c.nat||'').includes('🇺🇸') || (c.nat||'').includes('Amér'));
+      
+      if (gbp < 0.84) { // GBP weak vs EUR
+        alerts.push({type:'warn',
+          title:'💷 GBP/EUR: ' + gbp.toFixed(3) + (fr?' — Livre faible':' — Weak pound'),
+          sub: fr?'Clients britanniques paient plus cher — pensez à justifier le prix premium.':'British guests pay more — consider highlighting premium value.'});
+      } else if (gbp > 0.88) { // GBP strong
+        alerts.push({type:'good',
+          title:'💷 GBP/EUR: ' + gbp.toFixed(3) + (fr?' — Livre forte':' — Strong pound'),
+          sub: fr?'Moment favorable pour cibler les clients britanniques.':'Good time to target British guests.'});
+      }
+      
+      // Store for display
+      window._fxRates = {gbp, usd};
+    }
+  } catch(e) {}
 
-  alerts.push({type:'good',title:'Aéroport RAK — trafic normal',sub:'Vols directs depuis Paris, Londres, Amsterdam, Madrid — bonne accessibilité'});
-  alerts.push({type:'info',title:'Conseil: répondez dans l\'heure',sub:'Les annonces avec réponse < 1h ont 40% de réservations en plus sur Airbnb'});
+  // ── 4. MARRAKECH EVENTS CALENDAR ──
+  const weekEvents = MARRAKECH_EVENTS.filter(e => e.month === month && Math.abs((e.week||2) - week) <= 1);
+  const nextMonthEvents = MARRAKECH_EVENTS.filter(e => e.month === (month % 12) + 1).slice(0,1);
+  
+  weekEvents.forEach(ev => {
+    alerts.push({type:'warn',
+      title:'📅 ' + ev.name + ' — impact prix ' + ev.impact,
+      sub: ev.tip + (fr?' · Activez le modificateur "Événement" dans My Home AI':' · Activate the "Event" modifier in My Home AI')});
+  });
 
+  if (nextMonthEvents.length && weekEvents.length === 0) {
+    const ne = nextMonthEvents[0];
+    alerts.push({type:'info',
+      title:'📅 ' + (fr?'Mois prochain':'Next month') + ': ' + ne.name,
+      sub: (fr?'Impact estimé: ':'Estimated impact: ') + ne.impact + ' · ' + ne.tip});
+  }
+
+  // ── 5. WEATHER-BASED ALERTS ──
+  if (weatherTemp !== null) {
+    if (weatherTemp >= 38) alerts.push({type:'warn',
+      title:'🔥 ' + (fr?'Canicule':'Heatwave') + ' (' + weatherTemp + '°C)',
+      sub: fr?'Piscine essentielle — mentionnez-la dans tous vos messages. Préparez boissons fraîches.':'Pool essential — mention it in all messages. Prepare cold drinks.'});
+    else if (weatherTemp >= 30) alerts.push({type:'info',
+      title:'☀️ ' + (fr?'Très chaud':'Very hot') + ' (' + weatherTemp + '°C)',
+      sub: fr?'Piscine très demandée. Activités recommandées: tôt le matin ou après 17h.':'Pool highly sought after. Recommended activities: early morning or after 5pm.'});
+    else if (weatherTemp >= 18 && weatherTemp <= 28) alerts.push({type:'good',
+      title:'🌤 ' + (fr?'Météo idéale':'Perfect weather') + ' (' + weatherTemp + '°C)',
+      sub: fr?'Conditions parfaites — jardin, terrasse, piscine tous utilisables.':'Perfect conditions — garden, terrace, pool all usable.'});
+    else if (weatherTemp < 12) alerts.push({type:'info',
+      title:'🔥 ' + (fr?'Frais':'Cool') + ' (' + weatherTemp + '°C) — ' + (fr?'cheminée':'fireplace'),
+      sub: fr?'Mettez en avant la cheminée et le hammam dans vos messages.':'Highlight the fireplace and hammam in your messages.'});
+  }
+
+  // ── 6. COMPETITOR PRICING ALERT ──
+  try {
+    const comps = loadSavedCompetitors ? loadSavedCompetitors() : [];
+    if (comps.length >= 2) {
+      const yourPrice = typeof getPrice === 'function' ? getPrice().pricePN : 0;
+      const avgMarket = Math.round(comps.reduce((s,c) => s + c.price, 0) / comps.length);
+      
+      if (yourPrice && avgMarket) {
+        const diff = yourPrice - avgMarket;
+        const pct = Math.round((diff / avgMarket) * 100);
+        
+        if (pct < -30) { // You're 30%+ BELOW market
+          alerts.push({type:'warn',
+            title:'💰 ' + (fr?'Vous êtes':'You are') + ' ' + Math.abs(pct) + '% ' + (fr?'sous le marché':'below market'),
+            sub: (fr?'Marché moyen: ':'Avg market: ') + avgMarket + '€ · ' + (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + (fr?'Vous pouvez augmenter vos prix.':'You can raise your prices.')});
+        } else if (pct > 30) { // You're 30%+ ABOVE market
+          alerts.push({type:'info',
+            title:'📊 ' + (fr?'Vous êtes':'You are') + ' ' + pct + '% ' + (fr?'au-dessus du marché':'above market'),
+            sub: (fr?'Marché moyen: ':'Avg market: ') + avgMarket + '€ · ' + (fr?'Vérifiez votre taux d\'occupation.':'Check your occupancy rate.')});
+        } else {
+          alerts.push({type:'good',
+            title:'📊 ' + (fr?'Prix aligné avec le marché':'Price aligned with market'),
+            sub: (fr?'Votre prix ':'Your price ') + yourPrice + '€ ' + (fr?'vs marché moyen':'vs avg market') + ' ' + avgMarket + '€ (' + (pct >= 0 ? '+' : '') + pct + '%)'});
+        }
+      }
+    }
+  } catch(e) {}
+
+  // ── 7. WEEKEND / SEASONALITY ──
+  if (day === 5 || day === 6) alerts.push({type:'info',
+    title:'📅 ' + (fr?'Week-end — activez le modificateur':'Weekend — activate modifier'),
+    sub: fr?'Les week-ends à Marrakech justifient +50-100€/nuit.':'Marrakech weekends justify +50-100€/night.'});
+
+  if (month >= 4 && month <= 6 && !weekEvents.length) alerts.push({type:'info',
+    title:'🏢 ' + (fr?'Saison creuse — offre long séjour':'Low season — offer long stay'),
+    sub: fr?'Ciblez les digital nomads: 28 nuits avec réduction -20%.':'Target digital nomads: 28 nights with -20% discount.'});
+
+  // ── 8. QUICK WIN TIP ──
+  const tips = fr ? [
+    {title:'⚡ Répondez dans l\'heure sur Airbnb', sub:'Les hôtes < 1h de réponse ont 40% de réservations en plus.'},
+    {title:'📸 Mettez à jour vos photos Airbnb', sub:'Les listings avec photos récentes (< 1 an) performent 25% mieux.'},
+    {title:'💬 Demandez un avis à votre dernier client', sub:'Chaque avis 5 étoiles augmente votre classement Airbnb.'},
+    {title:'🔗 Partagez votre lien Airbnb sur Instagram', sub:'Villa DarJ a un compte Instagram — boostez la visibilité.'},
+  ] : [
+    {title:'⚡ Reply within 1 hour on Airbnb', sub:'Hosts with <1h response time get 40% more bookings.'},
+    {title:'📸 Update your Airbnb photos', sub:'Listings with recent photos (<1 year) perform 25% better.'},
+    {title:'💬 Ask your last guest for a review', sub:'Every 5-star review boosts your Airbnb ranking.'},
+    {title:'🔗 Share your Airbnb link on Instagram', sub:'Villa DarJ has an Instagram — boost visibility.'},
+  ];
+  const tip = tips[now.getDate() % tips.length]; // rotates daily
+  alerts.push({type:'info', title: tip.title, sub: tip.sub});
+
+  if (!alerts.length) alerts.push({type:'good',
+    title:'✅ ' + (fr?'Tout est en ordre':'All clear'),
+    sub: fr?'Aucune alerte active. Bonne journée !':'No active alerts. Have a great day!'});
+
+  // ── RENDER ──
   const alertsHtml = alerts.map(a => `
-    <div class="alert alert-${a.type}">
-      <div class="alert-icon alert-icon-${a.type}">${a.type==='warn'?'!':a.type==='good'?'✓':'i'}</div>
-      <div class="alert-body">
-        <div class="alert-title">${a.title}</div>
-        <div class="alert-sub">${a.sub}</div>
+    <div class="alert-hm ${a.type}">
+      <span style="flex-shrink:0;font-size:14px">${a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡'}</span>
+      <div>
+        <div style="font-weight:600;font-size:12px;margin-bottom:2px">${a.title}</div>
+        <div style="font-size:11px;opacity:.85;line-height:1.4">${a.sub}</div>
       </div>
     </div>`).join('');
+
+  const elV = document.getElementById('alertsContent');
+  if (elV) elV.innerHTML = alertsHtml;
+  setTimeout(renderTodayQV, 50);
 }
 
 async function loadWeather() {
@@ -2235,8 +2433,13 @@ function loadHomeData() {
   renderCompetitors();
   renderScenarios(getPrice());
   renderMarketBand();
-  loadWeather();
-  generateAlerts(null);
+  loadWeather().then(() => {
+    // Get weatherTemp from factorWeather element after weather loads
+    const wText = document.getElementById('factorWeather')?.textContent || '';
+    const match = wText.match(/(\d+)/);
+    const wTemp = match ? parseInt(match[1]) : null;
+    generateAlerts(wTemp);
+  }).catch(() => generateAlerts(null));
 }
 
 function goTabHome() {
