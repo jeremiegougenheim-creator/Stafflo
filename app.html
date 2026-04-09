@@ -296,12 +296,25 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .qv-alert.good{background:#EAF3DE;border-left:3px solid #3B6D11;color:#1E3A07}
 .qv-alert.info{background:#E6F1FB;border-left:3px solid #378ADD;color:#0A2A4A}
 .qv-alert.urgent{background:#FDE8E8;border-left:3px solid var(--red);color:#5A0000}
+.tooltip-wrap{position:relative;display:inline-flex;align-items:center;gap:5px}
+.tooltip-icon{width:15px;height:15px;border-radius:50%;background:rgba(138,128,112,.35);color:var(--ink);font-size:9px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .2s}
+.tooltip-icon:hover{background:var(--muted)}
+.tooltip-box{display:none;position:absolute;left:20px;top:-4px;background:var(--ink);color:#fff;font-size:11px;line-height:1.5;padding:8px 10px;border-radius:8px;width:200px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.tooltip-icon:hover+.tooltip-box{display:block}
 </style>
 </head>
 <body>
 
 <header>
-  <a href="index.html" class="logo" id="logoLink" onclick="this.href=lang==='en'?'en.html':'index.html'">Staff<em>lo</em> <span class="logo-ai">AI</span></a>
+  <a href="index.html" class="logo" id="logoLink" onclick="this.href=lang==='en'?'en.html':'index.html'" style="display:flex;align-items:center;gap:7px;text-decoration:none">
+    <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+      <rect width="26" height="26" rx="6" fill="#C9963A"/>
+      <path d="M7 9C7 8.45 7.45 8 8 8h4.5C13.88 8 15 9.12 15 10.5c0 .76-.35 1.44-.9 1.9.82.43 1.4 1.3 1.4 2.35C15.5 16.05 14.55 17 13.38 17H8.5A1.5 1.5 0 0 1 7 15.5V9Z" fill="#0F2318"/>
+      <path d="M9.2 10.2h2.8c.44 0 .8.36.8.8s-.36.8-.8.8H9.2v-1.6Zm0 3.6h3.18c.44 0 .8.36.8.8s-.36.8-.8.8H9.2V13.8Z" fill="#C9963A"/>
+      <circle cx="18" cy="18" r="2.8" fill="#0F2318"/>
+      <circle cx="18" cy="18" r="1.3" fill="#C9963A"/>
+    </svg>
+    Staff<em>lo</em> <span class="logo-ai">AI</span></a>
   <div class="header-right">
     <div class="sync-dot" id="syncDot" onclick="syncNow()" title="Supabase sync"></div>
     <div class="hstat">
@@ -341,6 +354,15 @@ main{max-width:760px;margin:0 auto;padding:16px}
     <button class="btn-new-chip" onclick="openForm()" style="margin-left:auto">+ <span data-fr="Nouveau" data-en="New">Nouveau</span></button>
   </div>
 
+
+  <!-- SMART ALERTS STRIP — shown on Today tab -->
+  <div id="todayAlerts" style="display:none;margin:0 16px 8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:0 2px">
+      <div style="font-size:9px;letter-spacing:2px;color:var(--muted);font-weight:600" data-fr="💡 ALERTES INTELLIGENTES" data-en="💡 SMART ALERTS">💡 ALERTES INTELLIGENTES</div>
+      <button onclick="goTab('home')" style="font-size:11px;color:var(--gold);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0" data-fr="Voir tout →" data-en="See all →">Voir tout →</button>
+    </div>
+    <div id="todayAlertsContent"></div>
+  </div>
 
   <!-- TODAY QUICK VIEW — injected by renderTodayQV() -->
   <div id="todayQV"></div>
@@ -1084,6 +1106,10 @@ async function analyze() {
 
     renderResult(json);
     document.getElementById('aiResult').classList.add('show');
+    // Clear paste zone after success
+    document.getElementById('pasteInput').value = '';
+    document.getElementById('pasteInput').classList.remove('has-text');
+    document.getElementById('analyzeBtn').disabled = true;
 
   } catch(e) {
     const msg = e.message || 'Unknown error';
@@ -1452,9 +1478,66 @@ function openDetail(id) {
     c.notes ? [fr?'Notes':'Notes', c.notes] : null
   ].filter(Boolean).filter(r => r[1]);
 
-  document.getElementById('detailBody').innerHTML = rows.map(([l,v]) =>
-    `<div class="detail-row"><span class="detail-label">${l}</span><span class="detail-value">${v}</span></div>`
-  ).join('');
+  // Build rich detail card
+  const s = getStatus(c);
+  const badgeColor = s==='current'?'#52b788':s==='upcoming'?'var(--gold)':'var(--muted)';
+  const badgeText = s==='current'?(fr?'🟢 En cours':'🟢 Current'):s==='upcoming'?(fr?'⏳ À venir':'⏳ Upcoming'):(fr?'✓ Passé':'✓ Past');
+
+  document.getElementById('detailBody').innerHTML = `
+    <!-- Hero banner -->
+    <div style="background:var(--green3);margin:-16px -20px 16px;padding:20px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:14px">
+      <div style="width:52px;height:52px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:20px;color:var(--green3);font-weight:600;flex-shrink:0">${initials(c.name)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-family:'Fraunces',serif;font-size:18px;color:#fff;font-weight:400">${c.name}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:2px">${c.nat||''} ${c.source?'· '+c.source:''}</div>
+      </div>
+      <span style="background:${badgeColor};color:${s==='current'?'#0F2318':'#fff'};font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap">${badgeText}</span>
+    </div>
+
+    <!-- Key stats row -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+      <div style="background:var(--paper);border-radius:10px;padding:10px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:18px;font-weight:700;color:var(--ink)">${fmtDate(c.arrival)}</div>
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Arrivée':'Arrival'}</div>
+      </div>
+      <div style="background:var(--paper);border-radius:10px;padding:10px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:18px;font-weight:700;color:var(--ink)">${n||'—'}<span style="font-size:12px;font-weight:400"> ${fr?'nuits':'nights'}</span></div>
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Durée':'Duration'}</div>
+      </div>
+      <div style="background:var(--paper);border-radius:10px;padding:10px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:18px;font-weight:700;color:var(--ink)">${c.guests||'—'}</div>
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Pers.':'Guests'}</div>
+      </div>
+    </div>
+
+    <!-- Net earnings highlight -->
+    ${net ? `<div style="background:linear-gradient(135deg,var(--green3),#1B4332);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:11px;color:rgba(255,255,255,.5);letter-spacing:1px;text-transform:uppercase">${fr?'Net vous':'Your net'}</div>
+        <div style="font-family:'Fraunces',serif;font-size:26px;color:#fff;font-weight:300">${net.toLocaleString('fr')}€</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:rgba(255,255,255,.5)">${fr?'Par nuit':'Per night'}</div>
+        <div style="font-size:16px;color:var(--gold);font-weight:600">${(net && n) ? Math.round(net/n).toLocaleString('fr') : '—'}€</div>
+        <div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">${c.commission||'—'}% ${c.source||'commission'}</div>
+      </div>
+    </div>` : ''}
+
+    <!-- Detail rows -->
+    <div style="border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:12px">
+      ${rows.filter(([l,v])=>!['Nationalité','Nationality','Arrivée','Arrival','Départ','Departure','Nuits','Nights','Personnes','Guests','Net vous','Your net','Net / nuit','Net / night'].includes(l)).map(([l,v],i,arr) =>
+        `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:11px 14px;${i<arr.length-1?'border-bottom:1px solid var(--border)':''}">
+          <span style="font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.5px;min-width:80px">${l}</span>
+          <span style="font-size:13px;color:var(--ink);text-align:right;flex:1;padding-left:12px">${v}</span>
+        </div>`
+      ).join('')}
+    </div>
+
+    ${c.notes ? `<div style="background:var(--gold-light);border-radius:10px;padding:12px 14px;border-left:3px solid var(--gold)">
+      <div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;font-weight:600;margin-bottom:6px">📝 Notes</div>
+      <div style="font-size:13px;color:var(--ink);line-height:1.6">${c.notes}</div>
+    </div>` : ''}
+  `;
 
   document.getElementById('detailActions').innerHTML = `
     <button class="btn-action primary" onclick="closeDetail();openForm('${c.id}')" style="flex:1">${fr?'✏️ Modifier':'✏️ Edit'}</button>
@@ -2665,6 +2748,35 @@ function renderTodayQV() {
   }
 
   el.innerHTML = html;
+
+  // ── Populate today alerts strip ──
+  const todayAlertsEl = document.getElementById('todayAlerts');
+  const todayAlertsContent = document.getElementById('todayAlertsContent');
+  const srcAlerts = document.getElementById('alertsContent');
+  if (todayAlertsEl && todayAlertsContent && srcAlerts) {
+    const allAlerts = srcAlerts.querySelectorAll('.alert-hm');
+    if (allAlerts.length) {
+      todayAlertsEl.style.display = 'block';
+      const top3 = Array.from(allAlerts).filter(a =>
+        a.classList.contains('urgent') || a.classList.contains('warn') || a.classList.contains('good')
+      ).slice(0,3);
+      todayAlertsContent.innerHTML = top3.map(a => {
+        const cls = a.classList.contains('urgent')?'urgent':a.classList.contains('warn')?'warn':'good';
+        const icon = cls==='urgent'?'🚨':cls==='warn'?'⚠️':'✅';
+        const titleEl = a.querySelector('div:first-child');
+        const subEl = a.querySelector('div:last-child');
+        const title = titleEl ? titleEl.textContent.trim() : a.textContent.trim().slice(0,60);
+        const sub = subEl && subEl !== titleEl ? subEl.textContent.trim().slice(0,80) : '';
+        return `<div class="qv-alert ${cls}" style="cursor:pointer" onclick="goTab('home')">
+          <span>${icon}</span>
+          <div style="min-width:0">
+            <div style="font-weight:600;font-size:12px">${title.slice(0,55)}${title.length>55?'…':''}</div>
+            ${sub ? `<div style="font-size:11px;opacity:.75;margin-top:2px">${sub.slice(0,75)}${sub.length>75?'…':''}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
 }
 
 function generateBriefToast(clientId) {
