@@ -753,10 +753,11 @@ main{max-width:760px;margin:0 auto;padding:16px}
       <div id="netPreview" style="background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--green);font-weight:500;margin-bottom:10px;display:none"></div>
       <div class="field"><label>Source</label>
         <select id="fSource" onchange="autoComm()">
-          <option value="Airbnb">Airbnb (3.6%)</option>
-          <option value="Booking">Booking (15%)</option>
+          <option value="Airbnb">Airbnb (15.5%)</option>
+          <option value="Booking">Booking.com (15-20%)</option>
           <option value="Direct">Direct (0%)</option>
-          <option value="WhatsApp">WhatsApp (0%)</option>
+          <option value="WhatsApp">WhatsApp Direct (0%)</option>
+          <option value="Vrbo">VRBO (8%)</option>
         </select>
       </div>
       <div class="field"><label>WhatsApp</label><input type="tel" id="fPhone" placeholder="+33 6..."></div>
@@ -1857,18 +1858,16 @@ function getPrice() {
   if (mods.lastmin)  price = Math.round(price * 0.85);  // -15% last minute
   if (mods.longstay && nights >= 14) price = Math.round(price * 0.80); // -20% long séjour 14n+
   
-  // Floor price — never below 610€ (your minimum on Airbnb Smart Pricing)
-  price = Math.max(610, Math.round(price / 50) * 50);
+  // Floor price — 720€ gross minimum so net is never below ~610€ after 15.5% Airbnb fee
+  price = Math.max(720, Math.round(price / 50) * 50);
   
   // Guest supplement: +50€/person above 8
   const guestExtra = guests > 8 ? (guests - 8) * 50 : 0;
   const pricePN = price + guestExtra;
   const gross = pricePN * nights;
   
-  // Real Airbnb HOST fee = 3% (not 17% which is the guest fee)
-  // 17% = guest service fee paid by guests on top of your price
-  // Your actual cost: 3% host fee on the total
-  const hostFeeRate = 0.03;
+  // Airbnb HOST fee = 15.5% worldwide since Aug 2025 (host-only model)
+  const hostFeeRate = 0.155;
   const comm = Math.round(gross * hostFeeRate);
   const net = gross - comm;
   
@@ -2724,28 +2723,32 @@ async function extractFormAI() {
   // Richer system prompt — explicit field mapping with examples
   const systemPrompt = [
     'You are a booking data extractor for a luxury villa in Marrakech.',
-    'Your job: read ANY text (Airbnb email, WhatsApp message, booking summary) and extract guest info.',
+    'Read ANY text (Airbnb email, WhatsApp, booking summary) and extract guest info.',
     'Return ONLY a valid JSON object. No markdown. No explanation. No extra text.',
     'Today is ' + today + '.',
     '',
-    'FIELD MAPPING RULES:',
-    '- name: guest full name (e.g. "Sophie Bissuel")',
-    '- nat: nationality with flag emoji (e.g. "🇫🇷 Français", "🇬🇧 British", "🇨🇦 Canadian")',
-    '- arrival: check-in date in YYYY-MM-DD format',
-    '- departure: check-out date in YYYY-MM-DD format',
-    '- nights: number of nights between arrival and departure',
-    '- guests: total number of people including children and infants',
-    '- price: total payout amount in EUR (what the HOST receives or the total booking value)',
-    '- commission: 3.6 for Airbnb, 15 for Booking.com, 0 for direct',
-    '- source: "Airbnb", "Booking", "Direct", or "WhatsApp"',
-    '- phone: phone number if present, else empty string',
-    '- notes: any special requests, meal preferences, children ages, occasions',
+    'CRITICAL FIELD RULES:',
+    '- name: guest first + last name. Example: "Celia Magne"',
+    '- nat: guess nationality from city/country mentioned + flag emoji. Example: "🇫🇷 Français" for Saint-Maur-des-Fossés France',
+    '- arrival: check-in date → YYYY-MM-DD. "Thu 23 Apr" with year ' + today.slice(0,4) + ' → "' + today.slice(0,4) + '-04-23"',
+    '- departure: check-out date → YYYY-MM-DD. "Mon 27 Apr" → "' + today.slice(0,4) + '-04-27"',
+    '- nights: count nights between arrival and departure',
+    '- guests: number of adults + children + infants total',
+    '- price: use "Guest paid" total OR nightly rate × nights. Example: "€650.00 x 4 nights" → price=2600',
+    '  DO NOT use "You earn" or "Host payout" — that is the net after fees.',
+    '  DO NOT use the nightly price alone — multiply by nights.',
+    '- commission: calculate from email. "Host service fee (15.5%)" → commission=15.5.',
+    '  If "Host service fee" not shown, use 3.6 for Airbnb, 15 for Booking, 0 for Direct.',
+    '- source: "Airbnb" if from airbnb.com, "Booking" if booking.com, "Direct" otherwise',
+    '- phone: phone number if present',
+    '- notes: meal requests, special occasions, message from guest, children ages',
     '',
-    'If a field cannot be found, use: "" for strings, 0 for numbers, null for dates.',
-    'NEVER invent data. If unsure, leave the field empty.',
+    'EXAMPLE — from this email:',
+    '"Celia Magne · Saint-Maur-des-Fossés, France · Check-in Thu 23 Apr · Checkout Mon 27 Apr · 3 adults · €650 x 4 nights · Host service fee 15.5%"',
+    'Return: {"name":"Celia Magne","nat":"🇫🇷 Français","arrival":"' + today.slice(0,4) + '-04-23","departure":"' + today.slice(0,4) + '-04-27","nights":4,"guests":3,"price":2600,"commission":15.5,"source":"Airbnb","phone":"","notes":""}',
     '',
-    'JSON structure (return exactly this):',
-    '{"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":3.6,"source":"Airbnb","phone":"","notes":""}'
+    'If a field is not found: "" for strings, 0 for numbers.',
+    'NEVER invent data.',
   ].join('\n');
 
   const userPrompt = 'Extract from this message:\n\n' + text;
