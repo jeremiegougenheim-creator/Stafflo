@@ -476,7 +476,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
   <div class="ctrl-strip">
     <div class="cs-grp">
       <span class="cs-lbl" data-fr="SAISON" data-en="SEASON">SAISON</span>
-      <select class="cs-sel" id="season" onchange="updatePrice()">
+      <select class="cs-sel" id="season" onchange="this.dataset.autoset='manual';updatePrice()">
         <option value="650" data-fr="Basse" data-en="Low">Basse</option>
         <option value="750" selected data-fr="Normale" data-en="Normal">Normale</option>
         <option value="850" data-fr="Haute" data-en="High">Haute</option>
@@ -1793,6 +1793,25 @@ const AVIATION_KEY = '365e212b94d85280fc046c60fc9b5047';
 
 
 function updatePrice() {
+  // Auto-suggest season based on current month if user hasn't manually changed it
+  const autoSeason = () => {
+    const m = new Date().getMonth() + 1;
+    if ([12,1].includes(m)) return 1500;      // Peak — Noël/AN
+    if ([3,4].includes(m)) return 850;        // Haute — Pâques
+    if ([7,8].includes(m)) return 950;        // Très haute — été
+    if ([10,11].includes(m)) return 850;      // Haute — Festival/automne
+    if ([5,6].includes(m)) return 650;        // Basse — creux
+    return 750;                               // Normale — reste
+  };
+  const seasonEl = document.getElementById('season');
+  if (seasonEl && seasonEl.dataset.autoset !== 'manual') {
+    const suggested = autoSeason();
+    if (seasonEl.value != suggested) {
+      seasonEl.value = suggested;
+      seasonEl.dataset.autoset = 'auto';
+    }
+  }
+  
   const d = getPrice();
   const netPN = Math.round(d.net / d.nights);
 
@@ -1806,6 +1825,8 @@ function updatePrice() {
   document.getElementById('bdNights').textContent = d.nights;
   document.getElementById('bdTotal').textContent = d.gross.toLocaleString('fr') + '€';
   document.getElementById('bdComm').textContent = '-' + d.comm.toLocaleString('fr') + '€';
+  const commLbl = document.getElementById('bdCommLbl');
+  if (commLbl) commLbl.textContent = 'Airbnb ' + Math.round(d.hostFeeRate*100) + '% (host fee)';
   document.getElementById('bdNet').textContent = d.net.toLocaleString('fr') + '€';
 
   const badge = document.getElementById('heroBadge');
@@ -1829,17 +1850,29 @@ function getPrice() {
   const nights = parseInt(document.getElementById('nights').value);
   const guests = parseInt(document.getElementById('guests').value);
   let price = base;
-  if (mods.event) price *= 1.15;
-  if (mods.weekend) price += 50;
-  if (mods.lastmin) price *= 0.85;
-  if (mods.longstay) price *= 0.80;
+  
+  // Modifiers
+  if (mods.event)    price = Math.round(price * 1.15);  // +15% événement
+  if (mods.weekend)  price = price + 50;                 // +50€ week-end
+  if (mods.lastmin)  price = Math.round(price * 0.85);  // -15% last minute
+  if (mods.longstay && nights >= 14) price = Math.round(price * 0.80); // -20% long séjour 14n+
+  
+  // Floor price — never below 610€ (your minimum on Airbnb Smart Pricing)
   price = Math.max(610, Math.round(price / 50) * 50);
+  
+  // Guest supplement: +50€/person above 8
   const guestExtra = guests > 8 ? (guests - 8) * 50 : 0;
   const pricePN = price + guestExtra;
   const gross = pricePN * nights;
-  const comm = Math.round(gross * 0.17);
+  
+  // Real Airbnb HOST fee = 3% (not 17% which is the guest fee)
+  // 17% = guest service fee paid by guests on top of your price
+  // Your actual cost: 3% host fee on the total
+  const hostFeeRate = 0.03;
+  const comm = Math.round(gross * hostFeeRate);
   const net = gross - comm;
-  return {base, price, pricePN, guestExtra, nights, guests, gross, comm, net};
+  
+  return {base, price, pricePN, guestExtra, nights, guests, gross, comm, net, hostFeeRate};
 }
 
 function toggleMod(k) {
@@ -2669,13 +2702,16 @@ async function extractFormAI() {
   const btn = document.getElementById('fExtractBtn');
   const spinner = document.getElementById('fExtractSpinner');
   const label = document.getElementById('fExtractLabel');
+  const msgEl = document.getElementById('fExtractMsg');
   spinner.style.display = 'inline-block';
   label.style.display = 'none';
   btn.disabled = true;
 
   const cfg = getCfg();
   const provider = cfg.aiProvider || 'gemini';
-  const apiKey = provider === 'gemini' ? (cfg.geminiKey || '') : provider === 'deepseek' ? (cfg.deepseekKey || '') : (cfg.anthropicKey || '');
+  const apiKey = provider === 'gemini' ? (cfg.geminiKey || '')
+               : provider === 'deepseek' ? (cfg.deepseekKey || '')
+               : (cfg.anthropicKey || '');
 
   if (!apiKey) {
     toast(lang==='fr' ? '⚙ Ajoutez votre clé API dans Réglages' : '⚙ Add your API key in Settings');
@@ -2684,53 +2720,147 @@ async function extractFormAI() {
   }
 
   const today = new Date().toISOString().slice(0,10);
-  const prompt = 'Extract guest info from this message and return ONLY valid JSON (no markdown):\n{"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":3.6,"source":"Airbnb","phone":""}\nToday is ' + today + '. Message:\n' + text;
+
+  // Richer system prompt — explicit field mapping with examples
+  const systemPrompt = [
+    'You are a booking data extractor for a luxury villa in Marrakech.',
+    'Your job: read ANY text (Airbnb email, WhatsApp message, booking summary) and extract guest info.',
+    'Return ONLY a valid JSON object. No markdown. No explanation. No extra text.',
+    'Today is ' + today + '.',
+    '',
+    'FIELD MAPPING RULES:',
+    '- name: guest full name (e.g. "Sophie Bissuel")',
+    '- nat: nationality with flag emoji (e.g. "🇫🇷 Français", "🇬🇧 British", "🇨🇦 Canadian")',
+    '- arrival: check-in date in YYYY-MM-DD format',
+    '- departure: check-out date in YYYY-MM-DD format',
+    '- nights: number of nights between arrival and departure',
+    '- guests: total number of people including children and infants',
+    '- price: total payout amount in EUR (what the HOST receives or the total booking value)',
+    '- commission: 3.6 for Airbnb, 15 for Booking.com, 0 for direct',
+    '- source: "Airbnb", "Booking", "Direct", or "WhatsApp"',
+    '- phone: phone number if present, else empty string',
+    '- notes: any special requests, meal preferences, children ages, occasions',
+    '',
+    'If a field cannot be found, use: "" for strings, 0 for numbers, null for dates.',
+    'NEVER invent data. If unsure, leave the field empty.',
+    '',
+    'JSON structure (return exactly this):',
+    '{"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":3.6,"source":"Airbnb","phone":"","notes":""}'
+  ].join('\n');
+
+  const userPrompt = 'Extract from this message:\n\n' + text;
 
   try {
     let raw = '';
+
     if (provider === 'gemini') {
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:500,temperature:0.1} })
+        body: JSON.stringify({
+          contents:[{parts:[{text: systemPrompt + '\n\n' + userPrompt}]}],
+          generationConfig:{maxOutputTokens:600, temperature:0.1}
+        })
       });
+      if (!r.ok) throw new Error('Gemini ' + r.status);
       const d = await r.json();
       raw = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
     } else if (provider === 'deepseek') {
       const r = await fetch('https://api.deepseek.com/chat/completions', {
         method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
-        body: JSON.stringify({ model:'deepseek-chat', max_tokens:500, messages:[{role:'user',content:prompt}] })
+        body: JSON.stringify({ model:'deepseek-chat', max_tokens:600,
+          messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}]
+        })
       });
+      if (!r.ok) throw new Error('DeepSeek ' + r.status);
       const d = await r.json();
       raw = d.choices?.[0]?.message?.content || '';
+
     } else {
+      // Anthropic Claude
       const r = await fetch('https://api.anthropic.com/v1/messages', {
-        method:'POST', headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:500, messages:[{role:'user',content:prompt}] })
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':apiKey,
+          'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:600,
+          system: systemPrompt,
+          messages:[{role:'user',content:userPrompt}]
+        })
       });
+      if (!r.ok) throw new Error('Claude ' + r.status);
       const d = await r.json();
       raw = d.content?.[0]?.text || '';
     }
 
+    if (!raw) throw new Error(lang==='fr' ? 'Réponse IA vide' : 'Empty AI response');
+
+    // Parse JSON — robust extraction
     const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
     const match = cleaned.match(/\{[\s\S]*\}/);
-    const g = JSON.parse(match ? match[0] : cleaned);
+    if (!match) throw new Error(lang==='fr' ? 'Pas de JSON dans la réponse' : 'No JSON in response');
+    const g = JSON.parse(match[0]);
 
-    if (g.name) document.getElementById('fName').value = g.name;
-    if (g.arrival) document.getElementById('fArr').value = g.arrival;
-    if (g.departure) document.getElementById('fDep').value = g.departure;
-    if (g.guests) document.getElementById('fGuests').value = g.guests;
-    if (g.price) { document.getElementById('fPrice').value = g.price; updateNetPreview(); }
-    if (g.commission) document.getElementById('fComm').value = g.commission;
+    // Fill form fields — only if value found
+    let filled = 0;
+    const set = (id, val) => {
+      if (val && val !== 'YYYY-MM-DD' && val !== '0' && val !== 0) {
+        document.getElementById(id).value = val;
+        filled++;
+      }
+    };
+
+    set('fName', g.name);
+    set('fArr', g.arrival);
+    set('fDep', g.departure);
+    set('fPhone', g.phone);
+    set('fNotes', g.notes);
+    if (g.guests > 0) { document.getElementById('fGuests').value = g.guests; filled++; }
+    if (g.price > 0)  { document.getElementById('fPrice').value = g.price; updateNetPreview(); filled++; }
+    if (g.commission > 0) document.getElementById('fComm').value = g.commission;
     if (g.source) document.getElementById('fSource').value = g.source;
-    if (g.phone) document.getElementById('fPhone').value = g.phone;
-    if (g.nat) document.getElementById('fNat').value = g.nat;
 
-    const msg = document.getElementById('fExtractMsg');
-    msg.style.display = 'block';
-    setTimeout(() => msg.style.display = 'none', 3000);
+    // Nationality — match to dropdown or set as note
+    if (g.nat) {
+      const natSel = document.getElementById('fNat');
+      let matched = false;
+      for (let opt of natSel.options) {
+        if (opt.value && g.nat.toLowerCase().includes(opt.value.toLowerCase().split(' ').pop())) {
+          natSel.value = opt.value; matched = true; break;
+        }
+      }
+      if (!matched) {
+        // Add as custom option
+        const opt = document.createElement('option');
+        opt.value = g.nat; opt.textContent = g.nat;
+        natSel.appendChild(opt);
+        natSel.value = g.nat;
+      }
+      filled++;
+    }
+
     autoComm();
+
+    if (filled === 0) {
+      msgEl.style.color = '#B84C1C';
+      msgEl.textContent = lang==='fr'
+        ? '⚠ Aucune info trouvée — collez un email de réservation complet'
+        : '⚠ No info found — paste a complete booking confirmation';
+    } else {
+      msgEl.style.color = 'var(--green)';
+      msgEl.textContent = lang==='fr'
+        ? '✓ ' + filled + ' champs remplis — vérifiez et ajustez si besoin'
+        : '✓ ' + filled + ' fields filled — check and adjust if needed';
+    }
+    msgEl.style.display = 'block';
+    setTimeout(() => msgEl.style.display = 'none', 4000);
+
   } catch(e) {
-    toast('⚠ ' + (e.message || 'Extraction failed').slice(0,60));
+    const msg = e.message || 'Error';
+    if (msg.includes('429')) {
+      toast(lang==='fr' ? '⚠ Limite API — attendez 1 minute' : '⚠ API rate limit — wait 1 min');
+    } else {
+      toast('⚠ ' + msg.slice(0,80));
+    }
   }
 
   spinner.style.display = 'none'; label.style.display = 'inline'; btn.disabled = false;
