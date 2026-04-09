@@ -318,6 +318,32 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .tooltip-box{display:none;position:absolute;left:20px;top:-4px;background:var(--ink);color:#fff;font-size:11px;line-height:1.5;padding:8px 10px;border-radius:8px;width:200px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 .tooltip-icon:hover+.tooltip-box{display:block}
 
+/* ── MORNING BRIEF ── */
+#morningBrief{margin-bottom:14px}
+.brief-loading{background:var(--card);border-radius:14px;padding:16px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.brief-pulse{width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1s infinite;flex-shrink:0}
+.brief-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 2px}
+.brief-title{font-size:9px;letter-spacing:2.5px;color:var(--muted);font-weight:600;text-transform:uppercase}
+.brief-refresh{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:color .2s}
+.brief-refresh:hover{color:var(--gold)}
+.brief-cards{display:flex;flex-direction:column;gap:7px}
+.brief-card{background:var(--card);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow);display:flex;align-items:flex-start;gap:12px;cursor:default;transition:box-shadow .2s;border-left:3px solid transparent}
+.brief-card:hover{box-shadow:var(--shadow-lg)}
+.brief-card.p1{border-left-color:var(--red)}
+.brief-card.p2{border-left-color:#BA7517}
+.brief-card.p3{border-left-color:var(--green)}
+.brief-card.p4{border-left-color:var(--border)}
+.brief-icon{font-size:20px;flex-shrink:0;line-height:1;margin-top:1px}
+.brief-content{flex:1;min-width:0}
+.brief-card-title{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:3px;line-height:1.3}
+.brief-card-sub{font-size:12px;color:var(--muted);line-height:1.5}
+.brief-card-action{font-size:11px;color:var(--gold);font-weight:600;margin-top:4px;display:inline-block}
+.brief-score{flex-shrink:0;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px}
+.brief-score.s-high{background:#FDE8E8;color:var(--red)}
+.brief-score.s-med{background:#FAEEDA;color:#BA7517}
+.brief-score.s-low{background:var(--green-light);color:var(--green)}
+.brief-score.s-info{background:#F0EDE8;color:var(--muted)}
+
 /* ── ACCESSIBILITY ── */
 :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 button:focus-visible,a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
@@ -386,6 +412,20 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 
   <!-- SMART ALERTS STRIP — shown on Today tab -->
+  <!-- MORNING BRIEF — AI prioritized daily digest -->
+  <div id="morningBrief" style="display:none">
+    <div class="brief-header">
+      <div class="brief-title" data-fr="☀ BRIEF DU JOUR" data-en="☀ MORNING BRIEF">☀ BRIEF DU JOUR</div>
+      <button class="brief-refresh" onclick="loadMorningBrief(true)" title="Rafraîchir">↻</button>
+    </div>
+    <div class="brief-cards" id="briefCards">
+      <div class="brief-loading">
+        <div class="brief-pulse"></div>
+        <span data-fr="L'IA analyse votre situation..." data-en="AI is analysing your situation...">L'IA analyse votre situation...</span>
+      </div>
+    </div>
+  </div>
+
   <div id="todayAlerts" style="display:none;margin:0 16px 8px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:0 2px">
       <div style="font-size:9px;letter-spacing:2px;color:var(--muted);font-weight:600" data-fr="💡 ALERTES INTELLIGENTES" data-en="💡 SMART ALERTS">💡 ALERTES INTELLIGENTES</div>
@@ -1863,23 +1903,29 @@ document.addEventListener('DOMContentLoaded', () => {
   applyLang();
   goTab('today'); // Always start on Today tab
   // Load events from Supabase
+  // Generate alerts immediately
+  generateAlerts(null);
+  renderTodayQV();
+  // Load Morning Brief
+  setTimeout(() => loadMorningBrief(), 1200);
+  
+  // Then try to load from Supabase and regenerate
+  loadFromSupabase();
   loadMarrakechEvents().then(() => {
     generateAlerts(null);
     renderTodayQV();
+  }).catch(() => {
+    // Events failed but alerts already shown with weather
   });
-  loadFromSupabase();
-  // Load weather & generate alerts on startup
+  
+  // Load weather and regenerate alerts with real temp
   setTimeout(() => {
-    if (typeof loadWeather === 'function') {
-      loadWeather().then(() => {
-        const wText = document.getElementById('factorWeather')?.textContent || '';
-        const match = wText.match(/(\d+)/);
-        generateAlerts(match ? parseInt(match[1]) : null);
-      }).catch(() => generateAlerts(null));
-    } else {
-      generateAlerts(null);
-    }
-  }, 800);
+    loadWeather().then(() => {
+      const wText = document.getElementById('factorWeather')?.textContent || '';
+      const match = wText.match(/(\d+)/);
+      generateAlerts(match ? parseInt(match[1]) : null);
+    }).catch(() => {});
+  }, 1000);
 });
 
 
@@ -1929,8 +1975,18 @@ async function loadMarrakechEvents() {
     }));
     console.log('✓ Loaded ' + MARRAKECH_EVENTS.length + ' events from Supabase');
   } catch(e) {
-    console.warn('Events fallback to empty:', e.message);
-    MARRAKECH_EVENTS = [];
+    console.warn('Events fallback to hardcoded:', e.message);
+    // Fallback to hardcoded events when Supabase fails
+    const m = new Date().getMonth() + 1;
+    MARRAKECH_EVENTS = [
+      {month:4, name:"Paques & Vacances scolaires", impact:"+30%", impact_pct:30, tip:"Se loue en 48h - reservez les creneaux des janvier", date_start: new Date().getFullYear()+'-04-04', date_end: new Date().getFullYear()+'-04-20'},
+      {month:5, name:"Pont du 1er Mai", impact:"+20%", impact_pct:20, tip:"Long weekends francais tres populaires", date_start: new Date().getFullYear()+'-04-30', date_end: new Date().getFullYear()+'-05-04'},
+      {month:6, name:"Festival Gnaoua Essaouira", impact:"+8%", impact_pct:8, tip:"Excursion 2h depuis la villa", date_start: new Date().getFullYear()+'-06-18', date_end: new Date().getFullYear()+'-06-21'},
+      {month:7, name:"Vacances ete Europe", impact:"+25%", impact_pct:25, tip:"Montez les prix - minimum 850 euros la nuit", date_start: new Date().getFullYear()+'-07-04', date_end: new Date().getFullYear()+'-08-31'},
+      {month:10, name:"Festival du Film Marrakech", impact:"+25%", impact_pct:25, tip:"Celebrites et presse - prix premium justifies", date_start: new Date().getFullYear()+'-10-09', date_end: new Date().getFullYear()+'-10-17'},
+      {month:10, name:"Vacances Toussaint France", impact:"+25%", impact_pct:25, tip:"2eme pic familial - reserve 2-3 mois a l'avance", date_start: new Date().getFullYear()+'-10-17', date_end: new Date().getFullYear()+'-11-02'},
+      {month:12, name:"Noel & Reveillon", impact:"+100%", impact_pct:100, tip:"PRIX MAXIMUM - 1500 euros+ justifie", date_start: new Date().getFullYear()+'-12-21', date_end: (new Date().getFullYear()+1)+'-01-02'},
+    ].filter(e => e.month === m || e.month === (m%12)+1);
   }
 }
 
@@ -3229,6 +3285,231 @@ async function analyzeWithProxy(text, systemPrompt, btn) {
     toast('⚠ ' + (e.message || 'Error').slice(0,80));
   }
   btn.disabled = false; btn.classList.remove('loading');
+}
+
+// ════════════════════════════════════════════
+// MORNING BRIEF — AI daily prioritization
+// ════════════════════════════════════════════
+async function loadMorningBrief(forceRefresh = false) {
+  const fr = lang === 'fr';
+  const briefEl = document.getElementById('morningBrief');
+  const cardsEl = document.getElementById('briefCards');
+  if (!briefEl || !cardsEl) return;
+
+  // Show loading
+  briefEl.style.display = 'block';
+  cardsEl.innerHTML = '<div class="brief-loading"><div class="brief-pulse"></div><span>' +
+    (fr ? "L'IA analyse votre villa..." : "AI is analysing your villa...") + '</span></div>';
+
+  // Build context from all available data
+  const today = new Date().toISOString().slice(0,10);
+  const cfg = getCfg();
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  const tomorrowStr = tomorrow.toISOString().slice(0,10);
+  const in7 = new Date(); in7.setDate(in7.getDate()+7);
+
+  // CRM data
+  const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
+  const checkoutToday = clients.filter(c => c.departure === today);
+  const checkinToday = clients.filter(c => c.arrival === today);
+  const checkinTomorrow = clients.filter(c => c.arrival === tomorrowStr);
+  const upcoming7 = clients.filter(c => c.arrival && c.arrival > today && new Date(c.arrival) <= in7);
+  const totalRevenue = clients.reduce((s,c) => s + (parseFloat(c.price)||0), 0);
+  const occupancyDays = clients.filter(c => c.arrival && c.departure).reduce((s,c) => {
+    return s + Math.max(0, Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000));
+  }, 0);
+
+  // Weather
+  const wTemp = document.getElementById('factorWeather')?.textContent?.match(/\d+/)?.[0];
+  const wDesc = document.getElementById('weatherContent')?.querySelector('.weather-desc')?.textContent || '';
+
+  // Market
+  const avgMarket = document.getElementById('factorComp')?.textContent || '';
+  const yourPrice = document.getElementById('priceDisplay')?.textContent?.match(/\d+/)?.[0] || '850';
+
+  // Events
+  const activeEvents = MARRAKECH_EVENTS.filter(e => {
+    if (!e.date_start || !e.date_end) return false;
+    return new Date(e.date_start) <= in7 && new Date(e.date_end) >= new Date(today);
+  });
+
+  // Build prompt
+  const contextData = {
+    date: today,
+    villa: cfg.villa || 'Villa DarJ',
+    owner: cfg.owner || 'Jérémie',
+    city: cfg.city || 'Marrakech',
+    inHouse: inHouse ? {name:inHouse.name, departure:inHouse.departure, guests:inHouse.guests} : null,
+    checkoutToday: checkoutToday.map(c=>c.name),
+    checkinToday: checkinToday.map(c=>({name:c.name, guests:c.guests})),
+    checkinTomorrow: checkinTomorrow.map(c=>({name:c.name, guests:c.guests})),
+    upcoming7days: upcoming7.map(c=>({name:c.name, arrival:c.arrival, guests:c.guests, price:c.price})),
+    totalClients: clients.length,
+    totalRevenue: Math.round(totalRevenue),
+    weather: wTemp ? wTemp + 'C ' + wDesc : 'unknown',
+    yourPriceTonight: yourPrice,
+    marketAvg: avgMarket,
+    activeEvents: activeEvents.map(e=>({name:e.name||e.name_fr, impact:e.impact})),
+  };
+
+  const prompt = [
+    'You are the intelligent assistant for ' + (cfg.villa||'Villa DarJ') + ' in ' + (cfg.city||'Marrakech') + ', managed by ' + (cfg.owner||'Jérémie') + '.',
+    'Analyse ALL the context below and identify the 4-5 most important actions for TODAY.',
+    'Think like an experienced luxury villa manager — combine multiple signals (e.g. weather + guests = pool prep, event + pricing = raise rates).',
+    '',
+    'TODAY CONTEXT:',
+    JSON.stringify(contextData, null, 1),
+    '',
+    'Return ONLY a valid JSON array (no markdown, no text):',
+    '[{',
+    '  "urgency": 9,',
+    '  "icon": "emoji",',
+    '  "title": "Action title max 7 words",',
+    '  "detail": "One sentence: why this matters + what happens if ignored",',
+    '  "why": "Brief reasoning: which data points led to this card (max 15 words)",',
+    '  "action": "Exact next step max 5 words",',
+    '  "action_type": "whatsapp|open_guests|open_home|copy|none"',
+    '}]',
+    '',
+    'action_type values:',
+    '- whatsapp: opens WhatsApp to send a message to someone',
+    '- open_guests: navigates to Guests tab',
+    '- open_home: navigates to My Home AI tab',
+    '- copy: copies something to clipboard',
+    '- none: informational only',
+    '',
+    'Rules:',
+    '- urgency 1-10 (10=guest arriving NOW, 1=nice to know)',
+    '- Cross-correlate signals: if hot weather + guests arriving = pool+cold drinks prep',
+    '- If below market price + event this week = raise price alert',
+    '- If checkout today + checkin tomorrow = tight turnaround alert',
+    '- Be hyper-specific: use real names, real temps, real prices from the data',
+    '- Respond in ' + (fr ? 'French' : 'English'),
+  ].join('\n');
+
+  try {
+    let raw = '';
+    
+    if (STAFFLO_PROXY) {
+      const r = await fetch(STAFFLO_PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          max_tokens: 1000,
+          temperature: 0.4,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const d = await r.json();
+      raw = d.choices?.[0]?.message?.content || '';
+    } else {
+      const cfg2 = getCfg();
+      const provider = cfg2.aiProvider || 'groq';
+      const apiKey = provider === 'groq' ? (cfg2.groqKey||'') : provider === 'gemini' ? (cfg2.geminiKey||'') : (cfg2.anthropicKey||'');
+      if (!apiKey) {
+        renderBriefFallback(cardsEl, fr);
+        return;
+      }
+      if (provider === 'groq') {
+        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
+          body: JSON.stringify({ model:'llama-3.1-8b-instant', max_tokens:1000, temperature:0.4,
+            messages:[{role:'user',content:prompt}] })
+        });
+        const d = await r.json();
+        raw = d.choices?.[0]?.message?.content || '';
+      }
+    }
+
+    const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+    const match = cleaned.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error('No JSON array');
+    const cards = JSON.parse(match[0]);
+
+    renderBriefCards(cardsEl, cards);
+
+  } catch(e) {
+    console.warn('Morning brief error:', e.message);
+    renderBriefFallback(cardsEl, fr);
+  }
+}
+
+// Store brief card actions for tap handlers
+window._briefActions = {};
+
+function briefCardTap(idx) {
+  const act = window._briefActions[idx];
+  if (!act) return;
+  if (act.type === 'open_guests') goTab('clients');
+  else if (act.type === 'open_home') goTab('home');
+  else if (act.type === 'copy') navigator.clipboard.writeText(act.label).then(() => toast('📋 Copié'));
+}
+
+function renderBriefCards(el, cards) {
+  if (!cards || !cards.length) { el.innerHTML = ''; return; }
+  const fr = lang === 'fr';
+  window._briefActions = {};
+  el.innerHTML = cards.map((card, idx) => {
+    const u = card.urgency || 5;
+    const pClass = u >= 8 ? 'p1' : u >= 6 ? 'p2' : u >= 4 ? 'p3' : 'p4';
+    const sClass = u >= 8 ? 's-high' : u >= 6 ? 's-med' : u >= 4 ? 's-low' : 's-info';
+    
+    // Build tap action button
+    let actionBtn = '';
+    const act = card.action_type || 'none';
+    const actLabel = card.action || '';
+    const btnStyle = 'margin-top:6px;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;display:inline-block';
+    if (act !== 'none' && actLabel) {
+      window._briefActions[idx] = {type: act, label: actLabel};
+      const btnColor = act === 'copy' ? 'background:#C9963A;color:#0F2318' : 'background:#1B4332;color:#fff';
+      const btnPrefix = act === 'copy' ? '📋 ' : '→ ';
+      actionBtn = '<button onclick="briefCardTap(' + idx + ')" style="' + btnStyle + ';' + btnColor + '">' + btnPrefix + actLabel + '</button>';
+    } else if (actLabel) {
+      actionBtn = '<span class="brief-card-action">→ ' + actLabel + '</span>';
+    }
+
+    // Why tooltip
+    const whyHtml = card.why ? 
+      '<span class="tooltip-wrap" style="margin-left:4px">' +
+        '<span class="tooltip-icon" style="background:rgba(138,128,112,.25)">?</span>' +
+        '<span class="tooltip-box">' + card.why + '</span>' +
+      '</span>' : '';
+
+    return '<div class="brief-card ' + pClass + '">' +
+      '<div class="brief-icon">' + (card.icon||'💡') + '</div>' +
+      '<div class="brief-content">' +
+        '<div class="brief-card-title">' + (card.title||'') + whyHtml + '</div>' +
+        '<div class="brief-card-sub">' + (card.detail||'') + '</div>' +
+        actionBtn +
+      '</div>' +
+      '<div class="brief-score ' + sClass + '">' + u + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderBriefFallback(el, fr) {
+  // Smart fallback without AI — uses existing data
+  const today = new Date().toISOString().slice(0,10);
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  const tomorrowStr = tomorrow.toISOString().slice(0,10);
+  const cards = [];
+  
+  const checkoutToday = clients.filter(c => c.departure === today);
+  const checkinToday = clients.filter(c => c.arrival === today);
+  const checkinTomorrow = clients.filter(c => c.arrival === tomorrowStr);
+  
+  if (checkoutToday.length) cards.push({urgency:9, icon:'🧳', title: fr?'Départ aujourd\'hui':'Checkout today', detail: checkoutToday.map(c=>c.name).join(', '), action: fr?'Préparer le ménage':'Prepare cleaning'});
+  if (checkinToday.length) cards.push({urgency:10, icon:'🏡', title: fr?'Arrivée aujourd\'hui':'Arrival today', detail: checkinToday.map(c=>c.name+' ('+c.guests+' pers.)').join(', '), action: fr?'Vérifier villa':'Check villa ready'});
+  if (checkinTomorrow.length) cards.push({urgency:7, icon:'📅', title: fr?'Arrivée demain':'Arriving tomorrow', detail: checkinTomorrow.map(c=>c.name).join(', '), action: fr?'Confirmer transfert':'Confirm transfer'});
+  
+  const wTemp = parseInt(document.getElementById('factorWeather')?.textContent?.match(/\d+/)?.[0] || '20');
+  if (wTemp > 35) cards.push({urgency:6, icon:'🔥', title: fr?'Canicule aujourd\'hui':'Heatwave today', detail: wTemp+'°C — '+(fr?'Piscine essentielle':'Pool essential'), action: fr?'Préparer boissons':'Prepare cold drinks'});
+  else if (wTemp >= 18) cards.push({urgency:3, icon:'🌤', title: fr?'Météo idéale':'Perfect weather', detail: wTemp+'°C — '+(fr?'Conditions parfaites':'Perfect conditions'), action: fr?'Terrasse accessible':'Use terrace'});
+  
+  if (!cards.length) cards.push({urgency:3, icon:'✅', title: fr?'Villa en ordre':'All clear', detail: fr?'Aucune action urgente aujourd\'hui':'No urgent action today', action: fr?'Bonne journée':'Enjoy your day'});
+  
+  renderBriefCards(el, cards.sort((a,b) => b.urgency - a.urgency));
 }
 </script>
 </body>
