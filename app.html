@@ -2371,6 +2371,28 @@ async function generateAlerts(weatherTemp) {
 
   const elV = document.getElementById('alertsContent');
   if (elV) elV.innerHTML = alertsHtml;
+
+  // ── Also populate Today alerts strip directly ──
+  const todayAlertsEl = document.getElementById('todayAlerts');
+  const todayAlertsContent = document.getElementById('todayAlertsContent');
+  if (todayAlertsEl && todayAlertsContent && alerts.length) {
+    const top3 = alerts.filter(a => a.type === 'urgent' || a.type === 'warn' || a.type === 'good').slice(0,3);
+    if (top3.length) {
+      todayAlertsEl.style.display = 'block';
+      todayAlertsContent.innerHTML = '<div style="display:flex;flex-direction:column;gap:5px">' +
+        top3.map(a => {
+          const bgColor = a.type==='urgent'?'#FDE8E8':a.type==='warn'?'#FAEEDA':'#EAF3DE';
+          const bdColor = a.type==='urgent'?'var(--red)':a.type==='warn'?'#BA7517':'#3B6D11';
+          const icon = a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':'✅';
+          const title = a.title || '';
+          return '<div style="display:flex;align-items:center;gap:7px;background:' + bgColor + ';border-left:3px solid ' + bdColor + ';border-radius:0 6px 6px 0;padding:7px 10px;font-size:12px;font-weight:500;color:var(--ink)">' +
+            '<span style="flex-shrink:0">' + icon + '</span>' +
+            '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title.slice(0,60) + (title.length>60?'…':'') + '</span>' +
+            '</div>';
+        }).join('') + '</div>';
+    }
+  }
+
   setTimeout(renderTodayQV, 50);
 }
 
