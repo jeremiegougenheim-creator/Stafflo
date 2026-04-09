@@ -52,6 +52,7 @@ header{background:var(--green3);padding:0 20px;height:54px;display:flex;align-it
 nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,.06);position:sticky;top:54px;z-index:99}
 .nav-btn{flex:1;padding:11px 8px;border:none;background:none;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;color:rgba(255,255,255,.4);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;letter-spacing:.3px;transition:all .2s;white-space:nowrap}
 .nav-btn.on{color:var(--gold);border-bottom-color:var(--gold)}
+.nav-btn .badge{display:inline-block;background:var(--red);color:#fff;border-radius:8px;font-size:9px;font-weight:700;padding:1px 5px;margin-left:4px;vertical-align:middle;line-height:1.4}
 .nav-badge{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;animation:pulse 1.5s infinite}
 
 /* ── MAIN ── */
@@ -510,14 +511,14 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         <div class="msg-section-title" data-fr="MESSAGES PRÊTS À ENVOYER" data-en="READY TO SEND">MESSAGES PRÊTS À ENVOYER</div>
         <div class="msg-tabs" id="msgTabs"></div>
         <div class="msg-body" id="msgBody" contenteditable="true"></div>
-        <div class="msg-actions">
-          <button class="btn-copy" onclick="copyMsg()">
+        <div class="msg-actions" style="flex-wrap:wrap">
+          <button class="btn-copy" onclick="copyMsg()" style="flex:1;min-width:80px">
             📋 <span data-fr="Copier" data-en="Copy">Copier</span>
           </button>
-          <button id="btnMailto" class="btn-edit" onclick="sendByEmail()" style="display:none" title="Send by email">
+          <button id="btnMailto" class="btn-edit" onclick="sendByEmail()" title="Envoyer par email" style="padding:10px 14px;font-size:15px">
             ✉️
           </button>
-          <button id="btnWhatsapp" class="btn-edit" onclick="sendByWhatsApp()" style="display:none" title="Send via WhatsApp" style="color:#25D366;border-color:#25D366">
+          <button id="btnWhatsapp" class="btn-edit" onclick="sendByWhatsApp()" title="Envoyer via WhatsApp" style="padding:10px 14px;font-size:15px;border-color:#25D366;color:#25D366">
             💬
           </button>
           <div class="copy-confirm" id="copyConfirm">✓ Copié !</div>
@@ -2489,6 +2490,14 @@ async function generateAlerts(weatherTemp) {
   }
 
   setTimeout(renderTodayQV, 50);
+  
+  // Update Today tab badge
+  const urgentCount = alerts.filter(a => a.type === 'urgent' || (a.type === 'warn' && a.title && a.title.includes('Arrivée'))).length;
+  const badge = document.getElementById('todayBadge');
+  if (badge) {
+    badge.style.display = urgentCount > 0 ? 'inline-block' : 'none';
+    badge.textContent = urgentCount > 0 ? urgentCount : '';
+  }
 }
 
 async function loadWeather() {
@@ -3521,7 +3530,9 @@ function renderBriefCards(el, cards) {
         '<span class="tooltip-box">' + card.why + '</span>' +
       '</span>' : '';
 
-    return '<div class="brief-card ' + pClass + '">' +
+    const whyData = card.why ? encodeURIComponent(card.why) : '';
+    const titleData = encodeURIComponent(card.title||'');
+    return '<div class="brief-card ' + pClass + '" onclick="showWhyModal(' + idx + ')" style="cursor:pointer" data-idx="' + idx + '">' +
       '<div class="brief-icon">' + (card.icon||'💡') + '</div>' +
       '<div class="brief-content">' +
         '<div class="brief-card-title">' + (card.title||'') + whyHtml + '</div>' +
@@ -3533,7 +3544,86 @@ function renderBriefCards(el, cards) {
         '<button onclick="showWhyModal(' + idx + ')" style="background:none;border:none;color:var(--muted);font-size:9px;cursor:pointer;padding:0;line-height:1;letter-spacing:.5px">WHY</button>' +
       '</div>' +
     '</div>';
-  }).join('');
+  }).join('') + 
+    '<button id="briefChecklistBtn" onclick="generateStaffChecklist()" style="width:100%;margin-top:10px;background:none;border:1.5px solid #E8E2D8;border-radius:10px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;color:#8A8070;font-family:DM Sans,sans-serif">' +
+  (lang==='fr' ? '📋 Générer checklist staff' : '📋 Generate staff checklist') + '</button>';
+}
+
+function generateStaffChecklist() {
+  const fr = lang === 'fr';
+  const today = new Date().toISOString().slice(0,10);
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
+  const tomorrowStr = tomorrow.toISOString().slice(0,10);
+  const cfg = getCfg();
+  
+  // Find relevant client
+  const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
+  const checkinTomorrow = clients.filter(c => c.arrival === tomorrowStr)[0];
+  const relevant = checkinTomorrow || inHouse;
+  
+  const wTemp = parseInt(document.getElementById('factorWeather')?.textContent?.match(/\d+/)?.[0] || '20');
+  const staffName = (cfg.staff || 'Said, Faiza, Bouchra').split('\n')[0].replace(/\(.*?\)/,'').trim();
+  
+  // Build smart checklist
+  const checklist = [];
+  
+  if (checkinTomorrow) {
+    checklist.push(fr ? '🏡 Préparer la chambre principale' : '🏡 Prepare master bedroom');
+    checklist.push(fr ? '🌸 Fleurs fraîches dans les chambres' : '🌸 Fresh flowers in rooms');
+    checklist.push(fr ? '🧹 Ménage complet villa' : '🧹 Full villa cleaning');
+    if (checkinTomorrow.guests >= 5) checklist.push(fr ? '🛏 Ouvrir toutes les chambres' : '🛏 Open all bedrooms');
+    if (checkinTomorrow.guests > 0 && checkinTomorrow.notes && checkinTomorrow.notes.toLowerCase().includes('child')) {
+      checklist.push(fr ? '🧒 Préparer équipements enfants' : '🧒 Set up children equipment');
+    }
+  }
+  
+  if (wTemp > 28) {
+    checklist.push(fr ? '🏊 Vérifier piscine + nettoyer' : '🏊 Check pool + clean');
+    checklist.push(fr ? '🥤 Préparer boissons fraîches' : '🥤 Prepare cold drinks');
+  } else if (wTemp < 16) {
+    checklist.push(fr ? '🔥 Allumer la cheminée' : '🔥 Light the fireplace');
+    checklist.push(fr ? '🧥 Sortir plaids et couvertures' : '🧥 Set out blankets');
+  } else {
+    checklist.push(fr ? '🏊 Vérifier piscine' : '🏊 Check pool');
+    checklist.push(fr ? '🌿 Terrasse et jardin prêts' : '🌿 Terrace and garden ready');
+  }
+  
+  checklist.push(fr ? '🛒 Courses faites (eau, café, fruits)' : '🛒 Shopping done (water, coffee, fruits)');
+  checklist.push(fr ? '📱 WiFi vérifié + code porte OK' : '📱 WiFi checked + door code OK');
+  
+  if (relevant?.notes) {
+    checklist.push(fr ? '📝 Lire notes client: ' + relevant.notes.slice(0,60) : '📝 Read guest notes: ' + relevant.notes.slice(0,60));
+  }
+  
+  const clientInfo = relevant 
+    ? (fr ? 'Arrivée: ' + relevant.name + ' — ' + (relevant.guests||'?') + ' pers.' 
+          : 'Arrival: ' + relevant.name + ' — ' + (relevant.guests||'?') + ' guests')
+    : (fr ? "Pas d'arrivee prevue" : "No arrival scheduled");
+  
+  const briefText = [
+    (fr ? '📋 BRIEF STAFF — ' : '📋 STAFF BRIEF — ') + (cfg.villa || 'Villa DarJ'),
+    (fr ? 'Pour: ' : 'To: ') + staffName,
+    (fr ? 'Date: ' : 'Date: ') + today,
+    clientInfo,
+    '',
+    fr ? 'CHECKLIST PRÉPARATION:' : 'PREPARATION CHECKLIST:',
+    ...checklist.map((item, i) => '  ' + (i+1) + '. ' + item),
+    '',
+    fr ? 'Merci — ' + (cfg.owner || 'Jérémie') : 'Thank you — ' + (cfg.owner || 'Jérémie'),
+  ].join('\n');
+  
+  // Show modal with checklist + send options
+  const phone = (cfg.staff_phone || '').replace(/[\s\-+()]/g,'');
+  const encoded = encodeURIComponent(briefText);
+  const waUrl = phone ? 'https://wa.me/' + phone + '?text=' + encoded : 'https://wa.me/?text=' + encoded;
+  
+  // Copy to clipboard and offer WhatsApp
+  navigator.clipboard.writeText(briefText).then(() => {
+    toast(fr ? '📋 Checklist copiée — ouvrez WhatsApp pour envoyer' : '📋 Checklist copied — open WhatsApp to send');
+    setTimeout(() => window.open(waUrl, '_blank'), 800);
+  }).catch(() => {
+    window.open(waUrl, '_blank');
+  });
 }
 
 function renderBriefFallback(el, fr) {
@@ -3635,6 +3725,51 @@ function showWhyModal(idx) {
 
 function closeWhyModal() {
   document.getElementById('whyModal').classList.remove('on');
+}
+
+function showWhyModal(idx) {
+  const card = (window._briefCards || [])[idx];
+  if (!card) return;
+  const fr = lang === 'fr';
+  
+  // Create modal
+  const existing = document.getElementById('whyModal');
+  if (existing) existing.remove();
+  
+  const modal = document.createElement('div');
+  modal.id = 'whyModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:600;display:flex;align-items:flex-end;justify-content:center';
+  modal.onclick = function(e) { if(e.target===modal) modal.remove(); };
+  
+  const u = card.urgency || 5;
+  const borderColor = u >= 8 ? 'var(--red)' : u >= 6 ? '#BA7517' : 'var(--green)';
+  
+  modal.innerHTML = '<div style="background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:640px;padding:24px 20px 32px;max-height:80vh;overflow-y:auto">' +
+    '<div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px"></div>' +
+    '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">' +
+      '<div style="font-size:28px">' + (card.icon||'💡') + '</div>' +
+      '<div>' +
+        '<div style="font-family:Fraunces,serif;font-size:18px;font-weight:600;color:var(--ink);margin-bottom:4px">' + (card.title||'') + '</div>' +
+        '<div style="font-size:13px;color:var(--muted);line-height:1.5">' + (card.detail||'') + '</div>' +
+      '</div>' +
+    '</div>' +
+    (card.why ? '<div style="background:var(--paper);border-radius:10px;padding:12px 14px;margin-bottom:14px;border-left:3px solid ' + borderColor + '">' +
+      '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:600;margin-bottom:6px">' + (fr?'POURQUOI CETTE ALERTE':'WHY THIS ALERT') + '</div>' +
+      '<div style="font-size:13px;color:var(--ink);line-height:1.6">' + card.why + '</div>' +
+    '</div>' : '') +
+    '<div style="background:var(--green-light);border-radius:10px;padding:12px 14px;margin-bottom:16px">' +
+      '<div style="font-size:10px;letter-spacing:2px;color:var(--green);font-weight:600;margin-bottom:6px">' + (fr?'ACTION RECOMMANDÉE':'RECOMMENDED ACTION') + '</div>' +
+      '<div style="font-size:14px;font-weight:600;color:var(--green)">' + (card.action||'') + '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:8px">' +
+      '<button onclick="document.getElementById(\'whyModal\').remove()" style="flex:1;padding:12px;border:1.5px solid var(--border);border-radius:10px;background:none;font-size:14px;cursor:pointer;font-family:DM Sans,sans-serif;color:var(--muted)">' + (fr?'Fermer':'Close') + '</button>' +
+      (card.action_type && card.action_type !== 'none' ? 
+        '<button onclick="briefCardTap(' + idx + ');document.getElementById(\'whyModal\').remove()" style="flex:2;padding:12px;border:none;border-radius:10px;background:var(--green);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">→ ' + (card.action||'') + '</button>' 
+        : '') +
+    '</div>' +
+  '</div>';
+  
+  document.body.appendChild(modal);
 }
 </script>
 </body>
