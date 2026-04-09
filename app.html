@@ -1805,6 +1805,11 @@ function toast(msg) {
 document.addEventListener('DOMContentLoaded', () => {
   applyLang();
   goTab('today'); // Always start on Today tab
+  // Load events from Supabase
+  loadMarrakechEvents().then(() => {
+    generateAlerts(null);
+    renderTodayQV();
+  });
   loadFromSupabase();
   // Load weather & generate alerts on startup
   setTimeout(() => {
@@ -1822,34 +1827,52 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // Enriched Marrakech events calendar with specific dates
-const MARRAKECH_EVENTS = [
-  {month:1, week:1, name:"Nouvel An - Late bookings", impact:"+40%", tip:"Proposez hammam, feu de cheminee, activites Nouvel An berbere"},
-  {month:1, week:3, name:"Fashion week Milan", impact:"+10%", tip:"Profil client fashion/luxury, budget eleve"},
-  {month:2, week:2, name:"Saint-Valentin", impact:"+20%", tip:"Decorations romantiques, diner aux chandelles avec Faiza"},
-  {month:2, week:3, name:"Carnaval Europe - long weekends", impact:"+15%", tip:"Forte demande familles belges et neerlandaises"},
-  {month:3, week:1, name:"Fashion week Paris - clientele luxe", impact:"+15%", tip:"Post-fashion week: clients cherchent detox et repos"},
-  {month:3, week:3, name:"Paques anticipe - primo-arrivants", impact:"+25%", tip:"Forte demande familles francaises et britanniques"},
-  {month:4, week:1, name:"Paques & Vacances scolaires", impact:"+30%", tip:"Se loue en 48h - reservez les creneaux des janvier"},
-  {month:4, week:2, name:"Ramadan possible (2026: ~20 mars-19 avr)", impact:"+5%", tip:"Restaurants fermes le jour - preparez repas villa, iftar en groupe"},
-  {month:5, week:1, name:"1er Mai + ponts", impact:"+20%", tip:"Long weekends francais tres populaires"},
-  {month:5, week:2, name:"Mawazine Festival Rabat", impact:"+10%", tip:"Certains clients combinent Marrakech et Rabat"},
-  {month:6, week:1, name:"Festival Gnaoua Essaouira", impact:"+8%", tip:"Excursion possible depuis la villa - mentionnez-le aux clients"},
-  {month:6, week:3, name:"Fetes de fin d'ecole Europe", impact:"+10%", tip:"Familles en voyage recompense"},
-  {month:7, week:1, name:"Vacances scolaires Europe - Peak ete", impact:"+25%", tip:"Montez les prix min 850 euros la nuit - forte demande"},
-  {month:7, week:3, name:"Eid al-Adha possible (2026: ~6 juin)", impact:"+10%", tip:"Clients arabes du Golfe - haute saison pour eux"},
-  {month:8, week:1, name:"Peak absolu - Aout", impact:"+30%", tip:"Votre creneau le plus cher - pas moins de 900 euros la nuit"},
-  {month:8, week:3, name:"Bank Holiday UK", impact:"+15%", tip:"Forte demande britannique late-booking"},
-  {month:9, week:1, name:"Rentree - clientele premium adults-only", impact:"+15%", tip:"Couples sans enfants post-vacances - profil ideal villa DarJ"},
-  {month:9, week:3, name:"Fashion Week NY + Milan", impact:"+10%", tip:"Clientele mode et luxe en transit"},
-  {month:10, week:1, name:"Vacances Toussaint France", impact:"+25%", tip:"2eme pic familial de l'annee - reserve 2-3 mois a l'avance"},
-  {month:10, week:2, name:"Festival International du Film Marrakech", impact:"+25%", tip:"Celebrites et presse internationale - prix premium justifies"},
-  {month:10, week:4, name:"Halloween / long weekend UK", impact:"+10%", tip:"Clients britanniques - decorations thematiques optionnelles"},
-  {month:11, week:1, name:"Haute saison - meteo parfaite", impact:"+20%", tip:"20-25 degres, pas de chaleur - ideal pour les hotes exigeants"},
-  {month:11, week:4, name:"Thanksgiving US", impact:"+10%", tip:"Clients americains - mentionnez l'anglais dans les annonces"},
-  {month:12, week:1, name:"Pre-Noel - sejours detox", impact:"+20%", tip:"Couples et familles cherchent chaleur avant fetes"},
-  {month:12, week:3, name:"Noel & Reveillon", impact:"+80-120%", tip:"PRIX MAXIMUM - 1500 euros+ justifie. Reserve 6 mois a l'avance"},
-  {month:12, week:4, name:"Nouvel An", impact:"+100%", tip:"Nuit du 31 decembre = votre nuit la plus chere de l'annee"},
-];
+// Events loaded from Supabase — fallback to empty array
+let MARRAKECH_EVENTS = [];
+
+async function loadMarrakechEvents() {
+  const cfg = getCfg();
+  const url = cfg.supabaseUrl || 'https://rcjhgilpmojohmrqzokx.supabase.co';
+  const key = cfg.supabaseKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
+  const today = new Date().toISOString().slice(0,10);
+  // Load events active in next 60 days + past 7 days
+  const from = new Date(); from.setDate(from.getDate()-7);
+  const to = new Date(); to.setDate(to.getDate()+60);
+  const fromStr = from.toISOString().slice(0,10);
+  const toStr = to.toISOString().slice(0,10);
+
+  try {
+    const res = await fetch(
+      url + '/rest/v1/marrakech_events?select=*&active=eq.true&date_end=gte.' + fromStr + '&date_start=lte.' + toStr + '&order=date_start.asc',
+      { headers: { 'apikey': key, 'Authorization': 'Bearer ' + key } }
+    );
+    if (!res.ok) throw new Error('Supabase events ' + res.status);
+    const data = await res.json();
+    
+    // Convert to compatible format for generateAlerts
+    MARRAKECH_EVENTS = data.map(e => ({
+      id: e.id,
+      name: lang === 'en' && e.name_en ? e.name_en : e.name,
+      name_fr: e.name,
+      name_en: e.name_en || e.name,
+      date_start: e.date_start,
+      date_end: e.date_end,
+      impact: (e.impact_pct >= 0 ? '+' : '') + e.impact_pct + '%',
+      impact_pct: e.impact_pct,
+      tip: lang === 'en' && e.tip_en ? e.tip_en : (e.tip || ''),
+      tip_fr: e.tip || '',
+      tip_en: e.tip_en || e.tip || '',
+      category: e.category || 'event',
+      // Legacy compat: month/week from date_start
+      month: new Date(e.date_start).getMonth() + 1,
+      week: Math.ceil(new Date(e.date_start).getDate() / 7)
+    }));
+    console.log('✓ Loaded ' + MARRAKECH_EVENTS.length + ' events from Supabase');
+  } catch(e) {
+    console.warn('Events fallback to empty:', e.message);
+    MARRAKECH_EVENTS = [];
+  }
+}
 
 
 // Helper: get current week of month (1-4)
@@ -2162,20 +2185,46 @@ async function generateAlerts(weatherTemp) {
   } catch(e) {}
 
   // ── 4. MARRAKECH EVENTS CALENDAR ──
-  const weekEvents = MARRAKECH_EVENTS.filter(e => e.month === month && Math.abs((e.week||2) - week) <= 1);
-  const nextMonthEvents = MARRAKECH_EVENTS.filter(e => e.month === (month % 12) + 1).slice(0,1);
-  
-  weekEvents.forEach(ev => {
-    alerts.push({type:'warn',
-      title:'📅 ' + ev.name + ' — impact prix ' + ev.impact,
-      sub: ev.tip + (fr?' · Activez le modificateur "Événement" dans My Home AI':' · Activate the "Event" modifier in My Home AI')});
+  // Date-based event matching from Supabase
+  const todayDate = new Date(today);
+  const in7 = new Date(today); in7.setDate(in7.getDate()+7);
+  const in30 = new Date(today); in30.setDate(in30.getDate()+30);
+
+  // Active now or starting within 7 days
+  const activeEvents = MARRAKECH_EVENTS.filter(e => {
+    const start = new Date(e.date_start);
+    const end = new Date(e.date_end);
+    return start <= in7 && end >= todayDate;
   });
 
-  if (nextMonthEvents.length && weekEvents.length === 0) {
-    const ne = nextMonthEvents[0];
+  // Starting in next 8-30 days (upcoming)
+  const upcomingEvents = MARRAKECH_EVENTS.filter(e => {
+    const start = new Date(e.date_start);
+    return start > in7 && start <= in30;
+  }).slice(0,1);
+
+  activeEvents.forEach(ev => {
+    const daysLeft = Math.ceil((new Date(ev.date_end) - todayDate) / 86400000);
+    const daysTo = Math.ceil((new Date(ev.date_start) - todayDate) / 86400000);
+    const timing = daysTo > 0
+      ? (fr ? 'Dans ' + daysTo + 'j' : 'In ' + daysTo + 'd')
+      : (fr ? 'En cours · encore ' + daysLeft + 'j' : 'Active · ' + daysLeft + 'd left');
+    const evName = lang === 'en' && ev.name_en ? ev.name_en : ev.name_fr || ev.name;
+    const evTip = lang === 'en' && ev.tip_en ? ev.tip_en : ev.tip_fr || ev.tip;
+    const alertType = ev.impact_pct >= 25 ? 'warn' : ev.impact_pct < 0 ? 'info' : 'warn';
+    alerts.push({type: alertType,
+      title: '📅 ' + evName + ' — ' + timing + ' · ' + (ev.impact_pct >= 0 ? '+' : '') + ev.impact_pct + '%',
+      sub: evTip + (ev.impact_pct > 0 ? (fr?' · Activez le modificateur "Événement"':' · Activate "Event" modifier') : '')});
+  });
+
+  if (upcomingEvents.length && activeEvents.length === 0) {
+    const ne = upcomingEvents[0];
+    const daysTo = Math.ceil((new Date(ne.date_start) - todayDate) / 86400000);
+    const neName = lang === 'en' && ne.name_en ? ne.name_en : ne.name_fr || ne.name;
+    const neTip = lang === 'en' && ne.tip_en ? ne.tip_en : ne.tip_fr || ne.tip;
     alerts.push({type:'info',
-      title:'📅 ' + (fr?'Mois prochain':'Next month') + ': ' + ne.name,
-      sub: (fr?'Impact estimé: ':'Estimated impact: ') + ne.impact + ' · ' + ne.tip});
+      title: '📅 ' + (fr?'Bientôt (':'Coming up (') + daysTo + (fr?'j) — ':' days) — ') + neName + ' · +' + ne.impact_pct + '%',
+      sub: neTip});
   }
 
   // ── 5. WEATHER-BASED ALERTS ──
@@ -2566,13 +2615,15 @@ function loadHomeData() {
   renderCompetitors();
   renderScenarios(getPrice());
   renderMarketBand();
-  loadWeather().then(() => {
-    // Get weatherTemp from factorWeather element after weather loads
-    const wText = document.getElementById('factorWeather')?.textContent || '';
-    const match = wText.match(/(\d+)/);
-    const wTemp = match ? parseInt(match[1]) : null;
-    generateAlerts(wTemp);
-  }).catch(() => generateAlerts(null));
+  // Load fresh events then weather then alerts
+  loadMarrakechEvents().then(() => {
+    loadWeather().then(() => {
+      const wText = document.getElementById('factorWeather')?.textContent || '';
+      const match = wText.match(/(\d+)/);
+      const wTemp = match ? parseInt(match[1]) : null;
+      generateAlerts(wTemp);
+    }).catch(() => generateAlerts(null));
+  });
 }
 
 function goTabHome() {
