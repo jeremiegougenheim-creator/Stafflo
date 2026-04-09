@@ -633,6 +633,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
     <div class="field">
       <label data-fr="Fournisseur IA" data-en="AI Provider">Fournisseur IA</label>
       <select id="cfgAiProvider" onchange="toggleProviderFields()" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;background:var(--paper);outline:none">
+        <option value="groq">Groq (Llama) — GRATUIT</option>
         <option value="gemini">Gemini (Google) — GRATUIT</option>
         <option value="anthropic">Claude (Anthropic)</option>
         <option value="deepseek">DeepSeek — ~$0.001/analyse</option>
@@ -647,6 +648,11 @@ main{max-width:760px;margin:0 auto;padding:16px}
       <label>Claude API Key</label>
       <input id="cfgAnthropicKey" placeholder="sk-ant-api03-..." type="password" autocomplete="off">
       <div style="font-size:11px;color:var(--muted);margin-top:4px">→ <a href="https://console.anthropic.com" target="_blank" style="color:var(--gold)">console.anthropic.com</a> → API Keys</div>
+    </div>
+    <div class="field" id="groqKeyField" style="display:none">
+      <label>Groq API Key</label>
+      <input id="cfgGroqKey" placeholder="gsk_..." type="password" autocomplete="off">
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">→ <a href="https://console.groq.com/keys" target="_blank" style="color:var(--gold)">console.groq.com</a> → API Keys · 100% gratuit · 14 400 req/jour</div>
     </div>
     <div class="field" id="deepseekKeyField" style="display:none">
       <label>DeepSeek API Key</label>
@@ -958,8 +964,8 @@ async function analyze() {
 
   try {
     const cfg2 = getCfg();
-    const provider = cfg2.aiProvider || 'gemini';
-    const apiKey = provider === 'gemini' ? (cfg2.geminiKey || '') : provider === 'deepseek' ? (cfg2.deepseekKey || '') : (cfg2.anthropicKey || '');
+    const provider = cfg2.aiProvider || 'groq';
+    const apiKey = provider === 'groq' ? (cfg2.groqKey || '') : provider === 'gemini' ? (cfg2.geminiKey || '') : provider === 'deepseek' ? (cfg2.deepseekKey || '') : (cfg2.anthropicKey || '');
     
     if (!apiKey) {
       toast(lang==='fr' ? '⚙ Ajoutez votre clé API dans Réglages' : '⚙ Add your API key in Settings');
@@ -968,7 +974,20 @@ async function analyze() {
     }
 
     let response;
-    if (provider === 'gemini') {
+    if (provider === 'groq') {
+      response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          max_tokens: 2000,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: text }
+          ]
+        })
+      });
+    } else if (provider === 'gemini') {
       // Gemini API — free tier
       response = await fetch(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey,
@@ -1493,7 +1512,8 @@ function closeForm() {
 
 function autoComm() {
   const src = document.getElementById('fSource').value;
-  document.getElementById('fComm').value = src==='Airbnb'?3.6:src==='Booking'?15:0;
+  const rates = {'Airbnb':15.5,'Booking':17,'Direct':0,'WhatsApp':0,'Vrbo':8};
+  document.getElementById('fComm').value = rates[src] ?? 0;
   updateNetPreview();
 }
 
@@ -1555,9 +1575,10 @@ function loadSettingsUI() {
   document.getElementById('cfgSbKey').value = cfg.sbKey || '';
   document.getElementById('cfgAnthropicKey').value = cfg.anthropicKey || '';
   document.getElementById('cfgDeepseekKey').value = cfg.deepseekKey || '';
+  document.getElementById('cfgGroqKey').value = cfg.groqKey || '';
   document.getElementById('cfgGeminiKey').value = cfg.geminiKey || '';
   const provSel = document.getElementById('cfgAiProvider');
-  if (provSel) { provSel.value = cfg.aiProvider || 'gemini'; toggleProviderFields(); }
+  if (provSel) { provSel.value = cfg.aiProvider || 'groq'; toggleProviderFields(); }
 }
 
 async function saveSettings() {
@@ -2667,15 +2688,14 @@ function generateBriefToast(clientId) {
 
 function saveApiKey() {
   const prov = document.getElementById('cfgAiProvider')?.value || 'anthropic';
-  const key = prov === 'deepseek'
-    ? document.getElementById('cfgDeepseekKey').value.trim()
-    : prov === 'gemini'
-    ? document.getElementById('cfgGeminiKey').value.trim()
+  const key = prov === 'groq' ? document.getElementById('cfgGroqKey').value.trim()
+    : prov === 'deepseek' ? document.getElementById('cfgDeepseekKey').value.trim()
+    : prov === 'gemini' ? document.getElementById('cfgGeminiKey').value.trim()
     : document.getElementById('cfgAnthropicKey').value.trim();
   if (!key) { toast(lang==='fr' ? 'Clé vide' : 'Key is empty'); return; }
   const cfg = getCfg();
   cfg.aiProvider = prov;
-  if (prov === 'deepseek') cfg.deepseekKey = key; else if (prov === 'gemini') cfg.geminiKey = key; else cfg.anthropicKey = key;
+  if (prov === 'groq') cfg.groqKey = key; else if (prov === 'deepseek') cfg.deepseekKey = key; else if (prov === 'gemini') cfg.geminiKey = key; else cfg.anthropicKey = key;
   setCfg(cfg);
   const saved = document.getElementById('apiKeySaved');
   if (saved) { saved.style.display = 'block'; setTimeout(() => saved.style.display = 'none', 3000); }
@@ -2685,10 +2705,12 @@ function saveApiKey() {
 }
 
 function toggleProviderFields() {
-  const prov = document.getElementById('cfgAiProvider')?.value || 'gemini';
+  const prov = document.getElementById('cfgAiProvider')?.value || 'groq';
+  const qf = document.getElementById('groqKeyField');
   const gf = document.getElementById('geminiKeyField');
   const af = document.getElementById('anthropicKeyField');
   const df = document.getElementById('deepseekKeyField');
+  if (qf) qf.style.display = prov === 'groq' ? 'block' : 'none';
   if (gf) gf.style.display = prov === 'gemini' ? 'block' : 'none';
   if (af) af.style.display = prov === 'anthropic' ? 'block' : 'none';
   if (df) df.style.display = prov === 'deepseek' ? 'block' : 'none';
@@ -2708,7 +2730,8 @@ async function extractFormAI() {
 
   const cfg = getCfg();
   const provider = cfg.aiProvider || 'gemini';
-  const apiKey = provider === 'gemini' ? (cfg.geminiKey || '')
+  const apiKey = provider === 'groq' ? (cfg.groqKey || '')
+               : provider === 'gemini' ? (cfg.geminiKey || '')
                : provider === 'deepseek' ? (cfg.deepseekKey || '')
                : (cfg.anthropicKey || '');
 
@@ -2756,7 +2779,17 @@ async function extractFormAI() {
   try {
     let raw = '';
 
-    if (provider === 'gemini') {
+    if (provider === 'groq') {
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
+        body: JSON.stringify({ model:'llama-3.1-8b-instant', max_tokens:600,
+          messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}]
+        })
+      });
+      if (!r.ok) throw new Error('Groq ' + r.status);
+      const d = await r.json();
+      raw = d.choices?.[0]?.message?.content || '';
+    } else if (provider === 'gemini') {
       const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
