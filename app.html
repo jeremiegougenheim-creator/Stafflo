@@ -52,6 +52,7 @@ header{background:var(--green3);padding:0 20px;height:54px;display:flex;align-it
 nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,.06);position:sticky;top:54px;z-index:99}
 .nav-btn{flex:1;padding:11px 8px;border:none;background:none;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;color:rgba(255,255,255,.4);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;letter-spacing:.3px;transition:all .2s;white-space:nowrap}
 .nav-btn.on{color:var(--gold);border-bottom-color:var(--gold)}
+.nav-badge{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;animation:pulse 1.5s infinite}
 
 /* ── MAIN ── */
 main{max-width:760px;margin:0 auto;padding:16px}
@@ -318,6 +319,16 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .tooltip-box{display:none;position:absolute;left:20px;top:-4px;background:var(--ink);color:#fff;font-size:11px;line-height:1.5;padding:8px 10px;border-radius:8px;width:200px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 .tooltip-icon:hover+.tooltip-box{display:block}
 
+/* ── WHY MODAL ── */
+.why-modal{position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:600;display:none;align-items:center;justify-content:center;padding:20px}
+.why-modal.on{display:flex}
+.why-box{background:var(--card);border-radius:16px;padding:20px;max-width:340px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.4)}
+.why-box h3{font-family:'Fraunces',serif;font-size:17px;font-weight:400;margin-bottom:12px;color:var(--ink)}
+.why-sources{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
+.why-source{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink);background:var(--paper);border-radius:8px;padding:8px 10px}
+.why-source-icon{font-size:14px;flex-shrink:0}
+.why-close{width:100%;padding:12px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif}
+
 /* ── MORNING BRIEF ── */
 #morningBrief{margin-bottom:14px}
 .brief-loading{background:var(--card);border-radius:14px;padding:16px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
@@ -502,6 +513,12 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         <div class="msg-actions">
           <button class="btn-copy" onclick="copyMsg()">
             📋 <span data-fr="Copier" data-en="Copy">Copier</span>
+          </button>
+          <button id="btnMailto" class="btn-edit" onclick="sendByEmail()" style="display:none" title="Send by email">
+            ✉️
+          </button>
+          <button id="btnWhatsapp" class="btn-edit" onclick="sendByWhatsApp()" style="display:none" title="Send via WhatsApp" style="color:#25D366;border-color:#25D366">
+            💬
           </button>
           <div class="copy-confirm" id="copyConfirm">✓ Copié !</div>
         </div>
@@ -868,6 +885,15 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 <div class="toast" id="toast"></div>
 
+<!-- WHY MODAL -->
+<div class="why-modal" id="whyModal" onclick="if(event.target===this)closeWhyModal()">
+  <div class="why-box">
+    <h3 id="whyTitle">Pourquoi cette alerte ?</h3>
+    <div class="why-sources" id="whySources"></div>
+    <button class="why-close" onclick="closeWhyModal()" data-fr="Compris" data-en="Got it">Compris</button>
+  </div>
+</div>
+
 <script>
 // ════════════════════════════════════════════
 // STAFFLO PROXY — set URL to remove API key requirement
@@ -1215,6 +1241,7 @@ async function analyze() {
 }
 
 function renderResult(json) {
+  window._currentResult = json; // Store for email/WA buttons
   const fr = lang === 'fr';
   const g = json.guest || {};
   const cfg = getCfg();
@@ -2428,6 +2455,18 @@ async function generateAlerts(weatherTemp) {
   const elV = document.getElementById('alertsContent');
   if (elV) elV.innerHTML = alertsHtml;
 
+  // ── Update Today tab badge ──
+  const hasUrgent = alerts.some(a => a.type === 'urgent' || (a.type === 'warn' && a.title && (a.title.includes('Départ') || a.title.includes('Arrivée') || a.title.includes('Checkout') || a.title.includes('Arrival'))));
+  const todayBtn = document.getElementById('nb-today');
+  if (todayBtn) {
+    const existingBadge = todayBtn.querySelector('.nav-badge');
+    if (hasUrgent && !existingBadge) {
+      todayBtn.insertAdjacentHTML('beforeend', '<span class="nav-badge"></span>');
+    } else if (!hasUrgent && existingBadge) {
+      existingBadge.remove();
+    }
+  }
+
   // ── Also populate Today alerts strip directly ──
   const todayAlertsEl = document.getElementById('todayAlerts');
   const todayAlertsContent = document.getElementById('todayAlertsContent');
@@ -3385,6 +3424,7 @@ async function loadMorningBrief(forceRefresh = false) {
     '- If checkout today + checkin tomorrow = tight turnaround alert',
     '- Be hyper-specific: use real names, real temps, real prices from the data',
     '- Respond in ' + (fr ? 'French' : 'English'),
+    '- If guests arriving in 0-3 days: include a staff preparation card with action_type=whatsapp and specific checklist items in detail',
   ].join('\n');
 
   try {
@@ -3435,7 +3475,7 @@ async function loadMorningBrief(forceRefresh = false) {
   }
 }
 
-// Store brief card actions for tap handlers
+// Store brief card actions and data for tap handlers
 window._briefActions = {};
 
 function briefCardTap(idx) {
@@ -3444,12 +3484,17 @@ function briefCardTap(idx) {
   if (act.type === 'open_guests') goTab('clients');
   else if (act.type === 'open_home') goTab('home');
   else if (act.type === 'copy') navigator.clipboard.writeText(act.label).then(() => toast('📋 Copié'));
+  else if (act.type === 'whatsapp') {
+    const encoded = encodeURIComponent(act.label);
+    window.open('https://wa.me/?text=' + encoded);
+  }
 }
 
 function renderBriefCards(el, cards) {
   if (!cards || !cards.length) { el.innerHTML = ''; return; }
   const fr = lang === 'fr';
   window._briefActions = {};
+  window._briefCards = cards.slice();
   el.innerHTML = cards.map((card, idx) => {
     const u = card.urgency || 5;
     const pClass = u >= 8 ? 'p1' : u >= 6 ? 'p2' : u >= 4 ? 'p3' : 'p4';
@@ -3483,7 +3528,10 @@ function renderBriefCards(el, cards) {
         '<div class="brief-card-sub">' + (card.detail||'') + '</div>' +
         actionBtn +
       '</div>' +
-      '<div class="brief-score ' + sClass + '">' + u + '</div>' +
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">' +
+        '<div class="brief-score ' + sClass + '">' + u + '</div>' +
+        '<button onclick="showWhyModal(' + idx + ')" style="background:none;border:none;color:var(--muted);font-size:9px;cursor:pointer;padding:0;line-height:1;letter-spacing:.5px">WHY</button>' +
+      '</div>' +
     '</div>';
   }).join('');
 }
@@ -3510,6 +3558,83 @@ function renderBriefFallback(el, fr) {
   if (!cards.length) cards.push({urgency:3, icon:'✅', title: fr?'Villa en ordre':'All clear', detail: fr?'Aucune action urgente aujourd\'hui':'No urgent action today', action: fr?'Bonne journée':'Enjoy your day'});
   
   renderBriefCards(el, cards.sort((a,b) => b.urgency - a.urgency));
+}
+
+function sendByEmail() {
+  const text = document.getElementById('msgBody').textContent;
+  const tab = document.querySelector('.msg-tab.on')?.textContent?.trim() || '';
+  const guestEmail = window._currentResult?.guest?.email || '';
+  const subject = encodeURIComponent('Villa DarJ — ' + tab);
+  const body = encodeURIComponent(text);
+  window.open('mailto:' + guestEmail + '?subject=' + subject + '&body=' + body);
+}
+
+function sendByWhatsApp() {
+  const text = document.getElementById('msgBody').textContent;
+  const phone = window._currentResult?.guest?.phone?.replace(/[\s\-+\(\)]/g,'') || '';
+  const encoded = encodeURIComponent(text);
+  if (phone) {
+    window.open('https://wa.me/' + phone + '?text=' + encoded);
+  } else {
+    window.open('https://wa.me/?text=' + encoded);
+  }
+}
+
+function updateMsgButtons(msgType) {
+  const g = window._currentResult?.guest;
+  const hasPhone = g?.phone && g.phone.length > 5;
+  const hasEmail = g?.email && g.email.includes('@');
+  
+  const mailBtn = document.getElementById('btnMailto');
+  const waBtn = document.getElementById('btnWhatsapp');
+  
+  if (!mailBtn || !waBtn) return;
+  
+  // Show email button for Airbnb type or if email exists
+  mailBtn.style.display = (hasEmail || msgType === 'airbnb') ? 'flex' : 'none';
+  // Show WhatsApp for welcome, driver, staff, passport, checkout
+  waBtn.style.display = (['welcome','driver','staff','passport','checkout'].includes(msgType) || hasPhone) ? 'flex' : 'none';
+}
+
+// ── WHY MODAL ──
+window._briefCards = [];
+
+function showWhyModal(idx) {
+  const card = window._briefCards[idx];
+  if (!card) return;
+  document.getElementById('whyTitle').textContent = card.title || 'Pourquoi ?';
+  const fr = lang === 'fr';
+  
+  // Parse why into bullet points
+  const why = card.why || (fr ? 'Basé sur les données de votre villa.' : 'Based on your villa data.');
+  const sources = [];
+  
+  // Add contextual sources based on card type
+  if (card.icon === '🏡' || card.icon === '🧳' || card.icon === '📅') {
+    sources.push({icon: '👥', text: fr ? 'Données CRM — réservations en cours' : 'CRM data — current bookings'});
+  }
+  if (why.toLowerCase().includes('météo') || why.toLowerCase().includes('weather') || why.toLowerCase().includes('°')) {
+    sources.push({icon: '🌤', text: fr ? 'OpenWeatherMap — météo temps réel' : 'OpenWeatherMap — live weather'});
+  }
+  if (why.toLowerCase().includes('prix') || why.toLowerCase().includes('price') || why.toLowerCase().includes('marché') || why.toLowerCase().includes('market')) {
+    sources.push({icon: '📊', text: fr ? 'Comparateur de marché — concurrents' : 'Market comparison — competitors'});
+  }
+  if (why.toLowerCase().includes('événement') || why.toLowerCase().includes('event') || why.toLowerCase().includes('festival') || why.toLowerCase().includes('pâques') || why.toLowerCase().includes('ramadan')) {
+    sources.push({icon: '📅', text: fr ? 'Calendrier Marrakech — événements locaux' : 'Marrakech calendar — local events'});
+  }
+  if (sources.length === 0) {
+    sources.push({icon: '🧠', text: fr ? 'Analyse IA — contexte villa complet' : 'AI analysis — full villa context'});
+  }
+  
+  document.getElementById('whySources').innerHTML = 
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-style:italic">' + why + '</div>' +
+    sources.map(s => '<div class="why-source"><span class="why-source-icon">' + s.icon + '</span><span>' + s.text + '</span></div>').join('');
+  
+  document.getElementById('whyModal').classList.add('on');
+}
+
+function closeWhyModal() {
+  document.getElementById('whyModal').classList.remove('on');
 }
 </script>
 </body>
