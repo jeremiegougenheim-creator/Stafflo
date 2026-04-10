@@ -331,26 +331,33 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .why-close{width:100%;padding:12px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif}
 
 /* ── MORNING BRIEF ── */
-#morningBrief{margin-bottom:14px}
-.brief-loading{background:var(--card);border-radius:14px;padding:16px;box-shadow:var(--shadow);display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
-.brief-pulse{width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1s infinite;flex-shrink:0}
-.brief-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 2px}
+#morningBrief{margin-bottom:16px}
+.brief-loading{background:var(--green3);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,.6)}
+.brief-pulse{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:pulse 1s infinite;flex-shrink:0}
+.brief-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:0 2px}
 .brief-title{font-size:9px;letter-spacing:2.5px;color:var(--muted);font-weight:600;text-transform:uppercase}
+.brief-time{font-size:10px;color:var(--muted)}
 .brief-refresh{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:2px 6px;border-radius:4px;transition:color .2s}
 .brief-refresh:hover{color:var(--gold)}
-.brief-cards{display:flex;flex-direction:column;gap:7px}
-.brief-card{background:var(--card);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow);display:flex;align-items:flex-start;gap:12px;cursor:default;transition:box-shadow .2s;border-left:3px solid transparent}
-.brief-card:hover{box-shadow:var(--shadow-lg)}
-.brief-card.p1{border-left-color:var(--red)}
-.brief-card.p2{border-left-color:#BA7517}
-.brief-card.p3{border-left-color:var(--green)}
-.brief-card.p4{border-left-color:var(--border)}
-.brief-icon{font-size:20px;flex-shrink:0;line-height:1;margin-top:1px}
+.brief-cards{display:flex;flex-direction:column;gap:6px}
+
+/* Cards — cleaner, more distinct urgency levels */
+.brief-card{background:var(--card);border-radius:12px;padding:0;box-shadow:var(--shadow);display:flex;align-items:stretch;cursor:pointer;transition:all .2s;overflow:hidden}
+.brief-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px)}
+.brief-card:active{transform:translateY(0)}
+.brief-card-left{width:4px;flex-shrink:0}
+.brief-card.p1 .brief-card-left{background:var(--red)}
+.brief-card.p2 .brief-card-left{background:#BA7517}
+.brief-card.p3 .brief-card-left{background:var(--green)}
+.brief-card.p4 .brief-card-left{background:var(--border)}
+.brief-card-inner{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;flex:1}
+.brief-icon{font-size:18px;flex-shrink:0;line-height:1;margin-top:1px}
 .brief-content{flex:1;min-width:0}
-.brief-card-title{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:3px;line-height:1.3}
-.brief-card-sub{font-size:12px;color:var(--muted);line-height:1.5}
-.brief-card-action{font-size:11px;color:var(--gold);font-weight:600;margin-top:4px;display:inline-block}
-.brief-score{flex-shrink:0;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px}
+.brief-card-title{font-size:13px;font-weight:600;color:var(--ink);line-height:1.3;margin-bottom:2px}
+.brief-card-sub{font-size:11px;color:var(--muted);line-height:1.5}
+.brief-card-action{display:inline-flex;align-items:center;gap:4px;margin-top:5px;background:var(--green);color:#fff;border:none;border-radius:5px;padding:4px 9px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif}
+.brief-card-action.gold{background:var(--gold);color:var(--green3)}
+.brief-score{flex-shrink:0;min-width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px}
 .brief-score.s-high{background:#FDE8E8;color:var(--red)}
 .brief-score.s-med{background:#FAEEDA;color:#BA7517}
 .brief-score.s-low{background:var(--green-light);color:var(--green)}
@@ -427,7 +434,10 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <!-- MORNING BRIEF — AI prioritized daily digest -->
   <div id="morningBrief" style="display:none">
     <div class="brief-header">
-      <div class="brief-title" data-fr="☀ BRIEF DU JOUR" data-en="☀ MORNING BRIEF">☀ BRIEF DU JOUR</div>
+      <div>
+        <div class="brief-title" data-fr="☀ BRIEF DU JOUR" data-en="☀ MORNING BRIEF">☀ BRIEF DU JOUR</div>
+        <div class="brief-time" id="briefTime"></div>
+      </div>
       <button class="brief-refresh" onclick="loadMorningBrief(true)" title="Rafraîchir">↻</button>
     </div>
     <div class="brief-cards" id="briefCards">
@@ -2257,191 +2267,259 @@ async function generateAlerts(weatherTemp) {
   const fr = lang === 'fr';
   const now = new Date();
   const month = now.getMonth() + 1;
-  const week = getWeekOfMonth();
   const today = now.toISOString().slice(0,10);
-  const day = now.getDay(); // 0=sun, 6=sat
+  const day = now.getDay(); // 0=sun 6=sat
+  const hour = now.getHours();
 
-  // ── 1. CRM-BASED ALERTS (highest priority) ──
+  // ── HELPERS ──
+  const daysFrom = (dateStr) => Math.ceil((new Date(dateStr) - now) / 86400000);
+  const dateInDays = (n) => { const d = new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+
+  // ── 1. CRM OPERATIONAL ALERTS — highest priority ──
   const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
   const checkoutToday = clients.filter(c => c.departure === today);
-  const checkinToday = clients.filter(c => c.arrival === today);
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
-  const tomorrowStr = tomorrow.toISOString().slice(0,10);
-  const checkinTomorrow = clients.filter(c => c.arrival === tomorrowStr);
+  const checkinToday  = clients.filter(c => c.arrival === today);
+  const checkin1d     = clients.filter(c => c.arrival === dateInDays(1));
+  const checkin2d     = clients.filter(c => c.arrival === dateInDays(2));
+  const checkin3d     = clients.filter(c => c.arrival === dateInDays(3));
+  const checkout1d    = clients.filter(c => c.departure === dateInDays(1));
 
-  if (checkoutToday.length) alerts.push({type:'urgent',
-    title:'🧳 ' + (fr?'Départ aujourd\'hui':'Checkout today') + ' — ' + checkoutToday.map(c=>c.name).join(', '),
-    sub: fr?'Préparez le ménage, vérifiez l\'inventaire, envoyez le message de départ.':'Prepare cleaning, check inventory, send checkout message.'});
-  if (checkinToday.length) alerts.push({type:'urgent',
-    title:'🏡 ' + (fr?'Arrivée aujourd\'hui':'Arrival today') + ' — ' + checkinToday.map(c=>c.name).join(', '),
-    sub: fr?'Vérifiez: chambres, piscine, fleurs, courses, accueil.':'Check: rooms, pool, flowers, groceries, welcome.'});
-  if (checkinTomorrow.length) alerts.push({type:'warn',
-    title:'📅 ' + (fr?'Arrivée demain':'Arriving tomorrow') + ' — ' + checkinTomorrow.map(c=>c.name).join(', '),
-    sub: fr?'Confirmez le transfert, les repas et la préparation villa.':'Confirm transfer, meals and villa preparation.'});
+  // Same-day turnover (checkout + checkin same day) — critical
+  if (checkoutToday.length && checkinToday.length) {
+    alerts.push({type:'urgent',
+      title:'⚡ ' + (fr?'Rotation même jour':'Same-day turnover') + ' — ' + checkoutToday.map(c=>c.name).join(', ') + ' → ' + checkinToday.map(c=>c.name).join(', '),
+      sub: fr?'Départ ET arrivée aujourd\'hui — coordonnez le ménage, vous avez peu de temps.':'Checkout AND checkin today — coordinate cleaning, very tight window.'});
+  } else {
+    if (checkoutToday.length) alerts.push({type:'urgent',
+      title:'🧳 ' + (fr?'Départ aujourd\'hui':'Checkout today') + ' — ' + checkoutToday.map(c=>c.name).join(', '),
+      sub: fr?'Envoyez le message de départ, préparez le ménage, vérifiez l\'inventaire.':'Send checkout message, prepare cleaning, check inventory.'});
+    if (checkinToday.length) alerts.push({type:'urgent',
+      title:'🏡 ' + (fr?'Arrivée aujourd\'hui':'Arrival today') + ' — ' + checkinToday.map(c=>c.name).join(', ') + (checkinToday[0]?.guests ? ' · ' + checkinToday[0].guests + (fr?' pers.':' guests') : ''),
+      sub: fr?'Vérifiez: chambres, piscine, fleurs, courses, code porte, WiFi.':'Check: rooms, pool, flowers, groceries, door code, WiFi.'});
+  }
 
-  // ── 2. FLIGHT DELAY ALERT (AviationStack) ──
-  if (inHouse && inHouse.arrival === today) {
+  if (checkin1d.length) alerts.push({type:'warn',
+    title:'📅 ' + (fr?'Arrivée demain':'Arrival tomorrow') + ' — ' + checkin1d.map(c=>c.name).join(', '),
+    sub: fr?'Confirmez transfert et repas. Préparez la villa ce soir.':'Confirm transfer and meals. Prepare villa tonight.'});
+
+  if (checkout1d.length && !checkin1d.length) alerts.push({type:'info',
+    title:'📦 ' + (fr?'Départ demain':'Checkout tomorrow') + ' — ' + checkout1d.map(c=>c.name).join(', '),
+    sub: fr?'Envoyez le message de départ ce soir. Demandez un avis.':'Send checkout message tonight. Request a review.'});
+
+  // Upcoming gaps — no booking in next 7 days
+  const next7 = clients.filter(c => c.arrival && c.arrival > today && daysFrom(c.arrival) <= 7);
+  if (!inHouse && !checkinToday.length && !checkin1d.length && !checkin2d.length && next7.length === 0) {
+    alerts.push({type:'info',
+      title:'📭 ' + (fr?'Aucune réservation dans les 7 prochains jours':'No bookings in next 7 days'),
+      sub: fr?'Activez la promotion last-minute (-15%) pour remplir le calendrier.':'Activate last-minute discount (-15%) to fill the calendar.'});
+  }
+
+  // Missing passport alert — for clients arriving in < 5 days with no passport note
+  const needPassport = clients.filter(c => {
+    const d = daysFrom(c.arrival||'9999');
+    return d > 0 && d <= 5 && !(c.notes||'').toLowerCase().includes('passport');
+  });
+  if (needPassport.length) alerts.push({type:'warn',
+    title:'🛂 ' + (fr?'Passeports non confirmés':'Passports not confirmed') + ' — ' + needPassport.map(c=>c.name).join(', '),
+    sub: fr?'Demandez les informations passeport avant l\'arrivée (obligatoire Maroc).':'Request passport info before arrival (required in Morocco).'});
+
+  // Long stay ending soon
+  if (inHouse) {
+    const dLeft = daysFrom(inHouse.departure);
+    const nights = Math.ceil((new Date(inHouse.departure)-new Date(inHouse.arrival))/86400000);
+    if (nights >= 7 && dLeft <= 2 && dLeft > 0) {
+      alerts.push({type:'warn',
+        title:'💬 ' + (fr?'Demander un avis — départ dans':'Ask for review — leaving in') + ' ' + dLeft + (fr?'j':'d') + ' · ' + inHouse.name,
+        sub: fr?'C\'est le bon moment pour demander un avis 5 étoiles avant le départ.':'Good time to request a 5-star review before checkout.'});
+    }
+  }
+
+  // ── 2. FLIGHT DELAYS — for ALL upcoming guests in 7 days ──
+  const upcomingFlightGuests = clients.filter(c => c.arrival && daysFrom(c.arrival) >= 0 && daysFrom(c.arrival) <= 1);
+  if (upcomingFlightGuests.length && AVIATION_KEY) {
     try {
-      const flightRes = await fetch(`https://api.aviationstack.com/v1/flights?access_key=${AVIATION_KEY}&arr_iata=RAK&limit=20`);
+      const flightRes = await fetch('https://api.aviationstack.com/v1/flights?access_key=' + AVIATION_KEY + '&arr_iata=RAK&limit=20');
       const flightData = await flightRes.json();
       if (flightData.data) {
         const delayed = flightData.data.filter(f => f.arrival?.delay > 30);
         if (delayed.length) {
-          delayed.forEach(f => {
+          delayed.slice(0,2).forEach(f => {
             alerts.push({type:'warn',
-              title:'✈️ Vol retardé: ' + f.flight?.iata + ' (' + (f.departure?.airport||'?') + ')',
-              sub: 'Retard de ' + f.arrival.delay + ' min → nouvelle ETA: ' + (f.arrival?.estimated||'?').slice(11,16) + '. Prévenez le chauffeur.'});
+              title:'✈️ ' + (fr?'Vol retardé':'Delayed flight') + ': ' + (f.flight?.iata||'?') + ' — +' + f.arrival.delay + (fr?' min':'min'),
+              sub: (fr?'ETA: ':'ETA: ') + (f.arrival?.estimated||'?').slice(11,16) + (fr?' — Prévenez votre chauffeur.':' — Notify your driver.')});
           });
         } else {
           alerts.push({type:'good',
-            title:'✈️ ' + (fr?'Vols RAK — trafic normal':'RAK Flights — on schedule'),
-            sub: fr?'Aucun retard significatif détecté à l\'arrivée.':'No significant arrival delays detected.'});
+            title:'✈️ ' + (fr?'Vols RAK — à l\'heure':'RAK Flights — on time'),
+            sub: fr?'Aucun retard détecté pour les vols entrants.':'No delays detected on incoming flights.'});
         }
       }
-    } catch(e) {
-      // silently fail
-    }
+    } catch(e) {}
   }
 
-  // ── 3. EXCHANGE RATE ALERT ──
+  // ── 3. EXCHANGE RATES — GBP, USD, CHF ──
   try {
     const fxRes = await fetch('https://api.exchangerate-api.com/v4/latest/EUR');
     const fx = await fxRes.json();
     if (fx.rates) {
       const gbp = fx.rates.GBP;
       const usd = fx.rates.USD;
-      const britishClients = clients.filter(c => c.nat && c.nat.includes('Brit') || (c.nat||'').includes('🇬🇧'));
-      const usClients = clients.filter(c => (c.nat||'').includes('🇺🇸') || (c.nat||'').includes('Amér'));
-      
-      if (gbp < 0.84) { // GBP weak vs EUR
-        alerts.push({type:'warn',
-          title:'💷 GBP/EUR: ' + gbp.toFixed(3) + (fr?' — Livre faible':' — Weak pound'),
-          sub: fr?'Clients britanniques paient plus cher — pensez à justifier le prix premium.':'British guests pay more — consider highlighting premium value.'});
-      } else if (gbp > 0.88) { // GBP strong
-        alerts.push({type:'good',
-          title:'💷 GBP/EUR: ' + gbp.toFixed(3) + (fr?' — Livre forte':' — Strong pound'),
-          sub: fr?'Moment favorable pour cibler les clients britanniques.':'Good time to target British guests.'});
+      const chf = fx.rates.CHF;
+      window._fxRates = {gbp, usd, chf};
+
+      // Check if current/upcoming guests match nationality
+      const allGuests = [...(inHouse?[inHouse]:[]), ...checkin1d, ...checkin2d, ...checkin3d];
+      const hasBrit = allGuests.some(c => (c.nat||'').includes('🇬🇧') || (c.nat||'').toLowerCase().includes('brit'));
+      const hasUS   = allGuests.some(c => (c.nat||'').includes('🇺🇸') || (c.nat||'').toLowerCase().includes('amér') || (c.nat||'').toLowerCase().includes('amer'));
+      const hasCHF  = allGuests.some(c => (c.nat||'').includes('🇨🇭') || (c.nat||'').toLowerCase().includes('suiss'));
+
+      if (hasBrit || gbp < 0.84 || gbp > 0.88) {
+        const trend = gbp < 0.84 ? (fr?'⬇ Livre faible — clients UK paient plus':'⬇ Weak pound — UK guests pay more')
+                    : gbp > 0.88 ? (fr?'⬆ Livre forte — ciblez les Britanniques':'⬆ Strong pound — target British guests')
+                    : (fr?'Stable':'Stable');
+        alerts.push({type: gbp < 0.84 ? 'info' : 'good',
+          title:'💷 GBP/EUR: ' + gbp.toFixed(3) + ' — ' + trend,
+          sub: hasBrit ? (fr?'Vos prochains clients sont britanniques.':'Your upcoming guests are British.') : ''});
       }
-      
-      // Store for display
-      window._fxRates = {gbp, usd};
+      if (hasUS) alerts.push({type:'info',
+        title:'💵 USD/EUR: ' + (1/usd).toFixed(3) + (fr?' — Clients américains attendus':' — US guests expected'),
+        sub: fr?'Mentionnez les paiements en USD si nécessaire.':'Mention USD payment if needed.'});
     }
   } catch(e) {}
 
-  // ── 4. MARRAKECH EVENTS CALENDAR ──
-  // Date-based event matching from Supabase
+  // ── 4. MARRAKECH EVENTS ──
   const todayDate = new Date(today);
-  const in7 = new Date(today); in7.setDate(in7.getDate()+7);
+  const in7  = new Date(today); in7.setDate(in7.getDate()+7);
   const in30 = new Date(today); in30.setDate(in30.getDate()+30);
 
-  // Active now or starting within 7 days
   const activeEvents = MARRAKECH_EVENTS.filter(e => {
-    const start = new Date(e.date_start);
-    const end = new Date(e.date_end);
-    return start <= in7 && end >= todayDate;
+    if (!e.date_start) return e.month === month;
+    return new Date(e.date_start) <= in7 && new Date(e.date_end||e.date_start) >= todayDate;
   });
-
-  // Starting in next 8-30 days (upcoming)
-  const upcomingEvents = MARRAKECH_EVENTS.filter(e => {
-    const start = new Date(e.date_start);
-    return start > in7 && start <= in30;
-  }).slice(0,1);
+  const upcomingEv = MARRAKECH_EVENTS.filter(e => {
+    if (!e.date_start) return false;
+    const s = new Date(e.date_start);
+    return s > in7 && s <= in30;
+  }).slice(0,2);
 
   activeEvents.forEach(ev => {
-    const daysLeft = Math.ceil((new Date(ev.date_end) - todayDate) / 86400000);
-    const daysTo = Math.ceil((new Date(ev.date_start) - todayDate) / 86400000);
-    const timing = daysTo > 0
-      ? (fr ? 'Dans ' + daysTo + 'j' : 'In ' + daysTo + 'd')
-      : (fr ? 'En cours · encore ' + daysLeft + 'j' : 'Active · ' + daysLeft + 'd left');
-    const evName = lang === 'en' && ev.name_en ? ev.name_en : ev.name_fr || ev.name;
-    const evTip = lang === 'en' && ev.tip_en ? ev.tip_en : ev.tip_fr || ev.tip;
-    const alertType = ev.impact_pct >= 25 ? 'warn' : ev.impact_pct < 0 ? 'info' : 'warn';
-    alerts.push({type: alertType,
-      title: '📅 ' + evName + ' — ' + timing + ' · ' + (ev.impact_pct >= 0 ? '+' : '') + ev.impact_pct + '%',
-      sub: evTip + (ev.impact_pct > 0 ? (fr?' · Activez le modificateur "Événement"':' · Activate "Event" modifier') : '')});
+    const dTo = ev.date_start ? Math.ceil((new Date(ev.date_start) - todayDate) / 86400000) : 0;
+    const dLeft = ev.date_end ? Math.ceil((new Date(ev.date_end) - todayDate) / 86400000) : 0;
+    const timing = dTo > 0 ? (fr?'Dans ':'In ') + dTo + (fr?'j':'d')
+                 : dLeft > 0 ? (fr?'En cours, encore ':'Active, ') + dLeft + (fr?'j':' days left')
+                 : (fr?'Aujourd\'hui':'Today');
+    const name = lang==='en' && ev.name_en ? ev.name_en : ev.name_fr || ev.name || '';
+    const tip  = lang==='en' && ev.tip_en  ? ev.tip_en  : ev.tip_fr  || ev.tip  || '';
+    const pct  = ev.impact_pct || 0;
+    alerts.push({type: pct >= 20 ? 'warn' : 'info',
+      title:'📅 ' + name + ' · ' + timing + ' · ' + (pct>=0?'+':'') + pct + '%',
+      sub: tip + (pct > 0 ? (fr?' · Activez modificateur "Événement"':' · Activate "Event" modifier') : '')});
   });
 
-  if (upcomingEvents.length && activeEvents.length === 0) {
-    const ne = upcomingEvents[0];
-    const daysTo = Math.ceil((new Date(ne.date_start) - todayDate) / 86400000);
-    const neName = lang === 'en' && ne.name_en ? ne.name_en : ne.name_fr || ne.name;
-    const neTip = lang === 'en' && ne.tip_en ? ne.tip_en : ne.tip_fr || ne.tip;
+  upcomingEv.forEach(ev => {
+    const dTo = Math.ceil((new Date(ev.date_start) - todayDate) / 86400000);
+    const name = lang==='en' && ev.name_en ? ev.name_en : ev.name_fr || ev.name || '';
     alerts.push({type:'info',
-      title: '📅 ' + (fr?'Bientôt (':'Coming up (') + daysTo + (fr?'j) — ':' days) — ') + neName + ' · +' + ne.impact_pct + '%',
-      sub: neTip});
-  }
+      title:'🗓 ' + (fr?'Dans ':'In ') + dTo + (fr?'j — ':' days — ') + name + ' · +' + (ev.impact_pct||0) + '%',
+      sub: lang==='en' && ev.tip_en ? ev.tip_en : ev.tip_fr || ev.tip || ''});
+  });
 
-  // ── 5. WEATHER-BASED ALERTS ──
+  // ── 5. WEATHER — contextual ──
   if (weatherTemp !== null) {
-    if (weatherTemp >= 38) alerts.push({type:'warn',
-      title:'🔥 ' + (fr?'Canicule':'Heatwave') + ' (' + weatherTemp + '°C)',
-      sub: fr?'Piscine essentielle — mentionnez-la dans tous vos messages. Préparez boissons fraîches.':'Pool essential — mention it in all messages. Prepare cold drinks.'});
-    else if (weatherTemp >= 30) alerts.push({type:'info',
-      title:'☀️ ' + (fr?'Très chaud':'Very hot') + ' (' + weatherTemp + '°C)',
-      sub: fr?'Piscine très demandée. Activités recommandées: tôt le matin ou après 17h.':'Pool highly sought after. Recommended activities: early morning or after 5pm.'});
-    else if (weatherTemp >= 18 && weatherTemp <= 28) alerts.push({type:'good',
-      title:'🌤 ' + (fr?'Météo idéale':'Perfect weather') + ' (' + weatherTemp + '°C)',
-      sub: fr?'Conditions parfaites — jardin, terrasse, piscine tous utilisables.':'Perfect conditions — garden, terrace, pool all usable.'});
+    const hasPool = true; // DarJ has a pool
+    if (weatherTemp >= 40) alerts.push({type:'warn',
+      title:'🔥 ' + (fr?'Canicule':'Extreme heat') + ' ' + weatherTemp + '°C',
+      sub: fr?'Activités indoor uniquement, piscine + boissons froides essentielles, ombrage.':'Indoor activities only, pool + cold drinks essential, shade required.'});
+    else if (weatherTemp >= 33) alerts.push({type:'info',
+      title:'☀️ ' + (fr?'Très chaud':'Very hot') + ' ' + weatherTemp + '°C',
+      sub: fr?'Activités tôt le matin ou après 17h. Piscine = argument clé.':'Activities early morning or after 5pm. Pool = key selling point.'});
+    else if (weatherTemp >= 18 && weatherTemp <= 30) alerts.push({type:'good',
+      title:'🌤 ' + (fr?'Météo idéale':'Ideal weather') + ' ' + weatherTemp + '°C',
+      sub: fr?'Jardin, terrasse et piscine — conditions parfaites pour les extérieurs.':'Garden, terrace and pool — perfect outdoor conditions.'});
+    else if (weatherTemp >= 12 && weatherTemp < 18) alerts.push({type:'info',
+      title:'🌥 ' + (fr?'Frais':'Cool') + ' ' + weatherTemp + '°C',
+      sub: fr?'Cheminée recommandée le soir. Prévoir plaids et boissons chaudes.':'Fireplace recommended in evenings. Offer blankets and hot drinks.'});
     else if (weatherTemp < 12) alerts.push({type:'info',
-      title:'🔥 ' + (fr?'Frais':'Cool') + ' (' + weatherTemp + '°C) — ' + (fr?'cheminée':'fireplace'),
-      sub: fr?'Mettez en avant la cheminée et le hammam dans vos messages.':'Highlight the fireplace and hammam in your messages.'});
+      title:'🧥 ' + (fr?'Froid':'Cold') + ' ' + weatherTemp + '°C + ' + (fr?'Cheminée & Hammam':'Fireplace & Hammam'),
+      sub: fr?'Activez la cheminée, proposez le hammam, adaptez les menus.':'Light the fireplace, offer hammam, adapt menus.'});
   }
 
-  // ── 6. COMPETITOR PRICING ALERT ──
+  // ── 6. COMPETITOR PRICING — lower threshold 15% ──
   try {
     const comps = loadSavedCompetitors ? loadSavedCompetitors() : [];
-    if (comps.length >= 2) {
+    if (comps.length >= 1) {
       const yourPrice = typeof getPrice === 'function' ? getPrice().pricePN : 0;
       const avgMarket = Math.round(comps.reduce((s,c) => s + c.price, 0) / comps.length);
-      
       if (yourPrice && avgMarket) {
-        const diff = yourPrice - avgMarket;
-        const pct = Math.round((diff / avgMarket) * 100);
-        
-        if (pct < -30) { // You're 30%+ BELOW market
-          alerts.push({type:'warn',
-            title:'💰 ' + (fr?'Vous êtes':'You are') + ' ' + Math.abs(pct) + '% ' + (fr?'sous le marché':'below market'),
-            sub: (fr?'Marché moyen: ':'Avg market: ') + avgMarket + '€ · ' + (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + (fr?'Vous pouvez augmenter vos prix.':'You can raise your prices.')});
-        } else if (pct > 30) { // You're 30%+ ABOVE market
-          alerts.push({type:'info',
-            title:'📊 ' + (fr?'Vous êtes':'You are') + ' ' + pct + '% ' + (fr?'au-dessus du marché':'above market'),
-            sub: (fr?'Marché moyen: ':'Avg market: ') + avgMarket + '€ · ' + (fr?'Vérifiez votre taux d\'occupation.':'Check your occupancy rate.')});
-        } else {
-          alerts.push({type:'good',
-            title:'📊 ' + (fr?'Prix aligné avec le marché':'Price aligned with market'),
-            sub: (fr?'Votre prix ':'Your price ') + yourPrice + '€ ' + (fr?'vs marché moyen':'vs avg market') + ' ' + avgMarket + '€ (' + (pct >= 0 ? '+' : '') + pct + '%)'});
-        }
+        const pct = Math.round(((yourPrice - avgMarket) / avgMarket) * 100);
+        if (pct < -25) alerts.push({type:'warn',
+          title:'💰 ' + Math.abs(pct) + '% ' + (fr?'sous le marché — opportunité':'below market — opportunity'),
+          sub: (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + (fr?'Marché: ':'Market: ') + avgMarket + '€ · ' + (fr?'Montez le prix ou activez l\'événement.':'Raise price or activate event modifier.')});
+        else if (pct > 25) alerts.push({type:'info',
+          title:'📈 ' + pct + '% ' + (fr?'au-dessus du marché':'above market'),
+          sub: (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + (fr?'Marché: ':'Market: ') + avgMarket + '€ · ' + (fr?'Vérifiez votre taux de remplissage.':'Check your occupancy rate.')});
+        else alerts.push({type:'good',
+          title:'📊 ' + (fr?'Prix compétitif':'Competitive price') + ' — ' + yourPrice + '€ (' + (pct>=0?'+':'') + pct + '% ' + (fr?'vs marché':'vs market') + ')',
+          sub: (fr?'Marché moyen: ':'Market average: ') + avgMarket + '€'});
       }
     }
   } catch(e) {}
 
-  // ── 7. WEEKEND / SEASONALITY ──
-  if (day === 5 || day === 6) alerts.push({type:'info',
-    title:'📅 ' + (fr?'Week-end — activez le modificateur':'Weekend — activate modifier'),
-    sub: fr?'Les week-ends à Marrakech justifient +50-100€/nuit.':'Marrakech weekends justify +50-100€/night.'});
+  // ── 7. OCCUPANCY & REVENUE INTELLIGENCE ──
+  const thisMonth = clients.filter(c => c.arrival && c.arrival.slice(0,7) === today.slice(0,7));
+  const monthRevenue = thisMonth.reduce((s,c) => s + (parseFloat(c.price)||0), 0);
+  const occupiedDays = thisMonth.reduce((s,c) => s + Math.max(0,Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000)), 0);
+  const daysInMonth = new Date(now.getFullYear(), month, 0).getDate();
+  const occupancyRate = Math.round(occupiedDays / daysInMonth * 100);
 
-  if (month >= 4 && month <= 6 && !weekEvents.length) alerts.push({type:'info',
-    title:'🏢 ' + (fr?'Saison creuse — offre long séjour':'Low season — offer long stay'),
-    sub: fr?'Ciblez les digital nomads: 28 nuits avec réduction -20%.':'Target digital nomads: 28 nights with -20% discount.'});
+  if (occupancyRate < 30 && month >= 3 && month <= 11) alerts.push({type:'warn',
+    title:'📉 ' + (fr?'Taux d\'occupation faible':'Low occupancy') + ' — ' + occupancyRate + '% ' + (fr?'ce mois':'this month'),
+    sub: fr?'Activez la réduction last-minute (-15%) et ciblez les réservations directes.':'Activate last-minute discount (-15%) and target direct bookings.'});
+  else if (occupancyRate >= 70) alerts.push({type:'good',
+    title:'🎯 ' + occupancyRate + '% ' + (fr?'d\'occupation ce mois':'occupancy this month'),
+    sub: (fr?'Revenu brut: ':'Gross revenue: ') + monthRevenue.toLocaleString('fr') + '€ · ' + (fr?'Excellent mois !':'Excellent month!')});
 
-  // ── 8. QUICK WIN TIP ──
-  const tips = fr ? [
-    {title:'⚡ Répondez dans l\'heure sur Airbnb', sub:'Les hôtes < 1h de réponse ont 40% de réservations en plus.'},
-    {title:'📸 Mettez à jour vos photos Airbnb', sub:'Les listings avec photos récentes (< 1 an) performent 25% mieux.'},
-    {title:'💬 Demandez un avis à votre dernier client', sub:'Chaque avis 5 étoiles augmente votre classement Airbnb.'},
-    {title:'🔗 Partagez votre lien Airbnb sur Instagram', sub:'Villa DarJ a un compte Instagram — boostez la visibilité.'},
-  ] : [
-    {title:'⚡ Reply within 1 hour on Airbnb', sub:'Hosts with <1h response time get 40% more bookings.'},
-    {title:'📸 Update your Airbnb photos', sub:'Listings with recent photos (<1 year) perform 25% better.'},
-    {title:'💬 Ask your last guest for a review', sub:'Every 5-star review boosts your Airbnb ranking.'},
-    {title:'🔗 Share your Airbnb link on Instagram', sub:'Villa DarJ has an Instagram — boost visibility.'},
-  ];
-  const tip = tips[now.getDate() % tips.length]; // rotates daily
-  alerts.push({type:'info', title: tip.title, sub: tip.sub});
+  // Weekend pricing opportunity
+  if ((day === 3 || day === 4) && !inHouse) { // Wed/Thu — upcoming weekend gap
+    alerts.push({type:'info',
+      title:'📅 ' + (fr?'Week-end approche — pas de réservation':'Weekend approaching — no booking'),
+      sub: fr?'Activez le tarif week-end (+50€) ou proposez une réduction last-minute.':'Activate weekend rate (+50€) or offer last-minute discount.'});
+  }
+
+  // ── 8. SMART CONTEXTUAL TIPS — based on actual situation ──
+  const allTips = [];
+  
+  // Only add tips relevant to current context
+  if (clients.length === 0) allTips.push({type:'info',
+    title:'🚀 ' + (fr?'Commencez par ajouter vos réservations':'Start by adding your bookings'),
+    sub: fr?'Collez un email Airbnb dans Analyser un message — 1 clic suffit.':'Paste an Airbnb email in Analyse a message — 1 click is all it takes.'});
+  
+  const lastCheckout = clients.filter(c => c.departure && c.departure < today).sort((a,b)=>b.departure.localeCompare(a.departure))[0];
+  if (lastCheckout && daysFrom(lastCheckout.departure) >= -5 && daysFrom(lastCheckout.departure) < 0) {
+    allTips.push({type:'info',
+      title:'⭐ ' + (fr?'Demandez un avis à ':'Ask for review from ') + lastCheckout.name,
+      sub: fr?'Départ il y a ' + Math.abs(daysFrom(lastCheckout.departure)) + 'j — c\'est le bon moment.':'Left ' + Math.abs(daysFrom(lastCheckout.departure)) + 'd ago — perfect timing.'});
+  }
+
+  // Add 1 rotating tip only if < 3 alerts already
+  if (alerts.length < 3) {
+    const rotateTips = fr ? [
+      {title:'⚡ ' + (fr?'Répondez dans l\'heure':'Reply within 1 hour'), sub:'Les hôtes rapides ont 40% de réservations en plus.'},
+      {title:'📸 ' + (fr?'Mettez à jour vos photos':'Update your photos'), sub:'Photos récentes = +25% de performance sur Airbnb.'},
+      {title:'💰 ' + (fr?'Vérifiez vos prix pour les 30 prochains jours':'Check prices for next 30 days'), sub:'Ajustez manuellement les périodes à fort potentiel.'},
+    ] : [
+      {title:'⚡ Reply within 1 hour', sub:'Fast hosts get 40% more bookings.'},
+      {title:'📸 Update your listing photos', sub:'Recent photos = +25% Airbnb performance.'},
+      {title:'💰 Check prices for next 30 days', sub:'Manually adjust high-potential periods.'},
+    ];
+    allTips.push(rotateTips[now.getDate() % rotateTips.length]);
+  }
+
+  allTips.forEach(t => alerts.push({type:'info', title:t.title, sub:t.sub}));
 
   if (!alerts.length) alerts.push({type:'good',
     title:'✅ ' + (fr?'Tout est en ordre':'All clear'),
-    sub: fr?'Aucune alerte active. Bonne journée !':'No active alerts. Have a great day!'});
+    sub: fr?'Aucune action urgente. Bonne journée !':'No urgent actions. Have a great day!'});
 
   // ── RENDER ──
   const alertsHtml = alerts.map(a => `
@@ -2456,48 +2534,33 @@ async function generateAlerts(weatherTemp) {
   const elV = document.getElementById('alertsContent');
   if (elV) elV.innerHTML = alertsHtml;
 
-  // ── Update Today tab badge ──
-  const hasUrgent = alerts.some(a => a.type === 'urgent' || (a.type === 'warn' && a.title && (a.title.includes('Départ') || a.title.includes('Arrivée') || a.title.includes('Checkout') || a.title.includes('Arrival'))));
+  // ── Today tab badge ──
+  const hasUrgent = alerts.some(a => a.type === 'urgent');
   const todayBtn = document.getElementById('nb-today');
   if (todayBtn) {
     const existingBadge = todayBtn.querySelector('.nav-badge');
-    if (hasUrgent && !existingBadge) {
-      todayBtn.insertAdjacentHTML('beforeend', '<span class="nav-badge"></span>');
-    } else if (!hasUrgent && existingBadge) {
-      existingBadge.remove();
-    }
+    if (hasUrgent && !existingBadge) todayBtn.insertAdjacentHTML('beforeend', '<span class="nav-badge"></span>');
+    else if (!hasUrgent && existingBadge) existingBadge.remove();
   }
 
-  // ── Also populate Today alerts strip directly ──
+  // ── Populate Today alerts strip directly ──
   const todayAlertsEl = document.getElementById('todayAlerts');
   const todayAlertsContent = document.getElementById('todayAlertsContent');
-  if (todayAlertsEl && todayAlertsContent && alerts.length) {
-    const top3 = alerts.filter(a => a.type === 'urgent' || a.type === 'warn' || a.type === 'good').slice(0,3);
-    if (top3.length) {
-      todayAlertsEl.style.display = 'block';
-      todayAlertsContent.innerHTML = '<div style="display:flex;flex-direction:column;gap:5px">' +
-        top3.map(a => {
-          const bgColor = a.type==='urgent'?'#FDE8E8':a.type==='warn'?'#FAEEDA':'#EAF3DE';
-          const bdColor = a.type==='urgent'?'var(--red)':a.type==='warn'?'#BA7517':'#3B6D11';
-          const icon = a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':'✅';
-          const title = a.title || '';
-          return '<div style="display:flex;align-items:center;gap:7px;background:' + bgColor + ';border-left:3px solid ' + bdColor + ';border-radius:0 6px 6px 0;padding:7px 10px;font-size:12px;font-weight:500;color:var(--ink)">' +
-            '<span style="flex-shrink:0">' + icon + '</span>' +
-            '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title.slice(0,60) + (title.length>60?'…':'') + '</span>' +
-            '</div>';
-        }).join('') + '</div>';
-    }
+  if (todayAlertsEl && todayAlertsContent) {
+    const showAlerts = alerts.slice(0,3);
+    todayAlertsEl.style.display = 'block';
+    todayAlertsContent.innerHTML = '<div style="display:flex;flex-direction:column;gap:5px">' +
+      showAlerts.map(a => {
+        const bgColor = a.type==='urgent'?'#FDE8E8':a.type==='warn'?'#FAEEDA':a.type==='good'?'#EAF3DE':'#E6F1FB';
+        const bdColor = a.type==='urgent'?'var(--red)':a.type==='warn'?'#BA7517':a.type==='good'?'#3B6D11':'#378ADD';
+        return '<div style="display:flex;align-items:center;gap:7px;background:' + bgColor + ';border-left:3px solid ' + bdColor + ';border-radius:0 6px 6px 0;padding:7px 10px;font-size:12px;font-weight:500;color:var(--ink)">' +
+          '<span>' + (a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡') + '</span>' +
+          '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (a.title||'').slice(0,60) + '</span>' +
+          '</div>';
+      }).join('') + '</div>';
   }
 
   setTimeout(renderTodayQV, 50);
-  
-  // Update Today tab badge
-  const urgentCount = alerts.filter(a => a.type === 'urgent' || (a.type === 'warn' && a.title && a.title.includes('Arrivée'))).length;
-  const badge = document.getElementById('todayBadge');
-  if (badge) {
-    badge.style.display = urgentCount > 0 ? 'inline-block' : 'none';
-    badge.textContent = urgentCount > 0 ? urgentCount : '';
-  }
 }
 
 async function loadWeather() {
@@ -2801,13 +2864,14 @@ function loadHomeData() {
   renderCompetitors();
   renderScenarios(getPrice());
   renderMarketBand();
-  // Load fresh events then weather then alerts
-  loadMarrakechEvents().then(() => {
+  // Generate alerts immediately with what we have
+  generateAlerts(null);
+  // Then enhance with live data
+  loadMarrakechEvents().catch(() => {}).finally(() => {
     loadWeather().then(() => {
       const wText = document.getElementById('factorWeather')?.textContent || '';
       const match = wText.match(/(\d+)/);
-      const wTemp = match ? parseInt(match[1]) : null;
-      generateAlerts(wTemp);
+      generateAlerts(match ? parseInt(match[1]) : null);
     }).catch(() => generateAlerts(null));
   });
 }
@@ -2927,59 +2991,88 @@ function renderTodayQV() {
     </div>`;
   }
 
-  // ── WEATHER STRIP ──
-  let weatherHtml = '';
-  const weatherEl = document.getElementById('weatherContent');
-  if (weatherEl && weatherEl.textContent.trim() && !weatherEl.querySelector('.loading')) {
-    const wTemp = document.getElementById('factorWeather')?.textContent || '';
-    if (wTemp && wTemp !== '—') {
-      weatherHtml = `<div style="background:var(--card);border-radius:10px;padding:9px 14px;margin-bottom:10px;box-shadow:var(--shadow);display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap">
-        <span style="font-size:16px">🌤</span>
-        <span style="color:var(--ink)">${wTemp}</span>
-        <span style="color:var(--muted);padding:0 4px">·</span>
-        <span style="color:var(--muted)">${fr?'Marrakech aujourd\'hui':'Marrakech today'}</span>
-      </div>`;
-    }
-  }
-  html += weatherHtml;
+  // ── VILLA STATUS DASHBOARD ──
+  const wTempRaw = document.getElementById('factorWeather')?.textContent || '';
+  const wTempVal = wTempRaw.match(/\d+/)?.[0];
+  const wDesc = document.getElementById('weatherContent')?.querySelector?.('[class*="desc"]')?.textContent || '';
 
-  // ── PRICE + ALERTS ROW ──
-  // Get price for tonight
-  let priceHtml = '';
-  if (typeof getPrice === 'function') {
-    try {
-      const p = getPrice();
-      priceHtml = `
-      <div class="qv-price-box">
-        <div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:4px">${fr?'💰 CE SOIR':'💰 TONIGHT'}</div>
-        <div class="qv-price-big">${p.pricePN}€</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${fr?'/ nuit':'/ night'}</div>
-        <button onclick="navigator.clipboard.writeText('${p.pricePN}€').then(()=>toast('📋 ${p.pricePN}€ copié'))" style="margin-top:10px;width:100%;background:var(--gold);color:#fff;border:none;border-radius:7px;padding:8px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">${fr?'📋 Copier':'📋 Copy'}</button>
-      </div>`;
-    } catch(e) {}
-  }
+  // Revenue this month
+  const thisMonthStr = today.slice(0,7);
+  const monthClients = clients.filter(c => c.arrival && c.arrival.slice(0,7) === thisMonthStr);
+  const monthRev = monthClients.reduce((s,c) => s + (parseFloat(c.price)||0), 0);
+  const monthNights = monthClients.reduce((s,c) => s + Math.max(0,Math.ceil((new Date(c.departure||today)-new Date(c.arrival))/86400000)), 0);
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  const occPct = Math.round(monthNights / daysInMonth * 100);
 
-  // Get top alerts (urgent + warn only, max 3)
-  const alertsEl = document.getElementById('alertsContent');
-  let alertsHtml = '';
-  if (alertsEl) {
-    const urgentWarn = alertsEl.querySelectorAll('.alert-hm.urgent, .alert-hm.warn, .alert-hm.good');
-    const top = Array.from(urgentWarn).slice(0,3);
-    if (top.length) {
-      alertsHtml = `<div class="qv-alerts-box">
-        <div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">${fr?'💡 ALERTES':'💡 ALERTS'}</div>
-        ${top.map(a => {
-          const cls = a.className.replace('alert-hm ','');
-          const icon = cls==='urgent'?'🚨':cls==='warn'?'⚠️':'✅';
-          return `<div class="qv-alert ${cls}">${icon} ${a.textContent.trim().slice(0,60)}${a.textContent.length>60?'…':''}</div>`;
-        }).join('')}
-      </div>`;
-    }
-  }
+  // Next 30 days revenue pipeline
+  const in30 = dateInDays(30);
+  const pipeline = clients.filter(c => c.arrival && c.arrival > today && c.arrival <= in30)
+    .reduce((s,c) => s + (parseFloat(c.price)||0), 0);
 
-  if (priceHtml || alertsHtml) {
-    html += `<div class="qv-row2">${priceHtml}${alertsHtml || '<div></div>'}</div>`;
-  }
+  // Tonight price
+  let tonightPrice = '—';
+  let tonightNet = '—';
+  try {
+    const p = getPrice();
+    tonightPrice = p.pricePN + '€';
+    tonightNet = Math.round(p.pricePN * 0.845) + '€';
+  } catch(e) {}
+
+  // Competitors avg
+  let mktAvg = '—';
+  try {
+    const comps = loadSavedCompetitors ? loadSavedCompetitors() : [];
+    if (comps.length) mktAvg = Math.round(comps.reduce((s,c)=>s+c.price,0)/comps.length) + '€';
+  } catch(e) {}
+
+  html += `
+  <div style="background:var(--card);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:12px">
+
+    <!-- Header row: weather + tonight price -->
+    <div style="background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="display:flex;align-items:center;gap:8px">
+        ${wTempVal ? `<span style="font-size:18px">🌤</span><span style="color:#fff;font-size:14px;font-weight:500">${wTempVal}°C</span><span style="color:rgba(255,255,255,.4);padding:0 4px">·</span>` : ''}
+        <span style="color:rgba(255,255,255,.6);font-size:12px">${fr?'Marrakech':'Marrakech'}</span>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:9px;color:rgba(255,255,255,.4);letter-spacing:2px;margin-bottom:1px">${fr?'PRIX CE SOIR':'TONIGHT'}</div>
+        <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:300;color:var(--gold);line-height:1">${tonightPrice}</div>
+      </div>
+    </div>
+
+    <!-- Stats grid -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--border)">
+      <div style="padding:10px 8px;text-align:center;border-right:1px solid var(--border)">
+        <div style="font-family:'Fraunces',serif;font-size:17px;color:var(--ink)">${occPct}%</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'OCCUP.':'OCCUP.'}</div>
+      </div>
+      <div style="padding:10px 8px;text-align:center;border-right:1px solid var(--border)">
+        <div style="font-family:'Fraunces',serif;font-size:17px;color:var(--ink)">${monthRev ? Math.round(monthRev/1000)+'k€' : '—'}</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'CE MOIS':'THIS MO.'}</div>
+      </div>
+      <div style="padding:10px 8px;text-align:center;border-right:1px solid var(--border)">
+        <div style="font-family:'Fraunces',serif;font-size:17px;color:${pipeline>0?'var(--green)':'var(--muted)'}">${pipeline ? Math.round(pipeline/1000)+'k€' : '—'}</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'PIPELINE':'PIPELINE'}</div>
+      </div>
+      <div style="padding:10px 8px;text-align:center">
+        <div style="font-family:'Fraunces',serif;font-size:17px;color:var(--ink)">${mktAvg}</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'MARCHÉ':'MARKET'}</div>
+      </div>
+    </div>
+
+    <!-- Quick actions row -->
+    <div style="display:flex;gap:0;border-top:0">
+      <button onclick="navigator.clipboard.writeText('${tonightPrice}').then(()=>toast('📋 ${tonightPrice} copié'))" style="flex:1;padding:10px 6px;background:none;border:none;border-right:1px solid var(--border);cursor:pointer;font-size:11px;font-weight:600;color:var(--gold);font-family:'DM Sans',sans-serif">
+        📋 ${fr?'Copier prix':'Copy price'}
+      </button>
+      <button onclick="goTab('home')" style="flex:1;padding:10px 6px;background:none;border:none;border-right:1px solid var(--border);cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);font-family:'DM Sans',sans-serif">
+        📊 ${fr?'Voir marché':'Market'}
+      </button>
+      <button onclick="goTab('clients')" style="flex:1;padding:10px 6px;background:none;border:none;cursor:pointer;font-size:11px;font-weight:600;color:var(--muted);font-family:'DM Sans',sans-serif">
+        👥 ${fr?'Clients':'Guests'}
+      </button>
+    </div>
+  </div>`;
 
   el.innerHTML = html;
 
@@ -3270,12 +3363,17 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 
 function showInstallBanner() {
-  if (document.getElementById('installBanner')) return;
-  const b = document.createElement('div');
-  b.id = 'installBanner';
-  b.style.cssText = 'position:fixed;bottom:80px;left:16px;right:16px;background:var(--green3);color:#fff;padding:12px 16px;border-radius:14px;font-size:13px;display:flex;align-items:center;gap:10px;z-index:998;box-shadow:0 8px 32px rgba(0,0,0,.4)';
-  b.innerHTML = '<span style="font-size:22px">📲</span><div style="flex:1"><b>' + (lang==='fr'?'Installer Stafflo':'Install Stafflo') + '</b></div><button onclick="installPWA()" style="background:var(--gold);color:var(--green3);border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer">' + (lang==='fr'?'Installer':'Install') + '</button><button onclick="this.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:18px;cursor:pointer">✕</button>';
-  document.body.appendChild(b);
+  // Small install button in header instead of big banner
+  if (document.getElementById('installBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'installBtn';
+  btn.onclick = installPWA;
+  btn.title = lang==='fr' ? 'Installer Stafflo sur votre écran' : 'Install Stafflo on your screen';
+  btn.style.cssText = 'background:none;border:1px solid rgba(201,150,58,.4);color:var(--gold);padding:4px 10px;font-size:10px;font-weight:600;letter-spacing:1px;cursor:pointer;font-family:DM Sans,sans-serif;border-radius:4px;white-space:nowrap';
+  btn.textContent = '📲 ' + (lang==='fr' ? 'Installer' : 'Install');
+  // Insert in header-right before the settings button
+  const headerRight = document.querySelector('.header-right');
+  if (headerRight) headerRight.insertBefore(btn, headerRight.firstChild);
 }
 
 async function installPWA() {
@@ -3346,8 +3444,14 @@ async function loadMorningBrief(forceRefresh = false) {
 
   // Show loading
   briefEl.style.display = 'block';
+  // Update time
+  const briefTimeEl = document.getElementById('briefTime');
+  if (briefTimeEl) {
+    const now2 = new Date();
+    briefTimeEl.textContent = now2.toLocaleTimeString(fr?'fr-FR':'en-GB',{hour:'2-digit',minute:'2-digit'});
+  }
   cardsEl.innerHTML = '<div class="brief-loading"><div class="brief-pulse"></div><span>' +
-    (fr ? "L'IA analyse votre villa..." : "AI is analysing your villa...") + '</span></div>';
+    (fr ? "Analyse en cours..." : "Analysing...") + '</span></div>';
 
   // Build context from all available data
   const today = new Date().toISOString().slice(0,10);
