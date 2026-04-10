@@ -1099,7 +1099,7 @@ async function analyze() {
     '- Staff names: ' + staffNames + '.',
     '- GPS/address: ' + gpsInfo + '.',
     '- Pricing guide: April=750, Jul-Aug=850, Dec=950, Xmas/NY=1500, weekends+50-100, long stay(28n)-20%.',
-    '- Alerts must be specific and actionable.',
+    '- Alerts must be specific and actionable. NEVER mention COVID, pandemic, or health protocols — they are outdated.',
     '- Always include ALL 6 message types even with missing info.'
   ].join('\n');
 
@@ -1272,7 +1272,7 @@ function renderResult(json) {
   document.getElementById('resStatus').textContent = status;
 
   // Stats
-  document.getElementById('resArrival').textContent = g.arrival ? new Date(g.arrival).toLocaleDateString(fr?'fr-FR':'en-GB',{day:'numeric',month:'short'}) : '—';
+  document.getElementById('resArrival').textContent = g.arrival ? fmtDate(g.arrival, true) : '—';
   document.getElementById('resNights').textContent = g.nights || '—';
   document.getElementById('resGuests').textContent = g.guests || '—';
   const net = g.price ? Math.round(g.price * (1 - (g.commission||3.6)/100)) : null;
@@ -1485,9 +1485,12 @@ function initials(name) {
   return (name||'?').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
 }
 
-function fmtDate(str) {
+function fmtDate(str, withDay) {
   if (!str) return '—';
-  return new Date(str).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB',{day:'numeric',month:'short'});
+  const opts = withDay
+    ? {weekday:'short', day:'numeric', month:'short'}
+    : {day:'numeric', month:'short'};
+  return new Date(str + 'T12:00:00').toLocaleDateString(lang==='fr'?'fr-FR':'en-GB', opts);
 }
 
 function setFilter(f, btn) {
@@ -1583,7 +1586,7 @@ function renderClients() {
         <span class="cc-badge ${badgeClass}">${badgeText}</span>
       </div>
       <div class="cc-grid">
-        <div class="cc-item"><label>${fr?'ARRIVÉE':'ARRIVAL'}</label><span>${fmtDate(c.arrival)}</span></div>
+        <div class="cc-item"><label>${fr?'ARRIVÉE':'ARRIVAL'}</label><span>${fmtDate(c.arrival, true)}</span></div>
         <div class="cc-item"><label>${fr?'NUITS':'NIGHTS'}</label><span>${n||'—'}</span></div>
         <div class="cc-item"><label>${fr?'PERS.':'GUESTS'}</label><span>${c.guests||'—'}</span></div>
         ${net ? `<div class="cc-item"><label>${fr?'NET VOUS':'YOUR NET'}</label><span class="net">${net.toLocaleString('fr')}€</span></div>` : ''}
@@ -1604,18 +1607,35 @@ function openDetail(id) {
 
   document.getElementById('detailName').textContent = c.name;
 
+  // Smart payment label
+  const payLabel = c.payStatus || (c.source === 'Airbnb' ? 'Airbnb' : c.source === 'Direct' || c.source === 'WhatsApp' ? 'Direct' : fr?'En attente':'Pending');
+  
+  // Guests breakdown (adults/teens/children from notes)
+  let guestsDisplay = c.guests || '—';
+  const notesLower = (c.notes||'').toLowerCase();
+  const adultsMatch = notesLower.match(/(\d+)\s*(adults?|adultes?)/);
+  const kidsMatch = notesLower.match(/(\d+)\s*(kids?|children|enfants?)/);
+  const teensMatch = notesLower.match(/(\d+)\s*(teens?|ados?|adolescents?)/);
+  if (adultsMatch || kidsMatch || teensMatch) {
+    const parts = [];
+    if (adultsMatch) parts.push(adultsMatch[1] + (fr?' adultes':' adults'));
+    if (teensMatch) parts.push(teensMatch[1] + (fr?' ados':' teens'));
+    if (kidsMatch) parts.push(kidsMatch[1] + (fr?' enfants':' children'));
+    guestsDisplay = (c.guests||'') + ' (' + parts.join(' + ') + ')';
+  }
+
   const rows = [
     [fr?'Nationalité':'Nationality', c.nat],
-    [fr?'Arrivée':'Arrival', fmtDate(c.arrival)],
-    [fr?'Départ':'Departure', fmtDate(c.departure)],
+    [fr?'Arrivée':'Arrival', fmtDate(c.arrival, true)],
+    [fr?'Départ':'Departure', fmtDate(c.departure, true)],
     [fr?'Nuits':'Nights', n || '—'],
-    [fr?'Personnes':'Guests', c.guests],
+    [fr?'Personnes':'Guests', guestsDisplay],
     ['Source', c.source],
     [fr?'Prix brut':'Gross', c.price ? c.price.toLocaleString('fr')+'€' : '—'],
     [fr?'Commission':'Commission', c.commission ? c.commission+'%' : '—'],
     [fr?'Net vous':'Your net', net ? `<strong style="color:var(--green)">${net.toLocaleString('fr')}€</strong>` : '—'],
     [fr?'Net / nuit':'Net / night', (net && n) ? Math.round(net/n).toLocaleString('fr')+'€' : '—'],
-    [fr?'Paiement':'Payment', c.payStatus || (fr?'En attente':'Pending')],
+    [fr?'Paiement':'Payment', payLabel],
     c.notes ? [fr?'Notes':'Notes', c.notes] : null
   ].filter(Boolean).filter(r => r[1]);
 
@@ -1635,19 +1655,23 @@ function openDetail(id) {
       <span style="background:${badgeColor};color:${s==='current'?'#0F2318':'#fff'};font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap">${badgeText}</span>
     </div>
 
-    <!-- Key stats row -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
-      <div style="background:var(--paper);border-radius:10px;padding:10px;text-align:center;border:1px solid var(--border)">
-        <div style="font-size:18px;font-weight:700;color:var(--ink)">${fmtDate(c.arrival)}</div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Arrivée':'Arrival'}</div>
+    <!-- Key stats row — 4 stats -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px">
+      <div style="background:var(--paper);border-radius:10px;padding:8px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:700;color:var(--ink)">${fmtDate(c.arrival, true)}</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Arrivée':'Arrival'}</div>
       </div>
-      <div style="background:var(--paper);border-radius:10px;padding:10px;text-align:center;border:1px solid var(--border)">
-        <div style="font-size:18px;font-weight:700;color:var(--ink)">${n||'—'}<span style="font-size:12px;font-weight:400"> ${fr?'nuits':'nights'}</span></div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Durée':'Duration'}</div>
+      <div style="background:var(--paper);border-radius:10px;padding:8px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:700;color:var(--ink)">${fmtDate(c.departure, true)}</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Départ':'Departure'}</div>
       </div>
-      <div style="background:var(--paper);border-radius:10px;padding:10px;text-align:center;border:1px solid var(--border)">
-        <div style="font-size:18px;font-weight:700;color:var(--ink)">${c.guests||'—'}</div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Pers.':'Guests'}</div>
+      <div style="background:var(--paper);border-radius:10px;padding:8px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:15px;font-weight:700;color:var(--ink)">${n||'—'}<span style="font-size:10px;font-weight:400">n</span></div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Nuits':'Nights'}</div>
+      </div>
+      <div style="background:var(--paper);border-radius:10px;padding:8px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:15px;font-weight:700;color:var(--ink)">${c.guests||'—'}</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Pers.':'Guests'}</div>
       </div>
     </div>
 
@@ -1722,7 +1746,7 @@ function openDetail(id) {
 
   document.getElementById('detailActions').innerHTML = `
     <button class="btn-action primary" onclick="closeDetail();openForm('${c.id}')" style="flex:1">${fr?'✏️ Modifier':'✏️ Edit'}</button>
-    ${c.phone ? `<a class="btn-action wa" href="https://wa.me/${c.phone.replace(/[\s\-+]/g,'')}" target="_blank" style="flex:1">💬 WA</a>` : ''}
+    ${c.phone ? `<a class="btn-action wa" href="https://wa.me/${c.phone.replace(/[\s\-+]/g,'')}${(window._clientMessages&&window._clientMessages[c.id]&&window._clientMessages[c.id].airbnb)?'?text='+encodeURIComponent(window._clientMessages[c.id].welcome||window._clientMessages[c.id].airbnb||''):''}" target="_blank" style="flex:1">💬 ${fr?'WhatsApp':'WhatsApp'}</a>` : ''}
     <button class="btn-action" onclick="deleteClient('${c.id}')" style="flex:1;color:var(--red);border-color:var(--red)">${fr?'🗑 Suppr.':'🗑 Delete'}</button>
   `;
 
@@ -1741,6 +1765,17 @@ function closeDetail() {
 function openForm(id) {
   const fr = lang === 'fr';
   document.getElementById('formTitle').textContent = id ? (fr?'Modifier client':'Edit guest') : (fr?'Nouveau client':'New guest');
+  // Pre-load existing messages for edit
+  if (id) {
+    const existing = clients.find(c => c.id === id);
+    if (existing && existing.messages) {
+      window._formMessages = existing.messages;
+    } else {
+      window._formMessages = null;
+    }
+  } else {
+    window._formMessages = null;
+  }
   document.getElementById('fId').value = id || '';
 
   if (id) {
@@ -1999,6 +2034,12 @@ function toast(msg) {
 document.addEventListener('DOMContentLoaded', () => {
   applyLang();
   goTab('today'); // Always start on Today tab
+  // Always sync from Supabase on open (ensures data loads on any browser/device)
+  loadFromSupabase().then(() => {
+    renderTodayQV();
+    generateAlerts(null);
+    setTimeout(() => loadMorningBrief(), 1200);
+  });
   // Hide API key section if proxy is active
   if (STAFFLO_PROXY) {
     const apiSec = document.getElementById('apiKeySection');
@@ -2379,6 +2420,34 @@ async function generateAlerts(weatherTemp) {
       title:'📭 ' + (fr?'Aucune réservation dans les 7 prochains jours':'No bookings in next 7 days'),
       sub: fr?'Activez la promotion last-minute (-15%) pour remplir le calendrier.':'Activate last-minute discount (-15%) to fill the calendar.'});
   }
+
+  // Note-based smart alerts for upcoming/in-house guests
+  const noteGuests = clients.filter(c => c.notes && c.arrival && daysFrom(c.arrival) >= -1 && daysFrom(c.arrival) <= 5);
+  noteGuests.forEach(cl => {
+    const n2 = (cl.notes||'').toLowerCase();
+    const dTo = daysFrom(cl.arrival);
+    const timing = dTo <= 0 ? (fr?'En cours':'Current') : (fr?'Dans ':'In ') + dTo + (fr?'j':'d');
+    // Birthday / celebration
+    if (n2.includes('birthday') || n2.includes('anniversaire') || n2.includes('fête') || n2.includes('fete')) {
+      alerts.push({type:'warn', title:'🎂 ' + cl.name + ' — ' + (fr?'Célébration · ':'Celebration · ') + timing,
+        sub: cl.notes.slice(0,100) + (fr?' · Décorations, gâteau, ambiance spéciale requise':' · Decorations, cake, special setup required')});
+    }
+    // Children / kids
+    if (n2.includes('kids') || n2.includes('children') || n2.includes('enfants')) {
+      alerts.push({type:'info', title:'👶 ' + cl.name + ' — ' + (fr?'Enfants · ':'Children · ') + timing,
+        sub: cl.notes.slice(0,100) + (fr?' · Adaptez la villa (sécurité piscine, lits enfants)':' · Adapt villa (pool safety, kids beds)')});
+    }
+    // Special meals
+    if (n2.includes('vegan') || n2.includes('vegetar') || n2.includes('halal') || n2.includes('allerg') || n2.includes('couscous') || n2.includes('moroccan')) {
+      alerts.push({type:'info', title:'🍽 ' + cl.name + ' — ' + (fr?'Préférences repas · ':'Meal preferences · ') + timing,
+        sub: cl.notes.slice(0,100) + (fr?' · Briefez Faiza':' · Brief Faiza')});
+    }
+    // Transfer / cars
+    if (n2.includes('transfer') || n2.includes('driver') || n2.includes('car') || n2.includes('voiture') || n2.includes('taxi')) {
+      alerts.push({type:'info', title:'🚕 ' + cl.name + ' — ' + (fr?'Transport · ':'Transfer · ') + timing,
+        sub: cl.notes.slice(0,100)});
+    }
+  });
 
   // Missing passport alert — for clients arriving in < 5 days with no passport note
   const needPassport = clients.filter(c => {
@@ -3030,7 +3099,7 @@ function renderTodayQV() {
     html += `
     <div class="qv-inhouse">
       <div class="qv-inhouse-name">${inHouse.name} ${inHouse.nat||''}</div>
-      <div class="qv-inhouse-sub">${dLeftLabel} · ${fr?'Arrivé le':'Arrived'} ${fmtDate(inHouse.arrival)}</div>
+      <div class="qv-inhouse-sub">${dLeftLabel} · ${fr?'Arrivé le':'Arrived'} ${fmtDate(inHouse.arrival, true)}</div>
       <div class="qv-inhouse-grid">
         <div class="qv-stat">
           <div class="qv-stat-val">${inHouse.guests||'—'}</div>
@@ -3063,7 +3132,8 @@ function renderTodayQV() {
       <div class="qv-upcoming-name">⏳ ${fr?'Prochain séjour':'Next stay'} — ${nextUp.name}</div>
       <div class="qv-upcoming-row">
         <div class="qv-upcoming-item"><label>${fr?'DANS':'IN'}</label><span style="color:var(--gold)">${dTo}j</span></div>
-        <div class="qv-upcoming-item"><label>${fr?'ARRIVÉE':'ARRIVAL'}</label><span>${fmtDate(nextUp.arrival)}</span></div>
+        <div class="qv-upcoming-item"><label>${fr?'ARRIVÉE':'ARRIVAL'}</label><span>${fmtDate(nextUp.arrival, true)}</span></div>
+        <div class="qv-upcoming-item"><label>${fr?'DÉPART':'DEPARTURE'}</label><span>${fmtDate(nextUp.departure, true)}</span></div>
         <div class="qv-upcoming-item"><label>${fr?'NUITS':'NIGHTS'}</label><span>${n||'—'}</span></div>
         <div class="qv-upcoming-item"><label>${fr?'PERS.':'GUESTS'}</label><span>${nextUp.guests||'—'}</span></div>
       </div>
