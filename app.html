@@ -1087,39 +1087,23 @@ async function analyze() {
     + '\n  }'
     + '\n}';
 
+  // Compact system prompt — max ~800 tokens
   const systemPrompt = [
-    'You are the intelligent operations assistant for ' + villaName + ' in ' + cityName + ', managed by ' + ownerName + '.',
-    'Staff: ' + staffNames + '. GPS: ' + gpsInfo + '. Today: ' + today + '.',
+    'Villa ops assistant for ' + villaName + ', ' + cityName + '. Owner: ' + ownerName + '. Staff: ' + staffNames + '. Today: ' + today + '.',
     inHouseLine,
     clientContext,
     '',
-    'The user will paste ANY kind of raw message — Airbnb booking email, WhatsApp conversation (single or multi-message), forwarded texts, mixed content from multiple sources, or a combination of all of the above.',
-    'Your job: extract ALL useful operational information and return ONLY a valid JSON object.',
-    '',
-    'EXTRACTION RULES (read carefully):',
-    '- Parse the ENTIRE text even if it is long, messy, or multilingual (FR/EN).',
-    '- Extract from Airbnb emails: name, dates, price, commission, confirmation code, guest count.',
-    '- Extract from WhatsApp: arrival time, meal preferences, special requests, children ages, phone numbers, payment confirmations.',
-    '- Extract from any source: allergies, celebrations, transport needs, specific requests to staff.',
-    '- guests field: use the most specific count found (e.g. "5 adults + 3 children" beats "8 guests").',
-    '- notes field: compile ALL key operational details into one clear sentence — meals scheduled, children ages, celebrations, arrival time, transport, payments received.',
-    '- If the same client appears in multiple sources (Airbnb + WhatsApp), merge all info into one profile.',
-    '- NEVER mention COVID, pandemic, or health protocols.',
-    '- Alerts: generate 2-3 specific, actionable alerts based on what you found (e.g. passport not yet received, birthday celebration needs prep, arrival time confirmed).',
-    '',
-    'Respond ONLY with this JSON (no markdown, no preamble):',
+    'Extract ALL info from the pasted message (Airbnb email, WhatsApp, or both mixed). Return ONLY valid JSON:',
     jsonSchema,
     '',
-    'ADDITIONAL RULES:',
-    '- If you recognise an existing client (same name, phone, or overlapping dates), set existing_id to their ID.',
-    '- Respond in ' + langRule + ' for all message content.',
-    '- Use villa name "' + villaName + '" and owner "' + ownerName + '" in all messages.',
-    '- Staff: ' + staffNames + '.',
-    '- Pricing: April=750€, Jul-Aug=850€, Dec=950€, Xmas/NY=1500€, weekends+50€, long stay(28n+)-20%.',
-    '- Always generate ALL 6 message types, incorporating the specific details you extracted.',
-    '- messages.staff must include: arrival time, guest breakdown, meal schedule, special requests, children ages.',
-    '- messages.welcome must mention any celebration or special occasion found.',
-    '- messages.driver must include confirmed arrival time if found.'
+    'Rules:',
+    '- existing_id: match by name/phone/dates from CRM list above.',
+    '- notes: one sentence with ALL ops details (arrival time, meals, kids ages, celebrations, transport, payments).',
+    '- guests: use most specific count ("5 adults+3 kids" beats "8").',
+    '- alerts: 2-3 specific actionable items (passport missing, celebration prep, arrival time).',
+    '- Respond in ' + langRule + '. Use villa="' + villaName + '" owner="' + ownerName + '".',
+    '- Pricing: Apr=750€ Jul-Aug=850€ Dec=950€ Xmas=1500€ wknd+50€.',
+    '- Generate ALL 6 messages with extracted specifics. No COVID mentions.'
   ].join('\n');
 
   try {
