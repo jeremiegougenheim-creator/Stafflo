@@ -197,12 +197,12 @@ main{max-width:760px;margin:0 auto;padding:16px}
 /* ── CLIENT DETAIL MODAL ── */
 .modal-bg{display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:500;align-items:flex-end;justify-content:center}
 .modal-bg.on{display:flex}
-.modal{background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:640px;max-height:92vh;overflow-y:auto;padding-bottom:40px}
-.modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:12px auto 0}
-.modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.modal-title{font-family:'Fraunces',serif;font-size:20px;font-weight:600}
-.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;padding:4px}
-.modal-body{padding:16px 20px}
+.modal{background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:640px;max-height:96vh;overflow-y:auto;padding-bottom:40px}
+.modal-handle{width:36px;height:4px;background:rgba(255,255,255,.3);border-radius:2px;margin:10px auto 0;position:absolute;left:50%;transform:translateX(-50%)}
+.modal-header{display:none}
+.modal-title{display:none}
+.modal-close{position:absolute;top:14px;right:16px;background:rgba(255,255,255,.15);border:none;width:28px;height:28px;border-radius:50%;color:#fff;font-size:16px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;z-index:10}
+.modal-body{padding:0}
 .detail-row{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(44,31,20,.06)}
 .detail-row:last-child{border-bottom:none}
 .detail-label{font-size:11px;letter-spacing:1px;color:var(--muted);flex-shrink:0;margin-right:12px}
@@ -856,14 +856,11 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 <!-- CLIENT DETAIL MODAL -->
 <div class="modal-bg" id="detailModal" onclick="if(event.target===this)closeDetail()">
-  <div class="modal">
+  <div class="modal" style="position:relative">
     <div class="modal-handle"></div>
-    <div class="modal-header">
-      <div class="modal-title" id="detailName">—</div>
-      <button class="modal-close" onclick="closeDetail()">✕</button>
-    </div>
-    <div class="modal-body" id="detailBody" style="padding-bottom:20px"></div>
-    <div style="padding:0 20px;display:flex;gap:8px;flex-wrap:wrap" id="detailActions"></div>
+    <button class="modal-close" onclick="closeDetail()">✕</button>
+    <div id="detailBody" style="padding-bottom:20px"></div>
+    <div style="padding:0 16px 8px;display:flex;gap:8px;flex-wrap:wrap" id="detailActions"></div>
   </div>
 </div>
 
@@ -1449,6 +1446,22 @@ function copyPrice() {
 }
 
 function saveFromResult(g) {
+  // Auto-check for duplicate before saving
+  const dupCheck = clients.find(function(x) {
+    var xName = (x.name||'').toLowerCase().trim();
+    var gName = (g.name||'').toLowerCase().trim();
+    if (xName === gName) return true;
+    if (x.arrival && g.arrival && x.arrival === g.arrival) return true;
+    var xPhone = (x.phone||'').replace(/[\s\-+()]/g,'');
+    var gPhone = (g.phone||'').replace(/[\s\-+()]/g,'');
+    if (xPhone && gPhone && xPhone === gPhone) return true;
+    return false;
+  });
+  if (dupCheck) {
+    mergeWithExisting(dupCheck.id, g);
+    toast(lang==='fr' ? '✓ ' + dupCheck.name + ' mis à jour (fusion)' : '✓ ' + dupCheck.name + ' updated (merged)');
+    return;
+  }
   const newId = Date.now().toString();
   const client = {
     id: newId,
@@ -1456,7 +1469,7 @@ function saveFromResult(g) {
     phone: g.phone || '', arrival: g.arrival || '', departure: g.departure || '',
     guests: g.guests || 0, price: g.price || 0, commission: g.commission || 3.6,
     commMode: 'percent', source: g.source || 'Airbnb',
-    notes: '', payStatus: '', createdAt: new Date().toISOString(),
+    notes: g.notes || '', payStatus: '', createdAt: new Date().toISOString(),
     messages: currentMsgs && Object.keys(currentMsgs).length ? {...currentMsgs} : null
   };
   // Cache in _clientMessages
@@ -1678,198 +1691,146 @@ function renderClients() {
 // CLIENT DETAIL MODAL
 // ════════════════════════════════════════════
 function openDetail(id) {
-  const c = clients.find(x => x.id === id);
-  if (!c) return;
+  const cl = clients.find(x => x.id === id);
+  if (!cl) return;
   const fr = lang === 'fr';
-  const n = nights(c);
-  const net = netAmt(c);
+  const n = nights(cl);
+  const net = netAmt(cl);
+  const s = getStatus(cl);
 
-  document.getElementById('detailName').textContent = c.name;
-
-  // Smart payment label
-  const payLabel = c.payStatus || (c.source === 'Airbnb' ? 'Airbnb' : c.source === 'Direct' || c.source === 'WhatsApp' ? 'Direct' : fr?'En attente':'Pending');
-  
-  // Guests breakdown (adults/teens/children from notes)
-  let guestsDisplay = c.guests || '—';
-  const notesLower = (c.notes||'').toLowerCase();
-  const adultsMatch = notesLower.match(/(\d+)\s*(adults?|adultes?)/);
-  const kidsMatch = notesLower.match(/(\d+)\s*(kids?|children|enfants?)/);
-  const teensMatch = notesLower.match(/(\d+)\s*(teens?|ados?|adolescents?)/);
-  if (adultsMatch || kidsMatch || teensMatch) {
-    const parts = [];
-    if (adultsMatch) parts.push(adultsMatch[1] + (fr?' adultes':' adults'));
-    if (teensMatch) parts.push(teensMatch[1] + (fr?' ados':' teens'));
-    if (kidsMatch) parts.push(kidsMatch[1] + (fr?' enfants':' children'));
-    guestsDisplay = (c.guests||'') + ' (' + parts.join(' + ') + ')';
+  // Guests breakdown from notes
+  var guestsDisplay = String(cl.guests || '—');
+  var notesLower = (cl.notes||'').toLowerCase();
+  var adultsM = notesLower.match(/(\d+)\s*(adults?|adultes?)/);
+  var kidsM   = notesLower.match(/(\d+)\s*(kids?|children|enfants?)/);
+  var teensM  = notesLower.match(/(\d+)\s*(teens?|ados?|adolescents?)/);
+  if (adultsM || kidsM || teensM) {
+    var parts = [];
+    if (adultsM) parts.push(adultsM[1] + (fr?' adultes':' adults'));
+    if (teensM)  parts.push(teensM[1]  + (fr?' ados':' teens'));
+    if (kidsM)   parts.push(kidsM[1]   + (fr?' enfants':' children'));
+    guestsDisplay = (cl.guests||'') + ' (' + parts.join(' + ') + ')';
   }
 
-  const rows = [
-    [fr?'Nationalité':'Nationality', c.nat],
-    [fr?'Arrivée':'Arrival', fmtDate(c.arrival, true)],
-    [fr?'Départ':'Departure', fmtDate(c.departure, true)],
-    [fr?'Nuits':'Nights', n || '—'],
-    [fr?'Personnes':'Guests', guestsDisplay],
-    ['Source', c.source],
-    [fr?'Prix brut':'Gross', c.price ? c.price.toLocaleString('fr')+'€' : '—'],
-    [fr?'Commission':'Commission', c.commission ? c.commission+'%' : '—'],
-    [fr?'Net vous':'Your net', net ? `<strong style="color:var(--green)">${net.toLocaleString('fr')}€</strong>` : '—'],
-    [fr?'Net / nuit':'Net / night', (net && n) ? Math.round(net/n).toLocaleString('fr')+'€' : '—'],
-    [fr?'Paiement':'Payment', payLabel],
-    c.notes ? [fr?'Notes':'Notes', c.notes] : null
-  ].filter(Boolean).filter(r => r[1]);
+  var payLabel = cl.payStatus || (cl.source==='Airbnb'?'Airbnb':cl.source==='Direct'||cl.source==='WhatsApp'?'Direct':fr?'En attente':'Pending');
+  var badgeColor = s==='current'?'#52b788':s==='upcoming'?'var(--gold)':'var(--muted)';
+  var badgeTextStr = s==='current'?(fr?'En cours':'Current'):s==='upcoming'?(fr?'⏳ À venir':'⏳ Upcoming'):(fr?'✓ Passé':'✓ Past');
 
-  // Build rich detail card
-  const s = getStatus(c);
-  const badgeColor = s==='current'?'#52b788':s==='upcoming'?'var(--gold)':'var(--muted)';
-  const badgeText = s==='current'?(fr?'🟢 En cours':'🟢 Current'):s==='upcoming'?(fr?'⏳ À venir':'⏳ Upcoming'):(fr?'✓ Passé':'✓ Past');
+  // Tasks for Qui fait quoi
+  var tasks = [];
+  var n2 = notesLower;
+  var firstName = cl.name ? cl.name.split(' ')[0] : (fr?'le client':'guest');
+  var arrTimeM = n2.match(/(\d{1,2}[h:]\d{2}|\d{1,2}h\d{0,2})/);
+  var arrTime = arrTimeM ? arrTimeM[0] : '';
+  if (n2.includes('dinner')||n2.includes('diner')||n2.includes('couscous')) tasks.push({role:'chef',label:fr?'Chef':'Chef',text:fr?'Préparer le dîner (couscous)':'Prepare dinner (couscous)'});
+  if (n2.includes('lunch')||n2.includes('déjeuner')||n2.includes('dejeuner')) tasks.push({role:'chef',label:fr?'Chef':'Chef',text:fr?'Préparer le déjeuner':'Prepare lunch'});
+  tasks.push({role:'staff',label:fr?'Ménage':'Housekeeping',text:fr?'Villa prête — chambres, fleurs, piscine':'Villa ready — rooms, flowers, pool'});
+  if (n2.includes('kids')||n2.includes('children')||n2.includes('enfants')) tasks.push({role:'staff',label:fr?'Ménage':'Housekeeping',text:fr?'Sécurité piscine + équipements enfants':'Pool safety + kids equipment'});
+  if (arrTime) tasks.push({role:'driver',label:fr?'Transfert':'Driver',text:(fr?'Récupérer ':'Pick up ')+firstName+' — '+arrTime});
+  tasks.push({role:'vous',label:fr?'Vous':'You',text:fr?'Envoyer le message de bienvenue':'Send welcome message'});
 
-  document.getElementById('detailBody').innerHTML = `
-    <!-- Hero banner -->
-    <div style="background:var(--green3);margin:-16px -20px 16px;padding:20px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:14px">
-      <div style="width:52px;height:52px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:20px;color:var(--green3);font-weight:600;flex-shrink:0">${initials(c.name)}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-family:'Fraunces',serif;font-size:18px;color:#fff;font-weight:400">${c.name}</div>
-        <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:2px">${c.nat||''} ${c.source?'· '+c.source:''}</div>
-      </div>
-      <span style="background:${badgeColor};color:${s==='current'?'#0F2318':'#fff'};font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap">${badgeText}</span>
-    </div>
-
-    <!-- Key stats row — 4 stats -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px">
-      <div style="background:var(--paper);border-radius:10px;padding:8px;text-align:center;border:1px solid var(--border)">
-        <div style="font-size:13px;font-weight:700;color:var(--ink)">${fmtDate(c.arrival, true)}</div>
-        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Arrivée':'Arrival'}</div>
-      </div>
-      <div style="background:var(--paper);border-radius:10px;padding:8px;text-align:center;border:1px solid var(--border)">
-        <div style="font-size:13px;font-weight:700;color:var(--ink)">${fmtDate(c.departure, true)}</div>
-        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Départ':'Departure'}</div>
-      </div>
-      <div style="background:var(--paper);border-radius:10px;padding:8px;text-align:center;border:1px solid var(--border)">
-        <div style="font-size:15px;font-weight:700;color:var(--ink)">${n||'—'}<span style="font-size:10px;font-weight:400">n</span></div>
-        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Nuits':'Nights'}</div>
-      </div>
-      <div style="background:var(--paper);border-radius:10px;padding:8px;text-align:center;border:1px solid var(--border)">
-        <div style="font-size:15px;font-weight:700;color:var(--ink)">${c.guests||'—'}</div>
-        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:2px">${fr?'Pers.':'Guests'}</div>
-      </div>
-    </div>
-
-    <!-- Net earnings highlight -->
-    ${renderReadinessBar(c, fr)}
-    ${net ? `<div style="background:linear-gradient(135deg,var(--green3),#1B4332);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
-      <div>
-        <div style="font-size:11px;color:rgba(255,255,255,.5);letter-spacing:1px;text-transform:uppercase">${fr?'Net vous':'Your net'}</div>
-        <div style="font-family:'Fraunces',serif;font-size:26px;color:#fff;font-weight:300">${net.toLocaleString('fr')}€</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:11px;color:rgba(255,255,255,.5)">${fr?'Par nuit':'Per night'}</div>
-        <div style="font-size:16px;color:var(--gold);font-weight:600">${(net && n) ? Math.round(net/n).toLocaleString('fr') : '—'}€</div>
-        <div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">${c.commission||'—'}% ${c.source||'commission'}</div>
-      </div>
-    </div>` : ''}
-
-    <!-- Detail rows — compact, only what's not in stats -->
-    <div style="border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:12px">
-      ${rows.filter(([l,v])=>!['Nationalité','Nationality','Arrivée','Arrival','Départ','Departure','Nuits','Nights','Personnes','Guests','Net vous','Your net','Net / nuit','Net / night'].includes(l)).map(([l,v],i,arr) =>
-        `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:10px 14px;${i<arr.length-1?'border-bottom:1px solid var(--border)':''}">
-          <span style="font-size:11px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.5px;min-width:80px">${l}</span>
-          <span style="font-size:13px;color:var(--ink);text-align:right;flex:1;padding-left:12px">${v}</span>
-        </div>`
-      ).join('')}
-    </div>
-
-    <!-- QUI FAIT QUOI — same as result card -->
-    ${c.notes ? (() => {
-      const tasks = [];
-      const n2 = (c.notes||'').toLowerCase();
-      const nm = c.name ? c.name.split(' ')[0] : (fr?'le client':'guest');
-      const arrTime = n2.match(/(\d{1,2}[h:]\d{2}|\d{1,2}h\d{0,2})/);
-      const t = arrTime ? arrTime[0] : '';
-      if (n2.includes('dinner')||n2.includes('diner')||n2.includes('couscous')) tasks.push({role:'chef',label:fr?'Chef':'Chef',text:fr?'Préparer le dîner (couscous)':'Prepare dinner (couscous)'});
-      if (n2.includes('lunch')||n2.includes('déjeuner')) tasks.push({role:'chef',label:fr?'Chef':'Chef',text:fr?'Préparer le déjeuner':'Prepare lunch'});
-      tasks.push({role:'staff',label:fr?'Ménage':'Housekeeping',text:fr?'Villa prête — chambres, fleurs, piscine':'Villa ready — rooms, flowers, pool'});
-      if (n2.includes('kids')||n2.includes('children')||n2.includes('enfants')) tasks.push({role:'staff',label:fr?'Ménage':'Housekeeping',text:fr?'Sécurité piscine + équipements enfants':'Pool safety + children equipment'});
-      if (t) tasks.push({role:'driver',label:fr?'Transfert':'Driver',text:(fr?'Récupérer ':' Pick up ')+nm+' — '+t});
-      tasks.push({role:'vous',label:fr?'Vous':'You',text:fr?'Envoyer le message de bienvenue':'Send welcome message'});
-      const colors = {chef:'#FEF3DC;color:#7A5A1A',staff:'#E6F1FB;color:#0A2A4A',driver:'#F0EDE8;color:#8A8070',vous:'#D8F3DC;color:#1B4332'};
-      const phone = c.phone ? c.phone.replace(/[\s\-+()]/g,'') : '';
-      const briefLines = tasks.map(t2=>'• ['+t2.label+'] '+t2.text).join('\n');
-      const briefMsg = (fr?'📋 Brief villa — ':'📋 Villa brief — ')+(c.name||'')+'\n'+briefLines;
-      const waUrl = 'https://wa.me/'+(phone||'')+'?text='+encodeURIComponent(briefMsg);
-      return '<div style="margin-bottom:12px"><div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">'+(fr?'QUI FAIT QUOI':'WHO DOES WHAT')+'</div>'+
-        tasks.map(t2=>'<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(44,31,20,.06)">'+
-          '<span style="font-size:10px;font-weight:700;letter-spacing:.5px;min-width:80px;padding:3px 8px;border-radius:4px;text-align:center;background:'+colors[t2.role]+'">'+(fr?t2.label:t2.label)+'</span>'+
-          '<span style="font-size:12px;color:var(--ink);flex:1">'+t2.text+'</span>'+
-        '</div>').join('')+
-        '<a href="'+waUrl+'" target="_blank" style="display:block;width:100%;margin-top:10px;padding:10px;background:#25D366;color:#fff;border-radius:8px;font-size:12px;font-weight:600;text-align:center;text-decoration:none;font-family:DM Sans,sans-serif">📲 '+(fr?'Envoyer brief staff':'Send staff brief')+'</a>'+
-        '</div>';
-    })() : ''}
-
-    ${c.notes ? `<div style="background:var(--gold-light);border-radius:10px;padding:12px 14px;border-left:3px solid var(--gold)">
-      <div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;font-weight:600;margin-bottom:6px">📝 Notes</div>
-      <div style="font-size:13px;color:var(--ink);line-height:1.6">${c.notes}</div>
-    </div>` : ''}
-  `;
-
-  // Quick messages section in detail
-  const msgTypes = fr
-    ? [{k:'airbnb',l:'✉ Airbnb'},{k:'welcome',l:'🌴 Accueil'},{k:'driver',l:'🚕 Transfert'},{k:'staff',l:'👤 Staff'},{k:'passport',l:'🛂 Passeport'}]
-    : [{k:'airbnb',l:'✉ Airbnb'},{k:'welcome',l:'🌴 Welcome'},{k:'driver',l:'🚕 Driver'},{k:'staff',l:'👤 Staff'},{k:'passport',l:'🛂 Passport'}];
-  
-  // Check if we have cached messages for this client
-  // Load messages from client object or cache
-  const cachedMsgs = (c.messages && Object.keys(c.messages).length) 
-    ? c.messages 
-    : (window._clientMessages && window._clientMessages[c.id]);
-  // Keep cache in sync
-  if (cachedMsgs && !window._clientMessages?.[c.id]) {
-    if (!window._clientMessages) window._clientMessages = {};
-    window._clientMessages[c.id] = cachedMsgs;
-  }
-  
-  const msgKeyMap = {
-    airbnb: fr?'✉ Airbnb':'✉ Airbnb',
-    welcome: fr?'🌴 Accueil':'🌴 Welcome',
-    driver: fr?'🚕 Chauffeur':'🚕 Driver',
-    staff: fr?'👤 Staff':'👤 Staff',
-    passport: fr?'🛂 Passeport':'🛂 Passport',
-    checkout: fr?'⭐ Départ':'⭐ Checkout'
+  var roleColors = {
+    chef:'background:#FEF3DC;color:#7A5A1A',
+    staff:'background:#E6F1FB;color:#0A2A4A',
+    driver:'background:#F0EDE8;color:#8A8070',
+    vous:'background:#D8F3DC;color:#1B4332'
   };
+  var clPhone = (cl.phone||'').replace(/[\s\-+()]/g,'');
+  var briefMsg = (fr?'Brief villa — ':'Villa brief — ')+(cl.name||'')+'\n'+tasks.map(function(t){return '• ['+t.label+'] '+t.text;}).join('\n');
+  var waUrl = 'https://wa.me/'+(clPhone||'')+'?text='+encodeURIComponent(briefMsg);
 
-  const detailMsgSection = cachedMsgs ? `
-    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
-      <div class="msg-section-title">${fr?'MESSAGES PRÊTS À ENVOYER':'READY TO SEND'}</div>
-      <div class="msg-tabs">
-        ${Object.entries(msgKeyMap).map(([k,l],i) => 
-          cachedMsgs[k] ? `<button class="msg-tab${i===0?' on':''}" onclick="showDetailMsg('${c.id}','${k}',this)" id="dmtab_${c.id}_${k}">${l}</button>` : ''
-        ).join('')}
-      </div>
-      <div class="msg-body" id="detailMsgBody" style="max-height:200px;overflow-y:auto">${(cachedMsgs.airbnb||'').replace(/</g,'&lt;')}</div>
-      <div class="msg-actions" style="flex-wrap:wrap;margin-top:8px">
-        <button class="btn-copy" style="flex:1;min-width:80px" onclick="const t=document.getElementById('detailMsgBody').textContent;navigator.clipboard.writeText(t).then(()=>toast('📋 Copié'))">
-          📋 <span>${fr?'Copier':'Copy'}</span>
-        </button>
-        ${c.email ? `<button class="btn-edit" onclick="sendDetailByEmail('${c.id}')" style="padding:10px 14px;font-size:15px" title="Email">✉️</button>` : ''}
-        ${c.phone ? `<button class="btn-edit" onclick="sendDetailByWA('${c.id}')" style="padding:10px 14px;font-size:15px;border-color:#25D366;color:#25D366" title="WhatsApp">💬</button>` : ''}
-      </div>
-    </div>` : `
-    <div style="margin-top:14px;background:var(--paper);border-radius:10px;padding:14px;border:1px dashed var(--border);text-align:center">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${fr?'Aucun message généré pour ce client':'No messages generated for this guest'}</div>
-      <button onclick="closeDetail();prepareAnalysis('${c.id}')" 
-        style="font-size:11px;color:var(--gold);background:none;border:1px solid var(--gold);border-radius:6px;padding:5px 12px;cursor:pointer;font-family:'DM Sans',sans-serif">${fr?'→ Analyser un message':'→ Analyse a message'}</button>
-    </div>`;
+  // Tasks HTML
+  var tasksHTML = '';
+  if (cl.notes) {
+    tasksHTML = '<div style="padding:12px 16px 0">' +
+      '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">'+(fr?'QUI FAIT QUOI':'WHO DOES WHAT')+'</div>' +
+      tasks.map(function(t) {
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(44,31,20,.06)">' +
+          '<span style="font-size:10px;font-weight:700;min-width:80px;padding:3px 8px;border-radius:4px;text-align:center;'+roleColors[t.role]+'">'+t.label+'</span>' +
+          '<span style="font-size:12px;color:var(--ink);flex:1">'+t.text+'</span>' +
+        '</div>';
+      }).join('') +
+      '<a href="'+waUrl+'" target="_blank" style="display:block;margin:10px 0;padding:10px;background:#25D366;color:#fff;border-radius:8px;font-size:12px;font-weight:600;text-align:center;text-decoration:none;font-family:DM Sans,sans-serif">📲 '+(fr?'Envoyer brief staff':'Send staff brief')+'</a>' +
+    '</div>';
+  }
 
+  // Notes HTML
+  var notesHTML = cl.notes ?
+    '<div style="margin:0 16px 12px;background:var(--gold-light);border-radius:10px;padding:12px 14px;border-left:3px solid var(--gold)">' +
+    '<div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;font-weight:600;margin-bottom:6px">📝 Notes</div>' +
+    '<div style="font-size:13px;color:var(--ink);line-height:1.6">'+cl.notes+'</div>' +
+    '</div>' : '';
+
+  // Net HTML
+  var netHTML = net ?
+    '<div style="margin:12px 16px;background:linear-gradient(135deg,var(--green3),#1B4332);border-radius:12px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">' +
+    '<div><div style="font-size:11px;color:rgba(255,255,255,.5);text-transform:uppercase">'+(fr?'Net vous':'Your net')+'</div>' +
+    '<div style="font-family:Fraunces,serif;font-size:26px;color:#fff;font-weight:300">'+net.toLocaleString('fr')+'€</div></div>' +
+    '<div style="text-align:right"><div style="font-size:11px;color:rgba(255,255,255,.5)">'+(fr?'Par nuit':'Per night')+'</div>' +
+    '<div style="font-size:16px;color:var(--gold);font-weight:600">'+(n?Math.round(net/n).toLocaleString('fr'):'—')+'€</div>' +
+    '<div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">'+(cl.commission||'—')+'% '+(cl.source||'')+'</div></div>' +
+    '</div>' : '';
+
+  // Rows HTML
+  var rowData = [['Source',cl.source],[fr?'Prix brut':'Gross',cl.price?cl.price.toLocaleString('fr')+'€':null],[fr?'Commission':'Commission',cl.commission?cl.commission+'%':null],[fr?'Paiement':'Payment',payLabel]].filter(function(r){return r[1];});
+  var rowsHTML = '<div style="margin:0 16px 12px;border-radius:10px;border:1px solid var(--border);overflow:hidden">' +
+    rowData.map(function(r,i){
+      return '<div style="display:flex;justify-content:space-between;padding:10px 14px;'+(i<rowData.length-1?'border-bottom:1px solid var(--border)':'')+'">' +
+        '<span style="font-size:11px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.5px">'+r[0]+'</span>' +
+        '<span style="font-size:13px;color:var(--ink)">'+r[1]+'</span>' +
+      '</div>';
+    }).join('') + '</div>';
+
+  // Assemble
+  document.getElementById('detailBody').innerHTML =
+    '<div style="background:var(--green3);padding:20px 20px 16px;border-radius:20px 20px 0 0;display:flex;align-items:center;gap:14px">' +
+      '<div style="width:52px;height:52px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-family:Fraunces,serif;font-size:20px;color:var(--green3);font-weight:600;flex-shrink:0">'+initials(cl.name)+'</div>' +
+      '<div style="flex:1;min-width:0"><div style="font-family:Fraunces,serif;font-size:18px;color:#fff;font-weight:400">'+cl.name+'</div>' +
+      '<div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:2px">'+(cl.nat||'')+' '+(cl.source?'· '+cl.source:'')+'</div></div>' +
+      '<span style="background:'+badgeColor+';color:'+(s==='current'?'#0F2318':'#fff')+';font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap">'+badgeTextStr+'</span>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 2fr 1fr;border-bottom:1px solid var(--border)">' +
+      [fmtDate(cl.arrival,true)+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Arrivée':'Arrival')+'</span>',
+       fmtDate(cl.departure,true)+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Départ':'Departure')+'</span>',
+       (n||'—')+'n<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Nuits':'Nights')+'</span>',
+       guestsDisplay+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Pers.':'Guests')+'</span>',
+       (net?net.toLocaleString('fr')+'€':'—')+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Net':'Net')+'</span>'
+      ].map(function(h){return '<div style="padding:10px 6px;text-align:center;font-size:12px;font-weight:700;color:var(--ink)">'+h+'</div>';}).join('') +
+    '</div>' +
+    '<div style="padding:10px 16px 4px">'+renderReadinessBar(cl,fr)+'</div>' +
+    notesHTML +
+    tasksHTML +
+    rowsHTML;
+
+  // Messages
+  var cachedMsgs = (cl.messages && Object.keys(cl.messages).length) ? cl.messages : (window._clientMessages && window._clientMessages[cl.id]);
+  if (cachedMsgs) { if (!window._clientMessages) window._clientMessages = {}; window._clientMessages[cl.id] = cachedMsgs; }
+  var msgKeyMap = {airbnb:fr?'✉ Airbnb':'✉ Airbnb',welcome:fr?'🌴 Accueil':'🌴 Welcome',driver:fr?'🚕 Chauffeur':'🚕 Driver',staff:fr?'👤 Staff':'👤 Staff',passport:fr?'🛂 Passeport':'🛂 Passport',checkout:fr?'⭐ Départ':'⭐ Checkout'};
+  var detailMsgSection = cachedMsgs ?
+    '<div style="margin-top:16px;border-top:1px solid var(--border);padding:14px 16px 0">' +
+    '<div class="msg-section-title">'+(fr?'MESSAGES PRÊTS À ENVOYER':'READY TO SEND')+'</div>' +
+    '<div class="msg-tabs">' + Object.entries(msgKeyMap).map(function(e,i){ return cachedMsgs[e[0]]?'<button class="msg-tab'+(i===0?' on':'')+'" onclick="showDetailMsg(\''+cl.id+'\',\''+e[0]+'\',this)" id="dmtab_'+cl.id+'_'+e[0]+'">'+e[1]+'</button>':''; }).join('') + '</div>' +
+    '<div class="msg-body" id="detailMsgBody" style="max-height:200px;overflow-y:auto">'+(cachedMsgs.airbnb||'').replace(/</g,'&lt;')+'</div>' +
+    '<div class="msg-actions" style="flex-wrap:wrap;margin-top:8px">' +
+    '<button class="btn-copy" style="flex:1;min-width:80px" onclick="var t=document.getElementById(\'detailMsgBody\').textContent;navigator.clipboard.writeText(t).then(function(){toast(\'📋 Copié\')})">📋 <span>'+(fr?'Copier':'Copy')+'</span></button>' +
+    (cl.phone?'<button class="btn-edit" onclick="sendDetailByWA(\''+cl.id+'\')" style="padding:10px 14px;font-size:15px;border-color:#25D366;color:#25D366">💬</button>':'') +
+    '</div></div>'
+    :
+    '<div style="margin:14px 16px;background:var(--paper);border-radius:10px;padding:14px;border:1px dashed var(--border);text-align:center">' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">'+(fr?'Aucun message généré':'No messages generated')+'</div>' +
+    '<button onclick="closeDetail();prepareAnalysis(\''+cl.id+'\')" style="font-size:11px;color:var(--gold);background:none;border:1px solid var(--gold);border-radius:6px;padding:5px 12px;cursor:pointer;font-family:DM Sans,sans-serif">'+(fr?'→ Analyser':'→ Analyse')+'</button>' +
+    '</div>';
   document.getElementById('detailBody').insertAdjacentHTML('beforeend', detailMsgSection);
 
-  document.getElementById('detailActions').innerHTML = `
-    <button class="btn-action primary" onclick="closeDetail();openForm('${c.id}')" style="flex:1">✏️ ${fr?'Modifier':'Edit'}</button>
-    ${c.phone ? `<a class="btn-action wa" href="https://wa.me/${c.phone.replace(/[\s\-+]/g,'')}" target="_blank" style="flex:1">💬 WA</a>` : ''}
-    <button class="btn-action" onclick="prepareAnalysis('${c.id}')" style="flex:1;color:var(--gold);border-color:var(--gold)">✦ ${fr?'Analyser':'Analyse'}</button>
-    <button class="btn-action" onclick="deleteClient('${c.id}')" style="flex:1;color:var(--red);border-color:var(--red)">🗑</button>
-  `;
+  document.getElementById('detailActions').innerHTML =
+    '<button class="btn-action primary" onclick="closeDetail();openForm(\''+cl.id+'\')" style="flex:1">✏️ '+(fr?'Modifier':'Edit')+'</button>' +
+    (cl.phone?'<a class="btn-action wa" href="https://wa.me/'+clPhone+'" target="_blank" style="flex:1">💬 WA</a>':'') +
+    '<button class="btn-action" onclick="deleteClient(\''+cl.id+'\')" style="flex:1;color:var(--red);border-color:var(--red)">🗑</button>';
 
-  document.getElementById('detailModal').classList.add('on');
+  var dm = document.getElementById('detailModal');
+  dm.classList.add('on');
   document.body.style.overflow = 'hidden';
+  setTimeout(function(){ dm.querySelector('.modal').scrollTop = 0; }, 50);
 }
 
 function closeDetail() {
