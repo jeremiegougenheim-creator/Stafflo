@@ -3624,30 +3624,45 @@ async function installPWA() {
 
 async function analyzeWithProxy(text, systemPrompt, btn) {
   try {
+    // Truncate very long messages to avoid token limits
+    const maxChars = 4000;
+    const truncatedText = text.length > maxChars 
+      ? text.slice(0, maxChars) + '\n[... message tronqué pour la longueur]'
+      : text;
+    
+    console.log('Proxy call — text length:', truncatedText.length, 'chars');
+    
     const response = await fetch(STAFFLO_PROXY, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'llama-3.1-8b-instant',
-        max_tokens: 2000,
+        max_tokens: 1500,
         temperature: 0.3,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: text }
+          { role: 'user', content: truncatedText }
         ]
       })
     });
+    
+    console.log('Proxy response status:', response.status);
 
     if (response.status === 429) {
       btn.disabled = false; btn.classList.remove('loading');
       toast(lang==='fr' ? '⚠ Trop de requêtes — réessayez dans 1 min' : '⚠ Too many requests — retry in 1 min');
       return;
     }
-    if (!response.ok) throw new Error('Proxy error ' + response.status);
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.error('Proxy error body:', errText.slice(0,200));
+      throw new Error('Proxy error ' + response.status + ': ' + errText.slice(0,100));
+    }
 
     const data = await response.json();
+    console.log('Proxy data keys:', Object.keys(data));
     const raw = data.choices?.[0]?.message?.content || '';
-    if (!raw) throw new Error('Empty response');
+    if (!raw) throw new Error('Empty response — data: ' + JSON.stringify(data).slice(0,100));
 
     let json;
     const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
