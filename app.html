@@ -471,7 +471,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     </div>
     <div class="ai-zone-body">
       <textarea class="ai-textarea" id="pasteInput" rows="4"
-        placeholder="Collez n'importe quel message — email Airbnb, conversation WhatsApp, résumé de séjour Claude..."
+        placeholder="Collez n'importe quel message — email Airbnb, conversation WhatsApp complète, mix des deux... L'IA extrait tout automatiquement."
         oninput="onPaste()"></textarea>
       <div class="ai-actions">
         <button class="btn-analyze" id="analyzeBtn" onclick="analyze()" disabled aria-label="Analyse message with AI">
@@ -496,11 +496,17 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         </div>
         <div class="guest-status" id="resStatus">—</div>
       </div>
-      <div class="guest-stats">
+      <div class="guest-stats" style="grid-template-columns:repeat(5,1fr)">
         <div class="gs"><div class="gs-val" id="resArrival">—</div><div class="gs-lbl" data-fr="ARRIVÉE" data-en="CHECK-IN">ARRIVÉE</div></div>
+        <div class="gs"><div class="gs-val" id="resDeparture">—</div><div class="gs-lbl" data-fr="DÉPART" data-en="CHECK-OUT">DÉPART</div></div>
         <div class="gs"><div class="gs-val" id="resNights">—</div><div class="gs-lbl" data-fr="NUITS" data-en="NIGHTS">NUITS</div></div>
         <div class="gs"><div class="gs-val" id="resGuests">—</div><div class="gs-lbl" data-fr="PERS." data-en="GUESTS">PERS.</div></div>
         <div class="gs"><div class="gs-val green" id="resNet">—</div><div class="gs-lbl" data-fr="NET VOUS" data-en="YOUR NET">NET VOUS</div></div>
+      </div>
+      <!-- Notes from AI -->
+      <div id="resNotes" style="display:none;padding:10px 16px;background:var(--gold-light);border-bottom:1px solid var(--border)">
+        <div style="font-size:9px;letter-spacing:2px;color:var(--gold);font-weight:600;margin-bottom:4px">📝 NOTES</div>
+        <div id="resNotesText" style="font-size:13px;color:var(--ink);line-height:1.6"></div>
       </div>
 
       <!-- Alerts from AI -->
@@ -1066,6 +1072,7 @@ async function analyze() {
     + '\n    "source": "Airbnb",'
     + '\n    "phone": "",'
     + '\n    "returning": false,'
+    + '\n    "notes": "key guest notes: meal prefs, special requests, children ages, celebrations, transport",'
     + '\n    "new_info": "brief description of new info in this message"'
     + '\n  },'
     + '\n  "alerts": [{"type": "urgent|warn|good|info", "text": "..."}],'
@@ -1081,26 +1088,38 @@ async function analyze() {
     + '\n}';
 
   const systemPrompt = [
-    'You are an intelligent assistant for ' + villaName + ' in ' + cityName + ', managed by ' + ownerName + '.',
-    'Staff: ' + staffNames + '.',
-    'Today: ' + today + '.',
+    'You are the intelligent operations assistant for ' + villaName + ' in ' + cityName + ', managed by ' + ownerName + '.',
+    'Staff: ' + staffNames + '. GPS: ' + gpsInfo + '. Today: ' + today + '.',
     inHouseLine,
     clientContext,
     '',
-    'Analyze the pasted message and respond ONLY with a valid JSON object (no markdown, no preamble):',
+    'The user will paste ANY kind of raw message — Airbnb booking email, WhatsApp conversation (single or multi-message), forwarded texts, mixed content from multiple sources, or a combination of all of the above.',
+    'Your job: extract ALL useful operational information and return ONLY a valid JSON object.',
+    '',
+    'EXTRACTION RULES (read carefully):',
+    '- Parse the ENTIRE text even if it is long, messy, or multilingual (FR/EN).',
+    '- Extract from Airbnb emails: name, dates, price, commission, confirmation code, guest count.',
+    '- Extract from WhatsApp: arrival time, meal preferences, special requests, children ages, phone numbers, payment confirmations.',
+    '- Extract from any source: allergies, celebrations, transport needs, specific requests to staff.',
+    '- guests field: use the most specific count found (e.g. "5 adults + 3 children" beats "8 guests").',
+    '- notes field: compile ALL key operational details into one clear sentence — meals scheduled, children ages, celebrations, arrival time, transport, payments received.',
+    '- If the same client appears in multiple sources (Airbnb + WhatsApp), merge all info into one profile.',
+    '- NEVER mention COVID, pandemic, or health protocols.',
+    '- Alerts: generate 2-3 specific, actionable alerts based on what you found (e.g. passport not yet received, birthday celebration needs prep, arrival time confirmed).',
+    '',
+    'Respond ONLY with this JSON (no markdown, no preamble):',
     jsonSchema,
     '',
-    'Rules:',
+    'ADDITIONAL RULES:',
     '- If you recognise an existing client (same name, phone, or overlapping dates), set existing_id to their ID.',
-    '- If existing_id is set, only include NEW information fields.',
-    '- new_info: brief note on what this message adds (e.g. "Meal preferences from WhatsApp").',
     '- Respond in ' + langRule + ' for all message content.',
-    '- Use villa name "' + villaName + '" and owner "' + ownerName + '" in messages.',
-    '- Staff names: ' + staffNames + '.',
-    '- GPS/address: ' + gpsInfo + '.',
-    '- Pricing guide: April=750, Jul-Aug=850, Dec=950, Xmas/NY=1500, weekends+50-100, long stay(28n)-20%.',
-    '- Alerts must be specific and actionable. NEVER mention COVID, pandemic, or health protocols — they are outdated.',
-    '- Always include ALL 6 message types even with missing info.'
+    '- Use villa name "' + villaName + '" and owner "' + ownerName + '" in all messages.',
+    '- Staff: ' + staffNames + '.',
+    '- Pricing: April=750€, Jul-Aug=850€, Dec=950€, Xmas/NY=1500€, weekends+50€, long stay(28n+)-20%.',
+    '- Always generate ALL 6 message types, incorporating the specific details you extracted.',
+    '- messages.staff must include: arrival time, guest breakdown, meal schedule, special requests, children ages.',
+    '- messages.welcome must mention any celebration or special occasion found.',
+    '- messages.driver must include confirmed arrival time if found.'
   ].join('\n');
 
   try {
@@ -1258,6 +1277,7 @@ async function analyze() {
 
 function renderResult(json) {
   window._currentResult = json; // Store for email/WA buttons
+  window._lastResult = json;    // Persist across tab changes
   const fr = lang === 'fr';
   const g = json.guest || {};
   const cfg = getCfg();
@@ -1273,10 +1293,22 @@ function renderResult(json) {
 
   // Stats
   document.getElementById('resArrival').textContent = g.arrival ? fmtDate(g.arrival, true) : '—';
+  const depEl = document.getElementById('resDeparture');
+  if (depEl) depEl.textContent = g.departure ? fmtDate(g.departure, true) : '—';
   document.getElementById('resNights').textContent = g.nights || '—';
   document.getElementById('resGuests').textContent = g.guests || '—';
   const net = g.price ? Math.round(g.price * (1 - (g.commission||3.6)/100)) : null;
   document.getElementById('resNet').textContent = net ? net.toLocaleString('fr') + '€' : '—';
+  
+  // Notes from AI
+  const notesEl = document.getElementById('resNotes');
+  const notesTextEl = document.getElementById('resNotesText');
+  if (notesEl && notesTextEl && g.notes) {
+    notesEl.style.display = 'block';
+    notesTextEl.textContent = g.notes;
+  } else if (notesEl) {
+    notesEl.style.display = 'none';
+  }
 
   // Alerts
   const alerts = json.alerts || [];
@@ -1298,6 +1330,18 @@ function renderResult(json) {
   // Messages
   const msgs = json.messages || {};
   currentMsgs = msgs;
+  
+  // Save to history (last 5 analyses)
+  try {
+    const hist = JSON.parse(localStorage.getItem('stafflo_history') || '[]');
+    hist.unshift({
+      ts: new Date().toISOString(),
+      name: g.name || '?',
+      arrival: g.arrival || '',
+      msgs: msgs
+    });
+    localStorage.setItem('stafflo_history', JSON.stringify(hist.slice(0,5)));
+  } catch(e) {}
   const msgLabels = {
     airbnb: fr ? '✉️ Airbnb' : '✉️ Airbnb',
     welcome: fr ? '🌴 Welcome' : '🌴 Welcome',
@@ -1999,6 +2043,11 @@ function goTab(t) {
   if (t === 'home') loadHomeData();
   if (t === 'today') {
     renderTodayQV();
+    // Restore last AI result if it exists
+    if (window._lastResult) {
+      renderResult(window._lastResult);
+      document.getElementById('aiResult').classList.add('show');
+    }
     const cfg3 = getCfg();
     const hint = document.getElementById('apiKeyHint');
     if (hint) {
@@ -4156,6 +4205,68 @@ function deduplicateClients() {
   } else {
     toast(lang==='fr' ? '✓ Aucun doublon trouvé' : '✓ No duplicates found');
   }
+}
+
+function showHistory() {
+  const fr = lang === 'fr';
+  try {
+    const hist = JSON.parse(localStorage.getItem('stafflo_history') || '[]');
+    if (!hist.length) { toast(fr ? 'Aucun historique' : 'No history yet'); return; }
+    
+    // Build modal
+    const existing = document.getElementById('historyModal');
+    if (existing) existing.remove();
+    
+    const modal = document.createElement('div');
+    modal.id = 'historyModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:600;display:flex;align-items:flex-end;justify-content:center';
+    modal.onclick = (e) => { if(e.target===modal) modal.remove(); };
+    
+    modal.innerHTML = '<div style="background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:640px;padding:20px 20px 32px;max-height:70vh;overflow-y:auto">' +
+      '<div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px"></div>' +
+      '<div style="font-family:Fraunces,serif;font-size:18px;margin-bottom:14px">' + (fr?'Historique des analyses':'Analysis history') + '</div>' +
+      hist.map((h,i) => {
+        const dt = new Date(h.ts).toLocaleDateString(fr?'fr-FR':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+        return '<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer" onclick="loadFromHistory(' + i + ')">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center">' +
+            '<div style="font-weight:600;font-size:14px">' + (h.name||'?') + '</div>' +
+            '<div style="font-size:11px;color:var(--muted)">' + dt + '</div>' +
+          '</div>' +
+          (h.arrival ? '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + fmtDate(h.arrival, true) + '</div>' : '') +
+          '</div>';
+      }).join('') +
+      '<button onclick="document.getElementById(\'historyModal\').remove()" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;background:none;font-size:14px;cursor:pointer;font-family:DM Sans,sans-serif;color:var(--muted);margin-top:4px">' + (fr?'Fermer':'Close') + '</button>' +
+      '</div>';
+    
+    document.body.appendChild(modal);
+  } catch(e) {
+    toast(fr ? 'Erreur historique' : 'History error');
+  }
+}
+
+function loadFromHistory(idx) {
+  try {
+    const hist = JSON.parse(localStorage.getItem('stafflo_history') || '[]');
+    const h = hist[idx];
+    if (!h) return;
+    currentMsgs = h.msgs || {};
+    // Repopulate message tabs
+    const msgLabels = {
+      airbnb: lang==='fr'?'✉️ Airbnb':'✉️ Airbnb',
+      welcome: lang==='fr'?'🌴 Welcome':'🌴 Welcome',
+      driver: lang==='fr'?'🚐 Chauffeur':'🚐 Driver',
+      staff: lang==='fr'?'👤 Staff':'👤 Staff',
+      passport: lang==='fr'?'🛂 Passeport':'🛂 Passport',
+      checkout: lang==='fr'?'⭐ Départ':'⭐ Checkout'
+    };
+    document.getElementById('msgTabs').innerHTML = Object.entries(msgLabels).map(([k,v]) =>
+      currentMsgs[k] ? `<button class="msg-tab${k==='airbnb'?' on':''}" onclick="showMsg('${k}',this)">${v}</button>` : ''
+    ).join('');
+    document.getElementById('msgBody').textContent = currentMsgs.airbnb || '';
+    document.getElementById('aiResult').classList.add('show');
+    document.getElementById('historyModal')?.remove();
+    toast(lang==='fr' ? '✓ Messages de ' + h.name + ' chargés' : '✓ ' + h.name + ' messages loaded');
+  } catch(e) {}
 }
 </script>
 </body>
