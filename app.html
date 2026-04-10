@@ -1314,8 +1314,29 @@ function renderResult(json) {
   document.getElementById('msgBody').textContent = msgs[firstKey] || '';
 
   // Smart save button — detect if this is a known client
-  const phone = g.phone;
-  const existingClient = g.existing_id ? clients.find(x => x.id === g.existing_id) : null;
+  // Try AI-provided existing_id first, then local name/phone matching as fallback
+  let existingClient = g.existing_id ? clients.find(x => x.id === g.existing_id) : null;
+  
+  if (!existingClient && g.name) {
+    const gName = (g.name||'').toLowerCase().trim();
+    const gPhone = (g.phone||'').replace(/[\s\-+()]/g,'');
+    existingClient = clients.find(x => {
+      const xName = (x.name||'').toLowerCase().trim();
+      // Match by full name or first+last name parts
+      if (xName === gName) return true;
+      const gParts = gName.split(' ');
+      const xParts = xName.split(' ');
+      if (gParts.length >= 2 && xParts.length >= 2) {
+        if (gParts[0] === xParts[0] && gParts[gParts.length-1] === xParts[xParts.length-1]) return true;
+      }
+      // Match by phone
+      if (gPhone && x.phone && x.phone.replace(/[\s\-+()]/g,'') === gPhone) return true;
+      // Match by arrival date
+      if (g.arrival && x.arrival === g.arrival) return true;
+      return false;
+    });
+  }
+  
   const gJson = JSON.stringify(g).replace(/"/g,'&quot;');
 
   let saveBtn = '';
@@ -1720,23 +1741,33 @@ function openDetail(id) {
     window._clientMessages[c.id] = cachedMsgs;
   }
   
+  const msgKeyMap = {
+    airbnb: fr?'✉ Airbnb':'✉ Airbnb',
+    welcome: fr?'🌴 Accueil':'🌴 Welcome',
+    driver: fr?'🚕 Chauffeur':'🚕 Driver',
+    staff: fr?'👤 Staff':'👤 Staff',
+    passport: fr?'🛂 Passeport':'🛂 Passport',
+    checkout: fr?'⭐ Départ':'⭐ Checkout'
+  };
+
   const detailMsgSection = cachedMsgs ? `
-    <div style="margin-top:14px">
-      <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">${fr?'MESSAGES PRÊTS':'READY TO SEND'}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-        ${msgTypes.map((m,i) => `<button onclick="showDetailMsg('${c.id}','${m.k}')" 
-          style="padding:5px 10px;border-radius:20px;border:1.5px solid var(--border);background:${i===0?'var(--green)':'var(--paper)'};color:${i===0?'#fff':'var(--ink)'};font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif" 
-          id="dmtab_${m.k}">${m.l}</button>`).join('')}
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
+      <div class="msg-section-title">${fr?'MESSAGES PRÊTS À ENVOYER':'READY TO SEND'}</div>
+      <div class="msg-tabs">
+        ${Object.entries(msgKeyMap).map(([k,l],i) => 
+          cachedMsgs[k] ? `<button class="msg-tab${i===0?' on':''}" onclick="showDetailMsg('${c.id}','${k}',this)" id="dmtab_${c.id}_${k}">${l}</button>` : ''
+        ).join('')}
       </div>
-      <div id="detailMsgBody" style="background:var(--paper);border-radius:10px;padding:12px;font-size:12px;line-height:1.7;color:var(--ink);border:1px solid var(--border);max-height:150px;overflow-y:auto;white-space:pre-wrap">${cachedMsgs.airbnb||''}</div>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button onclick="const t=document.getElementById('detailMsgBody').textContent;navigator.clipboard.writeText(t).then(()=>toast('📋 Copié'))" 
-          style="flex:1;padding:9px;background:var(--green);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 ${fr?'Copier':'Copy'}</button>
-        ${c.phone ? `<a href="https://wa.me/${c.phone.replace(/[\s\-+]/g,'')}?text=${encodeURIComponent(cachedMsgs.airbnb||'')}" target="_blank"
-          style="flex:1;padding:9px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center;text-decoration:none">💬 WA</a>` : ''}
+      <div class="msg-body" id="detailMsgBody" style="max-height:200px;overflow-y:auto">${(cachedMsgs.airbnb||'').replace(/</g,'&lt;')}</div>
+      <div class="msg-actions" style="flex-wrap:wrap;margin-top:8px">
+        <button class="btn-copy" style="flex:1;min-width:80px" onclick="const t=document.getElementById('detailMsgBody').textContent;navigator.clipboard.writeText(t).then(()=>toast('📋 Copié'))">
+          📋 <span>${fr?'Copier':'Copy'}</span>
+        </button>
+        ${c.email ? `<button class="btn-edit" onclick="sendDetailByEmail('${c.id}')" style="padding:10px 14px;font-size:15px" title="Email">✉️</button>` : ''}
+        ${c.phone ? `<button class="btn-edit" onclick="sendDetailByWA('${c.id}')" style="padding:10px 14px;font-size:15px;border-color:#25D366;color:#25D366" title="WhatsApp">💬</button>` : ''}
       </div>
     </div>` : `
-    <div style="margin-top:14px;background:var(--paper);border-radius:10px;padding:12px;border:1px dashed var(--border);text-align:center">
+    <div style="margin-top:14px;background:var(--paper);border-radius:10px;padding:14px;border:1px dashed var(--border);text-align:center">
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${fr?'Aucun message généré pour ce client':'No messages generated for this guest'}</div>
       <button onclick="closeDetail();document.getElementById('pasteInput').focus()" 
         style="font-size:11px;color:var(--gold);background:none;border:1px solid var(--gold);border-radius:6px;padding:5px 12px;cursor:pointer;font-family:'DM Sans',sans-serif">${fr?'→ Analyser un message':'→ Analyse a message'}</button>
@@ -4064,19 +4095,67 @@ function showWhyModal(idx) {
   document.body.appendChild(modal);
 }
 
-function showDetailMsg(clientId, msgKey) {
+function showDetailMsg(clientId, msgKey, tabBtn) {
   const msgs = window._clientMessages && window._clientMessages[clientId];
   if (!msgs) return;
   const body = document.getElementById('detailMsgBody');
   if (body) body.textContent = msgs[msgKey] || '';
-  // Update tab styles
-  ['airbnb','welcome','driver','staff','passport'].forEach(k => {
-    const btn = document.getElementById('dmtab_' + k);
-    if (btn) {
-      btn.style.background = k === msgKey ? 'var(--green)' : 'var(--paper)';
-      btn.style.color = k === msgKey ? '#fff' : 'var(--ink)';
+  // Update tab styles using class
+  ['airbnb','welcome','driver','staff','passport','checkout'].forEach(k => {
+    const btn = document.getElementById('dmtab_' + clientId + '_' + k);
+    if (btn) btn.classList.toggle('on', k === msgKey);
+  });
+}
+
+function sendDetailByEmail(clientId) {
+  const msgs = window._clientMessages && window._clientMessages[clientId];
+  const cl = clients.find(c => c.id === clientId);
+  const text = document.getElementById('detailMsgBody')?.textContent || '';
+  const cfg = getCfg();
+  const subject = encodeURIComponent('Villa ' + (cfg.villa||'DarJ') + ' — ' + (cl?.name||''));
+  window.open('mailto:' + (cl?.email||'') + '?subject=' + subject + '&body=' + encodeURIComponent(text), '_blank');
+}
+
+function sendDetailByWA(clientId) {
+  const cl = clients.find(c => c.id === clientId);
+  const text = document.getElementById('detailMsgBody')?.textContent || '';
+  const phone = (cl?.phone||'').replace(/[\s\-+()]/g,'');
+  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(text), '_blank');
+}
+
+function deduplicateClients() {
+  const seen = {};
+  const toRemove = [];
+  const cfg = getCfg();
+  
+  clients.forEach(cl => {
+    const key = (cl.name||'').toLowerCase().trim() + '_' + (cl.arrival||'');
+    if (seen[key]) {
+      // Keep the one with more data (more fields filled)
+      const existing = seen[key];
+      const existingScore = Object.values(existing).filter(v => v && v !== '' && v !== 0).length;
+      const currentScore = Object.values(cl).filter(v => v && v !== '' && v !== 0).length;
+      if (currentScore > existingScore) {
+        toRemove.push(existing.id);
+        seen[key] = cl;
+      } else {
+        toRemove.push(cl.id);
+      }
+    } else {
+      seen[key] = cl;
     }
   });
+  
+  if (toRemove.length) {
+    clients = clients.filter(cl => !toRemove.includes(cl.id));
+    saveLocal();
+    // Delete from Supabase too
+    toRemove.forEach(id => deleteFromSupabase(id));
+    renderAll();
+    toast(lang==='fr' ? '✓ ' + toRemove.length + ' doublon(s) supprimé(s)' : '✓ ' + toRemove.length + ' duplicate(s) removed');
+  } else {
+    toast(lang==='fr' ? '✓ Aucun doublon trouvé' : '✓ No duplicates found');
+  }
 }
 </script>
 </body>
