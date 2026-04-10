@@ -1484,11 +1484,15 @@ function mergeWithExisting(existingId, newData) {
   if (newData.price && newData.price > 0) merged.price = newData.price;
   if (newData.phone && newData.phone.trim()) merged.phone = newData.phone.trim();
 
-  // Append new info to notes (don't overwrite)
-  const newInfo = newData.new_info || '';
-  const timestamp = new Date().toLocaleString(fr?'fr-FR':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-  const noteEntry = `[${timestamp}] ${newInfo}`;
-  merged.notes = merged.notes ? merged.notes + '\n' + noteEntry : noteEntry;
+  // Append new notes (don't overwrite existing)
+  const newNotes = newData.notes || newData.new_info || '';
+  if (newNotes && newNotes !== merged.notes) {
+    const timestamp = new Date().toLocaleString(fr?'fr-FR':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    // Append only if genuinely new info
+    if (!merged.notes || !merged.notes.includes(newNotes.slice(0,20))) {
+      merged.notes = merged.notes ? merged.notes + ' · ' + newNotes : newNotes;
+    }
+  }
 
   // Append messages history
   if (currentMsgs && Object.keys(currentMsgs).length) {
@@ -1813,16 +1817,17 @@ function openDetail(id) {
     </div>` : `
     <div style="margin-top:14px;background:var(--paper);border-radius:10px;padding:14px;border:1px dashed var(--border);text-align:center">
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${fr?'Aucun message généré pour ce client':'No messages generated for this guest'}</div>
-      <button onclick="closeDetail();document.getElementById('pasteInput').focus()" 
+      <button onclick="closeDetail();prepareAnalysis('${c.id}')" 
         style="font-size:11px;color:var(--gold);background:none;border:1px solid var(--gold);border-radius:6px;padding:5px 12px;cursor:pointer;font-family:'DM Sans',sans-serif">${fr?'→ Analyser un message':'→ Analyse a message'}</button>
     </div>`;
 
   document.getElementById('detailBody').insertAdjacentHTML('beforeend', detailMsgSection);
 
   document.getElementById('detailActions').innerHTML = `
-    <button class="btn-action primary" onclick="closeDetail();openForm('${c.id}')" style="flex:1">${fr?'✏️ Modifier':'✏️ Edit'}</button>
-    ${c.phone ? `<a class="btn-action wa" href="https://wa.me/${c.phone.replace(/[\s\-+]/g,'')}${(window._clientMessages&&window._clientMessages[c.id]&&window._clientMessages[c.id].airbnb)?'?text='+encodeURIComponent(window._clientMessages[c.id].welcome||window._clientMessages[c.id].airbnb||''):''}" target="_blank" style="flex:1">💬 ${fr?'WhatsApp':'WhatsApp'}</a>` : ''}
-    <button class="btn-action" onclick="deleteClient('${c.id}')" style="flex:1;color:var(--red);border-color:var(--red)">${fr?'🗑 Suppr.':'🗑 Delete'}</button>
+    <button class="btn-action primary" onclick="closeDetail();openForm('${c.id}')" style="flex:1">✏️ ${fr?'Modifier':'Edit'}</button>
+    ${c.phone ? `<a class="btn-action wa" href="https://wa.me/${c.phone.replace(/[\s\-+]/g,'')}" target="_blank" style="flex:1">💬 WA</a>` : ''}
+    <button class="btn-action" onclick="prepareAnalysis('${c.id}')" style="flex:1;color:var(--gold);border-color:var(--gold)">✦ ${fr?'Analyser':'Analyse'}</button>
+    <button class="btn-action" onclick="deleteClient('${c.id}')" style="flex:1;color:var(--red);border-color:var(--red)">🗑</button>
   `;
 
   document.getElementById('detailModal').classList.add('on');
@@ -4267,6 +4272,39 @@ function loadFromHistory(idx) {
     document.getElementById('historyModal')?.remove();
     toast(lang==='fr' ? '✓ Messages de ' + h.name + ' chargés' : '✓ ' + h.name + ' messages loaded');
   } catch(e) {}
+}
+
+function prepareAnalysis(clientId) {
+  const cl = clients.find(c => c.id === clientId);
+  if (!cl) { goTab('today'); return; }
+  goTab('today');
+  // Pre-fill paste zone with client context template
+  const fr = lang === 'fr';
+  const template = [
+    '--- ' + (fr ? 'CONTEXTE CLIENT' : 'CLIENT CONTEXT') + ' ---',
+    (fr ? 'Client: ' : 'Guest: ') + cl.name,
+    cl.arrival ? (fr ? 'Arrivée: ' : 'Arrival: ') + cl.arrival : '',
+    cl.departure ? (fr ? 'Départ: ' : 'Departure: ') + cl.departure : '',
+    cl.guests ? (fr ? 'Personnes: ' : 'Guests: ') + cl.guests : '',
+    cl.phone ? 'Tel: ' + cl.phone : '',
+    cl.notes ? (fr ? 'Notes existantes: ' : 'Existing notes: ') + cl.notes : '',
+    '',
+    '--- ' + (fr ? 'COLLEZ LE NOUVEAU MESSAGE ICI' : 'PASTE NEW MESSAGE HERE') + ' ---',
+    '',
+  ].filter(Boolean).join('\n');
+  
+  setTimeout(() => {
+    const ta = document.getElementById('pasteInput');
+    if (ta) {
+      ta.value = template;
+      ta.classList.add('has-text');
+      document.getElementById('analyzeBtn').disabled = false;
+      ta.focus();
+      // Place cursor at end
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      ta.scrollTop = ta.scrollHeight;
+    }
+  }, 100);
 }
 </script>
 </body>
