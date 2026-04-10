@@ -49,9 +49,10 @@ header{background:var(--green3);padding:0 20px;height:54px;display:flex;align-it
 .hdr-btn:hover{background:rgba(201,150,58,.15)}
 
 /* ── TABS ── */
-nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,.06);position:sticky;top:54px;z-index:99}
-.nav-btn{flex:1;padding:11px 8px;border:none;background:none;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;color:rgba(255,255,255,.4);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;letter-spacing:.3px;transition:all .2s;white-space:nowrap}
-.nav-btn.on{color:var(--gold);border-bottom-color:var(--gold)}
+nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,.08);position:sticky;top:54px;z-index:99;padding:0 4px}
+.nav-btn{flex:1;padding:12px 8px;border:none;background:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:rgba(255,255,255,.45);cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1px;letter-spacing:.3px;transition:all .2s;white-space:nowrap}
+.nav-btn.on{color:#fff;border-bottom-color:var(--gold);background:rgba(255,255,255,.04)}
+.nav-btn:hover:not(.on){color:rgba(255,255,255,.7)}
 .nav-btn .badge{display:inline-block;background:var(--red);color:#fff;border-radius:8px;font-size:9px;font-weight:700;padding:1px 5px;margin-left:4px;vertical-align:middle;line-height:1.4}
 .nav-badge{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;animation:pulse 1.5s infinite}
 
@@ -426,7 +427,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 <nav>
   <button class="nav-btn on" id="nb-today" onclick="goTab('today')">
-    <span data-fr="🎯 Commandement" data-en="🎯 Command">🎯 Commandement</span>
+    <span data-fr="📋 Today" data-en="📋 Today">📋 Today</span>
   </button>
   <button class="nav-btn" id="nb-clients" onclick="goTab('clients')">
     <span data-fr="👥 Clients" data-en="👥 Guests">👥 Clients</span>
@@ -448,8 +449,6 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <button class="btn-new-chip" onclick="openForm()" style="margin-left:auto" aria-label="Add new guest">+ <span data-fr="Nouveau" data-en="New">Nouveau</span></button>
   </div>
 
-
-  <!-- SMART ALERTS STRIP — shown on Today tab -->
   <!-- MORNING BRIEF — AI prioritized daily digest -->
   <div id="morningBrief" style="display:none">
     <div class="brief-header">
@@ -467,7 +466,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     </div>
   </div>
 
-  <div id="todayAlerts" style="display:none;margin:0 16px 8px">
+  <!-- SMART ALERTS -->
+  <div id="todayAlerts" style="display:none;margin-bottom:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:0 2px">
       <div style="font-size:9px;letter-spacing:2px;color:var(--muted);font-weight:600" data-fr="💡 ALERTES INTELLIGENTES" data-en="💡 SMART ALERTS">💡 ALERTES INTELLIGENTES</div>
       <button onclick="goTab('home')" style="font-size:11px;color:var(--gold);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0" data-fr="Voir tout →" data-en="See all →">Voir tout →</button>
@@ -478,19 +478,11 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <!-- TODAY QUICK VIEW — injected by renderTodayQV() -->
   <div id="todayQV"></div>
 
-  <!-- AI PASTE ZONE -->
-  <div class="ai-zone">
+  <!-- AI PASTE ZONE — secondary action -->
+  <div class="ai-zone" style="opacity:.9">
     <div class="ai-zone-header">
       <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-          <div class="ai-zone-title" data-fr="Analyser un message" data-en="Analyse a message">Analyser un message</div>
-          <div style="display:flex;gap:5px" id="sourceSelector">
-            <button class="source-btn on" onclick="setSource('whatsapp',this)" title="WhatsApp">💬</button>
-            <button class="source-btn" onclick="setSource('airbnb',this)" title="Airbnb">🏠</button>
-            <button class="source-btn" onclick="setSource('email',this)" title="Email">✉️</button>
-            <button class="source-btn" onclick="setSource('manual',this)" title="Manuel">✏️</button>
-          </div>
-        </div>
+        <div class="ai-zone-title" data-fr="Analyser un message" data-en="Analyse a message">Analyser un message</div>
         <div id="apiKeyHint" style="display:none;font-size:11px;color:#F09595;margin-top:4px" data-fr="⚠ Clé API manquante — configurez dans ⚙ Réglages" data-en="⚠ API key missing — configure in ⚙ Settings">⚠ Clé API manquante — configurez dans ⚙ Réglages</div>
         <div style="font-size:11px;color:rgba(255,255,255,.45);margin-top:3px" data-fr="Airbnb · WhatsApp · Email — l'IA fait tout" data-en="Airbnb · WhatsApp · Email — AI handles everything">Airbnb · WhatsApp · Email — l'IA fait tout</div>
       </div>
@@ -2165,11 +2157,19 @@ function toast(msg) {
 document.addEventListener('DOMContentLoaded', () => {
   applyLang();
   goTab('today'); // Always start on Today tab
-  // Always sync from Supabase on open (ensures data loads on any browser/device)
+  // Show cached data immediately, then sync from Supabase
+  loadLocal();
+  renderAll();
+  renderTodayQV();
+  generateAlerts(null);
+  setTimeout(() => loadMorningBrief(), 800);
+  
+  // Then sync fresh from Supabase in background
   loadFromSupabase().then(() => {
     renderTodayQV();
     generateAlerts(null);
-    setTimeout(() => loadMorningBrief(), 1200);
+  }).catch(() => {
+    // Already showing local data — silently fail
   });
   // Hide API key section if proxy is active
   if (STAFFLO_PROXY) {
