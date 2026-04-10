@@ -1776,15 +1776,42 @@ function openDetail(id) {
       </div>
     </div>` : ''}
 
-    <!-- Detail rows -->
+    <!-- Detail rows — compact, only what's not in stats -->
     <div style="border-radius:10px;border:1px solid var(--border);overflow:hidden;margin-bottom:12px">
       ${rows.filter(([l,v])=>!['Nationalité','Nationality','Arrivée','Arrival','Départ','Departure','Nuits','Nights','Personnes','Guests','Net vous','Your net','Net / nuit','Net / night'].includes(l)).map(([l,v],i,arr) =>
-        `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:11px 14px;${i<arr.length-1?'border-bottom:1px solid var(--border)':''}">
-          <span style="font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.5px;min-width:80px">${l}</span>
+        `<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:10px 14px;${i<arr.length-1?'border-bottom:1px solid var(--border)':''}">
+          <span style="font-size:11px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.5px;min-width:80px">${l}</span>
           <span style="font-size:13px;color:var(--ink);text-align:right;flex:1;padding-left:12px">${v}</span>
         </div>`
       ).join('')}
     </div>
+
+    <!-- QUI FAIT QUOI — same as result card -->
+    ${c.notes ? (() => {
+      const tasks = [];
+      const n2 = (c.notes||'').toLowerCase();
+      const nm = c.name ? c.name.split(' ')[0] : (fr?'le client':'guest');
+      const arrTime = n2.match(/(\d{1,2}[h:]\d{2}|\d{1,2}h\d{0,2})/);
+      const t = arrTime ? arrTime[0] : '';
+      if (n2.includes('dinner')||n2.includes('diner')||n2.includes('couscous')) tasks.push({role:'chef',label:fr?'Chef':'Chef',text:fr?'Préparer le dîner (couscous)':'Prepare dinner (couscous)'});
+      if (n2.includes('lunch')||n2.includes('déjeuner')) tasks.push({role:'chef',label:fr?'Chef':'Chef',text:fr?'Préparer le déjeuner':'Prepare lunch'});
+      tasks.push({role:'staff',label:fr?'Ménage':'Housekeeping',text:fr?'Villa prête — chambres, fleurs, piscine':'Villa ready — rooms, flowers, pool'});
+      if (n2.includes('kids')||n2.includes('children')||n2.includes('enfants')) tasks.push({role:'staff',label:fr?'Ménage':'Housekeeping',text:fr?'Sécurité piscine + équipements enfants':'Pool safety + children equipment'});
+      if (t) tasks.push({role:'driver',label:fr?'Transfert':'Driver',text:(fr?'Récupérer ':' Pick up ')+nm+' — '+t});
+      tasks.push({role:'vous',label:fr?'Vous':'You',text:fr?'Envoyer le message de bienvenue':'Send welcome message'});
+      const colors = {chef:'#FEF3DC;color:#7A5A1A',staff:'#E6F1FB;color:#0A2A4A',driver:'#F0EDE8;color:#8A8070',vous:'#D8F3DC;color:#1B4332'};
+      const phone = c.phone ? c.phone.replace(/[\s\-+()]/g,'') : '';
+      const briefLines = tasks.map(t2=>'• ['+t2.label+'] '+t2.text).join('\n');
+      const briefMsg = (fr?'📋 Brief villa — ':'📋 Villa brief — ')+(c.name||'')+'\n'+briefLines;
+      const waUrl = 'https://wa.me/'+(phone||'')+'?text='+encodeURIComponent(briefMsg);
+      return '<div style="margin-bottom:12px"><div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">'+(fr?'QUI FAIT QUOI':'WHO DOES WHAT')+'</div>'+
+        tasks.map(t2=>'<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(44,31,20,.06)">'+
+          '<span style="font-size:10px;font-weight:700;letter-spacing:.5px;min-width:80px;padding:3px 8px;border-radius:4px;text-align:center;background:'+colors[t2.role]+'">'+(fr?t2.label:t2.label)+'</span>'+
+          '<span style="font-size:12px;color:var(--ink);flex:1">'+t2.text+'</span>'+
+        '</div>').join('')+
+        '<a href="'+waUrl+'" target="_blank" style="display:block;width:100%;margin-top:10px;padding:10px;background:#25D366;color:#fff;border-radius:8px;font-size:12px;font-weight:600;text-align:center;text-decoration:none;font-family:DM Sans,sans-serif">📲 '+(fr?'Envoyer brief staff':'Send staff brief')+'</a>'+
+        '</div>';
+    })() : ''}
 
     ${c.notes ? `<div style="background:var(--gold-light);border-radius:10px;padding:12px 14px;border-left:3px solid var(--gold)">
       <div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;font-weight:600;margin-bottom:6px">📝 Notes</div>
