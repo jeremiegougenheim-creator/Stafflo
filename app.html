@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.json">
 <!-- Apple touch icons -->
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='40' fill='%230F2318'/><rect x='15' y='15' width='150' height='150' rx='30' fill='%23C9963A' opacity='.15'/><text x='90' y='125' font-family='Georgia,serif' font-size='100' font-weight='700' fill='%23C9963A' text-anchor='middle'>S</text></svg>">
-<title>Stafflo AI</title>
+<title>Stafflo — Villa Operations</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -319,6 +319,25 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .tooltip-icon:hover{background:var(--muted)}
 .tooltip-box{display:none;position:absolute;left:20px;top:-4px;background:var(--ink);color:#fff;font-size:11px;line-height:1.5;padding:8px 10px;border-radius:8px;width:200px;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 .tooltip-icon:hover+.tooltip-box{display:block}
+.source-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.source-btn.on{background:var(--gold);border-color:var(--gold);color:var(--green3)}
+.source-btn:hover{background:rgba(255,255,255,.15)}
+/* ── TASK STATUS ── */
+.task-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(44,31,20,.06)}
+.task-row:last-child{border-bottom:none}
+.task-role{font-size:10px;font-weight:700;letter-spacing:1px;min-width:90px;padding:3px 8px;border-radius:4px;text-align:center}
+.role-chef{background:#FEF3DC;color:#7A5A1A}
+.role-staff{background:#E6F1FB;color:#0A2A4A}
+.role-driver{background:#F0EDE8;color:var(--muted)}
+.role-vous{background:var(--green-light);color:var(--green)}
+.task-text{flex:1;font-size:12px;color:var(--ink)}
+.task-status{display:flex;gap:3px}
+.status-btn{border:none;background:none;cursor:pointer;font-size:10px;padding:3px 6px;border-radius:4px;font-family:'DM Sans',sans-serif;color:var(--muted);transition:all .15s}
+.status-btn.active{background:var(--green);color:#fff}
+.status-btn.active-wip{background:#BA7517;color:#fff}
+.source-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.source-btn.on{background:var(--gold);border-color:var(--gold);color:var(--green3)}
+.source-btn:hover{background:rgba(255,255,255,.15)}
 
 /* ── WHY MODAL ── */
 .why-modal{position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:600;display:none;align-items:center;justify-content:center;padding:20px}
@@ -407,7 +426,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 <nav>
   <button class="nav-btn on" id="nb-today" onclick="goTab('today')">
-    <span data-fr="📋 Aujourd'hui" data-en="📋 Today">📋 Aujourd'hui</span>
+    <span data-fr="🎯 Commandement" data-en="🎯 Command">🎯 Commandement</span>
   </button>
   <button class="nav-btn" id="nb-clients" onclick="goTab('clients')">
     <span data-fr="👥 Clients" data-en="👥 Guests">👥 Clients</span>
@@ -463,7 +482,15 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <div class="ai-zone">
     <div class="ai-zone-header">
       <div>
-        <div class="ai-zone-title" data-fr="Analyser un message" data-en="Analyse a message">Analyser un message</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+          <div class="ai-zone-title" data-fr="Analyser un message" data-en="Analyse a message">Analyser un message</div>
+          <div style="display:flex;gap:5px" id="sourceSelector">
+            <button class="source-btn on" onclick="setSource('whatsapp',this)" title="WhatsApp">💬</button>
+            <button class="source-btn" onclick="setSource('airbnb',this)" title="Airbnb">🏠</button>
+            <button class="source-btn" onclick="setSource('email',this)" title="Email">✉️</button>
+            <button class="source-btn" onclick="setSource('manual',this)" title="Manuel">✏️</button>
+          </div>
+        </div>
         <div id="apiKeyHint" style="display:none;font-size:11px;color:#F09595;margin-top:4px" data-fr="⚠ Clé API manquante — configurez dans ⚙ Réglages" data-en="⚠ API key missing — configure in ⚙ Settings">⚠ Clé API manquante — configurez dans ⚙ Réglages</div>
         <div style="font-size:11px;color:rgba(255,255,255,.45);margin-top:3px" data-fr="Airbnb · WhatsApp · Email — l'IA fait tout" data-en="Airbnb · WhatsApp · Email — AI handles everything">Airbnb · WhatsApp · Email — l'IA fait tout</div>
       </div>
@@ -509,6 +536,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         <div id="resNotesText" style="font-size:13px;color:var(--ink);line-height:1.6"></div>
       </div>
 
+      <!-- Action roles -->
+      <div id="resRoles" style="display:none;padding:10px 16px;border-bottom:1px solid var(--border)"></div>
       <!-- Alerts from AI -->
       <div class="ai-alerts" id="resAlerts"></div>
 
@@ -1294,6 +1323,11 @@ function renderResult(json) {
     notesEl.style.display = 'none';
   }
 
+  // Action roles — who does what
+  const actionRoles = buildActionRoles(json, g, fr);
+  const rolesEl = document.getElementById('resRoles');
+  if (rolesEl) { rolesEl.innerHTML = actionRoles; rolesEl.style.display = actionRoles ? 'block' : 'none'; }
+  
   // Alerts
   const alerts = json.alerts || [];
   document.getElementById('resAlerts').innerHTML = alerts.length ? alerts.map(a =>
@@ -1729,6 +1763,7 @@ function openDetail(id) {
     </div>
 
     <!-- Net earnings highlight -->
+    ${renderReadinessBar(c, fr)}
     ${net ? `<div style="background:linear-gradient(135deg,var(--green3),#1B4332);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
       <div>
         <div style="font-size:11px;color:rgba(255,255,255,.5);letter-spacing:1px;text-transform:uppercase">${fr?'Net vous':'Your net'}</div>
@@ -2029,7 +2064,7 @@ function goTab(t) {
   });
 
   if (t === 'clients') renderClients();
-  if (t === 'home') loadHomeData();
+  if (t === 'home') { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); }
   if (t === 'today') {
     renderTodayQV();
     // Restore last AI result if it exists
@@ -4369,6 +4404,225 @@ function prepareAnalysis(clientId) {
       ta.scrollTop = ta.scrollHeight;
     }
   }, 100);
+}
+
+// ════════════════════════════════════════════
+// SPRINT 1 — INBOX SOURCE + ACTION ROLES
+// ════════════════════════════════════════════
+let currentSource = 'whatsapp';
+
+function setSource(src, btn) {
+  currentSource = src;
+  document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('on'));
+  if (btn) btn.classList.add('on');
+  // Update placeholder
+  const placeholders = {
+    whatsapp: lang==='fr' ? 'Collez une conversation WhatsApp...' : 'Paste a WhatsApp conversation...',
+    airbnb:   lang==='fr' ? 'Collez un email Airbnb...' : 'Paste an Airbnb email...',
+    email:    lang==='fr' ? 'Collez un email...' : 'Paste an email...',
+    manual:   lang==='fr' ? 'Saisissez les informations manuellement...' : 'Enter information manually...'
+  };
+  const ta = document.getElementById('pasteInput');
+  if (ta) ta.placeholder = placeholders[src] || ta.placeholder;
+}
+
+function buildActionRoles(json, g, fr) {
+  const tasks = [];
+  const arrival = g.arrival || '';
+  const name = g.name || (fr?'le client':'the guest');
+  const notes = (g.notes || '').toLowerCase();
+
+  // Chef tasks
+  if (notes.includes('dinner') || notes.includes('diner') || notes.includes('couscous') || notes.includes('repas')) {
+    tasks.push({role:'chef', label:fr?'Chef':'Chef', text: fr?'Préparer le dîner d\'arrivée (couscous)':'Prepare arrival dinner'});
+  }
+  if (notes.includes('lunch') || notes.includes('déjeuner') || notes.includes('dejeuner')) {
+    tasks.push({role:'chef', label:fr?'Chef':'Chef', text: fr?'Préparer le déjeuner du lendemain':'Prepare next day lunch'});
+  }
+  if (notes.includes('breakfast') || notes.includes('petit-déjeuner') || notes.includes('petit dejeuner')) {
+    tasks.push({role:'chef', label:fr?'Chef':'Chef', text: fr?'Petit-déjeuner marocain complet':'Full Moroccan breakfast'});
+  }
+
+  // Housekeeping
+  tasks.push({role:'staff', label:fr?'Ménage':'Housekeeping', text: fr?'Villa prête avant l\'arrivée — chambres, fleurs, piscine':'Villa ready before arrival — rooms, flowers, pool'});
+  if (notes.includes('kids') || notes.includes('children') || notes.includes('enfants')) {
+    tasks.push({role:'staff', label:fr?'Ménage':'Housekeeping', text: fr?'Sécurité piscine + équipements enfants':'Pool safety + children equipment'});
+  }
+
+  // Driver
+  if (g.arrival) {
+    const arrTime = notes.match(/(\d{1,2}[h:]\d{2}|\d{1,2}h\d{0,2})/);
+    const timeStr = arrTime ? arrTime[0] : (fr?'heure à confirmer':'time TBC');
+    tasks.push({role:'driver', label:fr?'Transfert':'Driver', text: (fr?'Récupérer ':'Pick up ') + name + ' — ' + timeStr});
+  }
+
+  // Owner
+  if (notes.includes('passport') || notes.includes('passeport')) {
+    tasks.push({role:'vous', label:fr?'Vous':'You', text: fr?'Demander les passeports':'Request passports'});
+  }
+  tasks.push({role:'vous', label:fr?'Vous':'You', text: fr?'Envoyer le message de bienvenue':'Send welcome message'});
+
+  if (!tasks.length) return '';
+
+  const roleColors = {chef:'role-chef', staff:'role-staff', driver:'role-driver', vous:'role-vous'};
+  const statusHtml = (idx) => 
+    '<div class="task-status">' +
+    '<button class="status-btn" onclick="setTaskStatus(' + idx + ',\'todo\',this)" title="À faire">○</button>' +
+    '<button class="status-btn" onclick="setTaskStatus(' + idx + ',\'wip\',this)" title="En cours">◑</button>' +
+    '<button class="status-btn active" onclick="setTaskStatus(' + idx + ',\'done\',this)" title="Fait">✓</button>' +
+    '</div>';
+
+  // Store tasks
+  window._currentTasks = tasks;
+
+  return '<div style="padding:4px 0">' +
+    '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">' + (fr?'QUI FAIT QUOI':'WHO DOES WHAT') + '</div>' +
+    tasks.map((t, i) => 
+      '<div class="task-row">' +
+      '<span class="task-role ' + (roleColors[t.role]||'role-vous') + '">' + t.label + '</span>' +
+      '<span class="task-text">' + t.text + '</span>' +
+      statusHtml(i) +
+      '</div>'
+    ).join('') +
+    '<button onclick="sendStaffBriefAll()" style="width:100%;margin-top:8px;padding:8px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">📲 ' + (fr?'Envoyer brief staff WhatsApp':'Send staff brief via WhatsApp') + '</button>' +
+    '</div>';
+}
+
+function setTaskStatus(idx, status, btn) {
+  const row = btn.closest('.task-row');
+  row.querySelectorAll('.status-btn').forEach(b => {
+    b.classList.remove('active', 'active-wip');
+  });
+  if (status === 'done') btn.classList.add('active');
+  else if (status === 'wip') btn.classList.add('active-wip');
+  if (window._currentTasks && window._currentTasks[idx]) {
+    window._currentTasks[idx].status = status;
+  }
+}
+
+function sendStaffBriefAll() {
+  const fr = lang === 'fr';
+  const tasks = window._currentTasks || [];
+  const cfg = getCfg();
+  const staffPhone = (cfg.staff_phone || '').replace(/[\s\-+()]/g, '');
+  
+  const todo = tasks.filter(t => t.status !== 'done');
+  const lines = todo.map(t => '• [' + t.label + '] ' + t.text);
+  const msg = (fr ? '📋 Brief staff — Villa ' : '📋 Staff brief — Villa ') + (cfg.villa || 'DarJ') + '\n' + lines.join('\n');
+  
+  const url = staffPhone 
+    ? 'https://wa.me/' + staffPhone + '?text=' + encodeURIComponent(msg)
+    : 'https://wa.me/?text=' + encodeURIComponent(msg);
+  window.open(url, '_blank');
+}
+
+// ════════════════════════════════════════════
+// SPRINT 2 — GUEST INTELLIGENCE
+// ════════════════════════════════════════════
+function getGuestScore(client) {
+  let score = 0;
+  const n = (client.notes||'').toLowerCase();
+  if (client.returning) score += 3;
+  if (parseFloat(client.price) > 1500) score += 2;
+  if (client.guests >= 6) score += 1;
+  if (n.includes('birthday') || n.includes('anniversaire')) score += 1;
+  if (client.phone) score += 1;
+  if (client.email) score += 1;
+  return Math.min(score, 5);
+}
+
+function getReadinessScore(client) {
+  const checks = [
+    !!client.phone,
+    !!(client.notes && client.notes.length > 10),
+    !!client.arrival && !!client.departure,
+    !!client.price,
+    !!(client.notes||'').toLowerCase().match(/passport|passeport|transfer|repas|meal/)
+  ];
+  return checks.filter(Boolean).length;
+}
+
+function renderReadinessBar(client, fr) {
+  const score = getReadinessScore(client);
+  const labels = fr 
+    ? ['Tel','Notes','Dates','Prix','Briefé']
+    : ['Phone','Notes','Dates','Price','Briefed'];
+  const checks = [
+    !!client.phone,
+    !!(client.notes && client.notes.length > 10),
+    !!client.arrival && !!client.departure,
+    !!client.price,
+    !!(client.notes||'').toLowerCase().match(/passport|passeport|transfer|repas|meal/)
+  ];
+  return '<div style="margin-top:10px">' +
+    '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">' + (fr?'PRÉPARATION':'READINESS') + ' ' + score + '/5</div>' +
+    '<div style="display:flex;gap:4px">' +
+    checks.map((ok, i) => 
+      '<div style="flex:1;text-align:center">' +
+      '<div style="height:3px;border-radius:2px;background:' + (ok?'var(--green)':'var(--border)') + ';margin-bottom:3px"></div>' +
+      '<div style="font-size:8px;color:' + (ok?'var(--green)':'var(--muted)') + '">' + labels[i] + '</div>' +
+      '</div>'
+    ).join('') +
+    '</div></div>';
+}
+
+// ════════════════════════════════════════════
+// SPRINT 3 — VILLA OPS / PROPERTY BRAIN
+// ════════════════════════════════════════════
+const VILLA_SOP = [
+  {id:'pool', label_fr:'Piscine vérifiée', label_en:'Pool checked', category:'arrival'},
+  {id:'flowers', label_fr:'Fleurs fraîches', label_en:'Fresh flowers', category:'arrival'},
+  {id:'rooms', label_fr:'Chambres préparées', label_en:'Rooms prepared', category:'arrival'},
+  {id:'wifi', label_fr:'WiFi + code porte', label_en:'WiFi + door code', category:'arrival'},
+  {id:'groceries', label_fr:'Courses faites', label_en:'Groceries done', category:'arrival'},
+  {id:'welcome', label_fr:'Message bienvenue envoyé', label_en:'Welcome message sent', category:'communication'},
+  {id:'passport', label_fr:'Passeports demandés', label_en:'Passports requested', category:'communication'},
+  {id:'driver', label_fr:'Transfert confirmé', label_en:'Transfer confirmed', category:'logistics'},
+];
+
+let sopState = JSON.parse(localStorage.getItem('stafflo_sop') || '{}');
+
+function renderVillaOpsExtra() {
+  // Add SOP checklist to My Home AI / Villa Ops tab
+  const homeTab = document.getElementById('tab-home');
+  if (!homeTab || document.getElementById('sopSection')) return;
+  
+  const fr = lang === 'fr';
+  const sopHtml = '<div class="hm-card" id="sopSection" style="margin-top:14px">' +
+    '<div class="hm-hdr"><div class="hm-hdr-lbl">' + (fr?'✅ CHECKLIST VILLA':'✅ VILLA CHECKLIST') + '</div>' +
+    '<button class="hm-refresh" onclick="resetSOP()" title="Reset">↺</button></div>' +
+    '<div class="hm-body" style="padding:8px 14px">' +
+    VILLA_SOP.map(item => {
+      const done = sopState[item.id];
+      const label = fr ? item.label_fr : item.label_en;
+      return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">' +
+        '<input type="checkbox" id="sop_' + item.id + '" ' + (done?'checked':'') + 
+        ' onchange="toggleSOP(\'' + item.id + '\',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">' +
+        '<label for="sop_' + item.id + '" style="font-size:13px;color:' + (done?'var(--muted)':'var(--ink)') + ';' + (done?'text-decoration:line-through':'') + ';cursor:pointer;flex:1">' + label + '</label>' +
+        '<span style="font-size:10px;color:var(--muted);background:var(--paper);padding:2px 6px;border-radius:4px">' + (fr ? (item.category==='arrival'?'Arrivée':item.category==='communication'?'Comm.':'Logistique') : item.category) + '</span>' +
+        '</div>';
+    }).join('') +
+    '</div></div>';
+  
+  homeTab.insertAdjacentHTML('beforeend', sopHtml);
+}
+
+function toggleSOP(id, checked) {
+  sopState[id] = checked;
+  localStorage.setItem('stafflo_sop', JSON.stringify(sopState));
+  // Update label style
+  const label = document.querySelector('label[for="sop_' + id + '"]');
+  if (label) {
+    label.style.color = checked ? 'var(--muted)' : 'var(--ink)';
+    label.style.textDecoration = checked ? 'line-through' : 'none';
+  }
+}
+
+function resetSOP() {
+  sopState = {};
+  localStorage.removeItem('stafflo_sop');
+  document.getElementById('sopSection')?.remove();
+  renderVillaOpsExtra();
 }
 </script>
 </body>
