@@ -3428,7 +3428,21 @@ async function analyzeWithProxy(text, systemPrompt, btn) {
     document.getElementById('analyzeBtn').disabled = true;
 
   } catch(e) {
-    toast('⚠ ' + (e.message || 'Error').slice(0,80));
+    const msg = e.message || '';
+    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+      toast(lang==='fr'
+        ? '⚠ Proxy inaccessible — vérifiez Cloudflare Workers'
+        : '⚠ Proxy unreachable — check Cloudflare Workers');
+    } else if (msg.includes('401') || msg.includes('invalid_api_key')) {
+      toast(lang==='fr'
+        ? '⚠ Clé Groq invalide dans le Worker — vérifiez GROQ_KEY'
+        : '⚠ Invalid Groq key in Worker — check GROQ_KEY variable');
+    } else if (msg.includes('429')) {
+      toast(lang==='fr' ? '⚠ Quota Groq dépassé — réessayez dans 1 min' : '⚠ Groq quota exceeded — retry in 1 min');
+    } else {
+      toast('⚠ ' + msg.slice(0,80));
+    }
+    console.error('Proxy error details:', e);
   }
   btn.disabled = false; btn.classList.remove('loading');
 }
