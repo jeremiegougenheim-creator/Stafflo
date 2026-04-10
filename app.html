@@ -956,8 +956,12 @@ async function loadFromSupabase() {
         guests:r.guests||0, price:r.price||0, commission:r.commission||0,
         commMode:r.comm_mode||'percent', source:r.source||'Airbnb',
         notes:r.notes||'', payStatus:r.pay_status||'',
+        messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
         createdAt:r.created_at||new Date().toISOString()
       }));
+      // Populate _clientMessages cache from loaded data
+      if (!window._clientMessages) window._clientMessages = {};
+      clients.forEach(cl => { if (cl.messages) window._clientMessages[cl.id] = cl.messages; });
       saveLocal();
       cloudEnabled = true;
       setSyncDot('ok');
@@ -975,7 +979,8 @@ async function pushToSupabase(client) {
     phone:client.phone||'', arrival:client.arrival||null, departure:client.departure||null,
     guests:client.guests||0, price:client.price||0, commission:client.commission||0,
     comm_mode:client.commMode||'percent', source:client.source||'Direct',
-    notes:client.notes||'', pay_status:client.payStatus||''
+    notes:client.notes||'', pay_status:client.payStatus||'',
+    messages: client.messages ? JSON.stringify(client.messages) : null
   };
   setSyncDot('busy');
   try {
@@ -1369,19 +1374,26 @@ function copyPrice() {
 }
 
 function saveFromResult(g) {
+  const newId = Date.now().toString();
   const client = {
-    id: Date.now().toString(),
+    id: newId,
     name: g.name || '', nat: g.nat || '', email: g.email || '',
     phone: g.phone || '', arrival: g.arrival || '', departure: g.departure || '',
     guests: g.guests || 0, price: g.price || 0, commission: g.commission || 3.6,
     commMode: 'percent', source: g.source || 'Airbnb',
-    notes: '', payStatus: '', createdAt: new Date().toISOString()
+    notes: '', payStatus: '', createdAt: new Date().toISOString(),
+    messages: currentMsgs && Object.keys(currentMsgs).length ? {...currentMsgs} : null
   };
+  // Cache in _clientMessages
+  if (client.messages) {
+    if (!window._clientMessages) window._clientMessages = {};
+    window._clientMessages[newId] = client.messages;
+  }
   clients.unshift(client);
   saveLocal();
   pushToSupabase(client);
   renderAll();
-  toast(lang==='fr' ? '✓ Client sauvegardé' : '✓ Guest saved');
+  toast(lang==='fr' ? '✓ Client sauvegardé avec messages' : '✓ Guest saved with messages');
 }
 
 function mergeWithExisting(existingId, newData) {
@@ -1420,6 +1432,13 @@ function mergeWithExisting(existingId, newData) {
   }
 
   merged.updatedAt = new Date().toISOString();
+
+  // Save new messages, merge with existing
+  if (currentMsgs && Object.keys(currentMsgs).length) {
+    merged.messages = { ...(merged.messages||{}), ...currentMsgs };
+    if (!window._clientMessages) window._clientMessages = {};
+    window._clientMessages[merged.id] = merged.messages;
+  }
 
   clients[idx] = merged;
   saveLocal();
@@ -1660,6 +1679,46 @@ function openDetail(id) {
       <div style="font-size:13px;color:var(--ink);line-height:1.6">${c.notes}</div>
     </div>` : ''}
   `;
+
+  // Quick messages section in detail
+  const msgTypes = fr
+    ? [{k:'airbnb',l:'✉ Airbnb'},{k:'welcome',l:'🌴 Accueil'},{k:'driver',l:'🚕 Transfert'},{k:'staff',l:'👤 Staff'},{k:'passport',l:'🛂 Passeport'}]
+    : [{k:'airbnb',l:'✉ Airbnb'},{k:'welcome',l:'🌴 Welcome'},{k:'driver',l:'🚕 Driver'},{k:'staff',l:'👤 Staff'},{k:'passport',l:'🛂 Passport'}];
+  
+  // Check if we have cached messages for this client
+  // Load messages from client object or cache
+  const cachedMsgs = (c.messages && Object.keys(c.messages).length) 
+    ? c.messages 
+    : (window._clientMessages && window._clientMessages[c.id]);
+  // Keep cache in sync
+  if (cachedMsgs && !window._clientMessages?.[c.id]) {
+    if (!window._clientMessages) window._clientMessages = {};
+    window._clientMessages[c.id] = cachedMsgs;
+  }
+  
+  const detailMsgSection = cachedMsgs ? `
+    <div style="margin-top:14px">
+      <div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">${fr?'MESSAGES PRÊTS':'READY TO SEND'}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        ${msgTypes.map((m,i) => `<button onclick="showDetailMsg('${c.id}','${m.k}')" 
+          style="padding:5px 10px;border-radius:20px;border:1.5px solid var(--border);background:${i===0?'var(--green)':'var(--paper)'};color:${i===0?'#fff':'var(--ink)'};font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif" 
+          id="dmtab_${m.k}">${m.l}</button>`).join('')}
+      </div>
+      <div id="detailMsgBody" style="background:var(--paper);border-radius:10px;padding:12px;font-size:12px;line-height:1.7;color:var(--ink);border:1px solid var(--border);max-height:150px;overflow-y:auto;white-space:pre-wrap">${cachedMsgs.airbnb||''}</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button onclick="const t=document.getElementById('detailMsgBody').textContent;navigator.clipboard.writeText(t).then(()=>toast('📋 Copié'))" 
+          style="flex:1;padding:9px;background:var(--green);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📋 ${fr?'Copier':'Copy'}</button>
+        ${c.phone ? `<a href="https://wa.me/${c.phone.replace(/[\s\-+]/g,'')}?text=${encodeURIComponent(cachedMsgs.airbnb||'')}" target="_blank"
+          style="flex:1;padding:9px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center;text-decoration:none">💬 WA</a>` : ''}
+      </div>
+    </div>` : `
+    <div style="margin-top:14px;background:var(--paper);border-radius:10px;padding:12px;border:1px dashed var(--border);text-align:center">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${fr?'Aucun message généré pour ce client':'No messages generated for this guest'}</div>
+      <button onclick="closeDetail();document.getElementById('pasteInput').focus()" 
+        style="font-size:11px;color:var(--gold);background:none;border:1px solid var(--gold);border-radius:6px;padding:5px 12px;cursor:pointer;font-family:'DM Sans',sans-serif">${fr?'→ Analyser un message':'→ Analyse a message'}</button>
+    </div>`;
+
+  document.getElementById('detailBody').insertAdjacentHTML('beforeend', detailMsgSection);
 
   document.getElementById('detailActions').innerHTML = `
     <button class="btn-action primary" onclick="closeDetail();openForm('${c.id}')" style="flex:1">${fr?'✏️ Modifier':'✏️ Edit'}</button>
@@ -2529,14 +2588,27 @@ async function generateAlerts(weatherTemp) {
     sub: fr?'Aucune action urgente. Bonne journée !':'No urgent actions. Have a great day!'});
 
   // ── RENDER ──
-  const alertsHtml = alerts.map(a => `
+  const renderAlert = (a) => `
     <div class="alert-hm ${a.type}">
       <span style="flex-shrink:0;font-size:14px">${a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡'}</span>
       <div>
         <div style="font-weight:600;font-size:12px;margin-bottom:2px">${a.title}</div>
         <div style="font-size:11px;opacity:.85;line-height:1.4">${a.sub}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+
+  const SHOW_FIRST = 4;
+  const visible = alerts.slice(0, SHOW_FIRST);
+  const hidden  = alerts.slice(SHOW_FIRST);
+
+  let alertsHtml = visible.map(renderAlert).join('');
+  if (hidden.length) {
+    alertsHtml += `<div id="alertsMore" style="display:none">${hidden.map(renderAlert).join('')}</div>
+    <button onclick="const m=document.getElementById('alertsMore');const b=this;if(m.style.display==='none'){m.style.display='block';b.textContent='${fr?'▲ Moins':'▲ Less'}'}else{m.style.display='none';b.textContent='${fr?'▼ Voir '+hidden.length+' de plus':'▼ See '+hidden.length+' more'}'}" 
+      style="width:100%;padding:8px;background:none;border:none;border-top:1px solid var(--border);font-size:12px;color:var(--muted);cursor:pointer;margin-top:4px;font-family:'DM Sans',sans-serif">
+      ${fr?'▼ Voir '+hidden.length+' de plus':'▼ See '+hidden.length+' more'}
+    </button>`;
+  }
 
   const elV = document.getElementById('alertsContent');
   if (elV) elV.innerHTML = alertsHtml;
@@ -3436,20 +3508,45 @@ async function analyzeWithProxy(text, systemPrompt, btn) {
 
   } catch(e) {
     const msg = e.message || '';
-    if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-      toast(lang==='fr'
-        ? '⚠ Proxy inaccessible — vérifiez Cloudflare Workers'
-        : '⚠ Proxy unreachable — check Cloudflare Workers');
-    } else if (msg.includes('401') || msg.includes('invalid_api_key')) {
-      toast(lang==='fr'
-        ? '⚠ Clé Groq invalide dans le Worker — vérifiez GROQ_KEY'
-        : '⚠ Invalid Groq key in Worker — check GROQ_KEY variable');
-    } else if (msg.includes('429')) {
-      toast(lang==='fr' ? '⚠ Quota Groq dépassé — réessayez dans 1 min' : '⚠ Groq quota exceeded — retry in 1 min');
+    // Proxy failed — try direct Groq with local key as fallback
+    console.warn('Proxy failed, trying direct Groq:', msg);
+    const cfg2 = getCfg();
+    const groqKey = cfg2.groqKey || '';
+    if (groqKey) {
+      try {
+        const r2 = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + groqKey },
+          body: JSON.stringify({
+            model: 'llama-3.1-8b-instant',
+            max_tokens: 2000,
+            temperature: 0.3,
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }]
+          })
+        });
+        const d2 = await r2.json();
+        const raw2 = d2.choices?.[0]?.message?.content || '';
+        if (!raw2) throw new Error('Empty');
+        const cleaned2 = raw2.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+        const match2 = cleaned2.match(/\{[\s\S]*\}/);
+        if (!match2) throw new Error('No JSON');
+        const json2 = JSON.parse(match2[0]);
+        renderResult(json2);
+        document.getElementById('aiResult').classList.add('show');
+        document.getElementById('pasteInput').value = '';
+        document.getElementById('pasteInput').classList.remove('has-text');
+        document.getElementById('analyzeBtn').disabled = true;
+        btn.disabled = false; btn.classList.remove('loading');
+        return;
+      } catch(e2) {
+        toast(lang==='fr' ? '⚠ Proxy et clé directe échoués' : '⚠ Both proxy and direct key failed');
+      }
     } else {
-      toast('⚠ ' + msg.slice(0,80));
+      toast(lang==='fr'
+        ? '⚠ Proxy inaccessible — ajoutez une clé Groq dans ⚙ Réglages comme backup'
+        : '⚠ Proxy unreachable — add a Groq key in ⚙ Settings as backup');
     }
-    console.error('Proxy error details:', e);
+    console.error('Proxy error:', e);
   }
   btn.disabled = false; btn.classList.remove('loading');
 }
@@ -3895,6 +3992,21 @@ function showWhyModal(idx) {
   '</div>';
   
   document.body.appendChild(modal);
+}
+
+function showDetailMsg(clientId, msgKey) {
+  const msgs = window._clientMessages && window._clientMessages[clientId];
+  if (!msgs) return;
+  const body = document.getElementById('detailMsgBody');
+  if (body) body.textContent = msgs[msgKey] || '';
+  // Update tab styles
+  ['airbnb','welcome','driver','staff','passport'].forEach(k => {
+    const btn = document.getElementById('dmtab_' + k);
+    if (btn) {
+      btn.style.background = k === msgKey ? 'var(--green)' : 'var(--paper)';
+      btn.style.color = k === msgKey ? '#fff' : 'var(--ink)';
+    }
+  });
 }
 </script>
 </body>
