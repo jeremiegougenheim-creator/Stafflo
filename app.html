@@ -3409,7 +3409,10 @@ async function extractFormAI() {
                : provider === 'deepseek' ? (cfg.deepseekKey || '')
                : (cfg.anthropicKey || '');
 
-  if (!apiKey) {
+  // Use proxy if available — no API key needed
+  const useProxy = !!STAFFLO_PROXY;
+  
+  if (!useProxy && !apiKey) {
     toast(lang==='fr' ? '⚙ Ajoutez votre clé API dans Réglages' : '⚙ Add your API key in Settings');
     spinner.style.display = 'none'; label.style.display = 'inline'; btn.disabled = false;
     return;
@@ -3448,10 +3451,68 @@ async function extractFormAI() {
     'NEVER invent data.',
   ].join('\n');
 
-  const userPrompt = 'Extract from this message:\n\n' + text;
+  const userPrompt = 'Extract from this message:\n\n' + text.slice(0, 3000);
 
   try {
     let raw = '';
+
+    // Try proxy first if available
+    if (useProxy) {
+      const r = await fetch(STAFFLO_PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          max_tokens: 600,
+          temperature: 0.1,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ]
+        })
+      });
+      if (r.ok) {
+        const d = await r.json();
+        raw = d.choices?.[0]?.message?.content || '';
+      } else {
+        console.warn('Proxy failed in form, falling back to direct key');
+      }
+      if (raw) {
+        // Parse and fill form
+        const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (match) {
+          const result = JSON.parse(match[0]);
+          if (result.name) document.getElementById('fName').value = result.name;
+          if (result.arrival) document.getElementById('fArr').value = result.arrival;
+          if (result.departure) document.getElementById('fDep').value = result.departure;
+          if (result.guests) document.getElementById('fGuests').value = result.guests;
+          if (result.price) document.getElementById('fPrice').value = result.price;
+          if (result.commission) document.getElementById('fComm').value = result.commission;
+          if (result.phone) document.getElementById('fPhone').value = result.phone;
+          if (result.notes) document.getElementById('fNotes').value = result.notes;
+          if (result.nat) {
+            const sel = document.getElementById('fNat');
+            for (let i=0; i<sel.options.length; i++) {
+              if (sel.options[i].text.includes(result.nat.split(' ').pop())) { sel.selectedIndex=i; break; }
+            }
+          }
+          if (result.source) {
+            const sel = document.getElementById('fSource');
+            for (let i=0; i<sel.options.length; i++) {
+              if (sel.options[i].value === result.source) { sel.selectedIndex=i; autoComm(); break; }
+            }
+          }
+          updateNetPreview();
+          if (result.messages) {
+            window._formMessages = result.messages;
+          }
+          document.getElementById('fExtractMsg').style.display = 'block';
+          spinner.style.display = 'none'; label.style.display = 'inline'; btn.disabled = false;
+          return;
+        }
+      }
+    }
 
     if (provider === 'groq') {
       const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -3627,20 +3688,23 @@ async function analyzeWithProxy(text, systemPrompt, btn) {
     // Truncate very long messages to avoid token limits
     const maxChars = 4000;
     const truncatedText = text.length > maxChars 
-      ? text.slice(0, maxChars) + '\n[... message tronqué pour la longueur]'
+      ? text.slice(0, maxChars) + '\n[... truncated]'
       : text;
     
-    console.log('Proxy call — text length:', truncatedText.length, 'chars');
+    // Use a compact version of systemPrompt to avoid token overflow
+    const compactPrompt = systemPrompt.slice(0, 2000);
+    
+    console.log('Proxy call — text:', truncatedText.length, 'prompt:', compactPrompt.length);
     
     const response = await fetch(STAFFLO_PROXY, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
+        model: 'llama-3.3-70b-versatile',
         max_tokens: 1500,
-        temperature: 0.3,
+        temperature: 0.2,
         messages: [
-          { role: 'system', content: systemPrompt },
+          { role: 'system', content: compactPrompt },
           { role: 'user', content: truncatedText }
         ]
       })
