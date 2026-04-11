@@ -998,6 +998,10 @@ const STAFFLO_PROXY = 'https://stafflo-proxy.jeremiegougenheim.workers.dev'; // 
 // ════════════════════════════════════════════
 let lang = localStorage.getItem('stafflo_lang') || 'fr';
 let clients = [];
+
+// Global date utilities
+function dateInDays(n) { const d = new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function daysFrom(dateStr) { return Math.ceil((new Date(dateStr) - new Date()) / 86400000); }
 let crmFilter = 'all';
 let currentMsgs = {};
 let currentMsgKey = '';
@@ -2540,7 +2544,7 @@ async function generateAlerts(weatherTemp) {
 
   // ── HELPERS ──
   const daysFrom = (dateStr) => Math.ceil((new Date(dateStr) - now) / 86400000);
-  const dateInDays = (n) => { const d = new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+  // dateInDays defined globally below
 
   // ── 1. CRM OPERATIONAL ALERTS — highest priority ──
   const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
@@ -3385,6 +3389,101 @@ function renderTodayQV() {
   </div>`;
 
   el.innerHTML = html;
+
+  // ── ACTION BOARD — visible for in-house or next upcoming guest ──
+  const actionGuest = inHouse || nextUp;
+  if (actionGuest && actionGuest.notes) {
+    const n2 = (actionGuest.notes||'').toLowerCase();
+    const nm = actionGuest.name ? actionGuest.name.split(' ')[0] : '';
+    const arrM = n2.match(/(\d{1,2}[h:]\d{2}|\d{1,2}h\d{0,2})/);
+    const arrT = arrM ? arrM[0] : '';
+    const boardTasks = [];
+    if (n2.includes('dinner')||n2.includes('diner')||n2.includes('couscous'))
+      boardTasks.push({role:'chef', label:fr?'Chef':'Chef', text:fr?'Préparer le dîner':'Prepare dinner', key:'dinner'});
+    if (n2.includes('lunch')||n2.includes('déjeuner')||n2.includes('dejeuner'))
+      boardTasks.push({role:'chef', label:fr?'Chef':'Chef', text:fr?'Préparer le déjeuner':'Prepare lunch', key:'lunch'});
+    boardTasks.push({role:'housekeeping', label:fr?'Ménage':'Housekeeping', text:fr?'Villa prête — chambres, fleurs, piscine':'Villa ready — rooms, flowers, pool', key:'villa'});
+    if (n2.includes('kids')||n2.includes('children')||n2.includes('enfants'))
+      boardTasks.push({role:'housekeeping', label:fr?'Ménage':'Housekeeping', text:fr?'Sécurité piscine + équipements enfants':'Pool safety + kids setup', key:'kids'});
+    if (arrT) boardTasks.push({role:'driver', label:fr?'Transfert':'Driver', text:(fr?'Récupérer ':'Pick up ')+nm+' — '+arrT, key:'driver'});
+    boardTasks.push({role:'you', label:fr?'Vous':'You', text:fr?'Envoyer message de bienvenue':'Send welcome message', key:'welcome'});
+
+    const rColors = {chef:'background:#FEF3DC;color:#7A5A1A', housekeeping:'background:#E6F1FB;color:#0A2A4A', driver:'background:#F0EDE8;color:#8A8070', you:'background:#D8F3DC;color:#1B4332'};
+    const sDone = (k) => localStorage.getItem('bt_'+k+'_'+actionGuest.id) === 'done';
+    const sWip  = (k) => localStorage.getItem('bt_'+k+'_'+actionGuest.id) === 'wip';
+    const doneCount = boardTasks.filter(t => sDone(t.key)).length;
+    const pct = Math.round(doneCount/boardTasks.length*100);
+
+    const boardEl = document.createElement('div');
+    boardEl.className = 'hm-card';
+    boardEl.style.cssText = 'margin:0 0 12px';
+    boardEl.innerHTML = 
+      '<div class="hm-hdr" style="cursor:default;padding:10px 14px">' +
+        '<div style="flex:1">' +
+          '<div class="hm-hdr-lbl">⚡ '+(fr?'QUI FAIT QUOI — ':'WHO DOES WHAT — ')+actionGuest.name+'</div>' +
+          '<div style="margin-top:5px;height:3px;background:var(--border);border-radius:2px">' +
+            '<div id="boardProgress" style="height:3px;background:var(--green);border-radius:2px;width:'+pct+'%;transition:width .3s"></div>' +
+          '</div>' +
+        '</div>' +
+        '<span style="font-size:12px;color:var(--green);font-weight:700;margin-left:12px">'+doneCount+'/'+boardTasks.length+'</span>' +
+      '</div>' +
+      '<div class="hm-body" style="padding:6px 14px">' +
+      boardTasks.map(function(t) {
+        const done = sDone(t.key); const wip = sWip(t.key);
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(44,31,20,.05)">' +
+          '<span style="font-size:9px;font-weight:700;letter-spacing:.5px;min-width:80px;padding:2px 7px;border-radius:4px;text-align:center;'+rColors[t.role]+'">'+t.label+'</span>' +
+          '<span style="font-size:12px;color:var(--ink);flex:1;'+(done?'text-decoration:line-through;color:var(--muted)':'')+'">'+t.text+'</span>' +
+          '<div style="display:flex;gap:2px">' +
+            '<button onclick="setBoard(this)" data-cid="'+actionGuest.id+'" data-key="'+t.key+'" data-st="todo" style="border:none;background:none;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px;color:'+(!done&&!wip?'var(--green)':'var(--border)')+';font-weight:'+(!done&&!wip?'700':'400')+'">○</button>' +
+            '<button onclick="setBoard(this)" data-cid="'+actionGuest.id+'" data-key="'+t.key+'" data-st="wip" style="border:none;background:none;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px;color:'+(wip?'#BA7517':'var(--border)')+';font-weight:'+(wip?'700':'400')+'">◑</button>' +
+            '<button onclick="setBoard(this)" data-cid="'+actionGuest.id+'" data-key="'+t.key+'" data-st="done" style="border:none;background:none;cursor:pointer;font-size:12px;padding:2px 4px;border-radius:3px;color:'+(done?'var(--green)':'var(--border)')+';font-weight:'+(done?'700':'400')+'">✓</button>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+      (actionGuest.phone ? '<a href="https://wa.me/'+(actionGuest.phone||'').replace(/[\s\-+()]/g,'')+'?text='+encodeURIComponent((fr?'Brief villa — ':'Villa brief — ')+actionGuest.name+'\n'+boardTasks.map(t=>'• ['+t.label+'] '+t.text).join('\n'))+'" target="_blank" style="display:block;margin:8px 0 4px;padding:9px;background:#25D366;color:#fff;border-radius:8px;font-size:12px;font-weight:600;text-align:center;text-decoration:none">📲 '+(fr?'Envoyer brief staff':'Send staff brief')+'</a>' : '') +
+      '</div>';
+
+    const qvEl = document.getElementById('todayQV');
+    if (qvEl) qvEl.insertAdjacentElement('afterbegin', boardEl);
+  }
+
+  // ── ARRIVAL READINESS — next guest arriving in ≤3 days ──
+  if (nextUp) {
+    const dTo = Math.ceil((new Date(nextUp.arrival) - new Date()) / 86400000);
+    if (dTo >= 0 && dTo <= 3) {
+      const items = [
+        {k:'passport', lFR:'Passeports reçus', lEN:'Passports received', auto:(nextUp.notes||'').toLowerCase().includes('passport')},
+        {k:'payment', lFR:'Paiement confirmé', lEN:'Payment confirmed', auto:!!nextUp.price},
+        {k:'welcome', lFR:'Message bienvenue envoyé', lEN:'Welcome message sent', auto:!!(window._clientMessages&&window._clientMessages[nextUp.id]&&window._clientMessages[nextUp.id].welcome)},
+        {k:'pool', lFR:'Piscine vérifiée', lEN:'Pool checked', auto:false},
+        {k:'rooms', lFR:'Chambres préparées', lEN:'Rooms prepared', auto:false},
+        {k:'groceries', lFR:'Courses faites', lEN:'Groceries done', auto:false},
+      ];
+      items.forEach(i => { if (localStorage.getItem('rdy_'+i.k+'_'+nextUp.id)==='done') i.auto=true; });
+      const doneR = items.filter(i=>i.auto).length;
+      const pctR = Math.round(doneR/items.length*100);
+      const urgC = dTo<=1?'var(--red)':dTo<=2?'#BA7517':'var(--green)';
+
+      const readEl = document.createElement('div');
+      readEl.className = 'hm-card';
+      readEl.style.cssText = 'margin:0 0 12px;border-left:3px solid '+urgC;
+      readEl.innerHTML =
+        '<div class="hm-hdr" style="cursor:default;padding:10px 14px">' +
+          '<div style="flex:1"><div class="hm-hdr-lbl" style="color:'+urgC+'">🛎 '+(fr?'ARRIVÉE DANS ':'ARRIVAL IN ')+dTo+(fr?'J — ':'D — ')+nextUp.name+'</div>' +
+          '<div style="margin-top:5px;height:3px;background:var(--border);border-radius:2px"><div style="height:3px;background:'+urgC+';border-radius:2px;width:'+pctR+'%;transition:width .3s"></div></div></div>' +
+          '<span style="font-size:13px;font-weight:700;color:'+urgC+';margin-left:12px">'+doneR+'/'+items.length+'</span>' +
+        '</div>' +
+        '<div class="hm-body" style="padding:6px 14px;display:grid;grid-template-columns:1fr 1fr;gap:2px">' +
+        items.map(i => '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;cursor:pointer" onclick="toggleRdy(this)" data-key="'+i.k+'" data-cid="'+nextUp.id+'">' +
+          '<span style="font-size:13px;color:'+(i.auto?'var(--green)':'var(--border)')+'">'+(i.auto?'✓':'○')+'</span>' +
+          '<span style="font-size:12px;color:'+(i.auto?'var(--muted)':'var(--ink)')+(i.auto?';text-decoration:line-through':'')+'">'+(fr?i.lFR:i.lEN)+'</span>' +
+        '</div>').join('') +
+        '</div>';
+
+      const qvEl = document.getElementById('todayQV');
+      if (qvEl) qvEl.insertAdjacentElement('afterbegin', readEl);
+    }
+  }
 
   // ── Populate today alerts strip ──
   const todayAlertsEl = document.getElementById('todayAlerts');
@@ -4587,6 +4686,18 @@ function toggleReadiness(key, clientId, el) {
   const current = localStorage.getItem('ready_'+key+'_'+clientId);
   const next = current === 'done' ? 'todo' : 'done';
   localStorage.setItem('ready_'+key+'_'+clientId, next);
+  renderTodayQV();
+}
+
+function setBoard(btn) {
+  const cid = btn.dataset.cid, key = btn.dataset.key, status = btn.dataset.st;
+  localStorage.setItem('bt_'+key+'_'+cid, status);
+  renderTodayQV();
+}
+function toggleRdy(el) {
+  const key = el.dataset.key, cid = el.dataset.cid;
+  const cur = localStorage.getItem('rdy_'+key+'_'+cid);
+  localStorage.setItem('rdy_'+key+'_'+cid, cur==='done'?'todo':'done');
   renderTodayQV();
 }
 </script>
