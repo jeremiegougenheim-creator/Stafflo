@@ -1054,16 +1054,30 @@ async function loadFromSupabase() {
     const r = await fetch(STAFFLO_PROXY + '/crm/clients?villa_id=' + getVillaId());
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const rows = await r.json();
-    if (Array.isArray(rows) && rows.length >= 0) {
-      clients = rows.map(r => ({
-        id:r.id, name:r.name||'', nat:r.nat||'', email:r.email||'', phone:r.phone||'',
-        arrival:r.arrival||'', departure:r.departure||'',
-        guests:r.guests||0, price:r.price||0, commission:r.commission||0,
-        commMode:r.commmode||'percent', source:r.source||'Airbnb',
-        notes:r.notes||'', payStatus:r.paystatus||'',
-        createdAt:r.createdat||new Date().toISOString()
-      }));
-      saveLocal();
+    if (Array.isArray(rows)) {
+      // Only replace local data if Supabase has rows OR local is empty
+      // This prevents Supabase returning 0 rows (new villa_id) from wiping localStorage
+      const localHasData = clients.length > 0;
+      if (rows.length > 0) {
+        clients = rows.map(r => ({
+          id:r.id, name:r.name||'', nat:r.nat||'', email:r.email||'', phone:r.phone||'',
+          arrival:r.arrival||'', departure:r.departure||'',
+          guests:r.guests||0, price:r.price||0, commission:r.commission||0,
+          commMode:r.commmode||'percent', source:r.source||'Airbnb',
+          notes:r.notes||'', payStatus:r.paystatus||'',
+          createdAt:r.createdat||new Date().toISOString()
+        }));
+        saveLocal();
+      } else if (!localHasData) {
+        // Supabase empty AND no local data — that's fine, truly new villa
+        clients = [];
+        saveLocal();
+      }
+      // If rows=0 but localHasData → keep local, push all local to Supabase
+      if (rows.length === 0 && localHasData) {
+        console.log('Supabase empty but local has data — re-syncing all clients up');
+        clients.forEach(c => pushToSupabase(c));
+      }
       cloudEnabled = true;
       setSyncDot('ok');
       setTimeout(() => { renderTodayQV(); renderTodayGuestsHero(); renderCockpitKPI(); }, 100);
@@ -2114,192 +2128,61 @@ async function loadLiveNewsAlerts() {
   // Cache 4h
   if (_liveNewsCache && Date.now() - _liveNewsCacheTs < LIVE_NEWS_TTL) return;
 
-  const cfg = getCfg();
-  const groqKey = cfg.groqKey || '';
-  if (!groqKey && !STAFFLO_PROXY) return; // need AI to analyse
+  if (!STAFFLO_PROXY) return; // needs proxy
 
+  const cfg = getCfg();
   const city = cfg.city || 'Marrakech';
   const today = new Date().toISOString().slice(0,10);
 
-  // ── 1. Fetch RSS feeds via allorigins proxy (no CORS) ──
-  const RSS_FEEDS = [
-    // Moroccan news in French
-    { url: 'https://www.medias24.com/feed/', label: 'Medias24' },
-    { url: 'https://lematin.ma/rss/feed.xml', label: 'Le Matin Maroc' },
-    { url: 'https://www.hespress.com/feed', label: 'Hespress' },
-  ];
+  try {
+    // Use Gemini Flash 2.0 with native Google Search — no RSS needed
+    const prompt = `Today is ${today}. You are a luxury villa manager assistant in ${city}.
+Search for today's latest news relevant to ${city} hospitality & tourism:
+- Security alerts or travel warnings
+- Major events, festivals, road closures
+- Weather alerts
+- Any news that affects luxury villa guests
 
-  const allHeadlines = [];
+Return a JSON array of 3-5 alert objects:
+[{"type":"warn|urgent|info|good","icon":"emoji","title":"short title","body":"1 sentence detail"}]
+Only return the JSON array, no other text.`;
 
-  await Promise.allSettled(RSS_FEEDS.map(async feed => {
+    const r = await fetch(STAFFLO_PROXY + '/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, useSearch: true, maxTokens: 800 })
+    });
+
+    if (!r.ok) throw new Error('Gemini proxy error ' + r.status);
+    const d = await r.json();
+    const raw = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    let alerts = [];
     try {
-      const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(feed.url);
-      const res = await fetch(proxy, { signal: AbortSignal.timeout(5000) });
-      if (!res.ok) return;
-      const json = await res.json();
-      const xml = json.contents || '';
-      // Extract titles and descriptions from RSS XML
-      const titles = [...xml.matchAll(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/gs)]
-        .map(m => (m[1] || m[2] || '').trim())
-        .filter(t => t && t.length > 10 && !t.includes('<?xml'))
-        .slice(0, 8);
-      const dates = [...xml.matchAll(/<pubDate>(.*?)<\/pubDate>/g)]
-        .map(m => m[1].trim());
-      titles.forEach((t, i) => {
-        allHeadlines.push({ title: t, date: dates[i] || '', source: feed.label });
-      });
-    } catch(e) { /* silent */ }
-  }));
+      const cleaned = raw.replace(/```json?/g,'').replace(/```/g,'').trim();
+      const match = cleaned.match(/\[[\s\S]*\]/);
+      alerts = match ? JSON.parse(match[0]) : [];
+    } catch(e) { alerts = []; }
 
-  // Also add OpenWeatherMap alerts (already have key)
-  try {
-    const wRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city},MA&appid=796d11e58c122335c77cb055fd5e3814&units=metric`);
-    const w = await wRes.json();
-    if (w.weather?.[0]) {
-      const desc = w.weather[0].description;
-      const temp = Math.round(w.main?.temp || 0);
-      const wind = Math.round((w.wind?.speed || 0) * 3.6); // m/s → km/h
-      const alerts_w = w.alerts || [];
-      if (alerts_w.length) {
-        alerts_w.forEach(a => allHeadlines.push({ title: `⚠ MÉTÉO OFFICIELLE: ${a.event} — ${a.description?.slice(0,80)}`, source: 'OpenWeatherMap', date: today }));
-      }
-      // Flag extreme conditions
-      if (temp > 40) allHeadlines.push({ title: `🌡 Canicule à ${city}: ${temp}°C aujourd'hui`, source: 'OpenWeatherMap', date: today });
-      if (wind > 60) allHeadlines.push({ title: `💨 Vent fort à ${city}: ${wind} km/h`, source: 'OpenWeatherMap', date: today });
-      if (['sandstorm','dust','haze'].some(x => desc.includes(x))) {
-        allHeadlines.push({ title: `🌫 Tempête de sable / brume à ${city}`, source: 'OpenWeatherMap', date: today });
-      }
-    }
-  } catch(e) {}
-
-  if (allHeadlines.length === 0) return;
-
-  // ── 2. Ask Groq to filter & score relevance ──
-  const headlineText = allHeadlines
-    .slice(0, 25)
-    .map((h, i) => `${i+1}. [${h.source}] ${h.title}`)
-    .join('\n');
-
-  const prompt = `You are an assistant for a luxury villa manager in ${city}, Morocco. Today: ${today}.
-
-Here are recent news headlines:
-${headlineText}
-
-Select ONLY headlines that are directly relevant to:
-- Villa operations (staff, transport, supplies)
-- Guest experience (security, events, weather, access)
-- Tourism pricing opportunities (festivals, holidays, demand)
-- Urgent local situations (political unrest, transport strikes, extreme weather)
-
-Respond ONLY with a JSON array, no markdown:
-[{"type":"urgent|warn|info|good","title":"🌐 Short actionable title","sub":"One sentence why it matters for villa manager","source":"source name"}]
-
-Max 3 items. If nothing relevant, return [].`;
-
-  try {
-    let items = [];
-
-    if (STAFFLO_PROXY) {
-      const res = await fetch(STAFFLO_PROXY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          max_tokens: 400,
-          messages: [{ role: 'user', content: prompt }]
-        })
-      });
-      if (!res.ok) throw new Error('proxy ' + res.status);
-      const data = await res.json();
-      const raw = data.choices?.[0]?.message?.content || '';
-      const m = raw.match(/\[[\s\S]*\]/);
-      if (m) items = JSON.parse(m[0]);
-    } else if (groqKey) {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + groqKey },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          max_tokens: 400,
-          messages: [{ role: 'user', content: prompt }]
-        })
-      });
-      if (!res.ok) throw new Error('groq ' + res.status);
-      const data = await res.json();
-      const raw = data.choices?.[0]?.message?.content || '';
-      const m = raw.replace(/```json\n?/g,'').replace(/```/g,'').match(/\[[\s\S]*\]/);
-      if (m) items = JSON.parse(m[0]);
-    }
-
-    if (!Array.isArray(items) || !items.length) return;
-
-    // Inject into LIVE_NEWS_ALERTS — will be merged in generateAlerts
-    _liveNewsCache = items.filter(i => i.title);
+    _liveNewsCache = alerts;
     _liveNewsCacheTs = Date.now();
-    console.log('✓ Live news:', _liveNewsCache.length, 'alerts');
 
-    // Refresh alerts display immediately
-    generateAlerts(null);
-
+    // Inject into Today alerts panel
+    const alertsEl = document.getElementById('liveNewsAlerts');
+    if (alertsEl && alerts.length) {
+      alertsEl.innerHTML = alerts.map(a => `
+        <div class="alert-hm ${a.type||'info'}">
+          <span>${a.icon||'📰'}</span>
+          <div><strong>${a.title}</strong><br>${a.body}</div>
+        </div>`).join('');
+    }
   } catch(e) {
-    console.warn('Live news Groq analysis failed:', e.message);
+    console.warn('Live news (Gemini) failed:', e.message);
+    _liveNewsCache = [];
+    _liveNewsCacheTs = Date.now();
   }
 }
 
-// ════════════════════════════════════════════
-// INIT
-// ════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', () => {
-  applyLang();
-  goTab('today'); // Always start on Today tab
-  // Hide API key section if proxy is active
-  if (STAFFLO_PROXY) {
-    const apiSec = document.getElementById('apiKeySection');
-    if (apiSec) {
-      apiSec.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="font-size:18px">✅</span><div><div style="font-size:13px;font-weight:600;color:var(--green)">AI via Stafflo Proxy</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Groq (Llama) — No API key needed. Managed by Stafflo.</div></div></div>';
-    }
-  }
-  // Load events from Supabase
-  // Generate alerts immediately
-  generateAlerts(null);
-  renderTodayQV();
-  renderTodayGuestsHero();
-  renderCockpitKPI();
-  // Load Morning Brief
-  setTimeout(() => loadMorningBrief(), 1200);
-  
-  // Then try to load from Supabase and regenerate
-  loadFromSupabase();
-  loadMarrakechEvents().then(() => {
-    return loadIslamicHolidays();
-  }).then(() => {
-    generateAlerts(null);
-    renderTodayQV();
-    renderCockpitKPI();
-  }).catch(() => {
-    // Fallback: still regenerate alerts with whatever we have
-    generateAlerts(null);
-    renderTodayQV();
-    renderCockpitKPI();
-  });
-  
-  // Load weather and regenerate alerts with real temp
-  setTimeout(() => {
-    loadWeather().then(() => {
-      const wText = document.getElementById('factorWeather')?.textContent || '';
-      const match = wText.match(/(\d+)/);
-      generateAlerts(match ? parseInt(match[1]) : null);
-    }).catch(() => {});
-  }, 1000);
-
-  // Load live news (RSS + Groq) — delayed to not block UI
-  setTimeout(() => loadLiveNewsAlerts(), 3000);
-});
-
-
-// Enriched Marrakech events calendar with specific dates
-// Events loaded from Supabase — fallback to empty array
-let MARRAKECH_EVENTS = [];
 
 async function loadMarrakechEvents() {
   const cfg = getCfg();
@@ -3781,6 +3664,131 @@ function toggleProviderFields() {
 }
 
 
+
+// ── SMART DEDUP — MULTI-FIELD MATCHING + MERGE ───────────────────────────────
+
+function normalizeName(n) {
+  return (n||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
+}
+
+function normalizePhone(p) {
+  return (p||'').replace(/[^0-9+]/g,'');
+}
+
+// Score how likely two clients are the same person (0 = no match, higher = stronger match)
+function clientMatchScore(existing, newData) {
+  let score = 0;
+
+  // ── Email (unique identifier — instant strong match)
+  if (existing.email && newData.email && existing.email.toLowerCase() === newData.email.toLowerCase()) score += 10;
+
+  // ── Phone (strong match)
+  const ep = normalizePhone(existing.phone);
+  const np = normalizePhone(newData.phone);
+  if (ep && np && ep.length > 6 && ep === np) score += 8;
+  // Partial phone (last 8 digits)
+  if (ep && np && ep.length > 6 && np.length > 6 && ep.slice(-8) === np.slice(-8)) score += 5;
+
+  // ── Name similarity
+  const ea = normalizeName(existing.name).split(' ').filter(w => w.length > 2);
+  const na = normalizeName(newData.name || newData.name || '').split(' ').filter(w => w.length > 2);
+  for (const ew of ea) {
+    for (const nw of na) {
+      if (ew === nw) score += 3;
+      else if (ew.length > 3 && nw.length > 3 && (ew.startsWith(nw.slice(0,4)) || nw.startsWith(ew.slice(0,4)))) score += 2;
+    }
+  }
+
+  // ── Dates overlap (same arrival OR same departure)
+  if (existing.arrival && newData.arrival && existing.arrival === newData.arrival) score += 4;
+  if (existing.departure && newData.departure && existing.departure === newData.departure) score += 4;
+  // Overlapping stay period
+  if (existing.arrival && existing.departure && newData.arrival && newData.departure) {
+    const eA = new Date(existing.arrival), eD = new Date(existing.departure);
+    const nA = new Date(newData.arrival), nD = new Date(newData.departure);
+    if (nA <= eD && nD >= eA) score += 2; // overlap
+  }
+
+  // ── Nationality (weak signal only)
+  if (existing.nat && newData.nat && normalizeName(existing.nat) === normalizeName(newData.nat)) score += 1;
+
+  return score;
+}
+
+function findExistingClient(name, arrival, departure, email, phone) {
+  if (clients.length === 0) return null;
+  const newData = { name: name||'', arrival: arrival||'', departure: departure||'', email: email||'', phone: phone||'' };
+
+  const scored = clients
+    .map(c => ({ c, score: clientMatchScore(c, newData) }))
+    .filter(x => x.score >= 3) // threshold — needs at least moderate confidence
+    .sort((a, b) => b.score - a.score);
+
+  return scored.length > 0 ? scored[0].c : null;
+}
+
+// Merge all fields: new data fills blanks + updates existing fields if new value is richer
+function mergeClientData(existing, newData) {
+  const merged = { ...existing };
+
+  const FIELDS = [
+    { key: 'name',       newKey: 'name' },
+    { key: 'nat',        newKey: 'nat' },
+    { key: 'email',      newKey: 'email' },
+    { key: 'phone',      newKey: 'phone' },
+    { key: 'arrival',    newKey: 'arrival' },
+    { key: 'departure',  newKey: 'departure' },
+    { key: 'guests',     newKey: 'guests' },
+    { key: 'price',      newKey: 'price' },
+    { key: 'commission', newKey: 'commission' },
+    { key: 'commMode',   newKey: 'commMode' },
+    { key: 'source',     newKey: 'source' },
+    { key: 'notes',      newKey: 'notes' },
+    { key: 'payStatus',  newKey: 'payStatus' },
+  ];
+
+  for (const { key, newKey } of FIELDS) {
+    const newVal = newData[newKey];
+    const oldVal = merged[key];
+
+    if (!newVal || newVal === '' || newVal === 0) continue; // nothing new to add
+
+    if (!oldVal || oldVal === '' || oldVal === 0) {
+      // Field was empty — fill it
+      merged[key] = newVal;
+    } else {
+      // Both have a value — new value wins if it's longer/more specific
+      const nStr = String(newVal);
+      const oStr = String(oldVal);
+      if (nStr.length > oStr.length) merged[key] = newVal;
+      // For notes: concatenate if different
+      if (key === 'notes' && nStr !== oStr) {
+        merged[key] = oStr + '
+---
+' + nStr;
+      }
+    }
+  }
+
+  return merged;
+}
+
+function fillFormFields(data) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el && (val || val === 0)) el.value = val; };
+  set('fName',   data.name);
+  set('fArr',    data.arrival);
+  set('fDep',    data.departure);
+  set('fGuests', data.guests);
+  set('fNat',    data.nat);
+  set('fPrice',  data.price);
+  set('fComm',   data.commission);
+  set('fSource', data.source);
+  set('fPhone',  data.phone);
+  if (data.notes)     { const el = document.getElementById('fNotes');  if(el) el.value = data.notes; }
+  if (data.email)     { const el = document.getElementById('fEmail');  if(el) el.value = data.email; }
+  if (data.payStatus) { const el = document.getElementById('fPayStatus'); if(el) el.value = data.payStatus; }
+}
+
 async function extractFormAIviaProxy(text, btn, spinner, label, msgEl) {
   const today = new Date().toISOString().slice(0,10);
   const systemPrompt = [
@@ -3817,18 +3825,23 @@ async function extractFormAIviaProxy(text, btn, spinner, label, msgEl) {
       json = match ? JSON.parse(match[0]) : null;
     }
     if (!json) throw new Error('No JSON in response');
-    // Fill form
-    if (json.name) document.getElementById('fName').value = json.name;
-    if (json.arrival) document.getElementById('fArr').value = json.arrival;
-    if (json.departure) document.getElementById('fDep').value = json.departure;
-    if (json.guests) document.getElementById('fGuests').value = json.guests;
-    if (json.nat) document.getElementById('fNat').value = json.nat;
-    if (json.price) document.getElementById('fPrice').value = json.price;
-    if (json.commission) document.getElementById('fComm').value = json.commission;
-    if (json.source) document.getElementById('fSource').value = json.source;
-    if (json.phone) document.getElementById('fPhone').value = json.phone;
+    // Smart dedup: check if client already exists
+    const match = findExistingClient(json.name, json.arrival, json.departure, json.email, json.phone);
+    if (match) {
+      // Merge: new data fills missing fields, but doesn't erase existing ones
+      const merged = mergeClientData(match, json);
+      fillFormFields(merged);
+      // Set the existing client ID so saveClient() updates instead of creating new
+      document.getElementById('fClientId').value = match.id;
+      if (msgEl) { msgEl.style.display='block'; msgEl.style.background='#EAF3DE'; msgEl.style.color='#1B4332';
+        msgEl.textContent = (lang==='fr' ? '🔄 Client existant détecté — données fusionnées : ' : '🔄 Existing client found — data merged: ') + match.name; }
+    } else {
+      // New client — fill form normally
+      fillFormFields(json);
+      document.getElementById('fClientId').value = '';
+      if (msgEl) { msgEl.style.display='block'; msgEl.textContent = lang==='fr' ? '✅ Nouveau client — vérifiez et ajustez' : '✅ New client — check and adjust'; }
+    }
     updateNetPreview();
-    if (msgEl) { msgEl.style.display = 'block'; msgEl.textContent = lang==='fr' ? '✅ Champs remplis — vérifiez et ajustez' : '✅ Fields filled — check and adjust'; }
   } catch(e) {
     toast('Erreur proxy: ' + e.message.slice(0,60));
   }
@@ -4245,18 +4258,20 @@ async function loadMorningBrief(forceRefresh = false) {
     let raw = '';
     
     if (STAFFLO_PROXY) {
-      const r = await fetch(STAFFLO_PROXY, {
+      const r = await fetch(STAFFLO_PROXY + '/gemini', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          max_tokens: 1000,
-          temperature: 0.4,
-          messages: [{ role: 'user', content: prompt }]
+          prompt: prompt,
+          useSearch: true,
+          maxTokens: 1200
         })
       });
       const d = await r.json();
-      raw = d.choices?.[0]?.message?.content || '';
+      // Gemini response format
+      raw = d.candidates?.[0]?.content?.parts?.[0]?.text
+          || d.choices?.[0]?.message?.content
+          || '';
     } else {
       const cfg2 = getCfg();
       const provider = cfg2.aiProvider || 'groq';
