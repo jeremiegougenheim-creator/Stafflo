@@ -626,7 +626,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       <div class="crm-stat"><label data-fr="MOY/NUIT" data-en="AVG/NIGHT">MOY/NUIT</label><span id="crmAvg">—</span></div>
     </div>
     <button class="btn-new-chip" onclick="openForm()">+ <span data-fr="Nouveau" data-en="New">Nouveau</span></button>
-    <button id="btnDedup" onclick="mergeDuplicates()" style="background:rgba(201,150,58,.15);color:var(--gold);border:1px solid rgba(201,150,58,.4);border-radius:20px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔀</button>
+    <button id="btnDedup" onclick="mergeDuplicates()" title="Fusionner doublons" style="background:rgba(201,150,58,.15);color:var(--gold);border:1px solid rgba(201,150,58,.4);border-radius:20px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🔀</button>
   </div>
 
   <input class="crm-search" id="crmSearch" oninput="renderClients()" placeholder="🔍 Rechercher..." data-placeholder-fr="🔍 Rechercher..." data-placeholder-en="🔍 Search...">
@@ -1447,17 +1447,21 @@ function copyPrice() {
 }
 
 function saveFromResult(g) {
-  // Auto-check for existing client with same name + arrival before creating new
-  const normN = (s) => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').split(' ').filter(Boolean).join(' ');
-  const existing = clients.find(c =>
-    normN(c.name) === normN(g.name) &&
-    c.arrival && g.arrival &&
-    Math.abs(new Date(c.arrival) - new Date(g.arrival)) <= 86400000
-  );
-  if (existing) {
-    mergeWithExisting(existing.id, g);
-    return;
-  }
+  const _norm2 = (s) => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').split(' ').filter(Boolean);
+  const _fullName = (s) => _norm2(s).join(' ');
+  const _firstName = (s) => _norm2(s)[0] || '';
+  const _phone = (s) => (s||'').replace(/[^0-9]/g,'');
+  const _dateDiff = (a, b) => a && b ? Math.abs(new Date(a) - new Date(b)) : Infinity;
+  const existing = clients.find(c => {
+    // Rule 1: same non-empty phone → definitely same person
+    const ph = _phone(c.phone); if (ph.length >= 8 && ph === _phone(g.phone)) return true;
+    // Rule 2: exact full name + arrival within 2 days
+    if (_fullName(c.name) === _fullName(g.name) && _dateDiff(c.arrival, g.arrival) <= 2*86400000) return true;
+    // Rule 3: same first name + EXACT same arrival date (same booking pasted twice)
+    if (_firstName(c.name) === _firstName(g.name) && c.arrival && c.arrival === g.arrival) return true;
+    return false;
+  });
+  if (existing) { mergeWithExisting(existing.id, g); return; }
   const client = {
     id: Date.now().toString(),
     name: g.name || '', nat: g.nat || '', email: g.email || '',
@@ -2216,7 +2220,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load live news (RSS + Groq) — delayed to not block UI
   setTimeout(() => loadLiveNewsAlerts(), 3000);
-  // Auto-merge any duplicates after data loads
   setTimeout(mergeDuplicates, 2500);
 });
 
@@ -2919,9 +2922,8 @@ async function generateAlerts(weatherTemp) {
     title:'✅ ' + (fr?'Tout est en ordre':'All clear'),
     sub: fr?'Aucune action urgente. Bonne journée !':'No urgent actions. Have a great day!'});
 
-  // ── RENDER ──
-  const // ── Smart alert display: priority (≥7% modifier) + 2 extras + "voir plus" ──
-  const alertItemHtml = (a) => `
+  // ── RENDER — priority alerts first, then 2 extras, + "voir plus" ──
+  const alertItemFn = (a) => `
     <div class="alert-hm ${a.type}">
       <span style="flex-shrink:0;font-size:14px">${a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡'}</span>
       <div style="flex:1;min-width:0">
@@ -2929,29 +2931,18 @@ async function generateAlerts(weatherTemp) {
         <div style="font-size:11px;opacity:.85;line-height:1.4">${a.sub||''}${a.source ? '<span style="opacity:.6"> · '+a.source+'</span>' : ''}</div>
       </div>
     </div>`;
-
-  // Priority = urgent/warn type OR title contains a price modifier ≥7%
-  const hasBigModifier = (a) => {
-    const m = (a.title||'').match(/\+(\d+)%/);
-    return m && parseInt(m[1]) >= 7;
-  };
-  const isPriority = (a) => a.type === 'urgent' || hasBigModifier(a);
-
-  const priorityAlerts = alerts.filter(isPriority);
-  const extraAlerts = alerts.filter(a => !isPriority(a));
-  const EXTRAS_SHOWN = 2;
-  const visibleExtras = extraAlerts.slice(0, EXTRAS_SHOWN);
-  const hiddenExtras = extraAlerts.slice(EXTRAS_SHOWN);
-
-  const visibleAlerts = [...priorityAlerts, ...visibleExtras];
-  alertsHtml = visibleAlerts.map(alertItemHtml).join('');
-
-  if (hiddenExtras.length > 0) {
-    const hiddenHtml = hiddenExtras.map(alertItemHtml).join('');
-    alertsHtml += `<div id="alertsMore" style="display:none">${hiddenHtml}</div>
-    <button onclick="const m=document.getElementById('alertsMore');const open=m.style.display!=='none';m.style.display=open?'none':'block';this.textContent=open?'${fr?'+ voir '+hiddenExtras.length+' alertes':'+ see '+hiddenExtras.length+' more'}':'${fr?'Réduire ↑':'Show less ↑'}'" style="width:100%;margin-top:8px;padding:7px;background:none;border:1.5px dashed var(--border);border-radius:8px;font-size:11px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">
-      ${fr ? '+ voir '+hiddenExtras.length+' alertes' : '+ see '+hiddenExtras.length+' more'}
-    </button>`;
+  const hasBigMod = (a) => { const m = (a.title||'').match(/\+(\d+)%/); return m && parseInt(m[1]) >= 7; };
+  const isPrio = (a) => a.type === 'urgent' || hasBigMod(a);
+  const prioAlerts = alerts.filter(isPrio);
+  const nonPrioAlerts = alerts.filter(a => !isPrio(a));
+  const visible = [...prioAlerts, ...nonPrioAlerts.slice(0,2)];
+  const hidden = nonPrioAlerts.slice(2);
+  let alertsHtml = visible.map(alertItemFn).join('');
+  if (hidden.length > 0) {
+    const showLbl = fr ? '+ voir '+hidden.length+' alertes' : '+ see '+hidden.length+' more';
+    const hideLbl = fr ? 'Réduire ↑' : 'Show less ↑';
+    alertsHtml += '<div id="alertsMore" style="display:none">' + hidden.map(alertItemFn).join('') + '</div>';
+    alertsHtml += '<button onclick="var m=document.getElementById(\'alertsMore\');var o=m.style.display!==\'none\';m.style.display=o?\'none\':\'block\';this.textContent=o?\''+showLbl+'\': \''+hideLbl+'\'" style="width:100%;margin-top:8px;padding:7px;background:none;border:1.5px dashed var(--border);border-radius:8px;font-size:11px;color:var(--muted);cursor:pointer;font-family:\'DM Sans\',sans-serif">'+showLbl+'</button>';
   }
 
   const elV = document.getElementById('alertsContent');
@@ -4345,58 +4336,47 @@ function showWhyModal(idx) {
   document.body.appendChild(modal);
 }
 
-// ── AUTO-DEDUP ─────────────────────────────────────────────
-function normName(n) {
-  return (n||'').toLowerCase().replace(/[^a-z0-9]/g,' ').split(' ').filter(Boolean).join(' ');
-}
-function areDuplicates(a,b) {
-  if(normName(a.name)!==normName(b.name)) return false;
-  if(!a.arrival&&!b.arrival) return true;
-  if(a.arrival&&b.arrival){
-    if(a.arrival===b.arrival) return true;
-    if(Math.abs(new Date(a.arrival)-new Date(b.arrival))<=86400000) return true;
-  }
+function normName(n){return(n||'').toLowerCase().replace(/[^a-z0-9]/g,' ').split(' ').filter(Boolean).join(' ');}
+function areDuplicates(a,b){
+  const ph = (s) => (s||'').replace(/[^0-9]/g,'');
+  const fn = (s) => normName(s).split(' ')[0]||'';
+  // Rule 1: same non-empty phone
+  const phA=ph(a.phone); if(phA.length>=8&&phA===ph(b.phone))return true;
+  // Rule 2: exact full name + arrival within 2 days
+  if(normName(a.name)===normName(b.name)&&a.arrival&&b.arrival&&Math.abs(new Date(a.arrival)-new Date(b.arrival))<=2*86400000)return true;
+  // Rule 3: same first name + exact same arrival date
+  if(fn(a.name)===fn(b.name)&&a.arrival&&a.arrival===b.arrival)return true;
   return false;
 }
-function bestVal(a,b){
-  if(!a&&b) return b; if(a&&!b) return a;
-  if(typeof a==='number'&&typeof b==='number') return Math.max(a,b);
-  if(typeof a==='string'&&typeof b==='string') return a.length>=b.length?a:b;
-  return a||b;
-}
+function bestVal(a,b){if(!a&&b)return b;if(a&&!b)return a;if(typeof a==='number'&&typeof b==='number')return Math.max(a,b);if(typeof a==='string'&&typeof b==='string')return a.length>=b.length?a:b;return a||b;}
 async function mergeDuplicates(){
   if(!clients.length){toast(lang==='fr'?'Aucun client':'No clients');return;}
   const btn=document.getElementById('btnDedup');
-  if(btn){btn.disabled=true;btn.textContent='⏳...';}
+  if(btn){btn.disabled=true;btn.textContent='⏳';}
   const merged=[];const used=new Set();let count=0;const delIds=[];
   for(let i=0;i<clients.length;i++){
-    if(used.has(i)) continue;
+    if(used.has(i))continue;
     let base={...clients[i]};
     for(let j=i+1;j<clients.length;j++){
-      if(used.has(j)) continue;
+      if(used.has(j))continue;
       if(areDuplicates(base,clients[j])){
         const d=clients[j];
         base.nat=bestVal(base.nat,d.nat);base.email=bestVal(base.email,d.email);
         base.phone=bestVal(base.phone,d.phone);base.arrival=bestVal(base.arrival,d.arrival);
-        base.departure=bestVal(base.departure,d.departure);
-        base.guests=bestVal(base.guests,d.guests);base.price=bestVal(base.price,d.price);
-        base.commission=bestVal(base.commission,d.commission);
+        base.departure=bestVal(base.departure,d.departure);base.guests=bestVal(base.guests,d.guests);
+        base.price=bestVal(base.price,d.price);base.commission=bestVal(base.commission,d.commission);
         base.source=bestVal(base.source,d.source);base.payStatus=bestVal(base.payStatus,d.payStatus);
-        if(d.notes&&d.notes!==base.notes) base.notes=(base.notes?base.notes+'\n---\n':'')+d.notes;
-        if(d.createdAt&&(!base.createdAt||d.createdAt<base.createdAt)) base.createdAt=d.createdAt;
+        if(d.notes&&d.notes!==base.notes)base.notes=(base.notes?base.notes+'\n---\n':'')+d.notes;
+        if(d.createdAt&&(!base.createdAt||d.createdAt<base.createdAt))base.createdAt=d.createdAt;
         delIds.push(d.id);used.add(j);count++;
       }
     }
     merged.push(base);used.add(i);
   }
-  if(!count){
-    toast(lang==='fr'?'Aucun doublon ✓':'No duplicates ✓');
-    if(btn){btn.disabled=false;btn.textContent='🔀';}
-    return;
-  }
+  if(!count){toast(lang==='fr'?'Aucun doublon ✓':'No duplicates ✓');if(btn){btn.disabled=false;btn.textContent='🔀';}return;}
   clients=merged;saveLocal();renderAll();
-  for(const c of merged) await pushToSupabase(c);
-  for(const id of delIds) await deleteFromSupabase(id);
+  for(const c of merged)await pushToSupabase(c);
+  for(const id of delIds)await deleteFromSupabase(id);
   toast(count+(lang==='fr'?' doublon(s) fusionné(s) ✓':' duplicate(s) merged ✓'));
   if(btn){btn.disabled=false;btn.textContent='🔀';}
 }
