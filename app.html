@@ -286,10 +286,11 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .sc-bar{height:3px;border-radius:2px;margin-top:6px}
 
 /* ── TODAY QUICK VIEW ── */
-.qv-inhouse{background:var(--green);border-radius:14px;padding:16px 18px;margin-bottom:12px;color:#fff}
-.qv-inhouse-name{font-family:'Fraunces',serif;font-size:20px;font-weight:300;margin-bottom:2px}
-.qv-inhouse-sub{font-size:11px;color:rgba(255,255,255,.55);letter-spacing:.5px;margin-bottom:12px}
-.qv-inhouse-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;background:rgba(255,255,255,.1);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.qv-inhouse{background:var(--green3);border-radius:16px;padding:18px 20px;margin-bottom:12px;color:#fff;border:1px solid rgba(255,255,255,.06)}
+.qv-inhouse-name{font-family:'Fraunces',serif;font-size:22px;font-weight:300;margin-bottom:3px;cursor:pointer;display:inline-block}
+.qv-inhouse-name:hover{opacity:.85;text-decoration:underline;text-underline-offset:3px}
+.qv-inhouse-sub{font-size:11px;color:rgba(255,255,255,.45);letter-spacing:.5px;margin-bottom:14px}
+.qv-inhouse-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;background:rgba(255,255,255,.07);border-radius:8px;overflow:hidden;margin-bottom:12px}
 .qv-stat{padding:10px 8px;text-align:center;border-right:1px solid rgba(255,255,255,.1)}
 .qv-stat:last-child{border-right:none}
 .qv-stat-val{font-family:'Fraunces',serif;font-size:20px;font-weight:300;color:#fff;line-height:1}
@@ -371,7 +372,10 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .brief-card.p3 .brief-card-left{background:var(--green)}
 .brief-card.p4 .brief-card-left{background:var(--border)}
 .brief-card-inner{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;flex:1}
-.brief-icon{font-size:18px;flex-shrink:0;line-height:1;margin-top:1px}
+.brief-icon{flex-shrink:0;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(138,128,112,.1);margin-top:2px}
+.brief-card.p1 .brief-icon{background:rgba(220,38,38,.08)}
+.brief-card.p2 .brief-icon{background:rgba(186,117,23,.08)}
+.brief-card.p3 .brief-icon{background:rgba(27,67,50,.06)}
 .brief-content{flex:1;min-width:0}
 .brief-card-title{font-size:13px;font-weight:600;color:var(--ink);line-height:1.3;margin-bottom:2px}
 .brief-card-sub{font-size:11px;color:var(--muted);line-height:1.5}
@@ -1027,6 +1031,33 @@ async function mergeDuplicates(){
   if(btn){btn.disabled=false;btn.textContent='🔀';}
 }
 
+
+function getBriefSVG(p) {
+  const col = p==='p1'?'#DC2626':p==='p2'?'#BA7517':p==='p3'?'var(--green)':'var(--muted)';
+  // p1=urgent (lightning), p2=revenue (trending), p3=action (check), p4=info (dot)
+  if(p==='p1') return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="'+col+'" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9z"/></svg>';
+  if(p==='p2') return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="'+col+'" stroke-width="2.5"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>';
+  if(p==='p3') return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="'+col+'" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+  return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="'+col+'" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+}
+
+
+function rateCard(e, idx, val) {
+  e.stopPropagation();
+  const up = document.getElementById('rate_up_' + idx);
+  const dn = document.getElementById('rate_dn_' + idx);
+  if(up) up.style.opacity = val === 1 ? '1' : '.3';
+  if(dn) dn.style.opacity = val === -1 ? '1' : '.3';
+  // Store feedback for improving prompts (future use)
+  try {
+    const fb = JSON.parse(localStorage.getItem('stafflo_brief_fb') || '[]');
+    const today = new Date().toISOString().slice(0,10);
+    fb.push({date: today, idx, val, title: window.lastBriefCards?.[idx]?.title || ''});
+    localStorage.setItem('stafflo_brief_fb', JSON.stringify(fb.slice(-50)));
+  } catch(e2) {}
+  toast(val === 1 ? (lang==='fr'?'Merci, on améliore le brief !':'Thanks, improving brief!') : (lang==='fr'?'Noté, on ajuste !':'Got it, adjusting!'));
+}
+
 </script><script>
 // ════════════════════════════════════════════
 // STAFFLO PROXY — set URL to remove API key requirement
@@ -1132,6 +1163,15 @@ async function syncNow() {
 
 function loadLocal() {
   try { clients = JSON.parse(localStorage.getItem('stafflo_clients') || '[]'); } catch { clients = []; }
+  // Migration: strip corrupted [Messages générés...] from notes
+  let dirty = false;
+  clients.forEach(c => {
+    if (c.notes && c.notes.includes('[Messages g')) {
+      c.notes = c.notes.replace(/\s*\[Messages g[^\]]*\]/g, '').trim();
+      dirty = true;
+    }
+  });
+  if (dirty) saveLocal();
 }
 function saveLocal() { localStorage.setItem('stafflo_clients', JSON.stringify(clients)); }
 
@@ -3298,7 +3338,7 @@ function renderTodayQV() {
 
     html += `
     <div class="qv-inhouse">
-      <div class="qv-inhouse-name">${inHouse.name} ${inHouse.nat||''}</div>
+      <div class="qv-inhouse-name" onclick="openDetail('${inHouse.id}')" title="${fr?'Ouvrir fiche':'Open profile'}">${inHouse.name} <span style="font-size:14px;opacity:.7">${inHouse.nat||''}</span></div>
       <div class="qv-inhouse-sub">${dLeftLabel} · ${fr?'Arrivé le':'Arrived'} ${fmtDate(inHouse.arrival, true)}</div>
       <div class="qv-inhouse-grid">
         <div class="qv-stat">
@@ -3683,7 +3723,8 @@ async function extractFormAI() {
         })
       });
       if (r.ok) {
-        const d = await r.json();
+        clearTimeout(timeout);
+      const d = await r.json();
         raw = d.choices?.[0]?.message?.content || '';
       } else {
         console.warn('Proxy failed in form, falling back to direct key');
@@ -3907,9 +3948,19 @@ async function analyzeWithProxy(text, systemPrompt, btn) {
     
     console.log('Proxy call — text:', truncatedText.length, 'prompt:', compactPrompt.length);
     
-    const response = await fetch(STAFFLO_PROXY, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    if (!navigator.onLine) {
+      toast(lang==='fr' ? '📡 Pas de connexion internet' : '📡 No internet connection');
+      if(btn){btn.disabled=false;btn.classList.remove('loading');}
+      return;
+    }
+    const _ctrl = new AbortController();
+    const _timer = setTimeout(() => _ctrl.abort(), 30000);
+    let response;
+    try {
+      response = await fetch(STAFFLO_PROXY, {
+        signal: _ctrl.signal,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         max_tokens: 1500,
@@ -3920,7 +3971,8 @@ async function analyzeWithProxy(text, systemPrompt, btn) {
         ]
       })
     });
-    
+    } catch(_fe) { clearTimeout(_timer); if(_fe.name==='AbortError') throw new Error('timeout'); throw _fe; }
+    clearTimeout(_timer);
     console.log('Proxy response status:', response.status);
 
     if (response.status === 429) {
@@ -3991,6 +4043,12 @@ async function analyzeWithProxy(text, systemPrompt, btn) {
         ? '⚠ Proxy inaccessible — ajoutez une clé Groq dans ⚙ Réglages comme backup'
         : '⚠ Proxy unreachable — add a Groq key in ⚙ Settings as backup');
     }
+    const _errMsg = e.message==='timeout'
+      ? (lang==='fr'?'⏱ Timeout (30s) — réessayez':'⏱ Timeout (30s) — try again')
+      : !navigator.onLine
+        ? (lang==='fr'?'📡 Hors ligne':'📡 Offline')
+        : (lang==='fr'?'⚠ Proxy inaccessible — ajoutez une clé Groq dans ⚙ Réglages':'⚠ Proxy unreachable — add Groq key in ⚙ Settings');
+    if(e.message!=='timeout'&&!navigator.onLine)toast(_errMsg);
     console.error('Proxy error:', e);
   }
   btn.disabled = false; btn.classList.remove('loading');
@@ -4200,7 +4258,7 @@ function renderBriefCards(el, cards) {
     const whyData = card.why ? encodeURIComponent(card.why) : '';
     const titleData = encodeURIComponent(card.title||'');
     return '<div class="brief-card ' + pClass + '" onclick="showWhyModal(' + idx + ')" style="cursor:pointer" data-idx="' + idx + '">' +
-      '<div class="brief-icon">' + (card.icon||'💡') + '</div>' +
+      '<div class="brief-icon">' + getBriefSVG(pClass) + '</div>' +
       '<div class="brief-content">' +
         '<div class="brief-card-title">' + (card.title||'') + whyHtml + '</div>' +
         '<div class="brief-card-sub">' + (card.detail||'') + '</div>' +
@@ -4208,11 +4266,15 @@ function renderBriefCards(el, cards) {
       '</div>' +
       '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">' +
         '<div class="brief-score ' + sClass + '">' + u + '</div>' +
-        '<button onclick="showWhyModal(' + idx + ')" style="background:none;border:none;color:var(--muted);font-size:9px;cursor:pointer;padding:0;line-height:1;letter-spacing:.5px">WHY</button>' +
+        '<button onclick="showWhyModal(' + idx + ')" style="background:none;border:none;color:var(--muted);font-size:9px;cursor:pointer;padding:0;line-height:1;letter-spacing:.5px;display:block;margin-bottom:3px">WHY</button>' +
+        '<div style="display:flex;gap:2px">' +
+          '<button onclick="rateCard(event,' + idx + ',1)" style="background:none;border:none;font-size:10px;cursor:pointer;opacity:.35;padding:0;line-height:1" title="Utile">👍</button>' +
+          '<button onclick="rateCard(event,' + idx + ',-1)" style="background:none;border:none;font-size:10px;cursor:pointer;opacity:.35;padding:0;line-height:1" title="Non pertinent">👎</button>' +
+        '</div>' +
       '</div>' +
     '</div>';
   }).join('') + 
-    '<button id="briefChecklistBtn" onclick="generateStaffChecklist()" style="width:100%;margin-top:10px;background:none;border:1.5px solid #E8E2D8;border-radius:10px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;color:#8A8070;font-family:DM Sans,sans-serif">' +
+    (() => { window.lastBriefCards = cards; return ''; })() + '<button id="briefChecklistBtn" onclick="generateStaffChecklist()" style="width:100%;margin-top:10px;background:none;border:1.5px solid #E8E2D8;border-radius:10px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;color:#8A8070;font-family:DM Sans,sans-serif">' +
   (lang==='fr' ? '📋 Générer checklist staff' : '📋 Generate staff checklist') + '</button>';
 }
 
@@ -4317,10 +4379,16 @@ function showStaffBriefModal(checklist, briefText, waUrl, fr, guestName, clientI
         <div id="scProgress" style="margin:12px 0 4px;font-size:11px;color:var(--muted)">0 / ${checklist.length} ${fr?'complétée(s)':'completed'}</div>
       </div>
       <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:8px">
-        <a href="${waUrl}" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;background:#25D366;color:#fff;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;font-family:'DM Sans',sans-serif">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.556 4.126 1.528 5.862L0 24l6.338-1.507A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.891 0-3.658-.502-5.188-1.379l-.373-.219-3.763.895.951-3.67-.243-.382A9.953 9.953 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
-          ${fr?'Envoyer via WhatsApp':'Send via WhatsApp'}
-        </a>
+        <div style="display:flex;gap:8px">
+          <a href="${waUrl}" target="_blank" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 8px;background:#25D366;color:#fff;border-radius:10px;font-size:12px;font-weight:700;text-decoration:none;font-family:'DM Sans',sans-serif">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.556 4.126 1.528 5.862L0 24l6.338-1.507A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.891 0-3.658-.502-5.188-1.379l-.373-.219-3.763.895.951-3.67-.243-.382A9.953 9.953 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+            WhatsApp
+          </a>
+          <a href="mailto:?subject=${encodeURIComponent((fr?'Brief Staff — ':'Staff Brief — ')+(cfg.villa||'Villa'))}&body=${encodeURIComponent(briefText)}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 8px;background:#1A73E8;color:#fff;border-radius:10px;font-size:12px;font-weight:700;text-decoration:none;font-family:'DM Sans',sans-serif">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 7l10 7 10-7"/></svg>
+            Email
+          </a>
+        </div>
         <button onclick="navigator.clipboard.writeText(${JSON.stringify(briefText)}).then(()=>toast('${fr?'Copié !':'Copied!'}')).catch(()=>{})" style="padding:10px;background:none;border:1.5px solid var(--border);border-radius:10px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">
           📋 ${fr?'Copier le texte':'Copy text'}
         </button>
