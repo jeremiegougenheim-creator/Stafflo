@@ -1050,8 +1050,17 @@ function setCfg(c) { localStorage.setItem('stafflo_cfg', JSON.stringify(c)); }
 // ════════════════════════════════════════════
 // SUPABASE
 // ════════════════════════════════════════════
-function sbHdrs(key) {
-  return { 'Content-Type':'application/json', 'apikey':key, 'Authorization':'Bearer '+key, 'Prefer':'resolution=merge-duplicates,return=minimal' };
+// ── PROXY SYNC (automatic, no Supabase config needed) ──────────────────
+// villa_id is auto-generated once and stored in localStorage
+// All data is synced via STAFFLO_PROXY → Cloudflare Worker → Supabase
+
+function getVillaId() {
+  let id = localStorage.getItem('stafflo_villa_id');
+  if (!id) {
+    id = 'villa_' + Math.random().toString(36).slice(2,10) + '_' + Date.now().toString(36);
+    localStorage.setItem('stafflo_villa_id', id);
+  }
+  return id;
 }
 
 function setSyncDot(s) {
@@ -1060,63 +1069,125 @@ function setSyncDot(s) {
 }
 
 async function loadFromSupabase() {
-  const cfg = getCfg();
-  if (!cfg.sbUrl || !cfg.sbKey) { loadLocal(); return; }
+  // If no proxy, fall back to direct Supabase (legacy) or just local
+  if (!STAFFLO_PROXY) {
+    const cfg = getCfg();
+    if (!cfg.sbUrl || !cfg.sbKey) { loadLocal(); renderAll(); return; }
+    return loadFromSupabaseDirect(cfg);
+  }
   setSyncDot('busy');
   try {
-    const r = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?select=*&order=created_at.desc', {
+    const r = await fetch(STAFFLO_PROXY + '/crm/clients?villa_id=' + getVillaId());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    if (Array.isArray(rows) && rows.length >= 0) {
+      clients = rows.map(r => ({
+        id:r.id, name:r.name||'', nat:r.nat||'', email:r.email||'', phone:r.phone||'',
+        arrival:r.arrival||'', departure:r.departure||'',
+        guests:r.guests||0, price:r.price||0, commission:r.commission||0,
+        commMode:r.commmode||'percent', source:r.source||'Airbnb',
+        notes:r.notes||'', payStatus:r.paystatus||'',
+        createdAt:r.createdat||new Date().toISOString()
+      }));
+      saveLocal();
+      cloudEnabled = true;
+      setSyncDot('ok');
+      setTimeout(() => { renderTodayQV(); renderTodayGuestsHero(); renderCockpitKPI(); }, 100);
+    }
+  } catch(e) {
+    loadLocal();
+    setSyncDot('err');
+    console.warn('Proxy sync failed, using local:', e.message);
+  }
+  renderAll();
+}
+
+async function loadFromSupabaseDirect(cfg) {
+  setSyncDot('busy');
+  try {
+    const r = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?select=*&order=createdat.desc', {
       headers: { apikey: cfg.sbKey, Authorization: 'Bearer ' + cfg.sbKey }
     });
     if (r.ok) {
       const rows = await r.json();
       clients = rows.map(r => ({
-        id:r.id, name:r.name, nat:r.nat||'', email:r.email||'', phone:r.phone||'',
+        id:r.id, name:r.name||'', nat:r.nat||'', email:r.email||'', phone:r.phone||'',
         arrival:r.arrival||'', departure:r.departure||'',
         guests:r.guests||0, price:r.price||0, commission:r.commission||0,
-        commMode:r.comm_mode||'percent', source:r.source||'Airbnb',
-        notes:r.notes||'', payStatus:r.pay_status||'',
-        createdAt:r.created_at||new Date().toISOString()
+        commMode:r.commmode||'percent', source:r.source||'Airbnb',
+        notes:r.notes||'', payStatus:r.paystatus||'',
+        createdAt:r.createdat||new Date().toISOString()
       }));
-      saveLocal();
-      cloudEnabled = true;
-      setSyncDot('ok');
-      setTimeout(() => { renderTodayQV(); renderCockpitKPI(); }, 100);
+      saveLocal(); cloudEnabled = true; setSyncDot('ok');
+      setTimeout(() => { renderTodayQV(); renderTodayGuestsHero(); renderCockpitKPI(); }, 100);
     } else { loadLocal(); setSyncDot('err'); }
   } catch(e) { loadLocal(); setSyncDot('err'); }
   renderAll();
 }
 
 async function pushToSupabase(client) {
-  const cfg = getCfg();
-  if (!cfg.sbUrl || !cfg.sbKey) return;
-  const payload = {
-    id:client.id, name:client.name, nat:client.nat||'', email:client.email||'',
-    phone:client.phone||'', arrival:client.arrival||null, departure:client.departure||null,
-    guests:client.guests||0, price:client.price||0, commission:client.commission||0,
-    comm_mode:client.commMode||'percent', source:client.source||'Direct',
-    notes:client.notes||'', pay_status:client.payStatus||''
-  };
+  if (!STAFFLO_PROXY) {
+    const cfg = getCfg();
+    if (!cfg.sbUrl || !cfg.sbKey) return;
+    const payload = {
+      id:client.id, name:client.name, nat:client.nat||'', email:client.email||'',
+      phone:client.phone||'', arrival:client.arrival||null, departure:client.departure||null,
+      guests:client.guests||0, price:client.price||0, commission:client.commission||0,
+      commmode:client.commMode||'percent', source:client.source||'Direct',
+      notes:client.notes||'', paystatus:client.payStatus||''
+    };
+    setSyncDot('busy');
+    try {
+      const r = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?on_conflict=id', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':cfg.sbKey,'Authorization':'Bearer '+cfg.sbKey,'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify(payload)
+      });
+      setSyncDot(r.ok ? 'ok' : 'err');
+    } catch { setSyncDot('err'); }
+    return;
+  }
+  // Via proxy
   setSyncDot('busy');
   try {
-    const r = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?on_conflict=id', {
-      method:'POST', headers:sbHdrs(cfg.sbKey), body:JSON.stringify(payload)
+    const payload = {
+      villa_id: getVillaId(),
+      id:client.id, name:client.name||'', nat:client.nat||'', email:client.email||'',
+      phone:client.phone||'', arrival:client.arrival||null, departure:client.departure||null,
+      guests:client.guests||0, price:client.price||0, commission:client.commission||0,
+      commmode:client.commMode||'percent', source:client.source||'Direct',
+      notes:client.notes||'', paystatus:client.payStatus||'',
+      createdat:client.createdAt||new Date().toISOString()
+    };
+    const r = await fetch(STAFFLO_PROXY + '/crm/sync', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
     });
     setSyncDot(r.ok ? 'ok' : 'err');
   } catch { setSyncDot('err'); }
 }
 
 async function deleteFromSupabase(id) {
-  const cfg = getCfg();
-  if (!cfg.sbUrl || !cfg.sbKey) return;
-  await fetch(cfg.sbUrl + '/rest/v1/crm_clients?id=eq.'+id, {
-    method:'DELETE', headers:sbHdrs(cfg.sbKey)
-  });
+  if (!STAFFLO_PROXY) {
+    const cfg = getCfg();
+    if (!cfg.sbUrl || !cfg.sbKey) return;
+    await fetch(cfg.sbUrl + '/rest/v1/crm_clients?id=eq.'+id, {
+      method:'DELETE', headers:{'apikey':cfg.sbKey,'Authorization':'Bearer '+cfg.sbKey}
+    });
+    return;
+  }
+  try {
+    await fetch(STAFFLO_PROXY + '/crm/delete', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ id, villa_id: getVillaId() })
+    });
+  } catch(e) { console.warn('Delete sync failed:', e.message); }
 }
 
 async function syncNow() {
   await loadFromSupabase();
   toast(lang==='fr' ? '↻ Synchronisé' : '↻ Synced');
 }
+
 
 function loadLocal() {
   try { clients = JSON.parse(localStorage.getItem('stafflo_clients') || '[]'); } catch { clients = []; }
