@@ -573,7 +573,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       <div class="ck-header">
         <span class="ck-title orange" data-fr="💡 Alertes intelligentes" data-en="💡 Smart Alerts">💡 Alertes intelligentes</span>
         <button onclick="goTab('home')" style="font-size:11px;color:var(--gold);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0" data-fr="Voir tout →" data-en="See all →">Voir tout →</button>
-      </div>
+      
+      <div id="liveNewsAlerts" style="padding:6px 14px"></div></div>
       <div id="todayAlertsContent" style="padding:8px 0"></div>
     </div>
   </div>
@@ -980,6 +981,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         </select>
       </div>
       <div class="field"><label>WhatsApp</label><input type="tel" id="fPhone" placeholder="+33 6..."></div>
+      <input type="hidden" id="fClientId" value="">
+      <input type="hidden" id="fEmail" value="">
+      <input type="hidden" id="fPayStatus" value="">
       <div class="field"><label data-fr="Notes" data-en="Notes">Notes</label><textarea id="fNotes" rows="2" placeholder="Repas, logistique, remarques..."></textarea></div>
       <button class="btn-save" onclick="saveClient()" data-fr="Enregistrer" data-en="Save">Enregistrer</button>
       <button style="width:100%;margin-top:8px;padding:10px;background:none;border:none;font-size:13px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif" onclick="closeForm()" data-fr="Annuler" data-en="Cancel">Annuler</button>
@@ -1957,11 +1961,11 @@ function loadSettingsUI() {
   document.getElementById('cfgGps').value = cfg.gps || '';
   document.getElementById('cfgSbUrl').value = cfg.sbUrl || '';
   document.getElementById('cfgSbKey').value = cfg.sbKey || '';
-  document.getElementById('cfgAnthropicKey').value = cfg.anthropicKey || '';
-  document.getElementById('cfgDeepseekKey').value = cfg.deepseekKey || '';
-  document.getElementById('cfgGroqKey').value = cfg.groqKey || '';
-  document.getElementById('cfgGeminiKey').value = cfg.geminiKey || '';
-  const provSel = document.getElementById('cfgAiProvider');
+  '' = cfg.anthropicKey || '';
+  '' = cfg.deepseekKey || '';
+  '' = cfg.groqKey || '';
+  '' = cfg.geminiKey || '';
+  const provSel = null;
   if (provSel) { provSel.value = cfg.aiProvider || 'groq'; toggleProviderFields(); }
 }
 
@@ -1975,7 +1979,7 @@ async function saveSettings() {
     gps: document.getElementById('cfgGps').value.trim(),
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
     sbKey: document.getElementById('cfgSbKey').value.trim(),
-    anthropicKey: document.getElementById('cfgAnthropicKey').value.trim()
+    anthropicKey: ''.trim()
   };
   setCfg(cfg);
 
@@ -3125,7 +3129,7 @@ function showTab(tab) {
 function showDay(day) {
   currentDay = day;
   document.getElementById('tab-today').classList.toggle('active', day === 'today');
-  document.getElementById('tab-tomorrow').classList.toggle('active', day === 'tomorrow');
+  document.getElementById('tab-tomorrow')?.classList.toggle('active', day === 'tomorrow');
   renderFlights();
 }
 
@@ -3633,17 +3637,17 @@ function generateBriefToast(clientId) {
 
 
 function saveApiKey() {
-  const prov = document.getElementById('cfgAiProvider')?.value || 'anthropic';
-  const key = prov === 'groq' ? document.getElementById('cfgGroqKey').value.trim()
-    : prov === 'deepseek' ? document.getElementById('cfgDeepseekKey').value.trim()
-    : prov === 'gemini' ? document.getElementById('cfgGeminiKey').value.trim()
-    : document.getElementById('cfgAnthropicKey').value.trim();
+  const prov = null?.value || 'anthropic';
+  const key = prov === 'groq' ? null.value.trim()
+    : prov === 'deepseek' ? null.value.trim()
+    : prov === 'gemini' ? null.value.trim()
+    : null.value.trim();
   if (!key) { toast(lang==='fr' ? 'Clé vide' : 'Key is empty'); return; }
   const cfg = getCfg();
   cfg.aiProvider = prov;
   if (prov === 'groq') cfg.groqKey = key; else if (prov === 'deepseek') cfg.deepseekKey = key; else if (prov === 'gemini') cfg.geminiKey = key; else cfg.anthropicKey = key;
   setCfg(cfg);
-  const saved = document.getElementById('apiKeySaved');
+  const saved = null;
   if (saved) { saved.style.display = 'block'; setTimeout(() => saved.style.display = 'none', 3000); }
   const hint = document.getElementById('apiKeyHint');
   if (hint) hint.style.display = 'none';
@@ -3651,21 +3655,8 @@ function saveApiKey() {
   toast(lang==='fr' ? '✓ Clé API enregistrée' : '✓ API key saved');
 }
 
-function toggleProviderFields() {
-  const prov = document.getElementById('cfgAiProvider')?.value || 'groq';
-  const qf = document.getElementById('groqKeyField');
-  const gf = document.getElementById('geminiKeyField');
-  const af = document.getElementById('anthropicKeyField');
-  const df = document.getElementById('deepseekKeyField');
-  if (qf) qf.style.display = prov === 'groq' ? 'block' : 'none';
-  if (gf) gf.style.display = prov === 'gemini' ? 'block' : 'none';
-  if (af) af.style.display = prov === 'anthropic' ? 'block' : 'none';
-  if (df) df.style.display = prov === 'deepseek' ? 'block' : 'none';
-}
+function toggleProviderFields() { /* handled by proxy */ }
 
-
-
-// ── SMART DEDUP — MULTI-FIELD MATCHING + MERGE ───────────────────────────────
 
 function normalizeName(n) {
   return (n||'').toLowerCase().replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();
@@ -4545,50 +4536,4 @@ function closeWhyModal() {
   document.getElementById('whyModal').classList.remove('on');
 }
 
-function showWhyModal(idx) {
-  const card = (window._briefCards || [])[idx];
-  if (!card) return;
-  const fr = lang === 'fr';
-  
-  // Create modal
-  const existing = document.getElementById('whyModal');
-  if (existing) existing.remove();
-  
-  const modal = document.createElement('div');
-  modal.id = 'whyModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:600;display:flex;align-items:flex-end;justify-content:center';
-  modal.onclick = function(e) { if(e.target===modal) modal.remove(); };
-  
-  const u = card.urgency || 5;
-  const borderColor = u >= 8 ? 'var(--red)' : u >= 6 ? '#BA7517' : 'var(--green)';
-  
-  modal.innerHTML = '<div style="background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:640px;padding:24px 20px 32px;max-height:80vh;overflow-y:auto">' +
-    '<div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px"></div>' +
-    '<div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">' +
-      '<div style="font-size:28px">' + (card.icon||'💡') + '</div>' +
-      '<div>' +
-        '<div style="font-family:Fraunces,serif;font-size:18px;font-weight:600;color:var(--ink);margin-bottom:4px">' + (card.title||'') + '</div>' +
-        '<div style="font-size:13px;color:var(--muted);line-height:1.5">' + (card.detail||'') + '</div>' +
-      '</div>' +
-    '</div>' +
-    (card.why ? '<div style="background:var(--paper);border-radius:10px;padding:12px 14px;margin-bottom:14px;border-left:3px solid ' + borderColor + '">' +
-      '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:600;margin-bottom:6px">' + (fr?'POURQUOI CETTE ALERTE':'WHY THIS ALERT') + '</div>' +
-      '<div style="font-size:13px;color:var(--ink);line-height:1.6">' + card.why + '</div>' +
-    '</div>' : '') +
-    '<div style="background:var(--green-light);border-radius:10px;padding:12px 14px;margin-bottom:16px">' +
-      '<div style="font-size:10px;letter-spacing:2px;color:var(--green);font-weight:600;margin-bottom:6px">' + (fr?'ACTION RECOMMANDÉE':'RECOMMENDED ACTION') + '</div>' +
-      '<div style="font-size:14px;font-weight:600;color:var(--green)">' + (card.action||'') + '</div>' +
-    '</div>' +
-    '<div style="display:flex;gap:8px">' +
-      '<button onclick="document.getElementById(\'whyModal\').remove()" style="flex:1;padding:12px;border:1.5px solid var(--border);border-radius:10px;background:none;font-size:14px;cursor:pointer;font-family:DM Sans,sans-serif;color:var(--muted)">' + (fr?'Fermer':'Close') + '</button>' +
-      (card.action_type && card.action_type !== 'none' ? 
-        '<button onclick="briefCardTap(' + idx + ');document.getElementById(\'whyModal\').remove()" style="flex:2;padding:12px;border:none;border-radius:10px;background:var(--green);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">→ ' + (card.action||'') + '</button>' 
-        : '') +
-    '</div>' +
-  '</div>';
-  
-  document.body.appendChild(modal);
-}
-</script>
-</body>
-</html>
+
