@@ -4200,6 +4200,9 @@ async function analyzeWithProxy(text, systemPrompt, btn) {
 // MORNING BRIEF — AI daily prioritization
 // ════════════════════════════════════════════
 async function loadMorningBrief(forceRefresh = false) {
+    console.log('DEBUG BRIEF: starting loadMorningBrief, clients.length=', clients.length, 'STAFFLO_PROXY=', !!STAFFLO_PROXY);
+    const debugStart = performance.now();
+
   const fr = lang === 'fr';
   const briefEl = document.getElementById('morningBrief');
   const cardsEl = document.getElementById('briefCards');
@@ -4341,7 +4344,7 @@ async function loadMorningBrief(forceRefresh = false) {
         if (!briefDone) throw new Error('All brief models failed');
       } catch(_be) {
         console.warn('Brief fetch failed:', _be.message);
-        renderBriefFallback(cardsEl, fr);
+        console.log("DEBUG BRIEF: calling fallback"); renderBriefFallback(cardsEl, fr);
         return;
       }
     } else {
@@ -4349,7 +4352,7 @@ async function loadMorningBrief(forceRefresh = false) {
       const provider = cfg2.aiProvider || 'groq';
       const apiKey = provider === 'groq' ? (cfg2.groqKey||'') : provider === 'gemini' ? (cfg2.geminiKey||'') : (cfg2.anthropicKey||'');
       if (!apiKey) {
-        renderBriefFallback(cardsEl, fr);
+        console.log("DEBUG BRIEF: calling fallback"); renderBriefFallback(cardsEl, fr);
         return;
       }
       if (provider === 'groq') {
@@ -4372,7 +4375,7 @@ async function loadMorningBrief(forceRefresh = false) {
 
   } catch(e) {
     console.warn('Morning brief error:', e.message);
-    renderBriefFallback(cardsEl, fr);
+    console.log("DEBUG BRIEF: calling fallback"); renderBriefFallback(cardsEl, fr);
   }
 }
 
@@ -4575,6 +4578,7 @@ function showStaffBriefModal(checklist, briefText, waUrl, fr, guestName, clientI
 }
 
 function renderBriefFallback(el, fr) {
+  console.log('DEBUG FALLBACK: rendering', cards.length, 'cards');
   // Smart fallback without AI — uses existing data
   const today = new Date().toISOString().slice(0,10);
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
