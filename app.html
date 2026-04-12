@@ -866,41 +866,15 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <button onclick="closeSettings()" style="background:none;border:none;color:rgba(255,255,255,.6);font-size:22px;cursor:pointer;line-height:1">✕</button>
   </div>
   <div style="padding:16px">
-  <div class="settings-section" style="border:1.5px solid rgba(201,150,58,.3);background:rgba(201,150,58,.04)">
-    <div class="settings-title" style="color:var(--gold)">CLAUDE AI — CLÉ API</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6" data-fr="Nécessaire pour l'analyse des messages. Obtenez votre clé sur console.anthropic.com → API Keys." data-en="Required for message analysis. Get your key at console.anthropic.com → API Keys.">Nécessaire pour l'analyse des messages. Obtenez votre clé sur console.anthropic.com → API Keys.</div>
-    <div class="field">
-      <label data-fr="Fournisseur IA" data-en="AI Provider">Fournisseur IA</label>
-      <select id="cfgAiProvider" onchange="toggleProviderFields()" style="width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;background:var(--paper);outline:none">
-        <option value="groq">Groq (Llama) — GRATUIT</option>
-        <option value="gemini">Gemini (Google) — GRATUIT</option>
-        <option value="anthropic">Claude (Anthropic)</option>
-        <option value="deepseek">DeepSeek — ~$0.001/analyse</option>
-      </select>
+  <div class="settings-section" id="apiKeySection" style="border:1.5px solid rgba(82,183,136,.3);background:rgba(82,183,136,.04)">
+    <div class="settings-title" style="color:#1B4332">⚡ IA — PROXY ACTIF</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0">
+      <span style="font-size:22px">✅</span>
+      <div>
+        <div style="font-size:13px;font-weight:500;color:var(--ink)" data-fr="L'IA est gérée automatiquement via le proxy Stafflo." data-en="AI is handled automatically via the Stafflo proxy.">L'IA est gérée automatiquement via le proxy Stafflo.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px" data-fr="Aucune clé API requise — tout est sécurisé côté serveur." data-en="No API key required — everything is secured server-side.">Aucune clé API requise — tout est sécurisé côté serveur.</div>
+      </div>
     </div>
-    <div class="field" id="geminiKeyField" style="display:none">
-      <label>Gemini API Key</label>
-      <input id="cfgGeminiKey" placeholder="AIza..." type="password" autocomplete="off">
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">→ <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--gold)">aistudio.google.com</a> → Get API Key · Gratuit 1500 req/jour</div>
-    </div>
-    <div class="field" id="anthropicKeyField">
-      <label>Claude API Key</label>
-      <input id="cfgAnthropicKey" placeholder="sk-ant-api03-..." type="password" autocomplete="off">
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">→ <a href="https://console.anthropic.com" target="_blank" style="color:var(--gold)">console.anthropic.com</a> → API Keys</div>
-    </div>
-    <div class="field" id="groqKeyField" style="display:none">
-      <label>Groq API Key</label>
-      <input id="cfgGroqKey" placeholder="gsk_..." type="password" autocomplete="off">
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">→ <a href="https://console.groq.com/keys" target="_blank" style="color:var(--gold)">console.groq.com</a> → API Keys · 100% gratuit · 14 400 req/jour</div>
-    </div>
-    <div class="field" id="deepseekKeyField" style="display:none">
-      <label>DeepSeek API Key</label>
-      <input id="cfgDeepseekKey" placeholder="sk-..." type="password" autocomplete="off">
-      <div style="font-size:11px;color:var(--muted);margin-top:4px">→ <a href="https://platform.deepseek.com/api_keys" target="_blank" style="color:var(--gold)">platform.deepseek.com</a> → API Keys · ~$0.001/analyse</div>
-    </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:4px" data-fr="⚠ La clé est stockée localement dans votre navigateur uniquement." data-en="⚠ Key stored locally in your browser only.">⚠ Key stored locally in your browser only.</div>
-    <button onclick="saveApiKey()" style="width:100%;margin-top:12px;background:var(--gold);color:var(--green3);border:none;border-radius:10px;padding:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.5px" data-fr="Enregistrer la clé →" data-en="Save key →">Save key →</button>
-    <div id="apiKeySaved" style="display:none;text-align:center;color:#3B6D11;font-size:13px;font-weight:500;margin-top:8px">✓ Clé enregistrée — l'IA est prête</div>
   </div>
 
   <div class="settings-section">
@@ -3806,6 +3780,60 @@ function toggleProviderFields() {
   if (df) df.style.display = prov === 'deepseek' ? 'block' : 'none';
 }
 
+
+async function extractFormAIviaProxy(text, btn, spinner, label, msgEl) {
+  const today = new Date().toISOString().slice(0,10);
+  const systemPrompt = [
+    'You are a booking data extractor for a luxury villa in Marrakech.',
+    'Read ANY text (Airbnb email, WhatsApp, booking summary) and extract guest info.',
+    'Return ONLY a valid JSON object. No markdown. No explanation.',
+    'Today is ' + today + '.',
+    'Fields: name, nat (with flag emoji), arrival (YYYY-MM-DD), departure (YYYY-MM-DD), nights, guests (total people), price (total gross), commission (%), source (Airbnb/Booking/Direct), phone.',
+    'For price: use Guest paid total. Multiply nightly rate × nights. Never use Host payout.',
+    'For commission: Airbnb=15.5, Booking=15, Direct=0. If shown in email use that value.',
+  ].join('\n');
+
+  try {
+    const r = await fetch(STAFFLO_PROXY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        max_tokens: 800,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: text }
+        ]
+      })
+    });
+    const data = await r.json();
+    const raw = data.choices?.[0]?.message?.content || '';
+    let json;
+    try {
+      const cleaned = raw.replace(/```json?/g,'').replace(/```/g,'').trim();
+      json = JSON.parse(cleaned);
+    } catch(e) {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      json = match ? JSON.parse(match[0]) : null;
+    }
+    if (!json) throw new Error('No JSON in response');
+    // Fill form
+    if (json.name) document.getElementById('fName').value = json.name;
+    if (json.arrival) document.getElementById('fArr').value = json.arrival;
+    if (json.departure) document.getElementById('fDep').value = json.departure;
+    if (json.guests) document.getElementById('fGuests').value = json.guests;
+    if (json.nat) document.getElementById('fNat').value = json.nat;
+    if (json.price) document.getElementById('fPrice').value = json.price;
+    if (json.commission) document.getElementById('fComm').value = json.commission;
+    if (json.source) document.getElementById('fSource').value = json.source;
+    if (json.phone) document.getElementById('fPhone').value = json.phone;
+    updateNetPreview();
+    if (msgEl) { msgEl.style.display = 'block'; msgEl.textContent = lang==='fr' ? '✅ Champs remplis — vérifiez et ajustez' : '✅ Fields filled — check and adjust'; }
+  } catch(e) {
+    toast('Erreur proxy: ' + e.message.slice(0,60));
+  }
+  spinner.style.display = 'none'; label.style.display = 'inline'; btn.disabled = false;
+}
 async function extractFormAI() {
   const text = document.getElementById('fPasteInput').value.trim();
   if (!text) { toast(lang==='fr' ? 'Collez un message d\'abord' : 'Paste a message first'); return; }
@@ -3824,6 +3852,11 @@ async function extractFormAI() {
                : provider === 'gemini' ? (cfg.geminiKey || '')
                : provider === 'deepseek' ? (cfg.deepseekKey || '')
                : (cfg.anthropicKey || '');
+
+  // Use proxy if available — no API key needed
+  if (STAFFLO_PROXY) {
+    return extractFormAIviaProxy(text, btn, spinner, label, msgEl);
+  }
 
   if (!apiKey) {
     toast(lang==='fr' ? '⚙ Ajoutez votre clé API dans Réglages' : '⚙ Add your API key in Settings');
