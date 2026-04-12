@@ -1,854 +1,524 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stafflo — Chaque message devient une action précise pour votre équipe</title>
-<meta name="description" content="Stafflo transforme vos messages WhatsApp et Airbnb en briefings staff actionnables. Zéro coordination manuelle. Chaque arrivée impeccable.">
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Stafflo — Villa Cockpit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300;1,9..144,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
-/* ── BASE ── */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;scroll-behavior:smooth;scroll-padding-top:64px}
-body{font-family:'DM Sans',sans-serif;background:#FAFAF7;color:#1A1A18;line-height:1.6;min-height:100dvh}
-a{color:inherit;text-decoration:none}
-img,svg{display:block;max-width:100%}
-h1,h2,h3{text-wrap:balance;line-height:1.1}
-p,li{text-wrap:pretty;max-width:68ch}
-button{cursor:pointer;background:none;border:none;font:inherit}
-:focus-visible{outline:2px solid #C9963A;outline-offset:3px;border-radius:4px}
-
-/* ── TOKENS ── */
+/* ─── TOKENS ─────────────────────────────────────────── */
 :root{
-  --green:  #1B4332;
-  --green2: #2D6A4F;
-  --green3: #0F2318;
-  --green-lt:#D8F3DC;
-  --green-xl:#EEF8F0;
-  --gold:   #C9963A;
-  --gold-lt:#FEF3DC;
-  --gold2:  #A8761F;
-  --ink:    #1A1A18;
-  --muted:  #6B6B62;
-  --faint:  #B5B5AD;
-  --paper:  #FAFAF7;
-  --card:   #FFFFFF;
-  --border: rgba(26,26,24,.1);
-  --sh-sm:  0 1px 3px rgba(26,26,24,.07),0 1px 2px rgba(26,26,24,.04);
-  --sh-md:  0 4px 16px rgba(26,26,24,.08),0 1px 4px rgba(26,26,24,.05);
-  --sh-lg:  0 12px 40px rgba(26,26,24,.12),0 3px 8px rgba(26,26,24,.06);
-  --r-sm:6px;--r-md:10px;--r-lg:16px;--r-xl:20px;
-  --font-display:'Fraunces',Georgia,serif;
-  --font-body:'DM Sans',system-ui,sans-serif;
-  --t-xs:clamp(.75rem,.7rem + .25vw,.875rem);
-  --t-sm:clamp(.875rem,.8rem + .35vw,1rem);
-  --t-base:clamp(1rem,.95rem + .25vw,1.125rem);
-  --t-lg:clamp(1.125rem,1rem + .75vw,1.5rem);
-  --t-xl:clamp(1.5rem,1.2rem + 1.25vw,2.25rem);
-  --t-2xl:clamp(2rem,1.2rem + 2.5vw,3.5rem);
-  --t-3xl:clamp(2.5rem,1rem + 4vw,5rem);
-  --ease:cubic-bezier(.16,1,.3,1);
+  --bg:#FAFAF7;
+  --green:#1B4332;--green2:#2D6A4F;--green3:#0F2318;
+  --gold:#C9963A;--gold2:#A8761F;--gold-lt:#FEF9EF;
+  --orange:#EA580C;--orange-lt:#FFF7ED;
+  --ink:#1A1A18;--muted:#6B6B62;--faint:#B5B5AD;
+  --card:#FFFFFF;--border:rgba(26,26,24,.09);
+  --sh:0 2px 12px rgba(26,26,24,.07);
+  --sh-lg:0 8px 32px rgba(26,26,24,.11);
+  --r:14px;--r-lg:20px;
+  --ff-d:'Fraunces',Georgia,serif;
+  --ff:'DM Sans',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:var(--ff);background:var(--bg);color:var(--ink);line-height:1.6;min-height:100vh}
+
+/* ─── TOPBAR ─────────────────────────────────────────── */
+.topbar{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  background:var(--green);color:#fff;
+  border-radius:18px;padding:13px 18px;
+  position:sticky;top:14px;z-index:100;
+  box-shadow:var(--sh-lg);margin-bottom:18px;
+}
+.logo{font-family:var(--ff-d);font-weight:600;font-size:20px;letter-spacing:-.02em;white-space:nowrap}
+.villa{opacity:.8;font-size:13px;font-weight:500;white-space:nowrap}
+.tb-spacer{flex:1}
+.badge{padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.1);font-size:12px;font-weight:500;white-space:nowrap}
+.badge.warn{background:rgba(234,88,12,.35);color:#FED7AA}
+/* New Signal input */
+.ns-wrap{position:relative;flex:1;min-width:200px;max-width:360px}
+.ns-input{
+  width:100%;background:#fff;border:none;border-radius:12px;
+  padding:11px 16px 11px 44px;font:inherit;font-size:13px;
+  color:var(--ink);box-shadow:var(--sh);
+  transition:box-shadow .2s;
+}
+.ns-input:focus{outline:none;box-shadow:0 0 0 2px var(--gold)}
+.ns-input::placeholder{color:var(--muted)}
+.ns-ico{
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  font-size:16px;pointer-events:none;
+}
+.ns-btn{
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  background:var(--gold);color:#fff;border:none;border-radius:8px;
+  padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;
+  white-space:nowrap;transition:background .2s;
+}
+.ns-btn:hover{background:var(--gold2)}
+
+/* ─── TABS ───────────────────────────────────────────── */
+.tabs{display:flex;gap:4px;margin-bottom:18px}
+.tab{
+  padding:9px 20px;border-radius:999px;font-size:13px;font-weight:600;
+  cursor:pointer;border:1.5px solid var(--border);background:var(--card);
+  color:var(--muted);transition:all .18s;
+}
+.tab.active{background:var(--green);color:#fff;border-color:transparent}
+.tab:hover:not(.active){border-color:var(--green);color:var(--green)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ─── SHARED CARD ────────────────────────────────────── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--sh);overflow:hidden}
+.card-h{padding:16px 20px;border-bottom:1px solid var(--border);font-weight:700;font-size:15px;display:flex;align-items:center;gap:10px;justify-content:space-between}
+.card-b{padding:20px}
+.chip{font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 10px;border-radius:999px}
+.chip-green{background:#EEF8F0;color:var(--green2)}
+.chip-orange{background:var(--orange-lt);color:var(--orange)}
+.chip-gold{background:var(--gold-lt);color:var(--gold2)}
+.chip-muted{background:#F3F4F6;color:var(--muted)}
+
+/* ─── HERO GRID ──────────────────────────────────────── */
+.hero-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px}
+.hero-card{border:2px solid var(--green) !important}
+.hero-h{font-family:var(--ff-d);font-size:18px;font-weight:400;color:var(--green)}
+.hero-badge{background:var(--green);color:#fff;font-size:10px;font-weight:700;padding:4px 12px;border-radius:999px;letter-spacing:.5px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:20px}
+.kpi{background:#F8FBFF;border:1px solid var(--border);border-radius:12px;padding:18px 14px;text-align:center;transition:transform .18s}
+.kpi:hover{transform:translateY(-2px)}
+.kpi-v{font-size:26px;font-weight:700;color:var(--green);line-height:1.1;margin-bottom:4px}
+.kpi-l{font-size:12px;color:var(--muted);font-weight:500}
+
+/* ─── READINESS ──────────────────────────────────────── */
+.readiness-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:20px}
+.r-item{display:flex;align-items:center;justify-content:space-between;padding:12px;background:#F8FBFF;border:1px solid var(--border);border-radius:12px}
+.r-label{font-size:13px;font-weight:500}
+.dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.dot.ok{background:#22C55E}
+.dot.warn{background:var(--orange)}
+.dot.na{background:#D1D5DB}
+
+/* ─── ALERTS ─────────────────────────────────────────── */
+.alert-card{border:2px solid var(--orange) !important}
+.alert-h{color:var(--orange)}
+.alert-list{display:flex;flex-direction:column;gap:0}
+.alert-item{padding:14px 20px;border-bottom:1px solid #FEF3C7;background:#FFF7ED;display:flex;gap:12px;align-items:flex-start}
+.alert-item:last-child{border-bottom:none;border-radius:0 0 var(--r-lg) var(--r-lg)}
+.a-time{font-size:11px;color:var(--muted);font-weight:700;min-width:36px;padding-top:2px}
+.a-text{font-size:13px;line-height:1.5;flex:1}
+.a-src{font-size:10px;font-weight:800;padding:3px 9px;border-radius:999px;background:var(--orange);color:#fff;white-space:nowrap;margin-top:2px;align-self:flex-start}
+
+/* ─── TEAM TASKS ─────────────────────────────────────── */
+.task-list{display:flex;flex-direction:column;gap:10px;padding:20px}
+.task{display:flex;align-items:flex-start;gap:12px;padding:13px;border:1px solid var(--border);border-radius:12px;cursor:pointer;transition:all .18s}
+.task:hover{background:#F8FBFF;border-color:var(--green)}
+.t-role{font-size:10px;font-weight:800;color:var(--green);text-transform:uppercase;background:#EEF8F0;border-radius:6px;padding:4px 8px;min-width:72px;text-align:center;white-space:nowrap;flex-shrink:0}
+.t-text{font-size:13px;line-height:1.5;flex:1}
+.t-status{font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;white-space:nowrap;align-self:flex-start}
+.s-urgent{background:#FEF3C7;color:var(--orange)}
+.s-pending{background:#F3F4F6;color:var(--muted)}
+.s-progress{background:var(--gold-lt);color:var(--gold2)}
+.s-done{background:#EEF8F0;color:var(--green2)}
+
+/* ─── REVENUE ────────────────────────────────────────── */
+.rev-list{display:flex;flex-direction:column;gap:10px;padding:20px}
+.rev-item{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:12px;background:var(--gold-lt);border:1px solid rgba(201,150,58,.15)}
+.rev-label{font-size:13px;color:var(--muted)}
+.rev-val{font-weight:700;color:var(--gold2);font-size:15px}
+
+/* ─── CHECKLIST ──────────────────────────────────────── */
+.check-list{display:flex;flex-direction:column;gap:9px;padding:20px}
+.check-item{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-radius:12px;background:#F8FBFF;border:1px solid var(--border)}
+.check-label{font-size:13px;font-weight:500}
+
+/* ─── HANDOVER ───────────────────────────────────────── */
+.handover-list{padding:20px;display:flex;flex-direction:column;gap:10px}
+.h-item{font-size:13px;color:var(--muted);line-height:1.6;padding:10px 14px;border-left:3px solid var(--border);background:#F8FBFF;border-radius:0 10px 10px 0}
+
+/* ─── TIMELINE ───────────────────────────────────────── */
+.timeline{display:flex;flex-direction:column;gap:0;padding:20px}
+.tl-item{display:flex;gap:14px;padding-bottom:16px;position:relative}
+.tl-item:last-child{padding-bottom:0}
+.tl-item::before{content:'';position:absolute;left:31px;top:22px;bottom:0;width:1px;background:var(--border)}
+.tl-item:last-child::before{display:none}
+.tl-time{font-size:11px;font-weight:700;color:var(--muted);min-width:40px;padding-top:3px}
+.tl-dot{width:10px;height:10px;border-radius:50%;background:var(--green);flex-shrink:0;margin-top:5px;border:2px solid var(--card);outline:2px solid var(--green)}
+.tl-body{flex:1}
+.tl-text{font-size:13px;line-height:1.5}
+.tl-src{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;background:#EEF8F0;color:var(--green2);margin-top:4px;display:inline-block}
+
+/* ─── NEW SIGNAL PANEL ───────────────────────────────── */
+.signal-panel{background:var(--card);border:2px dashed var(--border);border-radius:var(--r-lg);padding:24px;margin-bottom:16px;transition:border-color .2s}
+.signal-panel:focus-within{border-color:var(--gold)}
+.signal-panel h3{font-size:15px;font-weight:700;margin-bottom:6px}
+.signal-panel p{font-size:13px;color:var(--muted);margin-bottom:14px}
+.signal-textarea{width:100%;min-height:120px;border:1px solid var(--border);border-radius:12px;padding:14px;font:inherit;font-size:14px;background:#F8FBFF;resize:vertical;transition:border-color .2s}
+.signal-textarea:focus{outline:none;border-color:var(--gold)}
+.signal-footer{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.src-chip{font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;background:#F3F4F6;color:var(--muted);cursor:pointer;border:1.5px solid transparent;transition:all .18s}
+.src-chip.active,.src-chip:hover{background:var(--gold-lt);color:var(--gold2);border-color:var(--gold)}
+.analyze-btn{margin-left:auto;background:var(--gold);color:#fff;border:none;padding:10px 22px;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer;transition:all .18s}
+.analyze-btn:hover{background:var(--gold2);transform:translateY(-1px)}
+
+/* ─── LAYOUT ROWS ────────────────────────────────────── */
+.two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.full{margin-bottom:16px}
+.last{margin-bottom:0}
+
+/* ─── RESPONSIVE ─────────────────────────────────────── */
+@media(max-width:900px){
+  .hero-grid,.two-col,.three-col{grid-template-columns:1fr}
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .readiness-grid{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .ns-wrap{min-width:100%;max-width:none;margin-top:8px}
+  .topbar{gap:8px}
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .tabs{flex-wrap:wrap}
+  .tab{flex:1;text-align:center}
 }
 
-/* ── SKIP LINK ── */
-.skip{position:absolute;left:-9999px;padding:8px 16px;background:var(--gold);color:#fff;border-radius:0 0 6px 0;font-size:14px;font-weight:600}
-.skip:focus{left:0;z-index:9999}
-
-/* ── NAV ── */
-nav{position:sticky;top:0;z-index:100;background:var(--green)}
-.nav-inner{max-width:1000px;margin:0 auto;padding:0 24px;display:flex;align-items:center;height:60px;gap:20px}
-.logo{font-family:var(--font-display);font-size:22px;font-weight:600;color:#fff;letter-spacing:-.3px;flex-shrink:0}
-.logo em{color:var(--gold);font-style:normal}
-.nav-links{display:flex;gap:24px;margin-left:auto;font-size:var(--t-sm);color:rgba(255,255,255,.55)}
-.nav-links a{transition:color .18s}
-.nav-links a:hover{color:#fff}
-.nav-sep{color:rgba(255,255,255,.15)}
-.lang-btn{font-size:12px;color:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.18);padding:5px 11px;border-radius:6px;cursor:pointer;transition:all .18s;background:transparent}
-.lang-btn:hover{color:#fff;border-color:rgba(255,255,255,.4)}
-.nav-cta{background:var(--gold);color:var(--green3);padding:9px 20px;border-radius:var(--r-md);font-size:var(--t-sm);font-weight:600;transition:all .18s;flex-shrink:0;white-space:nowrap}
-.nav-cta:hover{background:var(--gold2);transform:translateY(-1px)}
-
-/* ── HERO ── */
-.hero{background:var(--green);padding:clamp(56px,8vw,100px) 24px clamp(48px,7vw,88px)}
-.hero-inner{max-width:1000px;margin:0 auto}
-.eyebrow{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.6);font-size:11px;font-weight:500;letter-spacing:2.5px;padding:5px 14px;border-radius:20px;margin-bottom:28px;text-transform:uppercase}
-.eyebrow-dot{width:6px;height:6px;background:var(--gold);border-radius:50%}
-.hero h1{font-family:var(--font-display);font-size:var(--t-3xl);font-weight:300;color:#fff;margin-bottom:22px}
-.hero h1 em{font-style:italic;color:var(--gold)}
-.hero-sub{font-size:var(--t-lg);color:rgba(255,255,255,.58);max-width:540px;margin-bottom:40px;line-height:1.6;font-weight:300}
-.hero-btns{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:52px}
-.btn-primary{background:var(--gold);color:var(--green3);padding:15px 32px;border-radius:var(--r-md);font-size:var(--t-base);font-weight:600;transition:all .2s;display:inline-block;white-space:nowrap}
-.btn-primary:hover{background:var(--gold2);transform:translateY(-1px);box-shadow:var(--sh-md)}
-.btn-ghost{border:1.5px solid rgba(255,255,255,.22);color:rgba(255,255,255,.68);padding:14px 24px;border-radius:var(--r-md);font-size:var(--t-base);transition:all .2s;display:inline-block}
-.btn-ghost:hover{border-color:rgba(255,255,255,.45);color:#fff}
-.hero-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:rgba(255,255,255,.1);border-radius:var(--r-lg);overflow:hidden;max-width:560px}
-.kpi{background:rgba(255,255,255,.05);padding:18px 22px}
-.kpi-val{font-family:var(--font-display);font-size:var(--t-xl);font-weight:300;color:#fff;line-height:1}
-.kpi-lbl{font-size:11px;color:rgba(255,255,255,.42);margin-top:4px;letter-spacing:.5px}
-
-/* ── FOR WHOM ── */
-.for-whom{background:var(--green3);padding:0 24px}
-.for-whom-inner{max-width:1000px;margin:0 auto;display:flex;align-items:center;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.for-whom-label{font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.3);text-transform:uppercase;white-space:nowrap;padding:16px 20px 16px 0;flex-shrink:0;border-right:1px solid rgba(255,255,255,.08);margin-right:20px}
-.role-tag{display:flex;align-items:center;gap:7px;padding:13px 0;margin-right:28px;color:rgba(255,255,255,.5);font-size:var(--t-sm);white-space:nowrap;flex-shrink:0;transition:color .2s}
-.role-tag:hover{color:rgba(255,255,255,.8)}
-.role-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);opacity:.6;flex-shrink:0}
-
-/* ── SECTION BASE ── */
-.section{padding:clamp(56px,7vw,96px) 24px}
-.sec-inner{max-width:1000px;margin:0 auto}
-.label{font-size:11px;letter-spacing:3px;color:var(--gold);font-weight:600;text-transform:uppercase;margin-bottom:14px}
-.sec-h2{font-family:var(--font-display);font-size:var(--t-2xl);font-weight:300;color:var(--ink);margin-bottom:16px}
-.sec-h2 em{font-style:italic;color:var(--green)}
-.sec-sub{font-size:var(--t-base);color:var(--muted);max-width:500px;line-height:1.65;margin-bottom:48px}
-
-/* ── PROBLEM ── */
-.prob-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.prob-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;box-shadow:var(--sh-sm);position:relative;overflow:hidden}
-.prob-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:rgba(201,150,58,.3)}
-.prob-num{font-family:var(--font-display);font-size:clamp(2.5rem,5vw,4rem);font-weight:300;color:rgba(26,26,24,.05);position:absolute;bottom:-8px;right:16px;line-height:1}
-.prob-icon{font-size:22px;margin-bottom:12px}
-.prob-card h3{font-size:var(--t-base);font-weight:600;color:var(--ink);margin-bottom:7px}
-.prob-card p{font-size:var(--t-sm);color:var(--muted);line-height:1.55}
-
-/* ── LIVE DEMO ── */
-.demo-section{background:var(--green-xl);padding:clamp(56px,7vw,96px) 24px}
-.demo-inner{max-width:1000px;margin:0 auto}
-.demo-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
-.demo-input-col{}
-.demo-label{font-size:12px;font-weight:500;color:var(--muted);letter-spacing:.5px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
-.demo-badge{background:var(--green);color:#fff;font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 9px;border-radius:20px;text-transform:uppercase}
-.demo-msg{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px;box-shadow:var(--sh-sm);font-size:var(--t-sm);color:var(--ink);line-height:1.6;cursor:pointer;position:relative;transition:box-shadow .2s}
-.demo-msg:hover{box-shadow:var(--sh-md)}
-.demo-msg-header{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)}
-.demo-src-tag{font-size:11px;font-weight:600;letter-spacing:.5px;padding:3px 10px;border-radius:20px;text-transform:uppercase}
-.src-wa{background:#dcfce7;color:#166534}
-.src-airbnb{background:#ffe4e6;color:#9f1239}
-.demo-msg-body{font-size:var(--t-sm);color:var(--ink)}
-.demo-tab{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-.demo-tab-btn{font-size:12px;padding:7px 16px;border-radius:20px;border:1.5px solid var(--border);color:var(--muted);cursor:pointer;transition:all .18s;background:var(--card);font-family:var(--font-body)}
-.demo-tab-btn.active{background:var(--green);color:#fff;border-color:var(--green)}
-.demo-out-col{}
-.demo-out{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--sh-sm);overflow:hidden;min-height:300px}
-.demo-out-head{background:var(--green);padding:14px 20px;display:flex;align-items:center;gap:10px}
-.demo-out-title{font-size:var(--t-sm);color:#fff;font-weight:500}
-.demo-out-ai{font-size:10px;background:var(--gold);color:#fff;padding:2px 8px;border-radius:10px;font-weight:700;letter-spacing:.5px;margin-left:auto}
-.demo-out-body{padding:16px}
-.extracted-field{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
-.extracted-field:last-child{border-bottom:none}
-.field-key{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;min-width:90px;flex-shrink:0;padding-top:1px}
-.field-val{font-size:var(--t-sm);color:var(--ink);font-weight:500}
-.task-card{background:var(--green-xl);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;font-size:var(--t-sm)}
-.task-card:last-child{margin-bottom:0}
-.task-role{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--green);min-width:80px;flex-shrink:0}
-.task-text{color:var(--ink);line-height:1.4}
-.demo-arrow{display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--gold);margin:8px 0;opacity:.7}
-
-/* ── HOW ── */
-.how-section{background:var(--paper)}
-.how-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:48px}
-.how-card{position:relative;padding:28px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--sh-sm)}
-.how-num{font-family:var(--font-display);font-size:clamp(3rem,5vw,4.5rem);font-weight:300;color:rgba(26,26,24,.04);position:absolute;top:12px;right:16px;line-height:1}
-.how-icon{font-size:24px;margin-bottom:14px}
-.how-card h3{font-size:var(--t-base);font-weight:600;color:var(--ink);margin-bottom:8px}
-.how-card p{font-size:var(--t-sm);color:var(--muted);line-height:1.6}
-.how-connector{display:none}
-
-/* ── MARKET BAR ── */
-.market-bar{background:var(--green);padding:40px 24px}
-.market-inner{max-width:1000px;margin:0 auto}
-.market-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.1);border-radius:var(--r-lg);overflow:hidden;margin-top:0}
-.mstat{background:rgba(255,255,255,.04);padding:24px 20px}
-.mstat-val{font-family:var(--font-display);font-size:var(--t-2xl);font-weight:300;color:#fff;line-height:1}
-.mstat-val em{color:var(--gold);font-style:normal}
-.mstat-lbl{font-size:12px;color:rgba(255,255,255,.45);margin-top:6px;line-height:1.4}
-
-/* ── FEATURES ── */
-.feat-section{background:var(--gold-lt,#FEF9EF)}
-.feat-section{background:#FEFBF4}
-.feat-bento{display:grid;grid-template-columns:2fr 1fr;gap:14px}
-.feat-bento-col{display:flex;flex-direction:column;gap:14px}
-.feat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:22px 24px;box-shadow:var(--sh-sm)}
-.feat-card.featured{background:var(--green);color:#fff}
-.feat-card.featured h3{color:#fff}
-.feat-card.featured p{color:rgba(255,255,255,.6)}
-.feat-card h3{font-size:var(--t-base);font-weight:600;color:var(--ink);margin-bottom:7px;display:flex;align-items:center;gap:8px}
-.feat-card p{font-size:var(--t-sm);color:var(--muted);line-height:1.6}
-.feat-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
-.feat-tag{font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;background:var(--green-lt);color:var(--green2)}
-.feat-card.featured .feat-tag{background:rgba(255,255,255,.12);color:rgba(255,255,255,.7)}
-
-/* ── QUOTE ── */
-.quote-section{background:var(--paper);padding:clamp(40px,6vw,80px) 24px}
-.quote-block{max-width:700px;margin:0 auto;background:var(--green);border-radius:var(--r-xl);padding:clamp(32px,5vw,56px) clamp(28px,5vw,56px);position:relative;overflow:hidden}
-.quote-mark{font-family:var(--font-display);font-size:120px;color:rgba(255,255,255,.04);position:absolute;top:-20px;left:24px;line-height:1;font-weight:600}
-.quote-text{font-family:var(--font-display);font-size:clamp(17px,2vw,22px);font-weight:300;font-style:italic;color:#fff;line-height:1.65;margin-bottom:20px;position:relative}
-.quote-author{font-size:var(--t-sm);color:rgba(255,255,255,.45)}
-.quote-author strong{color:var(--gold)}
-.quote-stars{color:var(--gold);font-size:14px;margin-bottom:12px;letter-spacing:2px}
-
-/* ── TRUST ── */
-.trust-section{background:var(--green3);padding:32px 24px}
-.trust-inner{max-width:1000px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:32px;flex-wrap:wrap}
-.trust-item{display:flex;align-items:center;gap:8px;font-size:var(--t-sm);color:rgba(255,255,255,.45)}
-.trust-item svg{color:var(--gold);flex-shrink:0}
-.trust-sep{width:1px;height:24px;background:rgba(255,255,255,.08)}
-
-/* ── PRICING ── */
-.pricing-section{background:var(--gold-lt,#FEF9EF);background:#FEFBF4;padding:clamp(56px,7vw,96px) 24px}
-.pricing-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:600px;margin:0 auto}
-.price-card{background:var(--card);border:1.5px solid var(--border);border-radius:var(--r-xl);padding:32px;box-shadow:var(--sh-sm)}
-.price-card.featured{border-color:var(--gold);position:relative}
-.price-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--gold);color:#fff;font-size:10px;font-weight:700;letter-spacing:1px;padding:4px 16px;border-radius:20px;white-space:nowrap}
-.price-name{font-size:var(--t-sm);color:var(--muted);font-weight:500;margin-bottom:12px}
-.price-amount{font-family:var(--font-display);font-size:clamp(2rem,4vw,2.8rem);font-weight:300;color:var(--ink);line-height:1}
-.price-sup{font-size:1rem;vertical-align:super}
-.price-period{font-size:var(--t-sm);color:var(--muted);margin-top:4px;margin-bottom:20px}
-.price-save{font-size:var(--t-sm);color:var(--green2);font-weight:600;margin-bottom:20px}
-.price-list{list-style:none;font-size:var(--t-sm);color:var(--muted);margin-bottom:28px}
-.price-list li{padding:6px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
-.price-list li:last-child{border:none}
-.price-list li::before{content:"✓";color:var(--green);font-weight:700;flex-shrink:0}
-.btn-price{display:block;text-align:center;padding:13px;border-radius:var(--r-md);font-size:var(--t-sm);font-weight:600;transition:all .18s}
-.btn-price-green{background:var(--green);color:#fff}
-.btn-price-green:hover{background:var(--green2);transform:translateY(-1px)}
-.btn-price-gold{background:var(--gold);color:#fff}
-.btn-price-gold:hover{background:var(--gold2);transform:translateY(-1px)}
-.price-note{font-size:12px;color:var(--muted);text-align:center;margin-top:20px;max-width:600px;margin-left:auto;margin-right:auto}
-
-/* ── FAQ ── */
-.faq-inner{max-width:660px;margin:0 auto}
-.faq-item{border-bottom:1px solid var(--border)}
-.faq-q{font-size:var(--t-base);font-weight:500;cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:18px 0;gap:16px;color:var(--ink);transition:color .18s}
-.faq-q:hover{color:var(--green)}
-.faq-a{font-size:var(--t-sm);color:var(--muted);line-height:1.65;padding-bottom:18px;display:none;max-width:100%}
-.faq-item.open .faq-a{display:block}
-.faq-icon{color:var(--gold);flex-shrink:0;transition:transform .2s;font-size:12px;font-weight:700}
-.faq-item.open .faq-icon{transform:rotate(180deg)}
-
-/* ── FINAL CTA ── */
-.cta-section{background:var(--green);padding:clamp(56px,7vw,96px) 24px;text-align:center}
-.cta-section h2{font-family:var(--font-display);font-size:var(--t-2xl);font-weight:300;color:#fff;margin-bottom:16px}
-.cta-section h2 em{font-style:italic;color:var(--gold)}
-.cta-section p{color:rgba(255,255,255,.5);font-size:var(--t-base);margin-bottom:36px;max-width:100%;width:100%}
-.cta-section p{max-width:none}
-
-/* ── FOOTER ── */
-footer{background:var(--green3);padding:28px 24px}
-.footer-inner{max-width:1000px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
-.footer-logo{font-family:var(--font-display);font-size:18px;color:#fff;font-weight:600}
-.footer-logo em{color:var(--gold);font-style:normal}
-.footer-links{display:flex;gap:20px;font-size:var(--t-sm);color:rgba(255,255,255,.3)}
-.footer-links a:hover{color:#fff}
-
-/* ── SCROLL REVEAL ── */
-.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s var(--ease),transform .6s var(--ease)}
-.reveal.visible{opacity:1;transform:none}
-@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none}}
-
-/* ── RESPONSIVE ── */
-@media(max-width:640px){
-  .nav-links,.nav-sep{display:none}
-  .hero-kpis{grid-template-columns:1fr 1fr 1fr;max-width:100%}
-  .kpi{padding:14px 16px}
-  .prob-grid{grid-template-columns:1fr}
-  .demo-grid{grid-template-columns:1fr}
-  .how-grid{grid-template-columns:1fr}
-  .market-grid{grid-template-columns:1fr 1fr}
-  .feat-bento{grid-template-columns:1fr}
-  .pricing-grid{grid-template-columns:1fr}
-  .trust-sep{display:none}
-  .for-whom-inner{gap:0}
-}
-@media(max-width:480px){
-  .hero-kpis{grid-template-columns:repeat(3,1fr)}
-  .kpi-val{font-size:1.4rem}
-}
-
-
+/* ─── WRAP ───────────────────────────────────────────── */
+.wrap{max-width:1200px;margin:0 auto;padding:16px 20px 48px}
 </style>
 </head>
 <body>
-<a class="skip" href="#main">Skip to content</a>
+<div class="wrap">
 
-<!-- NAV -->
-<nav aria-label="Main navigation">
-  <div class="nav-inner">
-    <a href="#" class="logo" aria-label="Stafflo home">Staff<em>lo</em></a>
-    <div class="nav-links">
-      <a href="#problem">Problème</a>
-      <span class="nav-sep">·</span>
-      <a href="#how">Comment ça marche</a>
-      <span class="nav-sep">·</span>
-      <a href="#pricing">Tarifs</a>
-    </div>
-    <a href="en.html" class="lang-btn">🇬🇧 EN</a>
-    <a href="https://jeremiegougenheim-creator.github.io/Stafflo/app.html" class="nav-cta" target="_blank" rel="noopener noreferrer">
-      <span>Ouvrir l'app →</span>
-    </a>
-  </div>
-</nav>
-
-<!-- HERO -->
-<section class="hero" id="main">
-  <div class="hero-inner">
-    <div class="eyebrow"><span class="eyebrow-dot"></span><span>✦ Intelligence Opérationnelle Villa</span></div>
-    <h1>Chaque message client<br>devient une <em>action précise</em><br>pour votre équipe.</h1>
-    
-    <p class="hero-sub ">WhatsApp, Airbnb, Email — Stafflo extrait, organise et brief votre staff automatiquement. Une source de vérité. Chaque arrivée sans accroc.</p>
-    <div class="hero-btns">
-      <a href="https://jeremiegougenheim-creator.github.io/Stafflo/app.html" class="btn-primary" target="_blank" rel="noopener noreferrer">
-        <span>Essai gratuit — 3 séjours, sans CB</span>
-      </a>
-      
-      <a href="#demo" class="btn-ghost ">Voir en action ↓</a>
-    </div>
-    <div class="hero-kpis">
-      <div class="kpi"><div class="kpi-val">5+</div><div class="kpi-lbl ">Sources unifiées</div></div>
-      <div class="kpi"><div class="kpi-val">&lt;1min</div><div class="kpi-lbl ">Brief généré</div></div>
-      <div class="kpi"><div class="kpi-val">0</div><div class="kpi-lbl ">Copier-coller manuel</div></div>
+  <!-- ╔══════════════════════════════════════════╗ -->
+  <!-- ║  TOPBAR STICKY — NEW SIGNAL              ║ -->
+  <!-- ╚══════════════════════════════════════════╝ -->
+  <div class="topbar">
+    <div class="logo">Stafflo</div>
+    <div class="villa">Villa DarJ · Marrakech</div>
+    <div class="tb-spacer"></div>
+    <div class="badge">Sun 12 Apr · 15:48</div>
+    <div class="badge warn">⚠ 3 Urgent</div>
+    <div class="ns-wrap">
+      <span class="ns-ico">✨</span>
+      <input class="ns-input" id="nsInput" placeholder="Paste guest message… WhatsApp, Airbnb, email" />
+      <button class="ns-btn" onclick="handleSignal()">Analyze →</button>
     </div>
   </div>
-</section>
 
-<!-- FOR WHOM STRIP -->
-<div class="for-whom" aria-label="Built for">
-  <div class="for-whom-inner">
-    
-    <span class="for-whom-label ">Fait pour</span>
-    <div class="role-tag"><span class="role-dot"></span><span>Gérant de villa</span></div>
-    <div class="role-tag"><span class="role-dot"></span><span>Chef privé</span></div>
-    <div class="role-tag"><span class="role-dot"></span><span>Gouvernante</span></div>
-    <div class="role-tag"><span class="role-dot"></span><span>Chauffeur / Conciergerie</span></div>
-    <div class="role-tag"><span class="role-dot"></span><span>Superhost Airbnb</span></div>
-    <div class="role-tag"><span class="role-dot"></span><span>Propriétaire exploitant luxe</span></div>
+  <!-- ╔══════════════════════════════════════════╗ -->
+  <!-- ║  TABS                                    ║ -->
+  <!-- ╚══════════════════════════════════════════╝ -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('today',this)">Today</div>
+    <div class="tab" onclick="switchTab('clients',this)">Clients</div>
+    <div class="tab" onclick="switchTab('villa',this)">Villa</div>
+    <div class="tab" onclick="switchTab('signal',this)">New Signal ✨</div>
   </div>
+
+  <!-- ╔══════════════════════════════════════════╗ -->
+  <!-- ║  TAB: TODAY (cockpit)                    ║ -->
+  <!-- ╚══════════════════════════════════════════╝ -->
+  <div class="tab-panel active" id="tab-today">
+
+    <!-- ROW 1: hero -->
+    <div class="hero-grid">
+
+      <!-- Today's Priorities -->
+      <div class="card hero-card">
+        <div class="card-h">
+          <span class="hero-h">Today's Priorities</span>
+          <span class="hero-badge">Auto-brief</span>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi"><div class="kpi-v">2</div><div class="kpi-l">Arrivals today</div></div>
+          <div class="kpi"><div class="kpi-v" style="color:var(--orange)">3</div><div class="kpi-l">Urgent alerts</div></div>
+          <div class="kpi"><div class="kpi-v">4/5</div><div class="kpi-l">Team active</div></div>
+          <div class="kpi"><div class="kpi-v">18:30</div><div class="kpi-l">Next arrival</div></div>
+        </div>
+      </div>
+
+      <!-- Villa Readiness -->
+      <div class="card hero-card">
+        <div class="card-h">
+          <span class="hero-h">Villa readiness</span>
+          <span class="hero-badge">92%</span>
+        </div>
+        <div class="readiness-grid">
+          <div class="r-item"><span class="r-label">Rooms</span><span class="dot ok"></span></div>
+          <div class="r-item"><span class="r-label">Pool</span><span class="dot ok"></span></div>
+          <div class="r-item"><span class="r-label">Chef brief</span><span class="dot warn"></span></div>
+          <div class="r-item"><span class="r-label">Driver</span><span class="dot ok"></span></div>
+          <div class="r-item"><span class="r-label">Groceries</span><span class="dot warn"></span></div>
+          <div class="r-item"><span class="r-label">Guest amenities</span><span class="dot ok"></span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROW 2: alerts + revenue -->
+    <div class="two-col">
+
+      <!-- Urgent Alerts -->
+      <div class="card alert-card">
+        <div class="card-h">
+          <span class="alert-h">Urgent alerts</span>
+          <span class="chip chip-orange">3 open</span>
+        </div>
+        <div class="alert-list">
+          <div class="alert-item">
+            <span class="a-time">14:32</span>
+            <span class="a-text">Mr M: "lactose intolerance for all meals" — chef confirmed?</span>
+            <span class="a-src">Chef</span>
+          </div>
+          <div class="alert-item">
+            <span class="a-time">14:15</span>
+            <span class="a-text">Driver not confirmed for CMN pickup 22:00 — 4 guests.</span>
+            <span class="a-src">Driver</span>
+          </div>
+          <div class="alert-item">
+            <span class="a-time">13:45</span>
+            <span class="a-text">Children's beds not set up — arrival at 18:30.</span>
+            <span class="a-src">HK</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Revenue -->
+      <div class="card">
+        <div class="card-h">
+          <span style="color:var(--gold2)">Revenue opportunities</span>
+          <span class="chip chip-gold">€520 potential</span>
+        </div>
+        <div class="rev-list">
+          <div class="rev-item"><span class="rev-label">Anniversary setup</span><span class="rev-val">€150</span></div>
+          <div class="rev-item"><span class="rev-label">Airport transfer ✓</span><span class="rev-val">€120</span></div>
+          <div class="rev-item"><span class="rev-label">Private dinner</span><span class="rev-val">€250</span></div>
+          <div class="rev-item" style="border-color:var(--gold);background:var(--gold-lt)"><span class="rev-label" style="font-weight:700;color:var(--ink)">Net today</span><span class="rev-val" style="font-size:18px">€1,250</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROW 3: tasks + checklist -->
+    <div class="two-col">
+
+      <!-- Team Tasks -->
+      <div class="card">
+        <div class="card-h">
+          Team Tasks
+          <span class="chip chip-green">4 open</span>
+        </div>
+        <div class="task-list">
+          <div class="task">
+            <div class="t-role">Driver</div>
+            <div class="t-text">CMN pickup 22:00 — 4 passengers, family with children</div>
+            <div class="t-status s-pending">Pending</div>
+          </div>
+          <div class="task">
+            <div class="t-role">Chef</div>
+            <div class="t-text">No dairy for Mr M — adapt all meals including breakfast</div>
+            <div class="t-status s-urgent">Urgent</div>
+          </div>
+          <div class="task">
+            <div class="t-role">Housekeeping</div>
+            <div class="t-text">2 children's beds + arrival setup for 22:00</div>
+            <div class="t-status s-pending">Pending</div>
+          </div>
+          <div class="task">
+            <div class="t-role">Manager</div>
+            <div class="t-text">Anniversary surprise — flowers, dessert or decoration</div>
+            <div class="t-status s-progress">In progress</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Checklist -->
+      <div class="card">
+        <div class="card-h">Permanent checklist <span class="chip chip-muted">Daily</span></div>
+        <div class="check-list">
+          <div class="check-item"><span class="check-label">Pool</span><span class="dot ok"></span></div>
+          <div class="check-item"><span class="check-label">Wi-Fi</span><span class="dot ok"></span></div>
+          <div class="check-item"><span class="check-label">Breakfast setup</span><span class="dot ok"></span></div>
+          <div class="check-item"><span class="check-label">Guest amenities</span><span class="dot warn"></span></div>
+          <div class="check-item"><span class="check-label">Laundry</span><span class="dot ok"></span></div>
+          <div class="check-item"><span class="check-label">Night shift handover</span><span class="dot na"></span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROW 4: timeline + handover -->
+    <div class="two-col last">
+
+      <!-- Timeline -->
+      <div class="card">
+        <div class="card-h">Today timeline <span class="chip chip-green">Live</span></div>
+        <div class="timeline">
+          <div class="tl-item">
+            <span class="tl-time">08:00</span>
+            <span class="tl-dot"></span>
+            <div class="tl-body"><div class="tl-text">Morning brief auto-generated for chef, housekeeping and driver.</div><span class="tl-src">System</span></div>
+          </div>
+          <div class="tl-item">
+            <span class="tl-time">08:15</span>
+            <span class="tl-dot" style="background:var(--gold);outline-color:var(--gold)"></span>
+            <div class="tl-body"><div class="tl-text">Guest message received: delayed arrival + lactose note.</div><span class="tl-src">WhatsApp</span></div>
+          </div>
+          <div class="tl-item">
+            <span class="tl-time">08:16</span>
+            <span class="tl-dot"></span>
+            <div class="tl-body"><div class="tl-text">Extracted: 4 guests, lactose intolerance, CMN pickup 22:00.</div><span class="tl-src">AI</span></div>
+          </div>
+          <div class="tl-item">
+            <span class="tl-time">08:17</span>
+            <span class="tl-dot"></span>
+            <div class="tl-body"><div class="tl-text">4 tasks created and assigned to driver, chef, HK, manager.</div><span class="tl-src">Stafflo</span></div>
+          </div>
+          <div class="tl-item">
+            <span class="tl-time">12:30</span>
+            <span class="tl-dot" style="background:var(--orange);outline-color:var(--orange)"></span>
+            <div class="tl-body"><div class="tl-text">Housekeeping prep in progress — children beds pending.</div><span class="tl-src">In progress</span></div>
+          </div>
+          <div class="tl-item">
+            <span class="tl-time">18:30</span>
+            <span class="tl-dot" style="background:var(--faint);outline-color:var(--faint)"></span>
+            <div class="tl-body"><div class="tl-text">Arrival scheduled.</div><span class="tl-src">Today</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Handover -->
+      <div class="card">
+        <div class="card-h">Handover notes <span class="chip chip-muted">Night shift</span></div>
+        <div class="handover-list">
+          <div class="h-item">Late arrival updated to 22:00.</div>
+          <div class="h-item">One guest is lactose intolerant — all meals incl. breakfast.</div>
+          <div class="h-item">Anniversary surprise to prepare before check-in.</div>
+          <div class="h-item">Confirm driver and chef before 19:00.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ╔══════════════════════════════════════════╗ -->
+  <!-- ║  TAB: CLIENTS                            ║ -->
+  <!-- ╚══════════════════════════════════════════╝ -->
+  <div class="tab-panel" id="tab-clients">
+    <div class="card full">
+      <div class="card-h">Guest profiles <span class="chip chip-muted">2 active stays</span></div>
+      <div class="card-b" style="color:var(--muted);font-size:14px;text-align:center;padding:48px">
+        Guest profiles will appear here after the first New Signal extraction.
+      </div>
+    </div>
+  </div>
+
+  <!-- ╔══════════════════════════════════════════╗ -->
+  <!-- ║  TAB: VILLA                              ║ -->
+  <!-- ╚══════════════════════════════════════════╝ -->
+  <div class="tab-panel" id="tab-villa">
+    <div class="card full">
+      <div class="card-h">Villa settings <span class="chip chip-green">DarJ</span></div>
+      <div class="card-b" style="color:var(--muted);font-size:14px;text-align:center;padding:48px">
+        Villa configuration, SOPs, staff roster and brand settings.
+      </div>
+    </div>
+  </div>
+
+  <!-- ╔══════════════════════════════════════════╗ -->
+  <!-- ║  TAB: NEW SIGNAL (dedicated panel)       ║ -->
+  <!-- ╚══════════════════════════════════════════╝ -->
+  <div class="tab-panel" id="tab-signal">
+    <div class="signal-panel">
+      <h3>New Signal</h3>
+      <p>Paste any guest message — WhatsApp, Airbnb, email. Stafflo will extract arrivals, dietary notes, requests and create staff tasks automatically.</p>
+      <textarea class="signal-textarea" id="signalTextarea" placeholder="Example: Hi! We arrive on Friday at 10pm, party of 4. My husband is lactose intolerant. We'd love a private dinner on Saturday. Also, can you arrange airport pickup?"></textarea>
+      <div class="signal-footer">
+        <span class="src-chip active">WhatsApp</span>
+        <span class="src-chip">Airbnb</span>
+        <span class="src-chip">Email</span>
+        <span class="src-chip">Other</span>
+        <button class="analyze-btn" onclick="handleSignal()">Analyze & Generate →</button>
+      </div>
+    </div>
+    <!-- Result preview -->
+    <div class="card" id="signalResult" style="display:none">
+      <div class="card-h">Extracted data <span class="chip chip-green">AI</span></div>
+      <div class="card-b" id="signalResultBody"></div>
+    </div>
+  </div>
+
 </div>
 
-<!-- PROBLEM -->
-<section class="section" id="problem">
-  <div class="sec-inner">
-    
-    <div class="label ">Le problème</div>
-    <h2 class="sec-h2 ">Vos clients envoient des messages.<br>Votre équipe <em>tâtonne encore.</em></h2>
-    
-    <p class="sec-sub ">Chaque séjour de luxe implique une douzaine de messages sur trois plateformes. Sans système, les détails importants — régimes, arrivées tardives, demandes spéciales — se perdent entre le manager et le staff.</p>
-    <div class="prob-grid">
-      <div class="prob-card">
-        <div class="prob-num">01</div>
-        <div class="prob-icon">🔀</div>
-        
-        <h3>Communication fragmentée</h3>
-        
-        <p>Demandes éparpillées sur WhatsApp, Airbnb, Booking et email. Rien au même endroit. Tout risque d'être oublié.</p>
-      </div>
-      <div class="prob-card">
-        <div class="prob-num">02</div>
-        <div class="prob-icon">📋</div>
-        
-        <h3>Brief manuel = source d'erreurs</h3>
-        
-        <p>Chaque transmission entre manager et staff repose sur la mémoire, les notes retapées ou les captures transférées. Un détail manqué gâche une arrivée.</p>
-      </div>
-      <div class="prob-card">
-        <div class="prob-num">03</div>
-        <div class="prob-icon">🌍</div>
-        
-        <h3>Chaos multilingue</h3>
-        
-        <p>Les clients écrivent en anglais, français, arabe, russe. Votre chef et votre gouvernante ont besoin d'instructions claires — pas d'un fil transféré.</p>
-      </div>
-      <div class="prob-card">
-        <div class="prob-num">04</div>
-        <div class="prob-icon">💰</div>
-        
-        <h3>Opportunités manquées</h3>
-        
-        <p>Un client qui mentionne un anniversaire est une opportunité de revenus supplémentaires. Sans système, ce signal disparaît dans le fil de messages.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- LIVE DEMO -->
-<section class="demo-section" id="demo">
-  <div class="demo-inner">
-    
-    <div class="label ">Voir en action</div>
-    </h2>
-    <h2 class="sec-h2 ">Collez un message.<br><em>Stafflo fait le reste.</em></h2>
-    
-    <p class="sec-sub ">Cliquez sur un exemple pour voir comment Stafflo transforme un message brut en données structurées et tâches claires pour l'équipe.</p>
-
-    <div class="demo-tab" role="tablist">
-      <button class="demo-tab-btn active" onclick="setDemo(0,this)" role="tab" aria-selected="true">
-        <span>WhatsApp arrivée</span>
-      </button>
-      <button class="demo-tab-btn" onclick="setDemo(1,this)" role="tab">
-        <span>Réservation Airbnb</span>
-      </button>
-      <button class="demo-tab-btn" onclick="setDemo(2,this)" role="tab">
-        <span>Demande spéciale</span>
-      </button>
-    </div>
-
-    <div class="demo-grid">
-      <div class="demo-input-col">
-        <div class="demo-label">
-          <span>Message du client</span>
-          <span class="demo-badge" id="demoSrcTag">WhatsApp</span>
-        </div>
-        <div class="demo-msg" id="demoMsg">
-          <div class="demo-msg-header">
-            <span class="demo-src-tag src-wa">WhatsApp</span>
-            <span style="font-size:11px;color:var(--muted)">Sarah M. · 14:32</span>
-          </div>
-          <div class="demo-msg-body" id="demoMsgBody">
-            Hi! We arrive tomorrow around 10 PM instead of 6 PM — our flight is delayed. There are 4 of us: myself, my husband, and 2 children (8 and 12). My husband is lactose intolerant. Could the driver pick us up at CMN airport? Also we're celebrating our 10th anniversary during the stay 🎉
-          </div>
-        </div>
-        <div class="demo-arrow">↓</div>
-        <div style="background:var(--green);border-radius:var(--r-md);padding:10px 16px;display:inline-flex;align-items:center;gap:8px;font-size:var(--t-sm);color:#fff;font-weight:500">
-          <span style="font-size:16px">✦</span>
-          
-          <span>IA en analyse &amp; génération des tâches…</span>
-        </div>
-      </div>
-      <div class="demo-out-col">
-        <div class="demo-label">
-          <span>Résultat Stafflo</span>
-        </div>
-        <div class="demo-out">
-          <div class="demo-out-head">
-            
-            <span class="demo-out-title ">Données client extraites</span>
-            <span class="demo-out-ai">AI</span>
-          </div>
-          <div class="demo-out-body" id="demoExtracted">
-            <div class="extracted-field"><span class="field-key ">Arrivée</span><span class="field-val" id="ef-arrival">Tomorrow ~22:00 (delayed)</span></div>
-            <div class="extracted-field"><span class="field-key ">Clients</span><span class="field-val" id="ef-guests">4 — couple + 2 children (8, 12)</span></div>
-            <div class="extracted-field"><span class="field-key ">Régime</span><span class="field-val" id="ef-diet">1× lactose intolerant</span></div>
-            <div class="extracted-field"><span class="field-key ">Transport</span><span class="field-val" id="ef-transport">Driver needed — CMN airport</span></div>
-            <div class="extracted-field"><span class="field-key ">Événement</span><span class="field-val" id="ef-event">🎉 10th anniversary</span></div>
-          </div>
-        </div>
-        <div class="demo-arrow">↓</div>
-        <div class="demo-out" style="min-height:auto">
-          <div class="demo-out-head">
-            
-            <span class="demo-out-title ">Tâches équipe générées</span>
-          </div>
-          <div class="demo-out-body" id="demoTasks">
-            <div class="task-card"><span class="task-role">Driver</span><span class="task-text ">Récupération CMN à 22h — 4 passagers, famille avec enfants</span></div>
-            <div class="task-card"><span class="task-role">Chef</span><span class="task-text ">Sans lactose pour M. M. — adapter tous les repas dont petit-déjeuner</span></div>
-            <div class="task-card"><span class="task-role">Housekeeper</span><span class="task-text ">2 lits enfants — préparer villa pour arrivée à 22h</span></div>
-            <div class="task-card"><span class="task-role">Manager</span><span class="task-text ">Préparer surprise anniversaire — fleurs, dessert ou décoration</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- HOW IT WORKS -->
-<section class="section how-section" id="how">
-  <div class="sec-inner">
-    
-    <div class="label ">Comment ça marche</div>
-    <h2 class="sec-h2 ">Trois étapes.<br>Du <em>chaos</em> à la clarté.</h2>
-    <div class="how-grid">
-      <div class="how-card">
-        <div class="how-num">01</div>
-        <div class="how-icon">📩</div>
-        
-        <h3>Collez n'importe quel message</h3>
-        
-        <p>Réservation Airbnb, conversation WhatsApp, email de confirmation — Stafflo lit n'importe quel format, dans n'importe quelle langue. Zéro parsing manuel.</p>
-      </div>
-      <div class="how-card">
-        <div class="how-num">02</div>
-        <div class="how-icon">✦</div>
-        
-        <h3>L'IA extrait tout</h3>
-        
-        <p>Dates, clients, régimes, demandes spéciales, transport, événements — chaque signal capturé, structuré et associé au séjour.</p>
-      </div>
-      <div class="how-card">
-        <div class="how-num">03</div>
-        <div class="how-icon">📋</div>
-        
-        <h3>L'équipe reçoit des actions claires</h3>
-        
-        <p>Chef, gouvernante, chauffeur, conciergerie — chaque rôle reçoit exactement ce qu'il faut pour exécuter parfaitement. Brief quotidien auto-généré.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- MARKET DATA BAR -->
-<div class="market-bar">
-  <div class="market-inner">
-    <h2 class="sec-h2" style="color:#fff;margin-bottom:24px">Le problème <em>en chiffres</em></h2>
-    <div class="market-grid">
-      <div class="mstat">
-        <div class="mstat-val"><em>3–5</em></div>
-        
-        <div class="mstat-lbl ">Canaux de messaging par séjour en moyenne</div>
-      </div>
-      <div class="mstat">
-        <div class="mstat-val"><em>60%</em></div>
-        
-        <div class="mstat-lbl ">Des erreurs hospitality liées à la communication</div>
-      </div>
-      <div class="mstat">
-        <div class="mstat-val"><em>45 min</em></div>
-        
-        <div class="mstat-lbl ">Consacrés chaque jour à la coordination manuelle</div>
-      </div>
-      <div class="mstat">
-        <div class="mstat-val"><em>★ 4.9</em></div>
-        
-        <div class="mstat-lbl ">Note moyenne villas avec briefing structuré vs 4.5 sans</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- FEATURES -->
-<section class="section feat-section" id="features">
-  <div class="sec-inner">
-    
-    <div class="label ">Fonctionnalités</div>
-    <h2 class="sec-h2 ">Tout ce que votre villa<br><em>nécessite vraiment.</em></h2>
-    <div class="feat-bento">
-      <div class="feat-bento-col">
-        <div class="feat-card featured">
-          <h3>✦ <span>Intelligence Message IA</span></h3>
-          
-          <p>Collez n'importe quel message et Stafflo extrait automatiquement clients, dates, régimes, demandes, transport et événements — dans n'importe quelle langue, depuis n'importe quelle source.</p>
-          <div class="feat-tags">
-            <span class="feat-tag">WhatsApp</span>
-            <span class="feat-tag">Airbnb</span>
-            <span class="feat-tag">Booking.com</span>
-            <span class="feat-tag">Email</span>
-            
-            <span class="feat-tag ">Multilingue</span>
-          </div>
-        </div>
-        <div class="feat-card">
-          <h3>☀️ <span>Brief quotidien IA</span></h3>
-          
-          <p>Chaque matin : un résumé clair et priorisé pour la journée. Arrivées, demandes urgentes, opportunités de revenus, rappels. Stafflo le génère — vous le lisez en 30 secondes.</p>
-        </div>
-      </div>
-      <div class="feat-bento-col">
-        <div class="feat-card">
-          <h3>👥 <span>Tâches par rôle</span></h3>
-          
-          <p>Chef, gouvernante, chauffeur, conciergerie — chaque rôle voit uniquement ce qui le concerne. Pas de surcharge. Pas de confusion.</p>
-        </div>
-        <div class="feat-card">
-          <h3>🏡 <span>Checklist &amp; SOP villa</span></h3>
-          
-          <p>Checklist opérationnelle permanente — piscine, fleurs, chambres, Wi-Fi, courses, passeports. État sauvegardé. Rien d'oublié entre les séjours.</p>
-        </div>
-        <div class="feat-card">
-          <h3>💰 <span>Suivi revenus nets</span></h3>
-          
-          <p>Suivez ce que vous gagnez réellement par séjour — revenu net après frais de plateforme, ménage et extras. Connaissez vos vraies marges.</p>
-        </div>
-        <div class="feat-card">
-          <h3>☁️ <span>Synchronisé partout</span></h3>
-          
-          <p>iPhone, iPad, Mac, PC — mêmes données en temps réel. Mobile-first. Sans installation. Fonctionne sur n'importe quel appareil.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- TRUST BAR -->
-<div class="trust-section" aria-label="Trust signals">
-  <div class="trust-inner">
-    <div class="trust-item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      
-      <span>Données sécurisées dans Supabase</span>
-    </div>
-    <div class="trust-sep" aria-hidden="true"></div>
-    <div class="trust-item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
-      
-      <span>Mobile-first — iPhone &amp; Android</span>
-    </div>
-    <div class="trust-sep" aria-hidden="true"></div>
-    <div class="trust-item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-      
-      <span>Fonctionne en toutes langues</span>
-    </div>
-    <div class="trust-sep" aria-hidden="true"></div>
-    <div class="trust-item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-      
-      <span>Construit depuis de vraies opérations villa</span>
-    </div>
-    <div class="trust-sep" aria-hidden="true"></div>
-    <div class="trust-item">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-      
-      <span>Superhost Airbnb ★ 5.0 · DarJ Marrakech</span>
-    </div>
-  </div>
-</div>
-
-<!-- QUOTE -->
-<section class="quote-section">
-  <div class="sec-inner" style="text-align:center">
-    <div class="quote-block">
-      <div class="quote-mark">"</div>
-      <div class="quote-stars">★★★★★</div>
-      
-      <p class="quote-text ">« Avant, je gérais tout entre Airbnb, WhatsApp et des notes papier. Maintenant je colle le message et c'est fait — brief staff inclus. Mon chef sait enfin les régimes avant que j'aie à le rappeler. »</p>
-      <p class="quote-author"><strong>Jérémie G.</strong> — <span>Villa DarJ, Marrakech · Superhost Airbnb ★ 5.0 · Fondateur &amp; premier utilisateur</span></p>
-    </div>
-  </div>
-</section>
-
-<!-- PRICING -->
-<section class="pricing-section" id="pricing">
-  <div class="sec-inner" style="text-align:center">
-    
-    <div class="label ">Tarifs</div>
-    <h2 class="sec-h2" style="text-align:center;max-width:none">Simple. <em>Transparent.</em></h2>
-    <p class="sec-sub" style="margin:0 auto 40px;text-align:center">
-      
-      <span>Moins qu'un dîner pour deux à Marrakech. Pour une villa générant des dizaines de milliers par an.</span>
-    </p>
-    <div class="pricing-grid">
-      <div class="price-card">
-        
-        <p class="price-name ">Mensuel · Sans engagement</p>
-        <div class="price-amount"><sup class="price-sup">€</sup>19<span style="font-size:1rem;color:var(--muted)">/mo</span></div>
-        
-        <p class="price-period ">Résiliable à tout moment</p>
-        <ul class="price-list">
-          <li>Toutes les fonctionnalités</li>
-          <li>1 villa</li>
-          <li>Sauvegarde cloud</li>
-          <li>Mises à jour incluses</li>
-        </ul>
-        <a href="https://jeremiegougenheim-creator.github.io/Stafflo/app.html" class="btn-price btn-price-green" target="_blank" rel="noopener noreferrer">
-          <span>Commencer →</span>
-        </a>
-      </div>
-      <div class="price-card featured">
-        
-        <div class="price-badge">✦ MEMBRE FONDATEUR</div>
-        
-        <p class="price-name " style="margin-top:12px">Annuel · Places limitées</p>
-        <div class="price-amount"><sup class="price-sup">€</sup>149<span style="font-size:1rem;color:var(--muted)">/yr</span></div>
-        
-        <p class="price-save ">−35% · Prix bloqué à vie</p>
-        <ul class="price-list">
-          <li>Toutes les fonctionnalités</li>
-          <li>1 villa</li>
-          <li>Prix bloqué à vie</li>
-          <li>Accès prioritaire aux nouvelles fonctions</li>
-          <li>Support direct du fondateur</li>
-        </ul>
-        <a href="https://jeremiegougenheim-creator.github.io/Stafflo/app.html" class="btn-price btn-price-gold" target="_blank" rel="noopener noreferrer">
-          <span>Devenir membre fondateur →</span>
-        </a>
-      </div>
-    </div>
-    <p class="price-note">Essai gratuit : 3 séjours, sans CB · <a href="/cdn-cgi/l/email-protection#3f5c50514b5e5c4b7f4c4b5e59595350115e4f4f" style="color:var(--green)"><span class="__cf_email__" data-cfemail="9bf8f4f5effaf8efdbe8effafdfdf7f4b5faebeb">[email&#160;protected]</span></a>
-    </p>
-  </div>
-</section>
-
-<!-- FAQ -->
-<section class="section">
-  <div class="sec-inner">
-    
-    <div class="label ">Questions fréquentes</div>
-    <h2 class="sec-h2 "><em>Questions</em> fréquentes</h2>
-    <div class="faq-inner">
-      <div class="faq-item">
-        <button class="faq-q" aria-expanded="false">
-          
-          <span>Faut-il des compétences techniques ?</span>
-          <span class="faq-icon" aria-hidden="true">▼</span>
-        </button>
-        <div class="faq-a">
-          
-          <span>Non. Si vous pouvez copier-coller un message WhatsApp, vous pouvez utiliser Stafflo. Pas d'installation, pas de compte requis pour démarrer l'essai gratuit.</span>
-        </div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" aria-expanded="false">
-          
-          <span>Où sont stockées mes données ?</span>
-          <span class="faq-icon" aria-hidden="true">▼</span>
-        </button>
-        <div class="faq-a">
-          
-          <span>Dans Supabase — une base de données cloud sécurisée et conforme RGPD. Vos données vous appartiennent. Exportables à tout moment. Elles ne transitent jamais par des systèmes marketing tiers.</span>
-        </div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" aria-expanded="false">
-          
-          <span>Est-ce que ça marche sur mobile ?</span>
-          <span class="faq-icon" aria-hidden="true">▼</span>
-        </button>
-        <div class="faq-a">
-          
-          <span>Oui, Stafflo est mobile-first. iPhone, Android, iPad, desktop — même interface, synchronisée partout, aucune app à installer.</span>
-        </div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" aria-expanded="false">
-          
-          <span>Est-ce que ça marche avec Airbnb et Booking.com ?</span>
-          <span class="faq-icon" aria-hidden="true">▼</span>
-        </button>
-        <div class="faq-a">
-          
-          <span>Oui. L'IA reconnaît les formats Airbnb, Booking.com, WhatsApp et email — dans n'importe quelle langue. Collez le message, elle gère l'analyse.</span>
-        </div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" aria-expanded="false">
-          
-          <span>En quoi Stafflo diffère-t-il de Guesty ou Lodgify ?</span>
-          <span class="faq-icon" aria-hidden="true">▼</span>
-        </button>
-        <div class="faq-a">
-          
-          <span>Focus totalement différent. Guesty et Lodgify synchronisent les calendriers pour les gestionnaires de 10+ propriétés. Stafflo gère la relation client premium — messages WhatsApp, régimes, logistique staff, briefings quotidiens. La couche que les gros outils ignorent complètement.</span>
-        </div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" aria-expanded="false">
-          
-          <span>Peut-on gérer plusieurs villas ?</span>
-          <span class="faq-icon" aria-hidden="true">▼</span>
-        </button>
-        <div class="faq-a">
-          
-          <span>La version actuelle gère une villa par compte. La gestion multi-villas est en développement et sera disponible en priorité pour les membres fondateurs.</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- FINAL CTA -->
-<section class="cta-section">
-  <div class="sec-inner">
-    <h2>Votre villa <em>le mérite.</em></h2>
-    <p>Commencez maintenant, gratuitement. 2 minutes pour voir si c'est fait pour vous.</p>
-    <a href="https://jeremiegougenheim-creator.github.io/Stafflo/app.html" class="btn-primary" style="font-size:1.1rem;padding:18px 44px" target="_blank" rel="noopener noreferrer">
-      <span>Ouvrir Stafflo →</span>
-    </a>
-  </div>
-</section>
-
-<!-- FOOTER -->
-<footer>
-  <div class="footer-inner">
-    <span class="footer-logo">Staff<em>lo</em></span>
-    <div class="footer-links">
-      <a href="/cdn-cgi/l/email-protection#84e7ebeaf0e5e7f0c4f7f0e5e2e2e8ebaae5f4f4">Contact</a>
-      
-      <a href="https://jeremiegougenheim-creator.github.io/Stafflo/app.html" target="_blank" rel="noopener noreferrer">Ouvrir l'app</a>
-    </div>
-    <span style="font-size:12px;color:rgba(255,255,255,.25)">© 2026 Stafflo</span>
-  </div>
-</footer>
-
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
-/* ── LANG TOGGLE ── */
-// lang toggle handled by link to en.html
-if(false){
-  lang=lang==='en'?'fr':'en';
-  document.body.setAttribute('data-lang',lang);
-  langBtn.textContent=lang==='en'?'🇫🇷 FR':'🇬🇧 EN';
-  // Fix founding member badge visibility
-  document.querySelectorAll('.price-badge').forEach(b=>{
-    if(b.classList.contains('en-text'))b.style.display=lang==='en'?'':'none';
-    if(b.classList.contains('fr-text'))b.style.display=lang==='fr'?'':'none';
-  });
-});
-
-/* ── FAQ ── */
-document.querySelectorAll('.faq-q').forEach(q=>{
-  q.addEventListener('click',()=>{
-    const item=q.closest('.faq-item');
-    const isOpen=item.classList.contains('open');
-    document.querySelectorAll('.faq-item').forEach(i=>i.classList.remove('open'));
-    document.querySelectorAll('.faq-q').forEach(x=>x.setAttribute('aria-expanded','false'));
-    if(!isOpen){item.classList.add('open');q.setAttribute('aria-expanded','true')}
-  });
-});
-
-/* ── SCROLL REVEAL ── */
-// Fallback: reveal all after delay in case observer misses
-setTimeout(()=>{document.querySelectorAll('.reveal').forEach(el=>el.classList.add('visible'))},600);
-const observer=new IntersectionObserver(entries=>{
-  entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');observer.unobserve(e.target)}});
-},{threshold:0,rootMargin:"0px 0px -50px 0px"});
-document.querySelectorAll('.reveal').forEach(el=>observer.observe(el));
-
-/* ── LIVE DEMO ── */
-const demos=[
-  {
-    src:'wa',srcLabel:'WhatsApp',
-    author:'Sarah M. · 14:32',
-    msgEN:`Hi! We arrive tomorrow around 10 PM instead of 6 PM — our flight is delayed. There are 4 of us: myself, my husband, and 2 children (8 and 12). My husband is lactose intolerant. Could the driver pick us up at CMN airport? Also we're celebrating our 10th anniversary during the stay 🎉`,
-    msgFR:`Bonjour ! Nous arrivons demain vers 22h au lieu de 18h — notre vol est retardé. Nous sommes 4 : moi, mon mari et 2 enfants (8 et 12 ans). Mon mari est intolérant au lactose. Le chauffeur peut-il nous récupérer à l'aéroport CMN ? Nous fêtons aussi notre 10e anniversaire 🎉`,
-    fields:{arrivalEN:'Tomorrow ~22:00 (delayed)',arrivalFR:'Demain ~22h (retardé)',guestsEN:'4 — couple + 2 children (8, 12)',guestsFR:'4 — couple + 2 enfants (8, 12)',dietEN:'1× lactose intolerant',dietFR:'1× intolérant au lactose',transportEN:'Driver needed — CMN airport',transportFR:'Chauffeur requis — aéroport CMN',eventEN:'🎉 10th anniversary',eventFR:'🎉 10e anniversaire'},
-    tasksEN:[{role:'Driver',t:'CMN pickup at 22:00 — 4 passengers, family with children'},{role:'Chef',t:'No dairy for Mr M. — adapt all meals including breakfast'},{role:'Housekeeper',t:'2 children\'s beds — prepare villa for 22:00 arrival'},{role:'Manager',t:'Plan anniversary surprise — flowers, dessert or decoration'}],
-    tasksFR:[{role:'Chauffeur',t:'Récupération CMN à 22h — 4 passagers, famille avec enfants'},{role:'Chef',t:'Sans lactose pour M. M. — adapter tous les repas dont petit-déj.'},{role:'Gouvernante',t:'2 lits enfants — préparer villa pour arrivée à 22h'},{role:'Manager',t:'Préparer surprise anniversaire — fleurs, dessert ou décoration'}]
-  },
-  {
-    src:'airbnb',srcLabel:'Airbnb',
-    author:'Booking confirmed · Airbnb',
-    msgEN:`Reservation confirmed — James and Alice T. Check-in: 14 April, 15:00. Check-out: 21 April, 11:00. 2 adults + 1 infant (6 months). Guest note: "Please have the cot ready and ensure no scented products in the baby's room. We also need a high chair for meals."`,
-    msgFR:`Réservation confirmée — James et Alice T. Arrivée : 14 avril 15h00. Départ : 21 avril 11h00. 2 adultes + 1 nourrisson (6 mois). Note du client : « Merci de préparer le lit bébé et d'éviter les produits parfumés dans la chambre bébé. Il nous faudra aussi une chaise haute pour les repas. »`,
-    fields:{arrivalEN:'14 April · 15:00',arrivalFR:'14 avril · 15h00',guestsEN:'2 adults + 1 infant (6 months)',guestsFR:'2 adultes + 1 nourrisson (6 mois)',dietEN:'Baby-safe, no scented products',dietFR:'Sans produits parfumés (chambre bébé)',transportEN:'Not requested',transportFR:'Non demandé',eventEN:'First family stay with infant',eventFR:'Premier séjour famille avec nourrisson'},
-    tasksEN:[{role:'Housekeeper',t:'Set up cot — no scented products in baby\'s room. High chair in dining area.'},{role:'Chef',t:'Prepare baby-safe meals — no allergens. High chair at table.'},{role:'Manager',t:'Confirm early check-in option for family with infant'},{role:'Concierge',t:'Welcome note for first family stay — warm + child-friendly'}],
-    tasksFR:[{role:'Gouvernante',t:'Installer lit bébé — aucun produit parfumé dans chambre bébé. Chaise haute en salle à manger.'},{role:'Chef',t:'Repas sans allergènes pour bébé. Chaise haute à table.'},{role:'Manager',t:'Confirmer option early check-in pour famille avec nourrisson'},{role:'Conciergerie',t:'Note de bienvenue pour 1er séjour famille — chaleureuse et kid-friendly'}]
-  },
-  {
-    src:'wa',srcLabel:'WhatsApp',
-    author:'Ahmed K. · 09:15',
-    msgEN:`Hello, we arrive Friday evening. Quick note: one of our guests keeps halal, and another is severely allergic to nuts. Also, could you arrange a private Gnawa music evening on Saturday? Something intimate for 6 people. And one more thing — we'd like breakfast served by the pool each morning.`,
-    msgFR:`Bonjour, nous arrivons vendredi soir. Note rapide : l'un de nos invités est halal, et un autre est sévèrement allergique aux noix. Pourriez-vous organiser une soirée musique Gnawa privée samedi ? Quelque chose d'intimiste pour 6 personnes. Et aussi — nous aimerions le petit-déjeuner servi au bord de la piscine chaque matin.`,
-    fields:{arrivalEN:'Friday evening',arrivalFR:'Vendredi soir',guestsEN:'6 guests total',guestsFR:'6 clients au total',dietEN:'1× halal · 1× severe nut allergy',dietFR:'1× halal · 1× allergie sévère aux noix',transportEN:'Not mentioned',transportFR:'Non mentionné',eventEN:'Gnawa evening Saturday + pool breakfast daily'},
-    tasksEN:[{role:'Chef',t:'CRITICAL: severe nut allergy — separate prep. All halal. Pool breakfast daily.'},{role:'Manager',t:'Book Gnawa musicians — intimate setting for 6, Saturday evening'},{role:'Housekeeper',t:'Pool breakfast setup each morning — chairs, table, shade'},{role:'Manager',t:'Upsell opportunity: Gnawa + optional hammam day package'}],
-    tasksFR:[{role:'Chef',t:'CRITIQUE : allergie sévère noix — préparation séparée. Tout halal. Petit-déj. piscine chaque matin.'},{role:'Manager',t:'Réserver musiciens Gnawa — ambiance intime pour 6, samedi soir'},{role:'Gouvernante',t:'Installation petit-déjeuner piscine chaque matin — chaises, table, ombrage'},{role:'Manager',t:'Opportunité upsell : Gnawa + package hammam journée optionnel'}]
-  }
-];
-
-let currentDemo=0;
-function setDemo(idx,btn){
-  currentDemo=idx;
-  document.querySelectorAll('.demo-tab-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  renderDemo();
+<script>
+/* ── TABS ─────────────────────────────────────────── */
+function switchTab(id, el) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  el.classList.add('active');
 }
-function renderDemo(){
-  const d=demos[currentDemo];
-  const isEN=document.body.getAttribute('data-lang')!=='fr';
-  const srcEl=document.getElementById('demoSrcTag');
-  srcEl.textContent=d.srcLabel;
-  srcEl.className='demo-src-tag '+(d.src==='wa'?'src-wa':'src-airbnb');
-  document.querySelector('.demo-msg-header').querySelector('span:last-child').textContent=d.author;
-  document.getElementById('demoMsgBody').textContent=isEN?d.msgEN:d.msgFR;
-  document.getElementById('ef-arrival').textContent=isEN?d.fields.arrivalEN:d.fields.arrivalFR;
-  document.getElementById('ef-guests').textContent=isEN?d.fields.guestsEN:d.fields.guestsFR;
-  document
+
+/* ── NEW SIGNAL topbar focus ─────────────────────── */
+document.getElementById('nsInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') handleSignal();
+});
+
+/* ── ANALYZE (demo) ──────────────────────────────── */
+function handleSignal() {
+  const txt = (document.getElementById('nsInput').value || document.getElementById('signalTextarea').value).trim();
+  if (!txt) {
+    // switch to signal tab if empty
+    switchTab('signal', document.querySelectorAll('.tab')[3]);
+    document.getElementById('signalTextarea').focus();
+    return;
+  }
+  // Show demo extraction
+  const result = document.getElementById('signalResult');
+  const body = document.getElementById('signalResultBody');
+  if (result && body) {
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <div style="background:#F8FBFF;border:1px solid var(--border);border-radius:12px;padding:14px">
+          <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">ARRIVAL</div>
+          <div style="font-size:14px;font-weight:600">Friday · 22:00</div>
+        </div>
+        <div style="background:#F8FBFF;border:1px solid var(--border);border-radius:12px;padding:14px">
+          <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">GUESTS</div>
+          <div style="font-size:14px;font-weight:600">4 pax</div>
+        </div>
+        <div style="background:#FEF3C7;border:1px solid var(--border);border-radius:12px;padding:14px">
+          <div style="font-size:11px;color:var(--orange);font-weight:700;margin-bottom:4px">DIET</div>
+          <div style="font-size:14px;font-weight:600">Lactose-free</div>
+        </div>
+        <div style="background:#FEF9EF;border:1px solid var(--border);border-radius:12px;padding:14px">
+          <div style="font-size:11px;color:var(--gold2);font-weight:700;margin-bottom:4px">REVENUE</div>
+          <div style="font-size:14px;font-weight:600">Private dinner</div>
+        </div>
+        <div style="background:#F8FBFF;border:1px solid var(--border);border-radius:12px;padding:14px">
+          <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px">TRANSPORT</div>
+          <div style="font-size:14px;font-weight:600">Airport pickup</div>
+        </div>
+        <div style="background:#EEF8F0;border:1px solid var(--border);border-radius:12px;padding:14px">
+          <div style="font-size:11px;color:var(--green2);font-weight:700;margin-bottom:4px">TASKS</div>
+          <div style="font-size:14px;font-weight:600">3 generated</div>
+        </div>
+      </div>
+    `;
+    result.style.display = 'block';
+    switchTab('signal', document.querySelectorAll('.tab')[3]);
+  }
+}
+
+/* ── SOURCE CHIPS ────────────────────────────────── */
+document.querySelectorAll('.src-chip').forEach(chip => {
+  chip.addEventListener('click', function() {
+    document.querySelectorAll('.src-chip').forEach(c => c.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
