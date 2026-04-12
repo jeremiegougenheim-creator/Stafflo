@@ -2009,6 +2009,151 @@ function toast(msg) {
 }
 
 // ════════════════════════════════════════════
+// LIVE NEWS ALERTS — RSS + Groq analysis
+// Sources: Le Matin, Medias24, TripAdvisor Marrakech
+// Cache 4h — appel unique par jour
+// ════════════════════════════════════════════
+let _liveNewsCache = null;
+let _liveNewsCacheTs = 0;
+const LIVE_NEWS_TTL = 4 * 60 * 60 * 1000; // 4h en ms
+
+async function loadLiveNewsAlerts() {
+  // Cache 4h
+  if (_liveNewsCache && Date.now() - _liveNewsCacheTs < LIVE_NEWS_TTL) return;
+
+  const cfg = getCfg();
+  const groqKey = cfg.groqKey || '';
+  if (!groqKey && !STAFFLO_PROXY) return; // need AI to analyse
+
+  const city = cfg.city || 'Marrakech';
+  const today = new Date().toISOString().slice(0,10);
+
+  // ── 1. Fetch RSS feeds via allorigins proxy (no CORS) ──
+  const RSS_FEEDS = [
+    // Moroccan news in French
+    { url: 'https://www.medias24.com/feed/', label: 'Medias24' },
+    { url: 'https://lematin.ma/rss/feed.xml', label: 'Le Matin Maroc' },
+    { url: 'https://www.hespress.com/feed', label: 'Hespress' },
+  ];
+
+  const allHeadlines = [];
+
+  await Promise.allSettled(RSS_FEEDS.map(async feed => {
+    try {
+      const proxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent(feed.url);
+      const res = await fetch(proxy, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return;
+      const json = await res.json();
+      const xml = json.contents || '';
+      // Extract titles and descriptions from RSS XML
+      const titles = [...xml.matchAll(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/gs)]
+        .map(m => (m[1] || m[2] || '').trim())
+        .filter(t => t && t.length > 10 && !t.includes('<?xml'))
+        .slice(0, 8);
+      const dates = [...xml.matchAll(/<pubDate>(.*?)<\/pubDate>/g)]
+        .map(m => m[1].trim());
+      titles.forEach((t, i) => {
+        allHeadlines.push({ title: t, date: dates[i] || '', source: feed.label });
+      });
+    } catch(e) { /* silent */ }
+  }));
+
+  // Also add OpenWeatherMap alerts (already have key)
+  try {
+    const wRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city},MA&appid=796d11e58c122335c77cb055fd5e3814&units=metric`);
+    const w = await wRes.json();
+    if (w.weather?.[0]) {
+      const desc = w.weather[0].description;
+      const temp = Math.round(w.main?.temp || 0);
+      const wind = Math.round((w.wind?.speed || 0) * 3.6); // m/s → km/h
+      const alerts_w = w.alerts || [];
+      if (alerts_w.length) {
+        alerts_w.forEach(a => allHeadlines.push({ title: `⚠ MÉTÉO OFFICIELLE: ${a.event} — ${a.description?.slice(0,80)}`, source: 'OpenWeatherMap', date: today }));
+      }
+      // Flag extreme conditions
+      if (temp > 40) allHeadlines.push({ title: `🌡 Canicule à ${city}: ${temp}°C aujourd'hui`, source: 'OpenWeatherMap', date: today });
+      if (wind > 60) allHeadlines.push({ title: `💨 Vent fort à ${city}: ${wind} km/h`, source: 'OpenWeatherMap', date: today });
+      if (['sandstorm','dust','haze'].some(x => desc.includes(x))) {
+        allHeadlines.push({ title: `🌫 Tempête de sable / brume à ${city}`, source: 'OpenWeatherMap', date: today });
+      }
+    }
+  } catch(e) {}
+
+  if (allHeadlines.length === 0) return;
+
+  // ── 2. Ask Groq to filter & score relevance ──
+  const headlineText = allHeadlines
+    .slice(0, 25)
+    .map((h, i) => `${i+1}. [${h.source}] ${h.title}`)
+    .join('\n');
+
+  const prompt = `You are an assistant for a luxury villa manager in ${city}, Morocco. Today: ${today}.
+
+Here are recent news headlines:
+${headlineText}
+
+Select ONLY headlines that are directly relevant to:
+- Villa operations (staff, transport, supplies)
+- Guest experience (security, events, weather, access)
+- Tourism pricing opportunities (festivals, holidays, demand)
+- Urgent local situations (political unrest, transport strikes, extreme weather)
+
+Respond ONLY with a JSON array, no markdown:
+[{"type":"urgent|warn|info|good","title":"🌐 Short actionable title","sub":"One sentence why it matters for villa manager","source":"source name"}]
+
+Max 3 items. If nothing relevant, return [].`;
+
+  try {
+    let items = [];
+
+    if (STAFFLO_PROXY) {
+      const res = await fetch(STAFFLO_PROXY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          max_tokens: 400,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      if (!res.ok) throw new Error('proxy ' + res.status);
+      const data = await res.json();
+      const raw = data.choices?.[0]?.message?.content || '';
+      const m = raw.match(/\[[\s\S]*\]/);
+      if (m) items = JSON.parse(m[0]);
+    } else if (groqKey) {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + groqKey },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          max_tokens: 400,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      if (!res.ok) throw new Error('groq ' + res.status);
+      const data = await res.json();
+      const raw = data.choices?.[0]?.message?.content || '';
+      const m = raw.replace(/```json\n?/g,'').replace(/```/g,'').match(/\[[\s\S]*\]/);
+      if (m) items = JSON.parse(m[0]);
+    }
+
+    if (!Array.isArray(items) || !items.length) return;
+
+    // Inject into LIVE_NEWS_ALERTS — will be merged in generateAlerts
+    _liveNewsCache = items.filter(i => i.title);
+    _liveNewsCacheTs = Date.now();
+    console.log('✓ Live news:', _liveNewsCache.length, 'alerts');
+
+    // Refresh alerts display immediately
+    generateAlerts(null);
+
+  } catch(e) {
+    console.warn('Live news Groq analysis failed:', e.message);
+  }
+}
+
+// ════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
@@ -2032,11 +2177,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Then try to load from Supabase and regenerate
   loadFromSupabase();
   loadMarrakechEvents().then(() => {
+    return loadIslamicHolidays();
+  }).then(() => {
     generateAlerts(null);
     renderTodayQV();
     renderCockpitKPI();
   }).catch(() => {
-    // Events failed but alerts already shown with weather
+    // Fallback: still regenerate alerts with whatever we have
+    generateAlerts(null);
+    renderTodayQV();
+    renderCockpitKPI();
   });
   
   // Load weather and regenerate alerts with real temp
@@ -2047,6 +2197,9 @@ document.addEventListener('DOMContentLoaded', () => {
       generateAlerts(match ? parseInt(match[1]) : null);
     }).catch(() => {});
   }, 1000);
+
+  // Load live news (RSS + Groq) — delayed to not block UI
+  setTimeout(() => loadLiveNewsAlerts(), 3000);
 });
 
 
@@ -2111,6 +2264,136 @@ async function loadMarrakechEvents() {
   }
 }
 
+
+// ════════════════════════════════════════════
+// ISLAMIC HOLIDAYS — auto via Aladhan API
+// Calcule Ramadan, Aïd el-Fitr, Aïd el-Adha
+// pour l'année en cours ET l'année suivante
+// ════════════════════════════════════════════
+async function loadIslamicHolidays() {
+  try {
+    const years = [new Date().getFullYear(), new Date().getFullYear() + 1];
+    const islamicEvents = [];
+
+    for (const year of years) {
+      // Aladhan: get Hijri calendar for the Gregorian year
+      // We fetch 1 Ramadan, 1 Shawwal (= Eid al-Fitr), 10 Dhu al-Hijjah (= Eid al-Adha)
+      // by converting key Hijri dates to Gregorian
+
+      // Find which Hijri year(s) overlap with this Gregorian year
+      // Approx: Hijri year = Gregorian - 579 or 580
+      for (const hijriYear of [year - 579, year - 580]) {
+
+        // ── RAMADAN: 1 Ramadan → 29/30 Ramadan ──
+        const ramStart = await aladhanHijriToGreg(1, 9, hijriYear);
+        const ramEnd   = await aladhanHijriToGreg(29, 9, hijriYear); // 29th (safest)
+        if (ramStart && ramEnd) {
+          const rs = new Date(ramStart);
+          const re = new Date(ramEnd);
+          // Only add if it overlaps with our target year
+          if (rs.getFullYear() === year || re.getFullYear() === year) {
+            islamicEvents.push({
+              name_fr: 'Ramadan',
+              name_en: 'Ramadan',
+              name: 'Ramadan',
+              date_start: ramStart,
+              date_end: ramEnd,
+              impact_pct: -15,
+              impact: '-15%',
+              tip_fr: 'Ramadan — restaurants fermés le jour, ambiance différente. Réduisez légèrement ou ciblez clientèle non-jeûnante.',
+              tip_en: 'Ramadan — restaurants closed daytime, different atmosphere. Slight discount or target non-fasting guests.',
+              tip: 'Ramadan actif — restaurants fermés le jour.',
+              category: 'islamic',
+              month: rs.getMonth() + 1
+            });
+          }
+        }
+
+        // ── AÏD EL-FITR: 1 Shawwal ──
+        const eidFitr = await aladhanHijriToGreg(1, 10, hijriYear);
+        if (eidFitr) {
+          const ef = new Date(eidFitr);
+          const efEnd = new Date(eidFitr); efEnd.setDate(efEnd.getDate() + 2);
+          if (ef.getFullYear() === year) {
+            islamicEvents.push({
+              name_fr: 'Aïd el-Fitr',
+              name_en: 'Eid al-Fitr',
+              name: 'Aïd el-Fitr',
+              date_start: eidFitr,
+              date_end: efEnd.toISOString().slice(0,10),
+              impact_pct: 10,
+              impact: '+10%',
+              tip_fr: 'Aïd el-Fitr — fête nationale Maroc. Staff peut demander congé. Anticipez.',
+              tip_en: 'Eid al-Fitr — national holiday Morocco. Staff may request days off. Plan ahead.',
+              tip: 'Aïd el-Fitr — fête nationale.',
+              category: 'islamic',
+              month: ef.getMonth() + 1
+            });
+          }
+        }
+
+        // ── AÏD EL-ADHA: 10 Dhu al-Hijjah ──
+        const eidAdha = await aladhanHijriToGreg(10, 12, hijriYear);
+        if (eidAdha) {
+          const ea = new Date(eidAdha);
+          const eaEnd = new Date(eidAdha); eaEnd.setDate(eaEnd.getDate() + 3);
+          if (ea.getFullYear() === year) {
+            islamicEvents.push({
+              name_fr: 'Aïd el-Adha',
+              name_en: 'Eid al-Adha',
+              name: 'Aïd el-Adha',
+              date_start: eidAdha,
+              date_end: eaEnd.toISOString().slice(0,10),
+              impact_pct: 10,
+              impact: '+10%',
+              tip_fr: 'Aïd el-Adha — fête nationale Maroc 3-4 jours. Staff limité. Anticipez les services.',
+              tip_en: 'Eid al-Adha — national holiday Morocco 3-4 days. Limited staff. Plan services ahead.',
+              tip: 'Aïd el-Adha — fête nationale.',
+              category: 'islamic',
+              month: ea.getMonth() + 1
+            });
+          }
+        }
+      }
+    }
+
+    // Deduplicate (same date_start = same event from two hijri year iterations)
+    const seen = new Set();
+    const unique = islamicEvents.filter(e => {
+      if (seen.has(e.date_start + e.name)) return false;
+      seen.add(e.date_start + e.name);
+      return true;
+    });
+
+    // Merge into MARRAKECH_EVENTS — remove any previous islamic entries, add fresh ones
+    MARRAKECH_EVENTS = MARRAKECH_EVENTS.filter(e => e.category !== 'islamic');
+    MARRAKECH_EVENTS = MARRAKECH_EVENTS.concat(unique);
+    MARRAKECH_EVENTS.sort((a,b) => (a.date_start||'').localeCompare(b.date_start||''));
+
+    console.log('✓ Islamic holidays loaded:', unique.map(e => e.name + ' ' + e.date_start).join(', '));
+  } catch(e) {
+    console.warn('Islamic holidays API failed:', e.message);
+    // Silent fail — hardcoded fallback stays in place
+  }
+}
+
+// Helper: Aladhan Hijri→Gregorian conversion
+async function aladhanHijriToGreg(day, month, hijriYear) {
+  try {
+    const url = `https://api.aladhan.com/v1/hToG/${day}-${month}-${hijriYear}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.code !== 200) return null;
+    // Returns DD-MM-YYYY
+    const parts = data.data.gregorian.date.split('-');
+    if (parts.length !== 3) return null;
+    // Convert DD-MM-YYYY → YYYY-MM-DD
+    return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+  } catch(e) {
+    return null;
+  }
+}
 
 // Helper: get current week of month (1-4)
 function getWeekOfMonth() {
@@ -2477,7 +2760,10 @@ async function generateAlerts(weatherTemp) {
 
   const activeEvents = MARRAKECH_EVENTS.filter(e => {
     if (!e.date_start) return e.month === month;
-    return new Date(e.date_start) <= in7 && new Date(e.date_end||e.date_start) >= todayDate;
+    const end = new Date(e.date_end || e.date_start);
+    // Strict: never show events that ended before today
+    if (end < todayDate) return false;
+    return new Date(e.date_start) <= in7 && end >= todayDate;
   });
   const upcomingEv = MARRAKECH_EVENTS.filter(e => {
     if (!e.date_start) return false;
@@ -2600,6 +2886,17 @@ async function generateAlerts(weatherTemp) {
 
   allTips.forEach(t => alerts.push({type:'info', title:t.title, sub:t.sub}));
 
+  // ── 9. LIVE NEWS — inject cached results from RSS+Groq ──
+  if (_liveNewsCache && _liveNewsCache.length) {
+    // Prepend live news right after CRM alerts (urgent ones go first)
+    const urgentAlerts = alerts.filter(a => a.type === 'urgent');
+    const otherAlerts  = alerts.filter(a => a.type !== 'urgent');
+    alerts.length = 0;
+    urgentAlerts.forEach(a => alerts.push(a));
+    _liveNewsCache.forEach(a => alerts.push({...a, isLive: true}));
+    otherAlerts.forEach(a => alerts.push(a));
+  }
+
   if (!alerts.length) alerts.push({type:'good',
     title:'✅ ' + (fr?'Tout est en ordre':'All clear'),
     sub: fr?'Aucune action urgente. Bonne journée !':'No urgent actions. Have a great day!'});
@@ -2608,9 +2905,9 @@ async function generateAlerts(weatherTemp) {
   const alertsHtml = alerts.map(a => `
     <div class="alert-hm ${a.type}">
       <span style="flex-shrink:0;font-size:14px">${a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡'}</span>
-      <div>
-        <div style="font-weight:600;font-size:12px;margin-bottom:2px">${a.title}</div>
-        <div style="font-size:11px;opacity:.85;line-height:1.4">${a.sub}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:12px;margin-bottom:2px">${a.title}${a.isLive ? ' <span style="display:inline-block;background:#1B4332;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;letter-spacing:.5px;vertical-align:middle;margin-left:4px">LIVE</span>' : ''}</div>
+        <div style="font-size:11px;opacity:.85;line-height:1.4">${a.sub||''}${a.source ? '<span style="opacity:.6"> · '+a.source+'</span>' : ''}</div>
       </div>
     </div>`).join('');
 
@@ -2952,13 +3249,18 @@ function loadHomeData() {
   // Generate alerts immediately with what we have
   generateAlerts(null);
   // Then enhance with live data
-  loadMarrakechEvents().catch(() => {}).finally(() => {
-    loadWeather().then(() => {
-      const wText = document.getElementById('factorWeather')?.textContent || '';
-      const match = wText.match(/(\d+)/);
-      generateAlerts(match ? parseInt(match[1]) : null);
-    }).catch(() => generateAlerts(null));
-  });
+  loadMarrakechEvents()
+    .then(() => loadIslamicHolidays())
+    .catch(() => {})
+    .finally(() => {
+      loadWeather().then(() => {
+        const wText = document.getElementById('factorWeather')?.textContent || '';
+        const match = wText.match(/(\d+)/);
+        generateAlerts(match ? parseInt(match[1]) : null);
+      }).catch(() => generateAlerts(null));
+      // Refresh live news on home tab open (respects 4h cache)
+      loadLiveNewsAlerts();
+    });
 }
 
 function goTabHome() {
@@ -3601,7 +3903,11 @@ async function loadMorningBrief(forceRefresh = false) {
   // Events
   const activeEvents = MARRAKECH_EVENTS.filter(e => {
     if (!e.date_start || !e.date_end) return false;
-    return new Date(e.date_start) <= in7 && new Date(e.date_end) >= new Date(today);
+    const end = new Date(e.date_end);
+    const todayD = new Date(today);
+    // Never include events that have already ended
+    if (end < todayD) return false;
+    return new Date(e.date_start) <= in7 && end >= todayD;
   });
 
   // Build prompt
