@@ -2920,14 +2920,39 @@ async function generateAlerts(weatherTemp) {
     sub: fr?'Aucune action urgente. Bonne journée !':'No urgent actions. Have a great day!'});
 
   // ── RENDER ──
-  const alertsHtml = alerts.map(a => `
+  const // ── Smart alert display: priority (≥7% modifier) + 2 extras + "voir plus" ──
+  const alertItemHtml = (a) => `
     <div class="alert-hm ${a.type}">
       <span style="flex-shrink:0;font-size:14px">${a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡'}</span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:12px;margin-bottom:2px">${a.title}${a.isLive ? ' <span style="display:inline-block;background:#1B4332;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;letter-spacing:.5px;vertical-align:middle;margin-left:4px">LIVE</span>' : ''}</div>
         <div style="font-size:11px;opacity:.85;line-height:1.4">${a.sub||''}${a.source ? '<span style="opacity:.6"> · '+a.source+'</span>' : ''}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+
+  // Priority = urgent/warn type OR title contains a price modifier ≥7%
+  const hasBigModifier = (a) => {
+    const m = (a.title||'').match(/\+(\d+)%/);
+    return m && parseInt(m[1]) >= 7;
+  };
+  const isPriority = (a) => a.type === 'urgent' || hasBigModifier(a);
+
+  const priorityAlerts = alerts.filter(isPriority);
+  const extraAlerts = alerts.filter(a => !isPriority(a));
+  const EXTRAS_SHOWN = 2;
+  const visibleExtras = extraAlerts.slice(0, EXTRAS_SHOWN);
+  const hiddenExtras = extraAlerts.slice(EXTRAS_SHOWN);
+
+  const visibleAlerts = [...priorityAlerts, ...visibleExtras];
+  alertsHtml = visibleAlerts.map(alertItemHtml).join('');
+
+  if (hiddenExtras.length > 0) {
+    const hiddenHtml = hiddenExtras.map(alertItemHtml).join('');
+    alertsHtml += `<div id="alertsMore" style="display:none">${hiddenHtml}</div>
+    <button onclick="const m=document.getElementById('alertsMore');const open=m.style.display!=='none';m.style.display=open?'none':'block';this.textContent=open?'${fr?'+ voir '+hiddenExtras.length+' alertes':'+ see '+hiddenExtras.length+' more'}':'${fr?'Réduire ↑':'Show less ↑'}'" style="width:100%;margin-top:8px;padding:7px;background:none;border:1.5px dashed var(--border);border-radius:8px;font-size:11px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">
+      ${fr ? '+ voir '+hiddenExtras.length+' alertes' : '+ see '+hiddenExtras.length+' more'}
+    </button>`;
+  }
 
   const elV = document.getElementById('alertsContent');
   if (elV) elV.innerHTML = alertsHtml;
