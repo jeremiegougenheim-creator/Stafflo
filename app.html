@@ -1447,6 +1447,17 @@ function copyPrice() {
 }
 
 function saveFromResult(g) {
+  // Auto-check for existing client with same name + arrival before creating new
+  const normN = (s) => (s||'').toLowerCase().replace(/[^a-z0-9]/g,' ').split(' ').filter(Boolean).join(' ');
+  const existing = clients.find(c =>
+    normN(c.name) === normN(g.name) &&
+    c.arrival && g.arrival &&
+    Math.abs(new Date(c.arrival) - new Date(g.arrival)) <= 86400000
+  );
+  if (existing) {
+    mergeWithExisting(existing.id, g);
+    return;
+  }
   const client = {
     id: Date.now().toString(),
     name: g.name || '', nat: g.nat || '', email: g.email || '',
@@ -2205,6 +2216,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load live news (RSS + Groq) — delayed to not block UI
   setTimeout(() => loadLiveNewsAlerts(), 3000);
+  // Auto-merge any duplicates after data loads
+  setTimeout(mergeDuplicates, 2500);
 });
 
 
