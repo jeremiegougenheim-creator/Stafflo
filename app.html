@@ -4537,3 +4537,162 @@ function closeWhyModal() {
 }
 
 
+
+// ── INIT ──────────────────────────────────────────────────
+
+// ── DEDUPLICATION ─────────────────────────────────────────
+function normName(n) {
+  return (n || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').split(' ').filter(Boolean).join(' ');
+}
+
+function areDuplicates(a, b) {
+  // Same normalized name
+  if (normName(a.name) !== normName(b.name)) return false;
+  // And either: same arrival, or no dates on one, or overlapping dates
+  if (!a.arrival && !b.arrival) return true;
+  if (a.arrival && b.arrival) {
+    // Same arrival = obvious duplicate
+    if (a.arrival === b.arrival) return true;
+    // Arrivals within 1 day = likely duplicate
+    const diff = Math.abs(new Date(a.arrival) - new Date(b.arrival));
+    if (diff <= 86400000) return true;
+  }
+  return false;
+}
+
+function bestValue(a, b) {
+  // Return whichever is more informative (longer, non-null, non-zero)
+  if (!a && b) return b;
+  if (a && !b) return a;
+  if (typeof a === 'number' && typeof b === 'number') return Math.max(a, b);
+  if (typeof a === 'string' && typeof b === 'string') return a.length >= b.length ? a : b;
+  return a || b;
+}
+
+async function mergeDuplicates() {
+  if (!clients.length) { toast('Aucun client à dédupliquer'); return; }
+
+  const btn = document.getElementById('btnDedup');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Fusion...'; }
+
+  const merged = [];
+  const used = new Set();
+  let mergeCount = 0;
+  let deleteIds = [];
+
+  for (let i = 0; i < clients.length; i++) {
+    if (used.has(i)) continue;
+    let base = { ...clients[i] };
+
+    for (let j = i + 1; j < clients.length; j++) {
+      if (used.has(j)) continue;
+      if (areDuplicates(base, clients[j])) {
+        const dup = clients[j];
+        // Merge: keep best value for each field
+        base.name     = bestValue(base.name, dup.name);
+        base.nat      = bestValue(base.nat, dup.nat);
+        base.email    = bestValue(base.email, dup.email);
+        base.phone    = bestValue(base.phone, dup.phone);
+        base.arrival  = bestValue(base.arrival, dup.arrival);
+        base.departure= bestValue(base.departure, dup.departure);
+        base.guests   = bestValue(base.guests, dup.guests);
+        base.price    = bestValue(base.price, dup.price);
+        base.commission = bestValue(base.commission, dup.commission);
+        base.source   = bestValue(base.source, dup.source);
+        base.payStatus= bestValue(base.payStatus, dup.payStatus);
+        // Merge notes (concatenate unique parts)
+        if (dup.notes && dup.notes !== base.notes) {
+          base.notes = (base.notes ? base.notes + '\n---\n' : '') + dup.notes;
+        }
+        // Keep oldest createdAt
+        if (dup.createdAt && (!base.createdAt || dup.createdAt < base.createdAt)) {
+          base.createdAt = dup.createdAt;
+        }
+        // Mark duplicate's ID for deletion
+        deleteIds.push(dup.id);
+        used.add(j);
+        mergeCount++;
+      }
+    }
+    merged.push(base);
+    used.add(i);
+  }
+
+  if (mergeCount === 0) {
+    toast(lang === 'fr' ? 'Aucun doublon détecté ✓' : 'No duplicates found ✓');
+    if (btn) { btn.disabled = false; btn.textContent = '🔀 Fusionner doublons'; }
+    return;
+  }
+
+  // Update local state
+  clients = merged;
+  saveLocal();
+  renderAll();
+
+  // Push merged records to Supabase
+  for (const c of merged) {
+    await pushToSupabase(c);
+  }
+
+  // Delete duplicate records from Supabase
+  for (const id of deleteIds) {
+    await deleteFromSupabase(id);
+  }
+
+  toast((lang === 'fr' ? mergeCount + ' doublon(s) fusionné(s) ✓' : mergeCount + ' duplicate(s) merged ✓'));
+  if (btn) { btn.disabled = false; btn.textContent = '🔀 Fusionner doublons'; }
+}
+
+
+document.addEventListener('DOMContentLoaded', () => {
+  applyLang();
+  goTab('today'); // Always start on Today tab
+
+  // Hide API key section if proxy is active
+  if (STAFFLO_PROXY) {
+    const apiSec = document.getElementById('apiKeySection');
+    if (apiSec) apiSec.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:4px 0">
+      <span style="font-size:18px">🔒</span>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--green)">AI via Stafflo Proxy</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Groq Llama · No API key needed. Managed by Stafflo.</div>
+      </div>
+    </div>`;
+  }
+
+  // Generate alerts immediately with cached data
+  generateAlerts(null);
+  renderTodayQV();
+  renderCockpitKPI();
+
+  // Load Morning Brief (delayed slightly for UI)
+  setTimeout(loadMorningBrief, 1200);
+
+  // Load from Supabase then regenerate everything
+  loadFromSupabase();
+  loadMarrakechEvents().then(() => {
+    loadIslamicHolidays()
+      .then(() => { generateAlerts(null); renderTodayQV(); renderCockpitKPI(); })
+      .catch(() => { generateAlerts(null); renderTodayQV(); renderCockpitKPI(); });
+  }).catch(() => {
+    generateAlerts(null); renderTodayQV(); renderCockpitKPI();
+  });
+
+  // Load weather and regenerate alerts with real temperature
+  setTimeout(() => {
+    loadWeather().then(() => {
+      const wText = document.getElementById('factorWeather')?.textContent;
+      const match = wText?.match(/(\d+)/);
+      generateAlerts(match ? parseInt(match[1]) : null);
+    }).catch(() => {});
+  }, 1000);
+
+  // Load live news (delayed — non-blocking)
+  setTimeout(loadLiveNewsAlerts, 3000);
+  // Auto-merge duplicates after data loads from Supabase
+  setTimeout(mergeDuplicates, 2500);
+});
+
+</script>
+</body>
+</html>
