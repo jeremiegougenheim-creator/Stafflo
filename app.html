@@ -1909,7 +1909,7 @@ function renderStaysBar() {
   let html = '';
   if (inHouse) {
     const dLeft = Math.ceil((new Date(inHouse.departure) - new Date()) / 864e5);
-    html += `<div class="stay-chip"><div class="dot"></div><strong>${inHouse.name}</strong> <span>${lang==='fr'?'part dans':'leaves in'} ${dLeft}j · ${inHouse.guests||'?'} pers.</span></div>`;
+    html += `<div class="stay-chip"><div class="dot"></div><strong style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openDetail('${inHouse.id}')">${inHouse.name}</strong> <span>${lang==='fr'?'part dans':'leaves in'} ${dLeft}j · ${inHouse.guests||'?'} pers.</span></div>`;
   }
   upcoming.forEach((c,i) => {
     const dTo = Math.ceil((new Date(c.arrival) - new Date()) / 864e5);
@@ -4309,18 +4309,29 @@ async function loadMorningBrief(forceRefresh = false) {
     let raw = '';
     
     if (STAFFLO_PROXY) {
-      const r = await fetch(STAFFLO_PROXY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          max_tokens: 1000,
-          temperature: 0.3,
-          messages: [{ role: 'user', content: prompt }]
-        })
-      });
-      const d = await r.json();
-      raw = d.choices?.[0]?.message?.content || '';
+      try {
+        const _briefCtrl = new AbortController();
+        const _briefTimer = setTimeout(() => _briefCtrl.abort(), 20000);
+        const r = await fetch(STAFFLO_PROXY, {
+          method: 'POST',
+          signal: _briefCtrl.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'llama-3.1-8b-instant',
+            max_tokens: 900,
+            temperature: 0.3,
+            messages: [{ role: 'user', content: prompt }]
+          })
+        });
+        clearTimeout(_briefTimer);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        raw = d.choices?.[0]?.message?.content || '';
+      } catch(_be) {
+        console.warn('Brief fetch failed:', _be.message);
+        renderBriefFallback(cardsEl, fr);
+        return;
+      }
     } else {
       const cfg2 = getCfg();
       const provider = cfg2.aiProvider || 'groq';
