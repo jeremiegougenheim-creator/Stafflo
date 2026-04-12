@@ -436,6 +436,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <button class="nav-btn" id="nb-clients" onclick="goTab('clients')">
     <span data-fr="👥 Clients" data-en="👥 Guests">👥 Clients</span>
   </button>
+  <button class="nav-btn" id="nb-calendar" onclick="goTab('calendar')">
+    <span data-fr="📅 Calendrier" data-en="📅 Calendar">📅 Calendrier</span>
+  </button>
   <button class="nav-btn" id="nb-home" onclick="goTab('home')">
     <span>🏡 Villa</span>
   </button>
@@ -825,6 +828,11 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
     <div class="field"><label>WhatsApp villa</label><input id="cfgWa" placeholder="+212 6..."></div>
     <div class="field"><label>GPS</label><input id="cfgGps" placeholder="31.6295, -7.9811"></div>
+    <div class="field" style="margin-top:10px;border-top:1px solid var(--border);padding-top:12px">
+      <label data-fr="Mot de passe (protection accès)" data-en="Access password">Mot de passe (protection accès)</label>
+      <input id="cfgPassword" type="password" placeholder="Laisser vide = accès libre" autocomplete="new-password">
+      <div style="font-size:10px;color:var(--muted);margin-top:4px">Protège l'app sur appareils partagés</div>
+    </div>
   </div>
 
 
@@ -1056,6 +1064,134 @@ function rateCard(e, idx, val) {
     localStorage.setItem('stafflo_brief_fb', JSON.stringify(fb.slice(-50)));
   } catch(e2) {}
   toast(val === 1 ? (lang==='fr'?'Merci, on améliore le brief !':'Thanks, improving brief!') : (lang==='fr'?'Noté, on ajuste !':'Got it, adjusting!'));
+}
+
+
+// ── AUTH / LOCK ──
+function initLock() {
+  const cfg = getCfg();
+  if (!cfg.password) return;
+  if (sessionStorage.getItem('stafflo_unlocked') === 'true') return;
+  const ls = document.getElementById('lockScreen');
+  if (ls) { ls.style.display = 'flex'; }
+  const vn = document.getElementById('lockVillaName');
+  if (vn && cfg.villa) vn.textContent = cfg.villa;
+}
+function checkLock() {
+  const cfg = getCfg();
+  const input = document.getElementById('lockInput');
+  const err = document.getElementById('lockErr');
+  if (!input) return;
+  if (input.value === cfg.password) {
+    sessionStorage.setItem('stafflo_unlocked', 'true');
+    const ls = document.getElementById('lockScreen'); if (ls) ls.style.display = 'none';
+    if (err) err.style.display = 'none';
+    input.value = '';
+  } else {
+    if (err) err.style.display = 'block';
+    input.style.borderColor = 'var(--red)';
+    setTimeout(() => { if(input) input.style.borderColor = 'var(--border)'; }, 1200);
+  }
+}
+
+
+// ════════════════════════════════════════════
+// CALENDAR VIEW
+// ════════════════════════════════════════════
+function renderCalendar() {
+  const el = document.getElementById('calendarView');
+  if (!el) return;
+  const fr = lang === 'fr';
+  const now = new Date();
+  const year = now.getFullYear();
+  const startMonth = now.getMonth(); // current month
+  const months = [];
+  for (let m = startMonth; m < startMonth + 3; m++) {
+    months.push({ year: year + Math.floor(m / 12), month: m % 12 });
+  }
+
+  const colorMap = {};
+  const palette = ['#2D6A4F','#52B788','#B7E4C7','#1B4332','#40916C','#74C69D','#D8F3DC','#081C15'];
+  clients.forEach((c, i) => { colorMap[c.id] = palette[i % palette.length]; });
+
+  let html = '<div style="display:flex;flex-direction:column;gap:20px">';
+
+  months.forEach(({ year: y, month: m }) => {
+    const firstDay = new Date(y, m, 1);
+    const lastDay = new Date(y, m + 1, 0);
+    const startDow = (firstDay.getDay() + 6) % 7; // Monday=0
+    const daysInMonth = lastDay.getDate();
+    const monthName = firstDay.toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { month: 'long', year: 'numeric' });
+
+    html += '<div style="background:var(--card);border-radius:14px;box-shadow:var(--shadow);overflow:hidden">';
+    html += '<div style="background:var(--green3);padding:12px 16px;font-family:'Fraunces',serif;font-size:16px;color:#fff;font-weight:300;letter-spacing:.5px">' + monthName + '</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:0;padding:0 8px 8px">';
+
+    const dayNames = fr
+      ? ['Lu','Ma','Me','Je','Ve','Sa','Di']
+      : ['Mo','Tu','We','Th','Fr','Sa','Su'];
+    dayNames.forEach(d => {
+      html += '<div style="text-align:center;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:1px;padding:8px 0">' + d + '</div>';
+    });
+
+    // Empty cells before first day
+    for (let i = 0; i < startDow; i++) html += '<div></div>';
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = y + '-' + String(m+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+      const today = new Date().toISOString().slice(0,10);
+      const isToday = dateStr === today;
+
+      // Find clients occupying this day
+      const occupants = clients.filter(c => {
+        if (!c.arrival || !c.departure) return false;
+        return dateStr >= c.arrival && dateStr < c.departure;
+      });
+      const arriving = clients.filter(c => c.arrival === dateStr);
+      const departing = clients.filter(c => c.departure === dateStr);
+
+      const occupied = occupants.length > 0;
+      const color = occupied ? colorMap[occupants[0].id] : null;
+      const label = occupied ? initialsFor(occupants[0].name) : '';
+      const arrDep = arriving.length ? 'arr' : departing.length ? 'dep' : '';
+
+      let cellStyle = 'min-height:38px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:2px;font-size:11px;font-weight:600;cursor:' + (occupied?'pointer':'default') + ';position:relative;';
+      if (isToday) cellStyle += 'outline:2px solid var(--gold);outline-offset:-2px;';
+      if (occupied) cellStyle += 'background:' + color + '20;border:1.5px solid ' + color + '40;color:' + color + ';';
+      else cellStyle += 'color:var(--muted);';
+
+      const onclick = occupied ? 'onclick="openDetail('' + occupants[0].id + '')"' : '';
+      html += '<div style="' + cellStyle + '" ' + onclick + '>';
+      html += '<span style="font-size:12px;color:' + (isToday?'var(--gold)':'inherit') + '">' + day + '</span>';
+      if (label) html += '<span style="font-size:8px;opacity:.8;letter-spacing:.3px">' + label + '</span>';
+      if (arrDep === 'arr') html += '<span style="font-size:7px;background:var(--green);color:#fff;border-radius:3px;padding:0 3px;margin-top:1px">IN</span>';
+      else if (arrDep === 'dep') html += '<span style="font-size:7px;background:var(--muted);color:#fff;border-radius:3px;padding:0 3px;margin-top:1px">OUT</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Legend for this month
+    const monthClients = clients.filter(c => c.arrival && c.departure && c.arrival <= y+'-'+String(m+2).padStart(2,'0')+'-01' && c.departure >= y+'-'+String(m+1).padStart(2,'0')+'-01');
+    if (monthClients.length) {
+      html += '<div style="padding:0 12px 12px;display:flex;flex-wrap:wrap;gap:6px">';
+      monthClients.forEach(c => {
+        const nights_n = Math.round((new Date(c.departure)-new Date(c.arrival))/864e5);
+        html += '<span style="display:inline-flex;align-items:center;gap:5px;background:' + colorMap[c.id] + '18;border:1px solid ' + colorMap[c.id] + '40;border-radius:20px;padding:3px 8px;font-size:10px;font-weight:600;color:' + colorMap[c.id] + ';cursor:pointer" onclick="openDetail('' + c.id + '')">';
+        html += '<span style="width:7px;height:7px;border-radius:50%;background:' + colorMap[c.id] + ';display:inline-block"></span>';
+        html += c.name.split(' ')[0] + ' · ' + fmtDate(c.arrival) + ' (' + nights_n + (fr?'n':'n') + ')';
+        html += '</span>';
+      });
+      html += '</div>';
+    }
+    html += '</div>'; // close month card
+  });
+
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function initialsFor(name) {
+  return (name||'').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
 }
 
 </script><script>
@@ -2104,6 +2240,7 @@ function loadSettingsUI() {
   document.getElementById('cfgGeminiKey').value = cfg.geminiKey || '';
   const provSel = document.getElementById('cfgAiProvider');
   if (provSel) { provSel.value = cfg.aiProvider || 'groq'; toggleProviderFields(); }
+  const pwEl = document.getElementById('cfgPassword'); if(pwEl) pwEl.value = cfg.password || '';
 }
 
 async function saveSettings() {
@@ -2116,7 +2253,8 @@ async function saveSettings() {
     gps: document.getElementById('cfgGps').value.trim(),
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
     sbKey: document.getElementById('cfgSbKey').value.trim(),
-    anthropicKey: document.getElementById('cfgAnthropicKey').value.trim()
+    anthropicKey: document.getElementById('cfgAnthropicKey').value.trim(),
+    password: (document.getElementById('cfgPassword')?.value || '').trim()
   };
   setCfg(cfg);
 
@@ -4159,6 +4297,8 @@ async function loadMorningBrief(forceRefresh = false) {
     '- Be hyper-specific: use real names, real temps, real prices from the data',
     '- Respond in ' + (fr ? 'French' : 'English'),
     '- If guests arriving in 0-3 days: include a staff preparation card with action_type=whatsapp and specific checklist items in detail',
+    '- FORBIDDEN: NEVER mention COVID, pandemics, viruses, lockdowns, travel bans, or health crises. These do not exist in your context.',
+    '- Only use data provided. Do NOT invent risks absent from the context data.',
   ].join('\n');
 
   try {
@@ -4169,9 +4309,9 @@ async function loadMorningBrief(forceRefresh = false) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
+          model: 'llama-3.3-70b-versatile',
           max_tokens: 1000,
-          temperature: 0.4,
+          temperature: 0.3,
           messages: [{ role: 'user', content: prompt }]
         })
       });
@@ -4188,7 +4328,7 @@ async function loadMorningBrief(forceRefresh = false) {
       if (provider === 'groq') {
         const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
-          body: JSON.stringify({ model:'llama-3.1-8b-instant', max_tokens:1000, temperature:0.4,
+          body: JSON.stringify({ model:'llama-3.3-70b-versatile', max_tokens:1000, temperature:0.4,
             messages:[{role:'user',content:prompt}] })
         });
         const d = await r.json();
@@ -4851,5 +4991,17 @@ function toggleRdy(el) {
   renderTodayQV();
 }
 </script>
+<!-- LOCK SCREEN -->
+<div id="lockScreen" style="display:none;position:fixed;inset:0;background:var(--green3);z-index:99999;align-items:center;justify-content:center;padding:24px">
+  <div style="background:var(--card);border-radius:20px;padding:32px 28px;width:100%;max-width:360px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.4)">
+    <div style="font-family:'Fraunces',serif;font-size:28px;color:var(--green3);margin-bottom:4px">Staffl<span style="color:var(--gold)">o</span></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:24px" id="lockVillaName">Villa</div>
+    <input id="lockInput" type="password" placeholder="Mot de passe"
+      style="width:100%;padding:12px 16px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;font-family:'DM Sans',sans-serif;outline:none;margin-bottom:12px;box-sizing:border-box"
+      onkeydown="if(event.key==='Enter')checkLock()">
+    <button onclick="checkLock()" style="width:100%;padding:13px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Accéder →</button>
+    <div id="lockErr" style="font-size:12px;color:var(--red);margin-top:10px;display:none">Mot de passe incorrect</div>
+  </div>
+</div>
 </body>
 </html>
