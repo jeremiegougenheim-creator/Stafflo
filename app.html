@@ -4310,23 +4310,35 @@ async function loadMorningBrief(forceRefresh = false) {
     
     if (STAFFLO_PROXY) {
       try {
-        const _briefCtrl = new AbortController();
-        const _briefTimer = setTimeout(() => _briefCtrl.abort(), 20000);
-        const r = await fetch(STAFFLO_PROXY, {
-          method: 'POST',
-          signal: _briefCtrl.signal,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'openai/gpt-oss-20b',
-            max_tokens: 1000,
-            temperature: 0.3,
-            messages: [{ role: 'user', content: prompt }]
-          })
-        });
-        clearTimeout(_briefTimer);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const d = await r.json();
-        raw = d.choices?.[0]?.message?.content || '';
+        // Try llama-4-scout first (fastest+good), fallback to 8b
+        const BRIEF_MODELS = [
+          'meta-llama/llama-4-scout-17b-16e-instruct',
+          'llama-3.1-8b-instant'
+        ];
+        let briefDone = false;
+        for (const bModel of BRIEF_MODELS) {
+          try {
+            const _briefCtrl = new AbortController();
+            const _briefTimer = setTimeout(() => _briefCtrl.abort(), 18000);
+            const r = await fetch(STAFFLO_PROXY, {
+              method: 'POST',
+              signal: _briefCtrl.signal,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: bModel,
+                max_tokens: 1000,
+                temperature: 0.3,
+                messages: [{ role: 'user', content: prompt }]
+              })
+            });
+            clearTimeout(_briefTimer);
+            if (!r.ok) { console.warn('Brief model ' + bModel + ' failed: HTTP ' + r.status); continue; }
+            const d = await r.json();
+            raw = d.choices?.[0]?.message?.content || '';
+            if (raw) { briefDone = true; break; }
+          } catch(_me) { console.warn('Brief model ' + bModel + ' error:', _me.message); }
+        }
+        if (!briefDone) throw new Error('All brief models failed');
       } catch(_be) {
         console.warn('Brief fetch failed:', _be.message);
         renderBriefFallback(cardsEl, fr);
