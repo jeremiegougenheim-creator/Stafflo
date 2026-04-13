@@ -354,6 +354,15 @@ main{max-width:760px;margin:0 auto;padding:16px}
 /* ── MORNING BRIEF ── */
 #morningBrief{margin-bottom:16px}
 .brief-loading{background:var(--green3);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,.6)}
+.brief-pulse{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:pulse 1s infinite}
+
+/* Skeleton cards for brief loading */
+.brief-skeleton-card{background:var(--card);border-radius:12px;padding:10px 14px;margin-bottom:6px;position:relative;overflow:hidden}
+.brief-skel-line{height:6px;border-radius:999px;background:rgba(255,255,255,.06);margin-bottom:6px}
+.brief-skeleton-card::before{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.09),transparent);transform:translateX(-100%);animation:briefShimmer 1.2s infinite}
+@keyframes briefShimmer{100%{transform:translateX(100%)}}
+
+.brief-loading{background:var(--green3);border-radius:14px;padding:14px 18px;display:flex;align-items:center;gap:10px;font-size:13px;color:rgba(255,255,255,.6)}
 .brief-pulse{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:pulse 1s infinite;flex-shrink:0}
 .brief-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:0 2px}
 .brief-title{font-size:9px;letter-spacing:2.5px;color:var(--muted);font-weight:600;text-transform:uppercase}
@@ -4200,8 +4209,6 @@ async function analyzeWithProxy(text, systemPrompt, btn) {
 // MORNING BRIEF — AI daily prioritization
 // ════════════════════════════════════════════
 async function loadMorningBrief(forceRefresh = false) {
-    console.log('DEBUG BRIEF: starting loadMorningBrief, clients.length=', clients.length, 'STAFFLO_PROXY=', !!STAFFLO_PROXY);
-    const debugStart = performance.now();
 
   const fr = lang === 'fr';
   const briefEl = document.getElementById('morningBrief');
@@ -4216,8 +4223,18 @@ async function loadMorningBrief(forceRefresh = false) {
     const now2 = new Date();
     briefTimeEl.textContent = now2.toLocaleTimeString(fr?'fr-FR':'en-GB',{hour:'2-digit',minute:'2-digit'});
   }
-  cardsEl.innerHTML = '<div class="brief-loading"><div class="brief-pulse"></div><span>' +
-    (fr ? "Analyse en cours..." : "Analysing...") + '</span></div>';
+  // Skeleton loading cards while brief is generated
+  const skelLine = (w) => `<div class="brief-skel-line" style="width:${w}%"></div>`;
+  cardsEl.innerHTML =
+    '<div class="brief-skeleton-card">' +
+      skelLine(60) + skelLine(90) + skelLine(40) +
+    '</div>' +
+    '<div class="brief-skeleton-card">' +
+      skelLine(50) + skelLine(80) + skelLine(35) +
+    '</div>' +
+    '<div class="brief-skeleton-card">' +
+      skelLine(55) + skelLine(75) + skelLine(30) +
+    '</div>';
 
   // Build context from all available data
   const today = new Date().toISOString().slice(0,10);
@@ -4578,7 +4595,7 @@ function showStaffBriefModal(checklist, briefText, waUrl, fr, guestName, clientI
 }
 
 function renderBriefFallback(el, fr) {
-  console.log('DEBUG FALLBACK: rendering', cards.length, 'cards');
+  // DEBUG FALLBACK removed
   // Smart fallback without AI — uses existing data
   const today = new Date().toISOString().slice(0,10);
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1);
