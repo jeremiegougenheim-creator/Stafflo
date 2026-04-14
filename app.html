@@ -418,6 +418,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     </svg>
     Staff<em>lo</em> <span class="logo-ai">AI</span> <span style="font-size:8px;color:rgba(255,255,255,.25);letter-spacing:1px;vertical-align:middle">v1.0</span></a>
   <div class="header-right">
+  <div id="sessionBadge" style="font-size:10px;opacity:.75;margin-right:8px"></div>
     <div class="sync-dot" id="syncDot" onclick="syncNow()" title="Supabase sync"></div>
     <div class="hstat">
       <div class="hstat-val" id="hNet">—</div>
@@ -1013,6 +1014,12 @@ function getCfg() {
     return cfg;
   } catch { return { sbUrl: 'https://rcjhgilpmojohmrqzokx.supabase.co' }; }
 }
+
+function getSessionKeyFromUrl() {
+  try { return new URL(location.href).searchParams.get('session') || ''; }
+  catch(e) { return ''; }
+}
+
 function setCfg(c) { localStorage.setItem('stafflo_cfg', JSON.stringify(c)); }
 
 // ════════════════════════════════════════════
@@ -1934,14 +1941,16 @@ function loadSettingsUI() {
   document.getElementById('cfgSbUrl').value = cfg.sbUrl || '';
   document.getElementById('cfgSbKey').value = cfg.sbKey || '';
   document.getElementById('cfgGeminiKey').value = cfg.geminiKey || '';
-  document.getElementById('cfgDeepseekKey').value = cfg.deepseekKey || '';
-  document.getElementById('cfgPerplexityKey').value = cfg.perplexityKey || '';
-  document.getElementById('cfgAnthropicKey').value = cfg.anthropicKey || '';
-  document.getElementById('cfgOpenaiKey').value = cfg.openaiKey || '';
-  document.getElementById('cfgMistralKey').value = cfg.mistralKey || '';
   document.getElementById('cfgGroqKey').value = cfg.groqKey || '';
-  const provSel = document.getElementById('cfgAiProvider');
-  if (provSel) { provSel.value = cfg.aiProvider || 'gemini'; toggleProviderFields(); }
+  document.getElementById('cfgMistralKey').value = cfg.mistralKey || '';
+  document.getElementById('cfgDeepseekKey').value = cfg.deepseekKey || '';
+  const pwEl = document.getElementById('cfgPassword');
+  if (pwEl) pwEl.value = cfg.password || '';
+  const skEl = document.getElementById('cfgPublicSessionKey');
+  if (skEl) skEl.value = cfg.publicSessionKey || '';
+  const cmEl = document.getElementById('cfgClientMode');
+  if (cmEl) cmEl.value = cfg.clientMode || 'public';
+  toggleProviderFields();
 }
 
 async function saveSettings() {
@@ -1955,12 +1964,11 @@ async function saveSettings() {
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
     sbKey: document.getElementById('cfgSbKey').value.trim(),
     geminiKey: document.getElementById('cfgGeminiKey').value.trim(),
-    deepseekKey: document.getElementById('cfgDeepseekKey').value.trim(),
-    perplexityKey: document.getElementById('cfgPerplexityKey').value.trim(),
-    anthropicKey: document.getElementById('cfgAnthropicKey').value.trim(),
-    openaiKey: document.getElementById('cfgOpenaiKey').value.trim(),
-    mistralKey: document.getElementById('cfgMistralKey').value.trim(),
     groqKey: document.getElementById('cfgGroqKey').value.trim(),
+    mistralKey: document.getElementById('cfgMistralKey').value.trim(),
+    deepseekKey: document.getElementById('cfgDeepseekKey').value.trim(),
+    publicSessionKey: (document.getElementById('cfgPublicSessionKey')?.value || '').trim(),
+    clientMode: document.getElementById('cfgClientMode')?.value || 'public',
     aiProvider: document.getElementById('cfgAiProvider').value
   };
   setCfg(cfg);
@@ -1993,6 +2001,15 @@ async function saveSettings() {
     ok.textContent = '✓ ' + (lang==='fr' ? 'Paramètres enregistrés' : 'Settings saved');
     ok.style.display = 'block';
   }
+}
+
+
+function updateSessionBadge() {
+  const el = document.getElementById('sessionBadge');
+  if (!el) return;
+  const cfg = getCfg();
+  const key = getSessionKeyFromUrl() || cfg.publicSessionKey || '';
+  el.textContent = key ? ('Session ' + key.slice(0, 6) + '…') : (lang === 'fr' ? 'Public' : 'Public');
 }
 
 // ════════════════════════════════════════════
@@ -3135,6 +3152,7 @@ function renderMarketBand() {
 
 function openSettings() {
   loadSettingsUI();
+  updateSessionBadge();
   const modal = document.getElementById('settingsModal');
   const panel = document.getElementById('settingsPanel');
   modal.style.display = 'flex';
@@ -3454,25 +3472,19 @@ function generateBriefToast(clientId) {
 
 function saveApiKey() {
   const prov = document.getElementById('cfgAiProvider')?.value || 'gemini';
-  const key = (
-        prov === 'gemini' ? document.getElementById('cfgGeminiKey')?.value.trim()
-    :     prov === 'deepseek' ? document.getElementById('cfgDeepseekKey')?.value.trim()
-    :     prov === 'perplexity' ? document.getElementById('cfgPerplexityKey')?.value.trim()
-    :     prov === 'anthropic' ? document.getElementById('cfgAnthropicKey')?.value.trim()
-    :     prov === 'openai' ? document.getElementById('cfgOpenaiKey')?.value.trim()
-    :     prov === 'mistral' ? document.getElementById('cfgMistralKey')?.value.trim()
-    :     prov === 'groq' ? document.getElementById('cfgGroqKey')?.value.trim()
-    : '');
+  const keyMap = {
+    gemini: 'cfgGeminiKey', groq: 'cfgGroqKey',
+    mistral: 'cfgMistralKey', deepseek: 'cfgDeepseekKey'
+  };
+  const fieldId = keyMap[prov];
+  const key = fieldId ? document.getElementById(fieldId)?.value.trim() : '';
   if (!key) { toast(lang==='fr' ? 'Clé vide' : 'Key is empty'); return; }
   const cfg = getCfg();
   cfg.aiProvider = prov;
   if (prov === 'gemini') cfg.geminiKey = key;
-  if (prov === 'deepseek') cfg.deepseekKey = key;
-  if (prov === 'perplexity') cfg.perplexityKey = key;
-  if (prov === 'anthropic') cfg.anthropicKey = key;
-  if (prov === 'openai') cfg.openaiKey = key;
-  if (prov === 'mistral') cfg.mistralKey = key;
-  if (prov === 'groq') cfg.groqKey = key;
+  else if (prov === 'groq') cfg.groqKey = key;
+  else if (prov === 'mistral') cfg.mistralKey = key;
+  else if (prov === 'deepseek') cfg.deepseekKey = key;
   setCfg(cfg);
   const saved = document.getElementById('apiKeySaved');
   if (saved) { saved.style.display = 'block'; setTimeout(() => saved.style.display = 'none', 3000); }
@@ -3919,6 +3931,8 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
           user: userContent,
           max_tokens: maxTokens || 1000,
           cache_key: cacheKey,
+          session_key: getSessionKeyFromUrl() || getCfg().publicSessionKey || '',
+          client_mode: getCfg().clientMode || 'public',
         })
       });
       if (r.ok) {
