@@ -1097,9 +1097,18 @@ let cloudEnabled = false;
 function getCfg() {
   try {
     const cfg = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
-    if (!cfg.sbUrl) cfg.sbUrl = 'https://rcjhgilpmojohmrqzokx.supabase.co';
+    const rawUrl = cfg.sbUrl || cfg.supabaseUrl || 'https://rcjhgilpmojohmrqzokx.supabase.co';
+    cfg.sbUrl = rawUrl.replace('https://supabase.com/dashboard/project/', 'https://').replace('/settings/general', '').replace('/dashboard/project/', '/');
+    if (cfg.sbUrl.includes('supabase.com/dashboard/project/')) {
+      const m = cfg.sbUrl.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)$/i);
+      if (m) cfg.sbUrl = 'https://' + m[1] + '.supabase.co';
+    }
+    if (!cfg.sbUrl.startsWith('http')) cfg.sbUrl = 'https://' + cfg.sbUrl;
+    cfg.sbKey = cfg.sbKey || cfg.supabaseKey || '';
     return cfg;
-  } catch { return { sbUrl: 'https://rcjhgilpmojohmrqzokx.supabase.co' }; }
+  } catch {
+    return { sbUrl: 'https://rcjhgilpmojohmrqzokx.supabase.co', sbKey: '' };
+  }
 }
 
 function getSessionKeyFromUrl() {
