@@ -58,6 +58,7 @@ nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,
 
 /* ── MAIN ── */
 main{max-width:760px;margin:0 auto;padding:16px}
+@media(min-width:1024px){main{max-width:1100px;padding:20px 24px}}
 .tab{display:none}.tab.on{display:block}
 
 /* ── AI PASTE ZONE ── */
@@ -405,14 +406,13 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .brief-skeleton{display:flex;flex-direction:column;gap:8px;padding:2px 0}
 .skel-card{height:64px;border-radius:10px;background:linear-gradient(90deg,var(--border) 25%,rgba(26,26,24,.04) 50%,var(--border) 75%);background-size:200% 100%;animation:skel-shimmer 1.4s infinite}
 @keyframes skel-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-/* ── DESKTOP 70/30 TODAY LAYOUT ── */
+/* ── TODAY 70/30 LAYOUT ── */
+.today-cols{width:100%}
+.today-col-side{margin-top:8px}
 @media(min-width:1024px){
-  .today-cols{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+  .today-cols{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:start}
   .today-col-main{min-width:0}
-  .today-col-side{position:sticky;top:72px}
-}
-@media(max-width:1023px){
-  .today-col-side{margin-top:8px}
+  .today-col-side{margin-top:0;position:sticky;top:72px;max-height:calc(100vh - 90px);overflow-y:auto}
 }
 @media(prefers-reduced-motion:reduce){.skel-card{animation:none}}
 
@@ -546,11 +546,13 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 <!-- ═══ TODAY ═════════════════════════════════════════════ -->
 <div class="tab on" id="tab-today">
+<div class="today-cols">
+  <!-- MAIN COL: operational -->
+  <div class="today-col-main">
+
 
   <!-- NEXT STAYS BAR -->
-  <div class="today-cols">
-<div class="today-col-main">
-<div class="stays-bar" id="staysBar">
+  <div class="stays-bar" id="staysBar">
     <span style="font-size:11px;color:rgba(255,255,255,.35);font-style:italic">
       <span data-fr="Aucune arrivée prévue — ajoutez un séjour ↓" data-en="No upcoming stays — add one below ↓">Aucune arrivée prévue — ajoutez un séjour ↓</span>
     </span>
@@ -592,10 +594,10 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <div id="todayQV"></div>
 
   <!-- AI PASTE ZONE — secondary action -->
-  </div><!-- /today-col-side -->
-</div><!-- /today-cols -->
-</div><!-- /today-col-main -->
-<div class="today-col-side">
+    </div><!-- /today-col-main -->
+
+  <!-- SIDE COL: AI + context -->
+  <div class="today-col-side">
 <div class="ai-zone" style="opacity:.9">
     <div class="ai-zone-header">
       <div>
@@ -688,7 +690,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 </div><!-- /today -->
 
 <!-- ═══ CLIENTS ════════════════════════════════════════════ -->
-<div class="tab" id="tab-clients">
+<div class="tab"   </div><!-- /today-col-side -->
+</div><!-- /today-cols -->
+id="tab-clients">
 
   <div class="crm-header">
     <div class="crm-stats">
@@ -3732,18 +3736,15 @@ async function extractFormAI() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          max_tokens: 600,
-          temperature: 0.1,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
-          ]
+          task: 'extract',
+          system: systemPrompt || '',
+          user: userPrompt,
+          max_tokens: 600
         })
       });
       if (r.ok) {
         const d = await r.json();
-        raw = d.choices?.[0]?.message?.content || '';
+        raw = d.text || d.choices?.[0]?.message?.content || '';
       } else {
         console.warn('Proxy failed in form, falling back to direct key');
       }
@@ -4035,14 +4036,14 @@ async function loadMorningBrief(forceRefresh = false) {
         signal: _briefAbort.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          max_tokens: 1000,
-          temperature: 0.4,
-          messages: [{ role: 'user', content: prompt }]
+          task: 'brief',
+          system: '',
+          user: prompt,
+          max_tokens: 1000
         })
       });
       const d = await r.json();
-      raw = d.choices?.[0]?.message?.content || '';
+      raw = d.text || d.choices?.[0]?.message?.content || '';
     } else {
       // Check any key exists
       const _cfg3 = getCfg();
