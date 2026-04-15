@@ -172,6 +172,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .badge-upcoming{background:var(--green-light);color:var(--green)}
 .badge-past{background:#F0EDE8;color:var(--muted)}
 .badge-nodate{background:#F0EDE8;color:var(--muted)}
+.badge-inquiry{background:#EEF4FF;color:#2563EB;font-weight:600}
 .cc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px}
 .cc-item label{display:block;font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-bottom:2px}
 .cc-item span{font-size:13px;font-weight:500;color:var(--ink)}
@@ -202,7 +203,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .modal-header{display:none}
 .modal-title{display:none}
 .modal-close{position:absolute;top:14px;right:16px;background:rgba(255,255,255,.15);border:none;width:28px;height:28px;border-radius:50%;color:#fff;font-size:16px;cursor:pointer;line-height:1;display:flex;align-items:center;justify-content:center;z-index:10}
-.modal-body{padding:0}
+.modal-body{max-height:75vh;overflow-y:auto;padding:0}
 .detail-row{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(44,31,20,.06)}
 .detail-row:last-child{border-bottom:none}
 .detail-label{font-size:11px;letter-spacing:1px;color:var(--muted);flex-shrink:0;margin-right:12px}
@@ -404,6 +405,15 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .brief-skeleton{display:flex;flex-direction:column;gap:8px;padding:2px 0}
 .skel-card{height:64px;border-radius:10px;background:linear-gradient(90deg,var(--border) 25%,rgba(26,26,24,.04) 50%,var(--border) 75%);background-size:200% 100%;animation:skel-shimmer 1.4s infinite}
 @keyframes skel-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+/* ── DESKTOP 70/30 TODAY LAYOUT ── */
+@media(min-width:1024px){
+  .today-cols{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+  .today-col-main{min-width:0}
+  .today-col-side{position:sticky;top:72px}
+}
+@media(max-width:1023px){
+  .today-col-side{margin-top:8px}
+}
 @media(prefers-reduced-motion:reduce){.skel-card{animation:none}}
 
 
@@ -538,7 +548,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 <div class="tab on" id="tab-today">
 
   <!-- NEXT STAYS BAR -->
-  <div class="stays-bar" id="staysBar">
+  <div class="today-cols">
+<div class="today-col-main">
+<div class="stays-bar" id="staysBar">
     <span style="font-size:11px;color:rgba(255,255,255,.35);font-style:italic">
       <span data-fr="Aucune arrivée prévue — ajoutez un séjour ↓" data-en="No upcoming stays — add one below ↓">Aucune arrivée prévue — ajoutez un séjour ↓</span>
     </span>
@@ -580,7 +592,11 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <div id="todayQV"></div>
 
   <!-- AI PASTE ZONE — secondary action -->
-  <div class="ai-zone" style="opacity:.9">
+  </div><!-- /today-col-side -->
+</div><!-- /today-cols -->
+</div><!-- /today-col-main -->
+<div class="today-col-side">
+<div class="ai-zone" style="opacity:.9">
     <div class="ai-zone-header">
       <div>
         <div class="ai-zone-title" data-fr="📡 Nouveau signal" data-en="📡 New signal">📡 Nouveau signal</div>
@@ -687,6 +703,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
   <div class="crm-filters">
     <button class="cf-btn on" data-f="all" onclick="setFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
+    <button class="cf-btn" data-f="inquiry" onclick="setFilter('inquiry',this)" data-fr="💬 Demandes" data-en="💬 Inquiries">💬 Demandes</button>
     <button class="cf-btn" data-f="current" onclick="setFilter('current',this)" data-fr="En cours" data-en="Current">En cours</button>
     <button class="cf-btn" data-f="upcoming" onclick="setFilter('upcoming',this)" data-fr="À venir" data-en="Upcoming">À venir</button>
     <button class="cf-btn" data-f="past" onclick="setFilter('past',this)" data-fr="Passés" data-en="Past">Passés</button>
@@ -1013,6 +1030,14 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
           <option value="Vrbo">VRBO (8%)</option>
         </select>
       </div>
+      <div class="field">
+        <label data-fr="Statut réservation" data-en="Booking status">Statut réservation</label>
+        <select id="fBookingStatus">
+          <option value="confirmed">✅ Confirmée</option>
+          <option value="inquiry">💬 Demande (non confirmée)</option>
+          <option value="cancelled">❌ Annulée</option>
+        </select>
+      </div>
       <div class="field"><label>WhatsApp</label><input type="tel" id="fPhone" placeholder="+33 6..."></div>
       <div class="field"><label data-fr="Notes" data-en="Notes">Notes</label><textarea id="fNotes" rows="2" placeholder="Repas, logistique, remarques..."></textarea></div>
       <button class="btn-save" onclick="saveClient()" data-fr="Enregistrer" data-en="Save">Enregistrer</button>
@@ -1024,34 +1049,32 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 <div class="toast" id="toast"></div>
 <!-- ONBOARDING MODAL -->
 <div id="onboardingModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.85);z-index:9999;align-items:center;justify-content:center;padding:16px">
-  <div style="background:var(--card);border-radius:20px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
-    <div style="background:var(--green3);padding:22px 24px 16px;display:flex;align-items:flex-start;justify-content:space-between">
+  <div style="background:var(--card);border-radius:20px;width:100%;max-width:400px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
+    <div style="background:var(--green3);padding:20px 24px 16px;display:flex;align-items:flex-start;justify-content:space-between">
       <div>
-        <div style="font-family:'Fraunces',serif;font-size:22px;color:#fff;font-weight:300;margin-bottom:4px">Bienvenue sur Staff<span style="color:var(--gold)">lo</span></div>
-        <div style="font-size:12px;color:rgba(255,255,255,.5)" data-fr="Copiez un message ci-dessous — l'IA fait le reste." data-en="Paste a message below — the AI does the rest.">Copiez un message ci-dessous — l'IA fait le reste.</div>
+        <div style="font-family:'Fraunces',serif;font-size:22px;color:#fff;font-weight:300;margin-bottom:3px">Bienvenue sur Staff<span style="color:var(--gold)">lo</span></div>
+        <div style="font-size:12px;color:rgba(255,255,255,.5)" data-fr="Collez un message — l'IA fait le reste." data-en="Paste a message — the AI does the rest.">Collez un message — l'IA fait le reste.</div>
       </div>
-      <button onclick="skipOnboarding()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px;flex-shrink:0;margin-left:12px" data-fr="Passer →" data-en="Skip →">Passer →</button>
+      <button onclick="skipOnboarding()" style="background:rgba(255,255,255,.12);border:none;color:rgba(255,255,255,.7);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px;margin-left:12px;flex-shrink:0" data-fr="Passer →" data-en="Skip →">Passer →</button>
     </div>
-    <div style="padding:18px 24px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <div style="width:28px;height:28px;border-radius:50%;background:var(--gold-light);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:13px;color:var(--gold);flex-shrink:0">1</div>
-        <div style="font-size:13px;color:var(--muted)" data-fr="Un exemple est pré-chargé dans le champ ci-dessous" data-en="A sample message is pre-loaded below">Un exemple est pré-chargé dans le champ ci-dessous</div>
+    <div style="padding:16px 24px">
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+        <div style="display:flex;gap:12px;align-items:center;font-size:13px;color:var(--muted)">
+          <div style="width:24px;height:24px;border-radius:50%;background:var(--gold-light);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:12px;color:var(--gold);flex-shrink:0">1</div>
+          <span data-fr="Collez n'importe quel message Airbnb ou WhatsApp" data-en="Paste any Airbnb or WhatsApp message">Collez n'importe quel message Airbnb ou WhatsApp</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;font-size:13px;color:var(--muted)">
+          <div style="width:24px;height:24px;border-radius:50%;background:var(--gold-light);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:12px;color:var(--gold);flex-shrink:0">2</div>
+          <span data-fr="Cliquez ✦ Analyser" data-en="Click ✦ Analyse">Cliquez <strong>✦ Analyser</strong></span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;font-size:13px;color:var(--muted)">
+          <div style="width:24px;height:24px;border-radius:50%;background:var(--gold-light);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:12px;color:var(--gold);flex-shrink:0">3</div>
+          <span data-fr="Fiche + messages staff en 3 secondes" data-en="Guest profile + staff messages in 3 sec">Fiche + messages staff en 3 secondes</span>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-        <div style="width:28px;height:28px;border-radius:50%;background:var(--gold-light);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:13px;color:var(--gold);flex-shrink:0">2</div>
-        <div style="font-size:13px;color:var(--muted)" data-fr="Cliquez ✦ Analyser" data-en="Click ✦ Analyse">Cliquez <strong>✦ Analyser</strong></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
-        <div style="width:28px;height:28px;border-radius:50%;background:var(--gold-light);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:13px;color:var(--gold);flex-shrink:0">3</div>
-        <div style="font-size:13px;color:var(--muted)" data-fr="Fiche client + messages staff en 3 secondes" data-en="Guest profile + staff messages in 3 seconds">Fiche client + messages staff en 3 secondes</div>
-      </div>
-      <div style="background:var(--green-xl);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--green2)">
-        <strong data-fr="EXEMPLE CHARGÉ" data-en="SAMPLE LOADED">EXEMPLE CHARGÉ</strong><br>
-        <span data-fr="Réservation Airbnb · Celia Magne · 23 Avr — 3 adultes · végétariens · anniversaire" data-en="Airbnb booking · Celia Magne · 23 Apr — 3 adults · vegetarian · anniversary">Réservation Airbnb · Celia Magne · 23 Avr — 3 adultes · végétariens · anniversaire</span>
-      </div>
-      <button onclick="startDemo()" style="width:100%;background:var(--gold);color:var(--green3);border:none;border-radius:10px;padding:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.3px" data-fr="✦ Voir Stafflo en action →" data-en="✦ See Stafflo in action →">✦ Voir Stafflo en action →</button>
-      <button onclick="skipOnboarding()" style="width:100%;margin-top:8px;padding:10px;background:none;border:none;font-size:13px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif" data-fr="J'ai déjà un compte — continuer →" data-en="I already have an account →">J'ai déjà un compte — continuer →</button>
-      <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--faint)">🎁 <span data-fr="Gratuit pour vos 3 premiers séjours · Aucune carte bancaire" data-en="Free for your first 3 stays · No credit card">Gratuit pour vos 3 premiers séjours · Aucune carte bancaire</span></div>
+      <button onclick="startDemo()" style="width:100%;background:var(--gold);color:var(--green3);border:none;border-radius:10px;padding:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer" data-fr="✦ Voir en action →" data-en="✦ See it in action →">✦ Voir en action →</button>
+      <button onclick="skipOnboarding()" style="width:100%;margin-top:6px;padding:9px;background:none;border:none;font-size:12px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif" data-fr="J'ai déjà un compte →" data-en="I already have an account →">J'ai déjà un compte →</button>
+      <div style="text-align:center;margin-top:8px;font-size:11px;color:var(--faint)">🎁 <span data-fr="Gratuit pour 3 séjours · Aucune CB" data-en="Free for 3 stays · No card">Gratuit pour 3 séjours · Aucune CB</span></div>
     </div>
   </div>
 </div>
@@ -1076,7 +1099,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 // ════════════════════════════════════════════
 // STAFFLO PROXY — set URL to remove API key requirement
 // ════════════════════════════════════════════
-const STAFFLO_PROXY = 'https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/quick-action';
+const STAFFLO_PROXY = 'https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/ai-proxy';
 // When STAFFLO_PROXY is set: no API key needed, works for all users
 // When null: user must provide their own API key in Settings
 
@@ -1097,17 +1120,22 @@ let cloudEnabled = false;
 function getCfg() {
   try {
     const cfg = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
-    const rawUrl = cfg.sbUrl || cfg.supabaseUrl || 'https://rcjhgilpmojohmrqzokx.supabase.co';
-    cfg.sbUrl = rawUrl.replace('https://supabase.com/dashboard/project/', 'https://').replace('/settings/general', '').replace('/dashboard/project/', '/');
-    if (cfg.sbUrl.includes('supabase.com/dashboard/project/')) {
-      const m = cfg.sbUrl.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)$/i);
-      if (m) cfg.sbUrl = 'https://' + m[1] + '.supabase.co';
-    }
-    if (!cfg.sbUrl.startsWith('http')) cfg.sbUrl = 'https://' + cfg.sbUrl;
-    cfg.sbKey = cfg.sbKey || cfg.supabaseKey || '';
+    const fallback = 'https://rcjhgilpmojohmrqzokx.supabase.co';
+    let rawUrl = (cfg.sbUrl || cfg.supabaseUrl || fallback).trim();
+    rawUrl = rawUrl.replace(/^https?:\/\/supabase\.com\/dashboard\/project\//, 'https://');
+    rawUrl = rawUrl.replace(/\/settings\/general.*$/, '');
+    rawUrl = rawUrl.replace(/\/dashboard\/project\/.*$/, '');
+    if (/^[a-z0-9]{10,}$/.test(rawUrl) && !rawUrl.includes('.supabase.co')) rawUrl = 'https://' + rawUrl + '.supabase.co';
+    if (!rawUrl.startsWith('http')) rawUrl = 'https://' + rawUrl;
+    const rawKey = (cfg.sbKey || cfg.supabaseKey || cfg.supabaseAnonKey || cfg.supabasePublishableKey || '').trim();
+    cfg.sbUrl = rawUrl; cfg.supabaseUrl = rawUrl;
+    cfg.sbKey = rawKey; cfg.supabaseKey = rawKey;
+    cfg.supabaseAnonKey = rawKey; cfg.supabasePublishableKey = rawKey;
     return cfg;
   } catch {
-    return { sbUrl: 'https://rcjhgilpmojohmrqzokx.supabase.co', sbKey: '' };
+    return { sbUrl: 'https://rcjhgilpmojohmrqzokx.supabase.co',
+             supabaseUrl: 'https://rcjhgilpmojohmrqzokx.supabase.co',
+             sbKey: '', supabaseKey: '', supabaseAnonKey: '', supabasePublishableKey: '' };
   }
 }
 
@@ -1116,7 +1144,15 @@ function getSessionKeyFromUrl() {
   catch(e) { return ''; }
 }
 
-function setCfg(c) { localStorage.setItem('stafflo_cfg', JSON.stringify(c)); }
+function setCfg(c) {
+  if (c.supabaseUrl && !c.sbUrl) c.sbUrl = c.supabaseUrl;
+  if (c.sbUrl && !c.supabaseUrl) c.supabaseUrl = c.sbUrl;
+  if (c.supabaseKey && !c.sbKey) c.sbKey = c.supabaseKey;
+  if (c.sbKey && !c.supabaseKey) c.supabaseKey = c.sbKey;
+  if (c.supabaseAnonKey && !c.sbKey) c.sbKey = c.supabaseAnonKey;
+  if (c.supabasePublishableKey && !c.sbKey) c.sbKey = c.supabasePublishableKey;
+  localStorage.setItem('stafflo_cfg', JSON.stringify(c));
+}
 
 // ════════════════════════════════════════════
 // SUPABASE
@@ -1145,7 +1181,7 @@ async function loadFromSupabase() {
         arrival:r.arrival||'', departure:r.departure||'',
         guests:r.guests||0, price:r.price||0, commission:r.commission||0,
         commMode:r.comm_mode||'percent', source:r.source||'Airbnb',
-        notes:r.notes||'', payStatus:r.pay_status||'',
+        notes:r.notes||'', payStatus:r.pay_status||'', bookingStatus:r.booking_status||'confirmed',
         messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
         createdAt:r.created_at||new Date().toISOString()
       }));
@@ -1170,6 +1206,7 @@ async function pushToSupabase(client) {
     guests:client.guests||0, price:client.price||0, commission:client.commission||0,
     comm_mode:client.commMode||'percent', source:client.source||'Direct',
     notes:client.notes||'', pay_status:client.payStatus||'',
+    booking_status:client.bookingStatus||'confirmed',
     messages: client.messages ? JSON.stringify(client.messages) : null
   };
   setSyncDot('busy');
@@ -1554,7 +1591,9 @@ function saveFromResult(g) {
     phone: g.phone || '', arrival: g.arrival || '', departure: g.departure || '',
     guests: g.guests || 0, price: g.price || 0, commission: g.commission || 3.6,
     commMode: 'percent', source: g.source || 'Airbnb',
-    notes: g.notes || '', payStatus: '', createdAt: new Date().toISOString(),
+    notes: g.notes || '', payStatus: '',
+    bookingStatus: g.bookingStatus || 'confirmed',
+    createdAt: new Date().toISOString(),
     messages: currentMsgs && Object.keys(currentMsgs).length ? {...currentMsgs} : null
   };
   // Cache in _clientMessages
@@ -1637,6 +1676,7 @@ function clearAll() {
 // CRM
 // ════════════════════════════════════════════
 function getStatus(c) {
+  if (c.bookingStatus === 'inquiry') return 'inquiry';
   if (!c.arrival) return 'nodate';
   const t = new Date(); t.setHours(0,0,0,0);
   const a = new Date(c.arrival); a.setHours(0,0,0,0);
@@ -1728,11 +1768,12 @@ function renderClients() {
   let list = [...clients];
 
   if (search) list = list.filter(c => (c.name||'').toLowerCase().includes(search) || (c.nat||'').toLowerCase().includes(search) || (c.source||'').toLowerCase().includes(search));
-  if (crmFilter === 'current') list = list.filter(c => getStatus(c) === 'current');
+  if (crmFilter === 'inquiry') list = list.filter(c => getStatus(c) === 'inquiry');
+  else if (crmFilter === 'current') list = list.filter(c => getStatus(c) === 'current');
   else if (crmFilter === 'upcoming') list = list.filter(c => getStatus(c) === 'upcoming');
   else if (crmFilter === 'past') list = list.filter(c => getStatus(c) === 'past');
 
-  const order = {current:0, upcoming:1, nodate:2, past:3};
+  const order = {inquiry:0, current:1, upcoming:2, nodate:3, past:4};
   list.sort((a,b) => {
     const diff = order[getStatus(a)] - order[getStatus(b)];
     if (diff !== 0) return diff;
@@ -1751,8 +1792,8 @@ function renderClients() {
     const s = getStatus(c);
     const n = nights(c);
     const net = netAmt(c);
-    const badgeClass = s==='current'?'badge-current':s==='upcoming'?'badge-upcoming':s==='past'?'badge-past':'badge-nodate';
-    const badgeText = s==='current'?'🟢 '+(fr?'En cours':'Current'):s==='upcoming'?(fr?'À venir':'Upcoming'):s==='past'?(fr?'Passé':'Past'):(fr?'Sans date':'No date');
+    const badgeClass = s==='inquiry'?'badge-inquiry':s==='current'?'badge-current':s==='upcoming'?'badge-upcoming':s==='past'?'badge-past':'badge-nodate';
+    const badgeText = s==='inquiry'?'💬 '+(fr?'Demande':'Inquiry'):s==='current'?'🟢 '+(fr?'En cours':'Current'):s==='upcoming'?(fr?'À venir':'Upcoming'):s==='past'?(fr?'Passé':'Past'):(fr?'Sans date':'No date');
     return `<div class="client-card ${s}" onclick="openDetail('${c.id}')">
       <div class="cc-top">
         <div class="cc-avatar">${initials(c.name)}</div>
@@ -1955,12 +1996,16 @@ function openForm(id) {
     document.getElementById('fSource').value = c.source || 'Airbnb';
     document.getElementById('fPhone').value = c.phone || '';
     document.getElementById('fNotes').value = c.notes || '';
+    const bsEl = document.getElementById('fBookingStatus');
+    if (bsEl) bsEl.value = c.bookingStatus || 'confirmed';
     updateNetPreview();
   } else {
     ['fName','fArr','fDep','fGuests','fPrice','fPhone','fNotes'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('fNat').value = '';
     document.getElementById('fComm').value = '3.6';
     document.getElementById('fSource').value = 'Airbnb';
+    const bsNew = document.getElementById('fBookingStatus');
+    if (bsNew) bsNew.value = 'confirmed';
     document.getElementById('netPreview').style.display = 'none';
   }
 
@@ -2007,6 +2052,7 @@ function saveClient() {
     source: document.getElementById('fSource').value,
     phone: document.getElementById('fPhone').value.trim(),
     notes: document.getElementById('fNotes').value.trim(),
+    bookingStatus: document.getElementById('fBookingStatus')?.value || 'confirmed',
     payStatus: '',
     createdAt: id ? (clients.find(c=>c.id===id)?.createdAt || new Date().toISOString()) : new Date().toISOString()
   };
@@ -2050,55 +2096,54 @@ function loadSettingsUI() {
 }
 
 async function saveSettings() {
+  const rawUrl = document.getElementById('cfgSbUrl').value.trim();
+  const rawKey = document.getElementById('cfgSbKey').value.trim();
+  const normalizedUrl = rawUrl
+    .replace(/^https?:\/\/supabase\.com\/dashboard\/project\//, 'https://')
+    .replace(/\/settings\/general.*$/, '')
+    .replace(/\/dashboard\/project\/.*$/, '');
   const cfg = {
     villa: document.getElementById('cfgVilla').value.trim(),
     owner: document.getElementById('cfgOwner').value.trim(),
-    city: document.getElementById('cfgCity').value.trim(),
+    city:  document.getElementById('cfgCity').value.trim(),
     staff: document.getElementById('cfgStaff').value.trim(),
-    wa: document.getElementById('cfgWa').value.trim(),
-    gps: document.getElementById('cfgGps').value.trim(),
-    sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
-    sbKey: document.getElementById('cfgSbKey').value.trim(),
-    geminiKey: document.getElementById('cfgGeminiKey').value.trim(),
+    wa:    document.getElementById('cfgWa').value.trim(),
+    gps:   document.getElementById('cfgGps').value.trim(),
+    sbUrl: normalizedUrl, supabaseUrl: normalizedUrl,
+    sbKey: rawKey, supabaseKey: rawKey,
+    supabaseAnonKey: rawKey, supabasePublishableKey: rawKey,
+    geminiKey:   document.getElementById('cfgGeminiKey').value.trim(),
+    groqKey:     document.getElementById('cfgGroqKey').value.trim(),
+    mistralKey:  document.getElementById('cfgMistralKey').value.trim(),
     deepseekKey: document.getElementById('cfgDeepseekKey').value.trim(),
-    perplexityKey: document.getElementById('cfgPerplexityKey').value.trim(),
-    anthropicKey: document.getElementById('cfgAnthropicKey').value.trim(),
-    openaiKey: document.getElementById('cfgOpenaiKey').value.trim(),
-    mistralKey: document.getElementById('cfgMistralKey').value.trim(),
-    groqKey: document.getElementById('cfgGroqKey').value.trim(),
     publicSessionKey: (document.getElementById('cfgPublicSessionKey')?.value || '').trim(),
-    clientMode: document.getElementById('cfgClientMode')?.value || 'public',
-    aiProvider: document.getElementById('cfgAiProvider').value
+    clientMode:  document.getElementById('cfgClientMode')?.value || 'public',
+    aiProvider:  'gemini'
   };
   setCfg(cfg);
-
   const ok = document.getElementById('settingsOk');
   const err = document.getElementById('settingsErr');
-  ok.style.display = 'none'; err.style.display = 'none';
-
+  if (ok) ok.style.display = 'none';
+  if (err) err.style.display = 'none';
   if (cfg.sbUrl && cfg.sbKey) {
     try {
       const r = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?select=id&limit=1', {
         headers: { apikey: cfg.sbKey, Authorization: 'Bearer ' + cfg.sbKey }
       });
       if (r.ok) {
-        ok.textContent = '✓ ' + (lang==='fr' ? 'Connexion Supabase réussie !' : 'Supabase connected!');
-        ok.style.display = 'block';
+        if (ok) { ok.textContent = '✓ ' + (lang==='fr' ? 'Connexion Supabase réussie !' : 'Supabase connected!'); ok.style.display = 'block'; }
         setSyncDot('ok');
         await loadFromSupabase();
       } else {
-        err.textContent = '✗ Erreur ' + r.status;
-        err.style.display = 'block';
+        if (err) { err.textContent = '✗ Erreur ' + r.status; err.style.display = 'block'; }
         setSyncDot('err');
       }
     } catch(e) {
-      err.textContent = '✗ ' + e.message;
-      err.style.display = 'block';
+      if (err) { err.textContent = '✗ ' + e.message; err.style.display = 'block'; }
       setSyncDot('err');
     }
   } else {
-    ok.textContent = '✓ ' + (lang==='fr' ? 'Paramètres enregistrés' : 'Settings saved');
-    ok.style.display = 'block';
+    if (ok) { ok.textContent = '✓ ' + (lang==='fr' ? 'Paramètres enregistrés' : 'Settings saved'); ok.style.display = 'block'; }
   }
 }
 
@@ -2591,7 +2636,26 @@ async function generateAlerts(weatherTemp) {
 
   // Same-day turnover (checkout + checkin same day) — critical
   if (checkoutToday.length && checkinToday.length) {
-    alerts.push({type:'urgent',
+    // ── INQUIRY ALERTS ──────────────────────────────
+  const inquiries = clients.filter(cl => cl.bookingStatus === 'inquiry');
+  const oldInquiries = inquiries.filter(cl => {
+    const h = cl.createdAt ? (Date.now() - new Date(cl.createdAt).getTime()) / 3600000 : 0;
+    return h > 4;
+  });
+  if (inquiries.length) {
+    alerts.push({
+      type: oldInquiries.length ? 'urgent' : 'warn',
+      title: '💬 ' + inquiries.length + ' ' + (fr ? 'demande' + (inquiries.length>1?'s':'') + ' en attente' : 'inquir' + (inquiries.length>1?'ies':'y') + ' pending'),
+      detail: inquiries.map(cl => {
+        const h = cl.createdAt ? Math.round((Date.now()-new Date(cl.createdAt).getTime())/3600000) : '?';
+        return cl.name + (cl.arrival ? ' · ' + fmtDate(cl.arrival) : '') + ' (' + h + 'h)';
+      }).join(' | '),
+      action: fr ? 'Voir demandes' : 'View inquiries',
+      action_type: 'open_guests'
+    });
+  }
+
+  alerts.push({type:'urgent',
       title:'⚡ ' + (fr?'Rotation même jour':'Same-day turnover') + ' — ' + checkoutToday.map(c=>c.name).join(', ') + ' → ' + checkinToday.map(c=>c.name).join(', '),
       sub: fr?'Départ ET arrivée aujourd\'hui — coordonnez le ménage, vous avez peu de temps.':'Checkout AND checkin today — coordinate cleaning, very tight window.'});
   } else {
@@ -3572,32 +3636,28 @@ function generateBriefToast(clientId) {
 
 
 function saveApiKey() {
-  const prov = document.getElementById('cfgAiProvider')?.value || 'gemini';
-  const key = (
-        prov === 'gemini' ? document.getElementById('cfgGeminiKey')?.value.trim()
-    :     prov === 'deepseek' ? document.getElementById('cfgDeepseekKey')?.value.trim()
-    :     prov === 'perplexity' ? document.getElementById('cfgPerplexityKey')?.value.trim()
-    :     prov === 'anthropic' ? document.getElementById('cfgAnthropicKey')?.value.trim()
-    :     prov === 'openai' ? document.getElementById('cfgOpenaiKey')?.value.trim()
-    :     prov === 'mistral' ? document.getElementById('cfgMistralKey')?.value.trim()
-    :     prov === 'groq' ? document.getElementById('cfgGroqKey')?.value.trim()
-    : '');
-  if (!key) { toast(lang==='fr' ? 'Clé vide' : 'Key is empty'); return; }
+  const keyMap = {
+    gemini: 'cfgGeminiKey', groq: 'cfgGroqKey',
+    mistral: 'cfgMistralKey', deepseek: 'cfgDeepseekKey'
+  };
+  const prov = 'gemini'; // auto-routing — always gemini UI default
   const cfg = getCfg();
-  cfg.aiProvider = prov;
-  if (prov === 'gemini') cfg.geminiKey = key;
-  if (prov === 'deepseek') cfg.deepseekKey = key;
-  if (prov === 'perplexity') cfg.perplexityKey = key;
-  if (prov === 'anthropic') cfg.anthropicKey = key;
-  if (prov === 'openai') cfg.openaiKey = key;
-  if (prov === 'mistral') cfg.mistralKey = key;
-  if (prov === 'groq') cfg.groqKey = key;
+  // Save whichever key field has a value
+  Object.entries(keyMap).forEach(([p, id]) => {
+    const el = document.getElementById(id);
+    if (el && el.value.trim()) {
+      if (p === 'gemini') cfg.geminiKey = el.value.trim();
+      else if (p === 'groq') cfg.groqKey = el.value.trim();
+      else if (p === 'mistral') cfg.mistralKey = el.value.trim();
+      else if (p === 'deepseek') cfg.deepseekKey = el.value.trim();
+    }
+  });
   setCfg(cfg);
   const saved = document.getElementById('apiKeySaved');
   if (saved) { saved.style.display = 'block'; setTimeout(() => saved.style.display = 'none', 3000); }
   const hint = document.getElementById('apiKeyHint');
   if (hint) hint.style.display = 'none';
-  toast(lang==='fr' ? '✓ Clé ' + prov + ' enregistrée' : '✓ ' + prov + ' key saved');
+  toast(lang==='fr' ? '✓ Clé(s) enregistrée(s)' : '✓ Key(s) saved');
 }
 
 function toggleProviderFields() { /* auto-routing active */ }
@@ -3649,6 +3709,7 @@ async function extractFormAI() {
     '- commission: calculate from email. "Host service fee (15.5%)" → commission=15.5.',
     '  If "Host service fee" not shown, use 3.6 for Airbnb, 15 for Booking, 0 for Direct.',
     '- source: "Airbnb" if from airbnb.com, "Booking" if booking.com, "Direct" otherwise',
+    '- bookingStatus: "inquiry" if message is just a question or availability check (no payment). "confirmed" if booking is paid/confirmed. Default: "confirmed"',
     '- phone: phone number if present',
     '- notes: meal requests, special occasions, message from guest, children ages',
     '',
@@ -3751,6 +3812,7 @@ async function extractFormAI() {
     if (g.price > 0)  { document.getElementById('fPrice').value = g.price; updateNetPreview(); filled++; }
     if (g.commission > 0) document.getElementById('fComm').value = g.commission;
     if (g.source) document.getElementById('fSource').value = g.source;
+    if (g.bookingStatus) { const bsEl = document.getElementById('fBookingStatus'); if (bsEl) bsEl.value = g.bookingStatus; }
 
     // Nationality — match to dropdown or set as note
     if (g.nat) {
@@ -3961,12 +4023,16 @@ async function loadMorningBrief(forceRefresh = false) {
     '- If guests arriving in 0-3 days: include a staff preparation card with action_type=whatsapp and specific checklist items in detail',
   ].join('\n');
 
+  // Hard 10s timeout — guaranteed fallback
+  const _briefAbort = new AbortController();
+  const _briefTimer = setTimeout(() => _briefAbort.abort(), 10000);
   try {
     let raw = '';
     
     if (STAFFLO_PROXY) {
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
+        signal: _briefAbort.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'llama-3.1-8b-instant',
@@ -3990,7 +4056,19 @@ async function loadMorningBrief(forceRefresh = false) {
       const nk2 = document.getElementById('briefNoKey');
       if (nk2) nk2.style.display = 'none';
       // Auto-route: Gemini (quality reasoning), fallback Groq
-      raw = await callBestAI('brief', '', prompt, 1000);
+      // Hard 10s timeout — guaranteed fallback
+      const briefController = new AbortController();
+      const briefTimeout = setTimeout(() => briefController.abort(), 10000);
+      try {
+        raw = await Promise.race([
+          callBestAI('brief', '', prompt, 1000),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
+        ]);
+        clearTimeout(briefTimeout);
+      } catch(timeoutErr) {
+        clearTimeout(briefTimeout);
+        throw timeoutErr; // caught by outer catch → fallback
+      }
     }
 
     const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
@@ -3998,6 +4076,7 @@ async function loadMorningBrief(forceRefresh = false) {
     if (!match) throw new Error('No JSON array');
     const cards = JSON.parse(match[0]);
 
+    clearTimeout(_briefTimer);
     renderBriefCards(cardsEl, cards);
 
   } catch(e) {
