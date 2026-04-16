@@ -251,6 +251,16 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .pbh-warn{background:rgba(240,149,149,.2);color:#F09595}
 .price-inner{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:480px){.price-inner{grid-template-columns:1fr}}
+@media(max-width:520px){
+  .ai-zone{padding:12px}
+  #pasteInput{font-size:14px;min-height:80px}
+  .btn-analyze{padding:12px 16px;font-size:14px}
+  .res-stats{grid-template-columns:repeat(2,1fr)}
+  .msg-tabs{flex-wrap:wrap}
+  .msg-tab{font-size:11px;padding:6px 10px}
+  .btn-action{padding:10px 8px;font-size:13px}
+  .client-card{padding:14px}
+}
 .bd-list{display:flex;flex-direction:column;gap:0}
 .bd-item{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:12px}
 .bd-item:last-child{border-bottom:none;padding-top:8px}
@@ -599,6 +609,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <div class="ai-zone-header">
       <div>
         <div class="ai-zone-title" data-fr="📡 Nouveau signal" data-en="📡 New signal">📡 Nouveau signal</div>
+        <button onclick="showHelp('ai')" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit">?</button>
         <div id="apiKeyHint" style="display:none;font-size:11px;color:#F09595;margin-top:4px" data-fr="⚠ Clé API manquante — configurez dans ⚙ Réglages" data-en="⚠ API key missing — configure in ⚙ Settings">⚠ Clé API manquante — configurez dans ⚙ Réglages</div>
         <div style="font-size:11px;color:rgba(255,255,255,.45);margin-top:3px" data-fr="Airbnb · WhatsApp · Email — l'IA extrait les infos, crée la fiche invité et génère les messages." data-en="Airbnb · WhatsApp · Email — AI extracts info, creates guest profile and drafts messages.">Airbnb · WhatsApp · Email — l'IA extrait les infos, crée la fiche invité et génère les messages.</div>
       </div>
@@ -1158,9 +1169,8 @@ async function loadFromSupabase() {
       headers: { apikey: cfg.sbKey, Authorization: 'Bearer ' + cfg.sbKey }
     });
     if (r.ok) {
-  const rows = await r.json();
-  if (!Array.isArray(rows)) { loadLocal(); setSyncDot('err'); return; }
-  clients = rows.map(r => ({
+      const rows = await r.json();
+      clients = rows.map(r => ({
         id:r.id, name:r.name, nat:r.nat||'', email:r.email||'', phone:r.phone||'',
         arrival:r.arrival||'', departure:r.departure||'',
         guests:r.guests||0, price:r.price||0, commission:r.commission||0,
@@ -1476,7 +1486,9 @@ function renderResult(json) {
 
   // Save button — saveFromResult() auto-detects duplicates and merges silently
   const gJson = JSON.stringify(g).replace(/"/g,'&quot;');
-  const saveBtn = `<button class="btn-action primary" onclick="saveFromResult(${gJson})">${fr?'💾 Sauvegarder':'💾 Save'}</button>`;
+  const saveBtn = `
+  <button class="btn-action primary" style="flex:2" onclick="saveFromResult(${gJson})">${fr?'💾 Sauvegarder':'💾 Save'}</button>
+  <button class="btn-action" style="flex:1;font-size:12px" onclick="saveDraft(${gJson})" title="${fr?'Sauvegarder sans envoyer':'Save without sending'}">📝 ${fr?'Brouillon':'Draft'}</button>`;
 
   const gPhone = g.phone || '';
   document.getElementById('resActions').innerHTML = 
@@ -1508,44 +1520,51 @@ function copyPrice() {
 }
 
 function saveFromResult(g) {
-  // Auto-check for duplicate before saving
-  const dupCheck = clients.find(function(x) {
-    var xName = (x.name||'').toLowerCase().trim();
-    var gName = (g.name||'').toLowerCase().trim();
-    if (xName === gName) return true;
-    if (x.arrival && g.arrival && x.arrival === g.arrival) return true;
-    var xPhone = (x.phone||'').replace(/[\s\-+()]/g,'');
-    var gPhone = (g.phone||'').replace(/[\s\-+()]/g,'');
+  var norm = function(s) {
+    return (s||'').toLowerCase().trim()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/[^a-z0-9 ]/g,'');
+  };
+  var gNorm  = norm(g.name);
+  var gPhone = (g.phone||'').replace(/[\s\-+().]/g,'');
+  var gParts = gNorm.split(' ').filter(Boolean);
+  var nowMs  = Date.now();
+  var dupCheck = clients.find(function(x) {
+    var xNorm  = norm(x.name);
+    var xPhone = (x.phone||'').replace(/[\s\-+().]/g,'');
+    var xParts = xNorm.split(' ').filter(Boolean);
+    if (xNorm && xNorm === gNorm) return true;
+    if (gParts.length >= 2 && xParts.length >= 2 &&
+        gParts[0] === xParts[0] && gParts[gParts.length-1] === xParts[xParts.length-1]) return true;
+    if (gParts.length === 1 && xParts.length >= 2 && xParts[0] === gParts[0]) {
+      if (g.arrival && x.arrival && g.arrival === x.arrival) return true;
+      if (x.arrival && Math.abs(new Date(x.arrival).getTime() - nowMs) < 60*86400000) return true;
+      if (x.departure && new Date(x.departure).getTime() >= nowMs - 7*86400000) return true;
+    }
     if (xPhone && gPhone && xPhone === gPhone) return true;
+    if (x.arrival && g.arrival && x.arrival === g.arrival) return true;
     return false;
   });
   if (dupCheck) {
     mergeWithExisting(dupCheck.id, g);
-    toast(lang==='fr' ? '✓ ' + dupCheck.name + ' mis à jour (fusion)' : '✓ ' + dupCheck.name + ' updated (merged)');
+    toast('✓ ' + dupCheck.name + (lang==='fr' ? ' mis à jour' : ' updated'));
     return;
   }
-  const newId = Date.now().toString();
-  const client = {
-    id: newId,
-    name: g.name || '', nat: g.nat || '', email: g.email || '',
-    phone: g.phone || '', arrival: g.arrival || '', departure: g.departure || '',
-    guests: g.guests || 0, price: g.price || 0, commission: g.commission || 3.6,
-    commMode: 'percent', source: g.source || 'Airbnb',
-    notes: g.notes || '', payStatus: '',
-    bookingStatus: g.bookingStatus || 'confirmed',
+  var newId = Date.now().toString();
+  var client = {
+    id: newId, name: g.name||'', nat: g.nat||'', email: g.email||'',
+    phone: g.phone||'', arrival: g.arrival||'', departure: g.departure||'',
+    guests: g.guests||0, price: g.price||0, commission: g.commission||3.6,
+    commMode: 'percent', source: g.source||'Airbnb',
+    notes: g.notes||'', payStatus: '',
+    bookingStatus: g.bookingStatus||'confirmed',
     createdAt: new Date().toISOString(),
-    messages: currentMsgs && Object.keys(currentMsgs).length ? {...currentMsgs} : null
+    messages: currentMsgs && Object.keys(currentMsgs).length ? Object.assign({}, currentMsgs) : null
   };
-  // Cache in _clientMessages
-  if (client.messages) {
-    if (!window._clientMessages) window._clientMessages = {};
-    window._clientMessages[newId] = client.messages;
-  }
+  if (client.messages) { if (!window._clientMessages) window._clientMessages={}; window._clientMessages[newId]=client.messages; }
   clients.unshift(client);
-  saveLocal();
-  pushToSupabase(client);
-  renderAll();
-  toast(lang==='fr' ? '✓ Client sauvegardé avec messages' : '✓ Guest saved with messages');
+  saveLocal(); pushToSupabase(client); renderAll();
+  toast(lang==='fr' ? '✓ Client sauvegardé' : '✓ Guest saved');
 }
 
 function mergeWithExisting(existingId, newData) {
@@ -2017,13 +2036,13 @@ function loadSettingsUI() {
   document.getElementById('cfgGps').value = cfg.gps || '';
   document.getElementById('cfgSbUrl').value = cfg.sbUrl || '';
   document.getElementById('cfgSbKey').value = cfg.sbKey || '';
-  document.getElementById('cfgGeminiKey').value = cfg.geminiKey || '';
-  document.getElementById('cfgDeepseekKey').value = cfg.deepseekKey || '';
-  document.getElementById('cfgPerplexityKey').value = cfg.perplexityKey || '';
-  document.getElementById('cfgAnthropicKey').value = cfg.anthropicKey || '';
-  document.getElementById('cfgOpenaiKey').value = cfg.openaiKey || '';
-  document.getElementById('cfgMistralKey').value = cfg.mistralKey || '';
-  document.getElementById('cfgGroqKey').value = cfg.groqKey || '';
+  (function(){ var _e=document.getElementById('cfgGeminiKey'); if(_e) _e.value=cfg.geminiKey||''; })();
+  (function(){ var _e=document.getElementById('cfgDeepseekKey'); if(_e) _e.value=cfg.deepseekKey||''; })();
+  (function(){ var _e=document.getElementById('cfgPerplexityKey'); if(_e) _e.value=cfg.perplexityKey||''; })();
+  (function(){ var _e=document.getElementById('cfgAnthropicKey'); if(_e) _e.value=cfg.anthropicKey||''; })();
+  (function(){ var _e=document.getElementById('cfgOpenaiKey'); if(_e) _e.value=cfg.openaiKey||''; })();
+  (function(){ var _e=document.getElementById('cfgMistralKey'); if(_e) _e.value=cfg.mistralKey||''; })();
+  (function(){ var _e=document.getElementById('cfgGroqKey'); if(_e) _e.value=cfg.groqKey||''; })();
   const ps = document.getElementById('cfgPublicSessionKey'); if (ps) ps.value = cfg.publicSessionKey || '';
   const cm = document.getElementById('cfgClientMode'); if (cm) cm.value = cfg.clientMode || 'public';
   const provSel = document.getElementById('cfgAiProvider');
@@ -2159,6 +2178,24 @@ function goTab(t) {
 // ════════════════════════════════════════════
 // DATA EXPORT / IMPORT
 // ════════════════════════════════════════════
+
+function exportCSV() {
+  const fr = lang === 'fr';
+  if (!clients.length) { toast(fr ? 'Aucun client à exporter' : 'No guests to export'); return; }
+  const headers = ['Nom','Nationalité','Arrivée','Départ','Nuits','Personnes','Prix brut','Commission %','Net','Source','Téléphone','Notes'];
+  const rows = clients.map(cl => {
+    const nights = cl.arrival && cl.departure ? Math.round((new Date(cl.departure)-new Date(cl.arrival))/86400000) : '';
+    const comm = cl.commMode === 'percent' ? cl.commission : 0;
+    const net = cl.price ? Math.round(cl.price * (1 - comm/100)) : '';
+    return [cl.name,cl.nat,cl.arrival,cl.departure,nights,cl.guests,cl.price,comm,net,cl.source,cl.phone,(cl.notes||'').replace(/,/g,';')].map(v => `"${v||''}"`).join(',');
+  });
+  const csv = [headers.join(','), ...rows].join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = 'stafflo_clients_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  toast(fr ? '✓ CSV exporté' : '✓ CSV exported');
+}
 function exportData() {
   const blob = new Blob([JSON.stringify({exported:new Date().toISOString(),clients},null,2)],{type:'application/json'});
   const a = document.createElement('a');
@@ -2202,6 +2239,8 @@ function toast(msg) {
 // INIT
 // ════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  // Auto-skip onboarding for returning users
+  try { var _cr=JSON.parse(localStorage.getItem('stafflo_cfg')||'{}'); if(_cr.sbKey||_cr.supabaseKey||_cr.supabaseAnonKey||_cr.supabasePublishableKey){localStorage.setItem('stafflo_onboarded','1');} } catch(e) {}
   applyLang();
   goTab('today'); // Always start on Today tab
   setTimeout(checkOnboarding, 600);
