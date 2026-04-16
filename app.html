@@ -1472,57 +1472,9 @@ function renderResult(json) {
   currentMsgKey = firstKey;
   document.getElementById('msgBody').textContent = msgs[firstKey] || '';
 
-  // Smart save button — detect if this is a known client
-  // Try AI-provided existing_id first, then local name/phone matching as fallback
-  let existingClient = g.existing_id ? clients.find(x => x.id === g.existing_id) : null;
-  
-  if (!existingClient && g.name) {
-    const gName = (g.name||'').toLowerCase().trim();
-    const gPhone = (g.phone||'').replace(/[\s\-+()]/g,'');
-    existingClient = clients.find(x => {
-      const xName = (x.name||'').toLowerCase().trim();
-      // Match by full name or first+last name parts
-      if (xName === gName) return true;
-      const gParts = gName.split(' ');
-      const xParts = xName.split(' ');
-      if (gParts.length >= 2 && xParts.length >= 2) {
-        if (gParts[0] === xParts[0] && gParts[gParts.length-1] === xParts[xParts.length-1]) return true;
-      }
-      // Match by phone
-      if (gPhone && x.phone && x.phone.replace(/[\s\-+()]/g,'') === gPhone) return true;
-      // Match by arrival date
-      if (g.arrival && x.arrival === g.arrival) return true;
-      return false;
-    });
-  }
-  
+  // Save button — saveFromResult() auto-detects duplicates and merges silently
   const gJson = JSON.stringify(g).replace(/"/g,'&quot;');
-
-  let saveBtn = '';
-  if (existingClient && g.match_confidence !== 'none') {
-    // Known client — show merge button with what's new
-    const newInfo = g.new_info || (fr ? 'nouvelles informations' : 'new information');
-    saveBtn = `
-      <div style="width:100%">
-        <div style="background:var(--green-light);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:var(--green);display:flex;align-items:flex-start;gap:8px">
-          <span>🔗</span>
-          <div>
-            <strong>${fr?'Client reconnu :':'Guest recognised:'} ${existingClient.name}</strong><br>
-            <span style="color:var(--green2)">${newInfo}</span>
-          </div>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn-action primary" style="flex:2" onclick="mergeWithExisting('${existingClient.id}',${gJson})">
-            ✓ ${fr?'Mettre à jour':'Update'} ${existingClient.name.split(' ')[0]}
-          </button>
-          <button class="btn-action" style="flex:1" onclick="saveFromResult(${gJson})">
-            + ${fr?'Nouveau':'New'}
-          </button>
-        </div>
-      </div>`;
-  } else {
-    saveBtn = `<button class="btn-action primary" onclick="saveFromResult(${gJson})">${fr?'💾 Sauvegarder client':'💾 Save guest'}</button>`;
-  }
+  const saveBtn = `<button class="btn-action primary" onclick="saveFromResult(${gJson})">${fr?'💾 Sauvegarder':'💾 Save'}</button>`;
 
   const gPhone = g.phone || '';
   document.getElementById('resActions').innerHTML = 
