@@ -1170,6 +1170,7 @@ async function loadFromSupabase() {
     });
     if (r.ok) {
       const rows = await r.json();
+      if (!Array.isArray(rows)) { loadLocal(); setSyncDot('err'); return; }
       clients = rows.map(r => ({
         id:r.id, name:r.name, nat:r.nat||'', email:r.email||'', phone:r.phone||'',
         arrival:r.arrival||'', departure:r.departure||'',
@@ -4047,6 +4048,8 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
           return d.text;
         }
       } else if (r.status === 429) {
+        toast(lang==='fr' ? '⏱ Limite atteinte, réessayez dans une heure' : 'Rate limit — try again in an hour');
+        throw new Error('ratelimit');
         toast(lang==='fr'
           ? '⏳ Limite atteinte — réessayez dans une heure'
           : '⏳ Rate limit — try again in an hour');
