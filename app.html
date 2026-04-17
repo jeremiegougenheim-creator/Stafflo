@@ -1734,13 +1734,13 @@ function renderStaysBar() {
   let html = '';
   if (inHouse) {
     const dLeft = Math.ceil((new Date(inHouse.departure) - new Date()) / 864e5);
-    html += `<div class="stay-chip"><div class="dot"></div><strong>${inHouse.name}</strong> <span>${lang==='fr'?'part dans':'leaves in'} ${dLeft}j · ${inHouse.guests||'?'} pers.</span></div>`;
+    html += `<div class="stay-chip" onclick="openDetail('${inHouse.id}')" style="cursor:pointer"><div class="dot"></div><strong>${inHouse.name}</strong> <span>${lang==='fr'?'part dans':'leaves in'} ${dLeft}j · ${inHouse.guests||'?'} pers.</span></div>`;
   }
   upcoming.forEach((c,i) => {
     const dTo = Math.ceil((new Date(c.arrival) - new Date()) / 864e5);
     const n = nights(c);
     if (i>0 || inHouse) html += '<span class="stay-sep">·</span>';
-    html += `<div class="stay-chip"><strong>${c.name}</strong> <span style="color:var(--gold)">${lang==='fr'?'dans':'in'} ${dTo}j</span> <span>${n}n · ${c.guests||'?'}p</span></div>`;
+    html += `<div class="stay-chip" onclick="openDetail('${c.id}')" style="cursor:pointer"><strong>${c.name}</strong> <span style="color:var(--gold)">${lang==='fr'?'dans':'in'} ${dTo}j</span> <span>${n}n · ${c.guests||'?'}p</span></div>`;
   });
   html += `<button class="btn-new-chip" onclick="openForm()">${lang==='fr'?'+ Nouveau':'+ New'}</button>`;
   bar.innerHTML = html;
@@ -2176,8 +2176,8 @@ function goTab(t) {
     if (btn) btn.classList.toggle('on', id===t);
   });
 
-  if (t === 'clients') renderClients();
-  if (t === 'home') { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); }
+  if (t === 'clients') { try { renderClients(); } catch(e) { console.error('renderClients error:', e); } }
+  if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); } catch(e) { console.error('loadHomeData error:', e); } }
   if (t === 'today') {
     renderTodayQV();
     // Restore last AI result if it exists
@@ -3297,13 +3297,14 @@ function renderMarketBand() {
 
 
 function openSettings() {
-  loadSettingsUI();
-  updateSessionBadge();
+  try { loadSettingsUI(); } catch(e) { console.warn('loadSettingsUI error:', e); }
+  try { updateSessionBadge(); } catch(e) {}
   const modal = document.getElementById('settingsModal');
   const panel = document.getElementById('settingsPanel');
-  modal.style.display = 'flex';
+  if (!modal) { console.error('settingsModal not found'); return; }
+  modal.style.cssText = 'display:flex!important;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9998;align-items:flex-start;justify-content:flex-end';
   document.body.style.overflow = 'hidden';
-  requestAnimationFrame(() => panel.style.transform = 'translateX(0)');
+  if (panel) requestAnimationFrame(() => { panel.style.transform = 'translateX(0)'; });
 }
 function closeSettings() {
   const panel = document.getElementById('settingsPanel');
@@ -3344,7 +3345,7 @@ function renderTodayQV() {
 
     html += `
     <div class="qv-inhouse">
-      <div class="qv-inhouse-name">${inHouse.name} ${inHouse.nat||''}</div>
+      <div class="qv-inhouse-name"><span onclick="openDetail('${inHouse.id}')" style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.3)">${inHouse.name} ${inHouse.nat||''}</span></div>
       <div class="qv-inhouse-sub">${dLeftLabel} · ${fr?'Arrivé le':'Arrived'} ${fmtDate(inHouse.arrival, true)}</div>
       <div class="qv-inhouse-grid">
         <div class="qv-stat">
@@ -3375,7 +3376,7 @@ function renderTodayQV() {
     const n = nights(nextUp);
     html += `
     <div class="qv-upcoming">
-      <div class="qv-upcoming-name">⏳ ${fr?'Prochain séjour':'Next stay'} — ${nextUp.name}</div>
+      <div class="qv-upcoming-name">⏳ ${fr?'Prochain séjour':'Next stay'} — <span onclick="openDetail('${nextUp.id}')" style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.3)">${nextUp.name}</span></div>
       <div class="qv-upcoming-row">
         <div class="qv-upcoming-item"><label>${fr?'DANS':'IN'}</label><span style="color:var(--gold)">${dTo}j</span></div>
         <div class="qv-upcoming-item"><label>${fr?'ARRIVÉE':'ARRIVAL'}</label><span>${fmtDate(nextUp.arrival, true)}</span></div>
