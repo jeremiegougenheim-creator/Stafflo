@@ -698,9 +698,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 </div><!-- /today -->
 
 <!-- ═══ CLIENTS ════════════════════════════════════════════ -->
-<div class="tab" </div>
-</div>
-id="tab-clients">
+<div class="tab" id="tab-clients">
 
   <div class="crm-header">
     <div class="crm-stats">
@@ -1104,6 +1102,10 @@ id="tab-clients">
 // STAFFLO PROXY — set URL to remove API key requirement
 // ════════════════════════════════════════════
 const STAFFLO_PROXY = 'https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/ai-proxy';
+// ── Hardcoded Supabase constants (never broken by bad localStorage) ──
+const SB_URL  = 'https://rcjhgilpmojohmrqzokx.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
+
 // When STAFFLO_PROXY is set: no API key needed, works for all users
 // When null: user must provide their own API key in Settings
 
@@ -1123,39 +1125,41 @@ let cloudEnabled = false;
 
 function getCfg() {
   try {
-    // Read both key names — 'stafflo_cfg' (ours) and 'stafflocfg' (other versions)
     const cfg1 = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
     const cfg2 = JSON.parse(localStorage.getItem('stafflocfg') || '{}');
-    const cfg  = Object.assign({}, cfg2, cfg1); // cfg1 wins on conflict
+    const cfg  = Object.assign({}, cfg2, cfg1);
 
-    const fallback = 'https://rcjhgilpmojohmrqzokx.supabase.co';
-    let rawUrl = (cfg.sbUrl || cfg.supabaseUrl || cfg2.sbUrl || cfg2.supabaseUrl || fallback).trim();
+    let rawUrl = (cfg.sbUrl || cfg.supabaseUrl || cfg2.sbUrl || SB_URL).trim();
 
-    // Fix all known bad URL patterns
+    // Repair any malformed URL
     rawUrl = rawUrl.replace(/^https?:\/\/supabase\.com\/dashboard\/project\//, 'https://');
     rawUrl = rawUrl.replace(/\/settings\/general.*$/, '');
-    rawUrl = rawUrl.replace(/\/dashboard\/project\/.*$/, '');
-    rawUrl = rawUrl.replace(/\/rest\/v1.*$/, '');      // strip accidental /rest/v1
-    rawUrl = rawUrl.replace(/\/functions\/v1.*$/, ''); // strip accidental /functions/v1
-    rawUrl = rawUrl.replace(/\/$/, '');                // strip trailing slash
+    rawUrl = rawUrl.replace(/\/rest\/v1.*$/, '');
+    rawUrl = rawUrl.replace(/\/functions\/v1.*$/, '');
+    rawUrl = rawUrl.replace(/\/$/, '');
+    if (/^[a-z0-9]{15,}$/.test(rawUrl)) rawUrl = 'https://' + rawUrl + '.supabase.co';
+    if (!rawUrl.startsWith('http')) rawUrl = SB_URL;
 
-    // Project ref only (no domain) → add full domain
-    if (/^[a-z0-9]{10,}$/.test(rawUrl)) rawUrl = 'https://' + rawUrl + '.supabase.co';
-    if (!rawUrl.startsWith('http')) rawUrl = 'https://' + rawUrl;
+    // If URL ended up wrong, use hardcoded fallback
+    if (!rawUrl.includes('.supabase.co')) rawUrl = SB_URL;
 
-    const rawKey = (cfg.sbKey || cfg.supabaseKey || cfg.supabaseAnonKey || cfg.supabasePublishableKey ||
-                    cfg2.sbKey || cfg2.supabaseKey || cfg2.supabaseAnonKey || '').trim();
+    const rawKey = (cfg.sbKey || cfg.supabaseKey || cfg.supabaseAnonKey ||
+                    cfg2.sbKey || cfg2.supabaseKey || SB_ANON).trim();
+
+    // Save repaired URL back to localStorage so next load is clean
+    if (rawUrl !== cfg.sbUrl || rawKey !== cfg.sbKey) {
+      cfg.sbUrl = rawUrl; cfg.supabaseUrl = rawUrl;
+      cfg.sbKey = rawKey; cfg.supabaseKey = rawKey;
+      cfg.supabaseAnonKey = rawKey;
+      try { localStorage.setItem('stafflo_cfg', JSON.stringify(cfg)); } catch(e) {}
+    }
 
     cfg.sbUrl = rawUrl; cfg.supabaseUrl = rawUrl;
     cfg.sbKey = rawKey; cfg.supabaseKey = rawKey;
     cfg.supabaseAnonKey = rawKey; cfg.supabasePublishableKey = rawKey;
     return cfg;
   } catch {
-    return {
-      sbUrl: 'https://rcjhgilpmojohmrqzokx.supabase.co',
-      supabaseUrl: 'https://rcjhgilpmojohmrqzokx.supabase.co',
-      sbKey: '', supabaseKey: '', supabaseAnonKey: '', supabasePublishableKey: ''
-    };
+    return { sbUrl: SB_URL, supabaseUrl: SB_URL, sbKey: SB_ANON, supabaseKey: SB_ANON, supabaseAnonKey: SB_ANON };
   }
 }
 
@@ -1180,11 +1184,13 @@ function setSyncDot(s) {
 
 async function loadFromSupabase() {
   const cfg = getCfg();
-  if (!cfg.sbUrl || !cfg.sbKey) { loadLocal(); return; }
+  const _sbUrl = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+  const _sbKey = cfg.sbKey || SB_ANON;
+  if (!_sbKey) { loadLocal(); return; }
   setSyncDot('busy');
   try {
-    const r = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?select=*&order=created_at.desc', {
-      headers: { apikey: cfg.sbKey, Authorization: 'Bearer ' + cfg.sbKey }
+    const r = await fetch(_sbUrl + '/rest/v1/crm_clients?select=*&order=created_at.desc', {
+      headers: { apikey: _sbKey, Authorization: 'Bearer ' + _sbKey }
     });
     if (r.ok) {
       const rows = await r.json();
@@ -1211,7 +1217,8 @@ async function loadFromSupabase() {
 
 async function pushToSupabase(client) {
   const cfg = getCfg();
-  if (!cfg.sbUrl || !cfg.sbKey) return;
+  const _sbUrl = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+  const _sbKey = cfg.sbKey || SB_ANON;
   const payload = {
     id:client.id, name:client.name, nat:client.nat||'', email:client.email||'',
     phone:client.phone||'', arrival:client.arrival||null, departure:client.departure||null,
@@ -1219,12 +1226,12 @@ async function pushToSupabase(client) {
     comm_mode:client.commMode||'percent', source:client.source||'Direct',
     notes:client.notes||'', pay_status:client.payStatus||'',
     booking_status:client.bookingStatus||'confirmed',
-    messages: client.messages ? JSON.stringify(client.messages) : null
+    messages: client.messages || null
   };
   setSyncDot('busy');
   try {
-    const r = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?on_conflict=id', {
-      method:'POST', headers:sbHdrs(cfg.sbKey), body:JSON.stringify(payload)
+    const r = await fetch(_sbUrl + '/rest/v1/crm_clients?on_conflict=id', {
+      method:'POST', headers:sbHdrs(_sbKey), body:JSON.stringify(payload)
     });
     setSyncDot(r.ok ? 'ok' : 'err');
   } catch { setSyncDot('err'); }
@@ -2316,8 +2323,8 @@ let MARRAKECH_EVENTS = [];
 
 async function loadMarrakechEvents() {
   const cfg = getCfg();
-  const url = cfg.supabaseUrl || 'https://rcjhgilpmojohmrqzokx.supabase.co';
-  const key = cfg.supabaseKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
+  const url = (cfg.supabaseUrl && cfg.supabaseUrl.includes('.supabase.co')) ? cfg.supabaseUrl : SB_URL;
+  const key = cfg.supabaseKey || SB_ANON;
   const today = new Date().toISOString().slice(0,10);
   // Load events active in next 60 days + past 7 days
   const from = new Date(); from.setDate(from.getDate()-7);
