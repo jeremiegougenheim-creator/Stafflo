@@ -512,6 +512,45 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   vertical-align: middle !important;
 }
 
+
+/* ── AI CHAT PANEL ── */
+.chat-panel{display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid var(--border);height:580px;max-height:80vh}
+.chat-header{background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.chat-header-left{display:flex;align-items:center;gap:8px}
+.chat-title{font-family:'Fraunces',serif;font-size:16px;color:#fff;font-weight:300}
+.chat-online{width:7px;height:7px;border-radius:50%;background:#52b788;flex-shrink:0}
+.chat-inbox-badge{background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:2px 6px;display:none;cursor:pointer}
+.chat-inbox-badge.show{display:inline-block}
+.chat-messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
+.chat-bubble{max-width:88%;padding:10px 13px;border-radius:14px;font-size:13px;line-height:1.6;word-wrap:break-word}
+.chat-bubble.user{align-self:flex-end;background:var(--green);color:#fff;border-radius:14px 14px 3px 14px}
+.chat-bubble.ai{align-self:flex-start;background:var(--paper);color:var(--ink);border-radius:14px 14px 14px 3px;border:1px solid var(--border)}
+.chat-bubble.system{align-self:center;background:rgba(201,150,58,.08);color:var(--muted);font-size:11px;border-radius:8px;border:1px solid rgba(201,150,58,.2);padding:6px 10px;max-width:100%;text-align:center}
+.chat-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chat-action-btn{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all .15s}
+.chat-action-btn.wa{background:#25D366;color:#fff}
+.chat-action-btn.save{background:var(--green);color:#fff}
+.chat-action-btn.yes{background:var(--green);color:#fff}
+.chat-action-btn.no{background:var(--paper);color:var(--muted);border:1.5px solid var(--border)}
+.chat-action-btn.view{background:var(--paper);color:var(--ink);border:1.5px solid var(--border)}
+.chat-typing{align-self:flex-start;background:var(--paper);border:1px solid var(--border);border-radius:14px 14px 14px 3px;padding:10px 14px;display:none}
+.chat-typing span{display:inline-block;width:6px;height:6px;background:var(--muted);border-radius:50%;animation:typing .9s infinite;margin-right:3px}
+.chat-typing span:nth-child(2){animation-delay:.2s}
+.chat-typing span:nth-child(3){animation-delay:.4s;margin-right:0}
+@keyframes typing{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
+.chat-input-area{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);background:var(--card);flex-shrink:0}
+.chat-input{flex:1;padding:10px 13px;border:1.5px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:13px;resize:none;outline:none;max-height:100px;min-height:40px;overflow-y:auto;background:var(--paper);color:var(--ink);transition:border-color .2s;line-height:1.5}
+.chat-input:focus{border-color:var(--gold);background:#fff}
+.chat-send-btn{width:38px;height:38px;background:var(--green);border:none;border-radius:10px;cursor:pointer;color:#fff;font-size:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:background .15s;align-self:flex-end}
+.chat-send-btn:hover{background:var(--green2)}
+.chat-send-btn:disabled{background:var(--border);cursor:default}
+/* Inbox email card */
+.inbox-card{background:var(--paper);border-radius:10px;padding:10px 12px;border-left:3px solid var(--gold);margin-bottom:6px;font-size:12px;cursor:pointer;transition:background .15s}
+.inbox-card:hover{background:var(--gold-light)}
+.inbox-card.new{border-left-color:var(--red)}
+.inbox-card .ic-subject{font-weight:600;color:var(--ink);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-card .ic-meta{color:var(--muted);font-size:11px}
+
 </style>
 </head>
 <body>
@@ -604,95 +643,42 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <!-- AI PASTE ZONE — secondary action -->
   </div>
 <div class="today-col-side">
-<div class="ai-zone" style="opacity:.9">
-    <div class="ai-zone-header">
-      <div>
-        <div class="ai-zone-title" data-fr="📡 Nouveau signal" data-en="📡 New signal">📡 Nouveau signal</div>
-        <button onclick="showHelp('ai')" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:inherit">?</button>
-        <div id="apiKeyHint" style="display:none;font-size:11px;color:#F09595;margin-top:4px" data-fr="⚠ Clé API manquante — configurez dans ⚙ Réglages" data-en="⚠ API key missing — configure in ⚙ Settings">⚠ Clé API manquante — configurez dans ⚙ Réglages</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.45);margin-top:3px" data-fr="Airbnb · WhatsApp · Email — l'IA extrait les infos, crée la fiche invité et génère les messages." data-en="Airbnb · WhatsApp · Email — AI extracts info, creates guest profile and drafts messages.">Airbnb · WhatsApp · Email — l'IA extrait les infos, crée la fiche invité et génère les messages.</div>
-      </div>
-      <div class="ai-badge">AI</div>
+
+<!-- ══ AI CHAT PANEL ════════════════════════════════════ -->
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-header">
+    <div class="chat-header-left">
+      <div class="chat-online"></div>
+      <div class="chat-title">Assistant Stafflo</div>
     </div>
-    <div class="ai-zone-body">
-      <textarea class="ai-textarea" id="pasteInput" rows="4"
-        placeholder="Collez n'importe quel message — email Airbnb, conversation WhatsApp complète, mix des deux... L'IA extrait tout automatiquement."
-        oninput="onPaste()"></textarea>
-      <div class="ai-actions">
-        <button class="btn-analyze" id="analyzeBtn" style="position:relative" onclick="analyze()" disabled aria-label="Analyse message with AI">
-          <div class="spinner"></div>
-          <span class="btn-label" data-fr="✦ Analyser & générer tout" data-en="✦ Analyse & generate everything">✦ Analyser & générer tout</span>
-        </button>
-        <button class="btn-clear" onclick="clearAll()" data-fr="Effacer" data-en="Clear">Effacer</button>
-      </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="chat-inbox-badge" id="inboxBadge" onclick="showInbox()">0 emails</span>
+      <button onclick="showInbox()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">📬 Inbox</button>
+      <button onclick="clearChat()" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer">✕ Clear</button>
     </div>
   </div>
 
-  <!-- AI RESULT -->
-  <div class="ai-result" id="aiResult">
-
-    <!-- Guest card -->
-    <div class="guest-card" id="resultCard">
-      <div class="guest-card-header">
-        <div class="guest-avatar" id="resAvatar">—</div>
-        <div>
-          <div class="guest-name" id="resName">—</div>
-          <div class="guest-sub" id="resSub">—</div>
-        </div>
-        <div class="guest-status" id="resStatus">—</div>
-      </div>
-      <div class="guest-stats" style="grid-template-columns:repeat(5,1fr)">
-        <div class="gs"><div class="gs-val" id="resArrival">—</div><div class="gs-lbl" data-fr="ARRIVÉE" data-en="CHECK-IN">ARRIVÉE</div></div>
-        <div class="gs"><div class="gs-val" id="resDeparture">—</div><div class="gs-lbl" data-fr="DÉPART" data-en="CHECK-OUT">DÉPART</div></div>
-        <div class="gs"><div class="gs-val" id="resNights">—</div><div class="gs-lbl" data-fr="NUITS" data-en="NIGHTS">NUITS</div></div>
-        <div class="gs"><div class="gs-val" id="resGuests">—</div><div class="gs-lbl" data-fr="PERS." data-en="GUESTS">PERS.</div></div>
-        <div class="gs"><div class="gs-val green" id="resNet">—</div><div class="gs-lbl" data-fr="NET VOUS" data-en="YOUR NET">NET VOUS</div></div>
-      </div>
-      <!-- Notes from AI -->
-      <div id="resNotes" style="display:none;padding:10px 16px;background:var(--gold-light);border-bottom:1px solid var(--border)">
-        <div style="font-size:9px;letter-spacing:2px;color:var(--gold);font-weight:600;margin-bottom:4px">📝 NOTES</div>
-        <div id="resNotesText" style="font-size:13px;color:var(--ink);line-height:1.6"></div>
-      </div>
-
-      <!-- Action roles -->
-      <div id="resRoles" style="display:none;padding:10px 16px;border-bottom:1px solid var(--border)"></div>
-      <!-- Alerts from AI -->
-      <div class="ai-alerts" id="resAlerts"></div>
-
-      <!-- Price advice -->
-      <div class="price-advice" id="resPriceSection">
-        <div>
-          <div class="price-advice-label" data-fr="PRIX RECOMMANDÉ CE SOIR" data-en="RECOMMENDED PRICE TONIGHT">PRIX RECOMMANDÉ CE SOIR</div>
-          <div class="price-advice-val" id="resPrice">—</div>
-          <div class="price-advice-reason" id="resPriceReason">—</div>
-        </div>
-        <button class="btn-copy-price" onclick="copyPrice()" data-fr="📋 Copier" data-en="📋 Copy">📋 Copier</button>
-      </div>
-
-      <!-- Messages -->
-      <div class="msg-section">
-        <div class="msg-section-title" data-fr="MESSAGES PRÊTS À ENVOYER" data-en="READY TO SEND">MESSAGES PRÊTS À ENVOYER</div>
-        <div class="msg-tabs" id="msgTabs"></div>
-        <div class="msg-body" id="msgBody" contenteditable="true"></div>
-        <div class="msg-actions" style="flex-wrap:wrap">
-          <button class="btn-copy" onclick="copyMsg()" style="flex:1;min-width:80px">
-            📋 <span data-fr="Copier" data-en="Copy">Copier</span>
-          </button>
-          <button id="btnMailto" class="btn-edit" onclick="sendByEmail()" title="Envoyer par email" style="padding:10px 14px;font-size:15px">
-            ✉️
-          </button>
-          <button id="btnWhatsapp" class="btn-edit" onclick="sendByWhatsApp()" title="Envoyer via WhatsApp" style="padding:10px 14px;font-size:15px;border-color:#25D366;color:#25D366">
-            💬
-          </button>
-          <div class="copy-confirm" id="copyConfirm">✓ Copié !</div>
-        </div>
-      </div>
-
-      <!-- Actions -->
-      <div class="guest-actions" id="resActions"></div>
+  <div class="chat-messages" id="chatMessages">
+    <!-- Welcome message -->
+    <div class="chat-bubble system" id="chatWelcome">
+      <strong>Stafflo IA</strong> · <span id="chatWelcomeTime"></span><br>
+      Tapez une commande — ex: <em>"relance Celia"</em>, <em>"qui arrive demain ?"</em>, <em>"génère le brief staff"</em>, ou collez un email Airbnb directement.
     </div>
-
   </div>
+
+  <div class="chat-typing" id="chatTyping">
+    <span></span><span></span><span></span>
+  </div>
+
+  <div class="chat-input-area">
+    <textarea class="chat-input" id="chatInput"
+      placeholder="Message, commande ou email Airbnb..."
+      rows="1"
+      onkeydown="chatKeyDown(event)"
+      oninput="chatAutoResize(this)"></textarea>
+    <button class="chat-send-btn" id="chatSendBtn" onclick="chatSend()" disabled>↑</button>
+  </div>
+</div><!-- /chat-panel -->
 
 </div><!-- /today-col-side -->
 </div><!-- /today-cols -->
@@ -2662,6 +2648,439 @@ function openRelancePopup(clientId) {
   handleSendCommand(cl, text);
 }
 
+
+// ════════════════════════════════════════════════════════
+// AI CHAT — main interface
+// ════════════════════════════════════════════════════════
+
+var chatHistory = []; // {role:'user'|'ai'|'system', text, actions, ts}
+
+function chatInit() {
+  var el = document.getElementById('chatWelcomeTime');
+  if (el) el.textContent = new Date().toLocaleTimeString(lang==='fr'?'fr-FR':'en-GB',{hour:'2-digit',minute:'2-digit'});
+  var inp = document.getElementById('chatInput');
+  if (inp) inp.addEventListener('input', function() {
+    document.getElementById('chatSendBtn').disabled = !inp.value.trim();
+  });
+  // Load inbox badge count
+  loadInboxCount();
+}
+
+function chatKeyDown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    chatSend();
+  }
+}
+
+function chatAutoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+  document.getElementById('chatSendBtn').disabled = !el.value.trim();
+}
+
+async function chatSend() {
+  var inp = document.getElementById('chatInput');
+  var text = inp.value.trim();
+  if (!text) return;
+  
+  inp.value = '';
+  inp.style.height = 'auto';
+  document.getElementById('chatSendBtn').disabled = true;
+  
+  // Add user bubble
+  addChatBubble('user', text);
+  
+  // Show typing
+  var typing = document.getElementById('chatTyping');
+  typing.style.display = 'block';
+  scrollChat();
+
+  try {
+    // Detect intent
+    var cmd = detectCommandIntent(text);
+    
+    if (cmd && cmd.type === 'send') {
+      // Followup/relance command
+      typing.style.display = 'none';
+      await handleChatSendCommand(cmd.client, text);
+      return;
+    }
+    
+    // Check if it's a question about clients/villa
+    var isQuestion = /qui|quand|combien|quel|comment|prochain|demain|aujourd|revenu|alerte|check/i.test(text);
+    var isPastedEmail = text.length > 200 && (
+      /airbnb|booking|check.?in|checkout|guest|réservation|confirmation/i.test(text)
+    );
+    
+    if (isPastedEmail) {
+      // Full analysis flow but result in chat
+      typing.style.display = 'none';
+      await handleChatEmailAnalysis(text);
+      return;
+    }
+    
+    if (isQuestion || text.length < 150) {
+      // Answer as assistant
+      await handleChatQuestion(text);
+      return;
+    }
+    
+    // Default: full email analysis
+    typing.style.display = 'none';
+    await handleChatEmailAnalysis(text);
+    
+  } catch(e) {
+    document.getElementById('chatTyping').style.display = 'none';
+    addChatBubble('ai', '⚠ ' + (e.message || 'Erreur'), []);
+  }
+}
+
+async function handleChatQuestion(text) {
+  var fr = lang === 'fr';
+  var today = new Date().toISOString().slice(0,10);
+  
+  // Build context
+  var ctx = [
+    'Villa Stafflo — Marrakech. Aujourd\'hui: ' + today + '.',
+    'Clients CRM (' + clients.length + '):',
+    clients.slice(0,10).map(function(c) {
+      return '- ' + c.name + (c.arrival?' arr:'+c.arrival:'') + (c.departure?' dep:'+c.departure:'') + (c.guests?' '+c.guests+'p':'');
+    }).join('\n'),
+    '',
+    'Réponds en ' + (fr ? 'français' : 'English') + ', max 3 phrases, concis.',
+    'Si tu identifies une action (envoyer WA, sauver client), retourne:',
+    'RÉPONSE: [ta réponse]',
+    'ACTION: {"type":"send_wa","clientId":"...","msg":"..."} OU {"type":"save","clientName":"..."}',
+    '',
+    'Question: ' + text
+  ].join('\n');
+  
+  var raw = await callBestAI('extract', '', ctx, 300);
+  document.getElementById('chatTyping').style.display = 'none';
+  
+  // Parse response + action
+  var response = raw || '...';
+  var action = null;
+  var respMatch = raw.match(/R[ÉE]PONSE:\s*(.+?)(?=\nACTION:|$)/s);
+  var actionMatch = raw.match(/ACTION:\s*(\{.+?\})/s);
+  
+  if (respMatch) response = respMatch[1].trim();
+  if (actionMatch) {
+    try { action = JSON.parse(actionMatch[1]); } catch(e) {}
+  }
+  
+  var buttons = [];
+  if (action && action.type === 'send_wa') {
+    var cl = clients.find(function(c){ return c.id === action.clientId; });
+    if (cl) {
+      buttons.push({
+        label: '💬 Envoyer à ' + (cl.name.split(' ')[0]),
+        cls: 'wa',
+        fn: 'openChatWA("' + (cl.id) + '","' + escapeAttr(action.msg||'') + '")'
+      });
+    }
+  }
+  buttons.push({ label: lang==='fr'?'👍 OK':'👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' });
+  
+  addChatBubble('ai', response, buttons);
+}
+
+async function handleChatSendCommand(client, text) {
+  var fr = lang === 'fr';
+  var lastMsg = '';
+  if (client.messages) {
+    var keys = Object.keys(client.messages);
+    lastMsg = client.messages[keys[keys.length-1]] || '';
+  }
+  
+  var prompt = [
+    'Client: ' + client.name + (client.nat ? ' ' + client.nat : ''),
+    client.arrival ? 'Arrivée: ' + client.arrival + (client.departure ? ' → ' + client.departure : '') : '',
+    client.notes ? 'Notes: ' + client.notes : '',
+    lastMsg ? 'Dernier message envoyé:\n' + lastMsg.slice(0,300) : '',
+    '',
+    'Commande: "' + text + '"',
+    '',
+    'Écris un message WhatsApp court et chaleureux en ' + (fr ? 'français' : 'English') + '.',
+    'Max 5 lignes. Signe avec: ' + (getCfg().owner || 'Jérémie') + '.',
+    'UNIQUEMENT le message, rien d\'autre.'
+  ].filter(Boolean).join('\n');
+  
+  var msg = await callBestAI('write_fr', '', prompt, 400);
+  document.getElementById('chatTyping').style.display = 'none';
+  
+  var phone = (client.phone || '').replace(/[\s\-+()]/g,'');
+  var buttons = [
+    { label: '💬 Envoyer à ' + client.name.split(' ')[0], cls: 'wa', fn: 'openChatWA("'+client.id+'","'+escapeAttr(msg.trim())+'")' },
+    { label: lang==='fr'?'✏️ Modifier':'✏️ Edit', cls: 'view', fn: 'editChatMsg(this,"'+client.id+'")' },
+    { label: '✕', cls: 'no', fn: 'dismissChatAction(this)' }
+  ];
+  
+  addChatBubble('ai', '✍ **' + client.name + '**\n\n' + msg.trim(), buttons);
+}
+
+async function handleChatEmailAnalysis(text) {
+  document.getElementById('chatTyping').style.display = 'block';
+  
+  // Run the existing analyze logic but return result as chat bubble
+  var fr = lang === 'fr';
+  var today = new Date().toISOString().slice(0,10);
+  
+  var hasFrench = /\b(bonjour|merci|nous|pour|séjour|réservation|adultes)\b/i.test(text);
+  var guestLang = hasFrench ? 'French' : 'English';
+  
+  var p1Prompt = [
+    'Extract from pasted message. Return ONLY valid JSON, no markdown.',
+    '{"guest":{"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"confirmed","notes":""},"alerts":[{"type":"info","text":""}],"price_advice":{"amount":750,"reason":""}}',
+    'Rules: bookingStatus="inquiry" if question, "confirmed" if booking.',
+    'price=Guest paid total.',
+    'Today: ' + today
+  ].join('\n');
+  
+  try {
+    var raw = await callBestAI('extract', p1Prompt, text, 600);
+    document.getElementById('chatTyping').style.display = 'none';
+    
+    var g = {};
+    try {
+      var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
+      if (m) { var parsed = JSON.parse(m[0]); g = parsed.guest || parsed; }
+    } catch(e) {}
+    
+    if (!g.name) {
+      addChatBubble('ai', fr ? '🤔 Je n\'ai pas pu extraire d\'infos de ce message. C\'est bien un email Airbnb ?' : '🤔 Could not extract info. Is this an Airbnb email?');
+      return;
+    }
+    
+    // Format response
+    var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
+    var net = g.price ? Math.round(g.price * (1 - (g.commission||15.5)/100)) : 0;
+    
+    var summary = [
+      '✅ **' + g.name + '** ' + (g.nat||''),
+      (g.arrival ? '📅 ' + fmtDate(g.arrival, true) + (g.departure ? ' → ' + fmtDate(g.departure, true) : '') : ''),
+      (nights ? '🌙 ' + nights + (fr ? ' nuits' : ' nights') : ''),
+      (g.guests ? '👥 ' + g.guests + (fr ? ' pers.' : ' guests') : ''),
+      (net ? '💰 Net: ' + Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€' : ''),
+      (g.notes ? '📝 ' + g.notes.slice(0,80) : '')
+    ].filter(Boolean).join('\n');
+    
+    // Check if duplicate
+    var dup = clients.find(function(x) {
+      return x.name && g.name && x.name.toLowerCase() === g.name.toLowerCase();
+    });
+    
+    var buttons = [];
+    if (dup) {
+      summary += '\n\n⚠️ ' + (fr ? 'Client déjà dans le CRM' : 'Already in CRM') + ' · ' + dup.name;
+      buttons.push({ label: fr?'🔄 Mettre à jour':'🔄 Update', cls: 'save', fn: 'chatSaveClient('+JSON.stringify(g).replace(/"/g,"'")+',true)' });
+    } else {
+      buttons.push({ label: fr?'💾 Sauvegarder':'💾 Save', cls: 'save', fn: 'chatSaveClient('+JSON.stringify(g).replace(/"/g,"'")+')'  });
+    }
+    if (g.phone) {
+      buttons.push({ label: '💬 WhatsApp', cls: 'wa', fn: 'openChatWA(null,null,"'+escapeAttr(g.phone)+'")' });
+    }
+    buttons.push({ label: '✕', cls: 'no', fn: 'dismissChatAction(this)' });
+    
+    addChatBubble('ai', summary, buttons);
+    
+    // Store for full card rendering
+    window._chatLastGuest = g;
+    
+  } catch(e) {
+    document.getElementById('chatTyping').style.display = 'none';
+    addChatBubble('ai', '⚠ ' + e.message);
+  }
+}
+
+function addChatBubble(role, text, actions) {
+  var msgs = document.getElementById('chatMessages');
+  if (!msgs) return;
+  
+  var div = document.createElement('div');
+  div.className = 'chat-bubble ' + role;
+  
+  // Format text — bold **text**, newlines
+  var html = text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+  div.innerHTML = html;
+  
+  // Add action buttons
+  if (actions && actions.length) {
+    var actDiv = document.createElement('div');
+    actDiv.className = 'chat-actions';
+    actions.forEach(function(btn) {
+      var b = document.createElement('button');
+      b.className = 'chat-action-btn ' + (btn.cls || '');
+      b.textContent = btn.label;
+      b.setAttribute('onclick', btn.fn);
+      actDiv.appendChild(b);
+    });
+    div.appendChild(actDiv);
+  }
+  
+  msgs.appendChild(div);
+  chatHistory.push({ role, text, ts: Date.now() });
+  scrollChat();
+}
+
+function scrollChat() {
+  var msgs = document.getElementById('chatMessages');
+  if (msgs) msgs.scrollTop = msgs.scrollHeight;
+}
+
+function clearChat() {
+  var msgs = document.getElementById('chatMessages');
+  if (msgs) {
+    msgs.innerHTML = '<div class="chat-bubble system">' + (lang==='fr'?'Chat effacé ✓':'Chat cleared ✓') + '</div>';
+  }
+  chatHistory = [];
+}
+
+function dismissChatAction(btn) {
+  var bubble = btn.closest('.chat-bubble');
+  if (bubble) {
+    var actDiv = bubble.querySelector('.chat-actions');
+    if (actDiv) actDiv.remove();
+  }
+}
+
+function escapeAttr(str) {
+  return (str||'').replace(/'/g,"\\'").replace(/"/g,'&quot;').slice(0,500);
+}
+
+function openChatWA(clientId, msgBody, phone) {
+  var resolvedPhone = phone || '';
+  if (clientId) {
+    var cl = clients.find(function(c){ return c.id === clientId; });
+    if (cl) resolvedPhone = (cl.phone||'').replace(/[\s\-+()]/g,'');
+  }
+  if (!msgBody && clientId) {
+    // Open relance popup instead
+    showWASend(clientId, '', 'custom');
+    return;
+  }
+  showWASend(clientId || null, msgBody || '', 'chat');
+  // Override phone if direct
+  if (phone) _waSendState.phone = phone.replace(/[\s\-+()]/g,'');
+  updateWALink();
+}
+
+function chatSaveClient(gData) {
+  // Convert string-quoted object back
+  if (typeof gData === 'string') {
+    try { gData = JSON.parse(gData.replace(/'/g,'"')); } catch(e) {}
+  }
+  saveFromResult(gData);
+  addChatBubble('system', '✓ ' + (lang==='fr' ? 'Client sauvegardé' : 'Guest saved'));
+}
+
+function editChatMsg(btn, clientId) {
+  var bubble = btn.closest('.chat-bubble');
+  var textContent = bubble ? bubble.childNodes[0].textContent : '';
+  var cl = clients.find(function(c){ return c.id === clientId; });
+  if (cl) showWASend(clientId, textContent.trim(), 'followup');
+}
+
+// ════════════════════════════════════════════════════════
+// EMAIL INBOX
+// ════════════════════════════════════════════════════════
+
+async function loadInboxCount() {
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?status=eq.new&select=id', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Prefer': 'count=exact' }
+    });
+    var count = parseInt(r.headers.get('content-range')?.split('/')[1] || '0');
+    var badge = document.getElementById('inboxBadge');
+    if (badge) {
+      if (count > 0) {
+        badge.textContent = count + (lang==='fr' ? ' email' : ' email') + (count > 1 ? 's' : '');
+        badge.classList.add('show');
+      } else {
+        badge.classList.remove('show');
+      }
+    }
+  } catch(e) {}
+}
+
+function showInbox() {
+  document.getElementById('inboxModal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  loadInboxEmails();
+}
+
+function closeInbox() {
+  document.getElementById('inboxModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function loadInboxEmails() {
+  var el = document.getElementById('inboxList');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Chargement...</div>';
+  
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=20', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    var rows = await r.json();
+    if (!rows.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;text-align:center">'+
+        (lang==='fr' ? 'Aucun email reçu — configurez le transfert automatique ci-dessus' : 'No emails received yet — set up auto-forwarding above') +
+        '</div>';
+      return;
+    }
+    el.innerHTML = rows.map(function(row) {
+      var d = new Date(row.received_at);
+      var dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      var ex = row.extracted || {};
+      var badge = row.status === 'new' ? '<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">NEW</span>' : '';
+      var typeBadge = ex.email_type ? '<span style="background:var(--gold-light);color:#7A5A1A;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">'+ex.email_type+'</span>' : '';
+      return '<div class="inbox-card ' + (row.status==='new'?'new':'') + '" onclick="openInboxEmail('+JSON.stringify(row).replace(/"/g,"'")+')">'+
+        '<div class="ic-subject">' + (row.subject||'No subject') + badge + typeBadge + '</div>'+
+        '<div class="ic-meta">' + (row.from_email||'—') + ' · ' + dateStr + 
+        (ex.name ? ' · <strong>'+ex.name+'</strong>' : '') + '</div>'+
+        '</div>';
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--red);font-size:12px">Erreur: '+e.message+'</div>';
+  }
+}
+
+function openInboxEmail(row) {
+  // Close inbox, paste email body into chat, trigger analysis
+  closeInbox();
+  var extracted = row.extracted || {};
+  
+  // Mark as processed
+  var cfg = getCfg();
+  fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + row.id, {
+    method: 'PATCH',
+    headers: { 'Content-Type':'application/json', apikey: cfg.sbKey||SB_ANON, Authorization:'Bearer '+(cfg.sbKey||SB_ANON) },
+    body: JSON.stringify({ status: 'processed' })
+  }).catch(function(){});
+  
+  // If already extracted, show directly
+  if (extracted.name) {
+    addChatBubble('user', '📧 ' + (row.subject || 'Email Airbnb'));
+    handleChatEmailAnalysis(row.body || (row.subject + ' ' + JSON.stringify(extracted)));
+  } else {
+    // Re-analyze
+    var inp = document.getElementById('chatInput');
+    if (inp) { inp.value = row.body || ''; chatAutoResize(inp); }
+    setTimeout(chatSend, 100);
+  }
+  
+  loadInboxCount();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
 
   // ── Migrate old localStorage key name ──
@@ -2685,6 +3104,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // ── Apply language, show Today tab ──
   applyLang();
   goTab('today');
+  chatInit();
 
   // ── Show cached data immediately ──
   loadLocal();
@@ -5212,5 +5632,43 @@ function toggleRdy(el) {
   renderTodayQV();
 }
 </script>
+
+<!-- ══ EMAIL INBOX MODAL ════════════════════════════════════ -->
+<div id="inboxModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9996;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeInbox()">
+  <div style="background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:640px;max-height:80vh;overflow-y:auto;padding-bottom:20px">
+    <div style="background:var(--green3);padding:14px 20px;border-radius:20px 20px 0 0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1">
+      <div>
+        <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">INBOX</div>
+        <div style="font-family:'Fraunces',serif;font-size:17px;color:#fff;font-weight:300">Emails Airbnb reçus</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="closeInbox()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
+      </div>
+    </div>
+
+    <!-- Setup instructions -->
+    <div id="inboxSetup" style="margin:14px 16px;background:rgba(201,150,58,.06);border:1px solid rgba(201,150,58,.2);border-radius:10px;padding:12px 14px">
+      <div style="font-size:10px;letter-spacing:2px;color:var(--gold);font-weight:700;margin-bottom:8px">⚡ CONFIGURATION AUTOMATIQUE</div>
+      <div style="font-size:12px;color:var(--ink);line-height:1.6;margin-bottom:8px">
+        Transférez vos emails Airbnb automatiquement :
+      </div>
+      <div style="background:var(--paper);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--muted);margin-bottom:8px">
+        <strong style="color:var(--ink)">Webhook URL :</strong><br>
+        <code id="webhookUrl" style="color:var(--green);word-break:break-all;font-size:10px">https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/email-intake</code>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('webhookUrl').textContent).then(()=>toast('📋 URL copiée'))" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:11px;margin-left:4px">📋</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.7">
+        <strong>Gmail :</strong> Filtres → Transférer → Zapier ou Make → POST vers ce webhook<br>
+        <strong>Direct :</strong> Ou collez l'email dans le chat ci-contre — même résultat
+      </div>
+    </div>
+
+    <!-- Email list -->
+    <div style="padding:0 16px">
+      <div id="inboxList" style="font-size:13px;color:var(--muted)">Chargement...</div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
