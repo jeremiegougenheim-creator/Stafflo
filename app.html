@@ -514,7 +514,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 
 /* ── AI CHAT PANEL ── */
-.chat-panel{display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid var(--border);height:580px;max-height:80vh}
+.chat-panel{display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid var(--border);height:520px;max-height:75vh}
 .chat-header{background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .chat-header-left{display:flex;align-items:center;gap:8px}
 .chat-title{font-family:'Fraunces',serif;font-size:16px;color:#fff;font-weight:300}
@@ -3015,10 +3015,15 @@ function clearChat() {
 }
 
 function dismissChatAction(btn) {
-  var bubble = btn.closest('.chat-bubble');
+  // btn can be the button element or called from onclick string
+  var el = (btn && btn.closest) ? btn : null;
+  if (!el) return;
+  var actDiv = el.closest('.chat-actions');
+  if (actDiv) { actDiv.remove(); return; }
+  var bubble = el.closest('.chat-bubble');
   if (bubble) {
-    var actDiv = bubble.querySelector('.chat-actions');
-    if (actDiv) actDiv.remove();
+    var ad = bubble.querySelector('.chat-actions');
+    if (ad) ad.remove();
   }
 }
 
@@ -3130,10 +3135,10 @@ async function loadInboxEmails() {
 }
 
 function openInboxEmail(row) {
-  // Close inbox, paste email body into chat, trigger analysis
   closeInbox();
-  var extracted = row.extracted || {};
-  
+  var ex = row.extracted || {};
+  var fr = lang === 'fr';
+
   // Mark as processed
   var cfg = getCfg();
   fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + row.id, {
@@ -3141,19 +3146,194 @@ function openInboxEmail(row) {
     headers: { 'Content-Type':'application/json', apikey: cfg.sbKey||SB_ANON, Authorization:'Bearer '+(cfg.sbKey||SB_ANON) },
     body: JSON.stringify({ status: 'processed' })
   }).catch(function(){});
-  
-  // If already extracted, show directly
-  if (extracted.name) {
-    addChatBubble('user', '📧 ' + (row.subject || 'Email Airbnb'));
-    handleChatEmailAnalysis(row.body || (row.subject + ' ' + JSON.stringify(extracted)));
-  } else {
-    // Re-analyze
-    var inp = document.getElementById('chatInput');
-    if (inp) { inp.value = row.body || ''; chatAutoResize(inp); }
-    setTimeout(chatSend, 100);
-  }
-  
+
   loadInboxCount();
+
+  // Show email summary in chat
+  var emailType = ex.email_type || 'email';
+  addChatBubble('user', '📧 ' + (row.subject || 'Email') + ' — ' + (row.from_email || ''));
+
+  // Show typing
+  document.getElementById('chatTyping').style.display = 'block';
+  scrollChat();
+
+  // Generate analysis + 3 response options
+  handleInboxEmailFull(row, ex).catch(function(e) {
+    document.getElementById('chatTyping').style.display = 'none';
+    addChatBubble('ai', '⚠ ' + e.message);
+  });
+}
+
+async function handleInboxEmailFull(row, ex) {
+  var fr = lang === 'fr';
+  var owner = getCfg().owner || 'Jérémie';
+  var villa = getCfg().villa || 'Villa DarJ';
+  var emailType = ex.email_type || 'email';
+
+  // Build rich prompt
+  var prompt = [
+    'Tu analyses un email reçu pour ' + villa + ' à Marrakech (propriétaire: ' + owner + ').',
+    '',
+    '=== EMAIL ===',
+    'De: ' + (row.from_email || ''),
+    'Sujet: ' + (row.subject || ''),
+    'Contenu:\n' + (row.body || '').slice(0, 2000),
+    '',
+    '=== TÂCHE ===',
+    'Retourne UNIQUEMENT un JSON valide avec ce format:',
+    '{',
+    '  "summary": "Résumé en 1-2 phrases de ce que veut le client",',
+    '  "email_type": "inquiry|confirmation|message|cancellation|review",',
+    '  "guest": {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"phone":"","notes":""},',
+    '  "context": [{"category":"flight|meals|transport|arrival|preferences|general","key":"...","value":"..."}],',
+    '  "responses": [',
+    '    {"label":"Confirmer disponibilité","text":"Message de réponse chaleureux signé ' + owner + '"},',
+    '    {"label":"Demander plus d\'infos","text":"Message demandant les infos manquantes"},',
+    '    {"label":"Réponse personnalisée","text":"Message adapté au contexte spécifique"}',
+    '  ],',
+    '  "missing": ["infos manquantes importantes"],',
+    '  "alerts": ["alertes ou points d\'attention"]',
+    '}',
+    'Toujours en ' + (fr ? 'français' : 'English') + '. Pas de markdown.'
+  ].join('\n');
+
+  var raw = await callBestAI('reason', '', prompt, 1200);
+  document.getElementById('chatTyping').style.display = 'none';
+
+  // Parse
+  var parsed = null;
+  try {
+    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
+    if (m) parsed = JSON.parse(m[0]);
+  } catch(e) {}
+
+  if (!parsed) {
+    addChatBubble('ai', raw || 'Email analysé mais format inattendu.');
+    return;
+  }
+
+  var g = parsed.guest || {};
+  var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
+  var net = g.price ? Math.round(g.price * (1 - 15.5/100)) : 0;
+
+  // Check if client already exists
+  var existing = g.name ? clients.find(function(cl) {
+    return (cl.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);
+  }) : null;
+
+  // Build summary bubble
+  var summaryHtml = '<div style="font-size:13px;font-weight:600;margin-bottom:6px">📧 ' + (parsed.email_type||'Email').toUpperCase() + '</div>';
+  summaryHtml += '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + (parsed.summary||'') + '</div>';
+
+  if (g.name) {
+    summaryHtml += '<div style="background:var(--paper);border-radius:8px;padding:8px 10px;margin-bottom:8px;border-left:3px solid var(--' + (existing?'gold':'green') + ')">';
+    summaryHtml += '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:4px">' + (existing ? '⚠️ CLIENT EXISTANT — '+existing.name : '🆕 NOUVEAU CLIENT') + '</div>';
+    if (g.name) summaryHtml += '<div style="font-size:12px"><strong>' + g.name + '</strong>' + (g.nat?' '+g.nat:'') + '</div>';
+    if (g.arrival) summaryHtml += '<div style="font-size:11px;color:var(--muted)">📅 ' + fmtDate(g.arrival,true) + (g.departure?' → '+fmtDate(g.departure,true):'') + (nights?' · '+nights+' nuits':'') + '</div>';
+    if (g.guests) summaryHtml += '<div style="font-size:11px;color:var(--muted)">👥 ' + g.guests + ' pers.</div>';
+    if (net) summaryHtml += '<div style="font-size:11px;color:var(--green)">💰 Net estimé: ~' + net + '€</div>';
+    summaryHtml += '</div>';
+  }
+
+  if (parsed.alerts && parsed.alerts.length) {
+    summaryHtml += '<div style="background:rgba(231,76,60,.05);border-radius:6px;padding:6px 8px;font-size:11px;color:var(--red);margin-bottom:6px">⚠️ ' + parsed.alerts.join(' · ') + '</div>';
+  }
+  if (parsed.missing && parsed.missing.length) {
+    summaryHtml += '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">❓ Manquant: ' + parsed.missing.join(', ') + '</div>';
+  }
+
+  var sysDiv = document.createElement('div');
+  sysDiv.className = 'chat-bubble system';
+  sysDiv.style.cssText = 'max-width:100%;text-align:left';
+  sysDiv.innerHTML = summaryHtml;
+  document.getElementById('chatMessages').appendChild(sysDiv);
+
+  // Save action buttons
+  var _saveKey = g.name ? storePendingWA(existing ? existing.id : null, '') : null;
+  var actDiv = document.createElement('div');
+  actDiv.className = 'chat-actions';
+  actDiv.style.marginTop = '8px';
+
+  // Save/update client
+  if (g.name) {
+    var saveBtn = document.createElement('button');
+    saveBtn.className = 'chat-action-btn save';
+    saveBtn.textContent = existing ? '🔄 Mettre à jour ' + existing.name.split(' ')[0] : '💾 Sauvegarder';
+    saveBtn.onclick = function() {
+      if (existing) {
+        // Merge with existing
+        var merged = Object.assign({}, existing, {
+          arrival: g.arrival || existing.arrival,
+          departure: g.departure || existing.departure,
+          guests: g.guests || existing.guests,
+          notes: ((existing.notes||'') + (g.notes?' · '+g.notes:'')).trim()
+        });
+        pushToSupabase(merged);
+        var idx = clients.findIndex(function(x){return x.id===existing.id;});
+        if(idx>=0){clients[idx]=merged;}
+        saveLocal(); renderAll();
+        this.textContent = '✅ Mis à jour';
+        this.disabled = true;
+      } else {
+        saveFromResult(g);
+        this.textContent = '✅ Sauvegardé';
+        this.disabled = true;
+      }
+      // Save context items
+      if (parsed.context && parsed.context.length) {
+        var targetId = existing ? existing.id : null;
+        if (!targetId) {
+          var newCl = clients.find(function(x){return (x.name||'').includes(g.name.split(' ')[0]);});
+          if (newCl) targetId = newCl.id;
+        }
+        if (targetId) saveClientContext(targetId, parsed.context);
+      }
+    };
+    actDiv.appendChild(saveBtn);
+  }
+
+  sysDiv.appendChild(actDiv);
+
+  // 3 response options
+  if (parsed.responses && parsed.responses.length) {
+    addChatBubble('system', '✍ 3 options de réponse — clique pour envoyer :');
+    parsed.responses.forEach(function(resp, i) {
+      var clientId = existing ? existing.id : null;
+      var clientPhone = existing ? existing.phone : g.phone;
+      var waKey = storePendingWA(clientId, resp.text);
+      // Override phone in store
+      if (clientPhone) _pendingWA[waKey].phone = (clientPhone||'').replace(/[\s\-+()]/g,'');
+
+      var bubble = document.createElement('div');
+      bubble.className = 'chat-bubble ai';
+      bubble.style.cursor = 'pointer';
+      var shortText = resp.text.length > 180 ? resp.text.slice(0,180) + '…' : resp.text;
+      bubble.innerHTML = '<div style="font-size:10px;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:4px">OPTION '+(i+1)+' · '+resp.label+'</div>' + shortText.replace(/\n/g,'<br>');
+      var btnDiv = document.createElement('div');
+      btnDiv.className = 'chat-actions';
+      var sendBtn = document.createElement('button');
+      sendBtn.className = 'chat-action-btn wa';
+      sendBtn.textContent = '💬 Envoyer';
+      sendBtn.onclick = function() { sendPendingWA(waKey); };
+      var editBtn = document.createElement('button');
+      editBtn.className = 'chat-action-btn view';
+      editBtn.textContent = '✏️';
+      editBtn.onclick = function() { editPendingWA(waKey, editBtn); };
+      var fullBtn = document.createElement('button');
+      fullBtn.className = 'chat-action-btn no';
+      fullBtn.textContent = '👁 Voir';
+      fullBtn.onclick = function() {
+        this.closest('.chat-actions').previousSibling.innerHTML = resp.text.replace(/\n/g,'<br>');
+        this.remove();
+      };
+      btnDiv.appendChild(sendBtn);
+      btnDiv.appendChild(editBtn);
+      if (resp.text.length > 180) btnDiv.appendChild(fullBtn);
+      bubble.appendChild(btnDiv);
+      document.getElementById('chatMessages').appendChild(bubble);
+    });
+    scrollChat();
+  }
 }
 
 
@@ -3383,7 +3563,13 @@ async function handleChatContextCommand(client, instruction) {
 
   // Show extracted info as system message if any
   if (parsed.extracted && parsed.extracted.length) {
-    var savedHtml = '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">💾 Infos sauvegardées pour <strong>' + client.name + '</strong></div>' +
+    var newKeys = parsed.extracted.map(function(i){return i.key;});
+    var existing_keys = contextRows.map(function(r){return r.key;});
+    var isNew = newKeys.filter(function(k){return !existing_keys.includes(k);}).length;
+    var isUpdate = newKeys.filter(function(k){return existing_keys.includes(k);}).length;
+    var badge = (isNew ? '<span style="background:var(--green);color:#fff;border-radius:4px;padding:1px 6px;font-size:9px;margin-left:4px">'+isNew+' NEW</span>' : '') +
+                (isUpdate ? '<span style="background:var(--gold-light);color:#7A5A1A;border-radius:4px;padding:1px 6px;font-size:9px;margin-left:4px">'+isUpdate+' MÀJ</span>' : '');
+    var savedHtml = '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">💾 Infos stockées pour <strong>' + client.name + '</strong>' + badge + '</div>' +
       formatContextForDisplay(parsed.extracted);
     var sysDiv = document.createElement('div');
     sysDiv.className = 'chat-bubble system';
@@ -3617,7 +3803,8 @@ function storePendingWA(clientId, msg) {
 function sendPendingWA(key) {
   var p = _pendingWA[key];
   if (!p) return;
-  openChatWA(p.clientId, p.msg);
+  showWASend(p.clientId || null, p.msg || '', 'chat');
+  if (p.phone) { _waSendState.phone = p.phone; updateWALink(); }
   delete _pendingWA[key];
 }
 function editPendingWA(key, btnEl) {
@@ -6205,60 +6392,7 @@ function toggleRdy(el) {
       </div>
     </div>
 
-    <!-- How it works -->
-    <div style="margin:14px 16px">
 
-      <!-- Method 1 — Chat (always works) -->
-      <div style="background:var(--green-light);border-radius:10px;padding:12px 14px;margin-bottom:10px;border-left:3px solid var(--green)">
-        <div style="font-size:10px;letter-spacing:2px;color:var(--green);font-weight:700;margin-bottom:6px">✅ MÉTHODE 1 — MAINTENANT (ça marche déjà)</div>
-        <div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px">Copier-coller dans le chat</div>
-        <div style="font-size:12px;color:var(--muted);line-height:1.6">
-          1. Ouvre l'email Airbnb dans Gmail<br>
-          2. Sélectionne tout (Ctrl+A) et copie<br>
-          3. Colle dans le <strong>chat IA</strong> (côté droit de Today)<br>
-          4. L'IA extrait les infos + propose de sauvegarder le client
-        </div>
-      </div>
-
-      <!-- Method 2 — Auto forwarding -->
-      <div style="background:rgba(201,150,58,.06);border-radius:10px;padding:12px 14px;margin-bottom:10px;border-left:3px solid var(--gold)">
-        <div style="font-size:10px;letter-spacing:2px;color:var(--gold);font-weight:700;margin-bottom:6px">⚡ MÉTHODE 2 — AUTOMATIQUE (setup 5 min)</div>
-        <div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px">Transfert automatique depuis Gmail</div>
-        <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">
-          Chaque email Airbnb est reçu, analysé et affiché ici automatiquement.
-        </div>
-        <div style="font-size:11px;color:var(--ink);line-height:2">
-          <strong>Étapes :</strong><br>
-          1. Va sur <a href="https://zapier.com" target="_blank" style="color:var(--gold)">zapier.com</a> (gratuit jusqu'à 100 emails/mois)<br>
-          2. Crée un Zap : <strong>Gmail → Webhooks</strong><br>
-          3. Trigger : "New Email matching <em>from:airbnb.com</em>"<br>
-          4. Action : POST vers cette URL ↓
-        </div>
-        <div style="background:var(--paper);border-radius:8px;padding:8px 10px;margin-top:6px;display:flex;align-items:center;gap:6px">
-          <code id="webhookUrl" style="color:var(--green);word-break:break-all;font-size:10px;flex:1">https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/email-intake</code>
-          <button onclick="navigator.clipboard.writeText(document.getElementById('webhookUrl').textContent).then(()=>toast('📋 URL copiée !'))" style="background:var(--gold);border:none;color:var(--green3);border-radius:5px;padding:4px 8px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">📋 Copier</button>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:6px">
-          Dans Zapier, le body POST doit contenir : <code>from</code>, <code>subject</code>, <code>body</code>
-        </div>
-      </div>
-
-      <!-- What happens -->
-      <div style="background:var(--paper);border-radius:10px;padding:12px 14px;border:1px solid var(--border)">
-        <div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:700;margin-bottom:6px">🔄 CE QUI SE PASSE AUTOMATIQUEMENT</div>
-        <div style="font-size:12px;color:var(--muted);line-height:1.8">
-          📥 Email reçu → stocké dans la base<br>
-          🤖 IA extrait : nom, dates, prix, commission, notes<br>
-          🔔 Badge rouge apparaît dans le chat<br>
-          👆 Tu cliques → résumé dans le chat + bouton <strong>Sauvegarder</strong><br>
-          ✅ Client créé ou mis à jour dans le CRM
-        </div>
-        <div style="margin-top:8px;padding:8px 10px;background:rgba(192,57,43,.05);border-radius:6px;font-size:11px;color:var(--muted)">
-          ⚠️ <strong>Anciens emails :</strong> non récupérés automatiquement — utilise la méthode 1 pour les importer un par un.
-        </div>
-      </div>
-
-    </div>
 
     <!-- Email list -->
     <div style="padding:0 16px">
