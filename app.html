@@ -3593,6 +3593,21 @@ function detectCommandIntentEnhanced(text) {
   if (base) return base;
 
   // Detect context-rich commands: "réponds à X", "vérifie pour X", "analyse X"
+  // Detect "infos X : ..." → store info pattern
+  var storePatterns = [
+    /^infos?\s+(\w+)\s*:/i,
+    /^note(?:r)?\s+(?:pour\s+)?(\w+)\s*:/i,
+    /^ajoute(?:r)?\s+(?:pour\s+)?(\w+)\s*:/i,
+    /^enregistre\s+(?:pour\s+)?(\w+)\s*:/i,
+  ];
+  for (var si = 0; si < storePatterns.length; si++) {
+    var sm = t.match(storePatterns[si]);
+    if (sm) {
+      var scl = findClientByName(sm[1]);
+      if (scl) return { type: 'store_info', client: scl };
+    }
+  }
+
   var contextPatterns = [
     /(?:réponds?|repondre|reply|répondre)\s+(?:à|a|to)\s+(\w+)/i,
     /(?:vérifie|verifie|check|analyse|regarde)\s+(?:pour\s+)?(\w+)/i,
@@ -3814,6 +3829,97 @@ function editPendingWA(key, btnEl) {
   var msgEl = bubble ? bubble.childNodes[0] : null;
   var text = msgEl ? msgEl.textContent.trim() : (p.msg || '');
   showWASend(p.clientId, text, 'followup');
+}
+
+
+async function handleStoreInfo(client, text) {
+  var fr = lang === 'fr';
+
+  // Load existing context to show diff
+  var existingRows = await loadClientContext(client.id);
+  var existingKeys = existingRows.map(function(r) { return r.key; });
+
+  var prompt = [
+    'Extrait les informations structurées de ce texte concernant le client ' + client.name + '.',
+    'Retourne UNIQUEMENT un JSON valide:',
+    '{',
+    '  "extracted": [',
+    '    {"category":"flight|meals|transport|arrival|preferences|general","key":"nom_cle_snake_case","value":"valeur"}',
+    '  ],',
+    '  "summary": "Résumé en 1 phrase de ce qui a été noté"',
+    '}',
+    '',
+    'Exemples de keys: flight_number, arrival_time, dietary_restrictions, transport_needed, room_preferences, special_requests',
+    'Texte: "' + text + '"',
+    'Pas de markdown, JSON uniquement.'
+  ].join('\n');
+
+  var raw = await callBestAI('extract', '', prompt, 300);
+
+  var parsed = null;
+  try {
+    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
+    if (m) parsed = JSON.parse(m[0]);
+  } catch(e) {}
+
+  if (!parsed || !parsed.extracted || !parsed.extracted.length) {
+    addChatBubble('ai', fr ? '🤔 Je n\'ai pas pu extraire d\'informations structurées. Essaie : "infos Celia : végétarienne, vol AT1234 à 15h"' : '🤔 Could not extract structured info.');
+    return;
+  }
+
+  // Save to Supabase
+  await saveClientContext(client.id, parsed.extracted.map(function(i) {
+    return { category: i.category, key: i.key, value: i.value, source: 'chat' };
+  }));
+
+  // Classify: new vs updated
+  var newItems = parsed.extracted.filter(function(i) { return !existingKeys.includes(i.key); });
+  var updItems = parsed.extracted.filter(function(i) { return existingKeys.includes(i.key); });
+
+  // Build confirmation bubble
+  var html = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">';
+  html += '<span style="font-size:18px">✅</span>';
+  html += '<div><div style="font-size:13px;font-weight:600;color:var(--ink)">Infos enregistrées pour <strong>' + client.name + '</strong></div>';
+  html += '<div style="font-size:11px;color:var(--muted)">' + (parsed.summary || '') + '</div></div></div>';
+
+  if (newItems.length) {
+    html += '<div style="font-size:10px;letter-spacing:1.5px;color:var(--green);margin-bottom:4px">🆕 NOUVEAU (' + newItems.length + ')</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px">';
+    newItems.forEach(function(item) {
+      html += '<div style="background:var(--green-light);border-radius:6px;padding:5px 8px;font-size:12px">';
+      html += '<span style="color:var(--muted)">' + item.key.replace(/_/g,' ') + ' :</span> <strong>' + item.value + '</strong></div>';
+    });
+    html += '</div>';
+  }
+
+  if (updItems.length) {
+    html += '<div style="font-size:10px;letter-spacing:1.5px;color:var(--gold);margin-bottom:4px">🔄 MIS À JOUR (' + updItems.length + ')</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px">';
+    updItems.forEach(function(item) {
+      var old = existingRows.find(function(r) { return r.key === item.key; });
+      html += '<div style="background:rgba(201,150,58,.08);border-radius:6px;padding:5px 8px;font-size:12px">';
+      html += '<span style="color:var(--muted)">' + item.key.replace(/_/g,' ') + ' :</span> ';
+      if (old) html += '<span style="color:var(--red);text-decoration:line-through;margin-right:4px">' + old.value + '</span>';
+      html += '<strong>' + item.value + '</strong></div>';
+    });
+    html += '</div>';
+  }
+
+  // Quick links
+  html += '<div style="display:flex;gap:6px;margin-top:4px">';
+  html += '<button onclick="showClientContextPanel(\''+client.id+'\')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">📋 Voir tout</button>';
+  html += '<button onclick="openRelancePopup(\''+client.id+'\')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">✍ Relancer</button>';
+  html += '</div>';
+
+  var bubble = document.createElement('div');
+  bubble.className = 'chat-bubble ai';
+  bubble.innerHTML = html;
+  document.getElementById('chatMessages').appendChild(bubble);
+  scrollChat();
+
+  // Also update client notes
+  window._lastMentionedClientId = client.id;
+  window._lastMentionedClientName = client.name;
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -5628,17 +5734,13 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
   // ── Try proxy first (no client key needed) ──────────
   if (STAFFLO_PROXY) {
     try {
-      // Auto-detect language to help proxy route to best AI
-      const frenchSignal = /\b(bonjour|merci|nous|pour|avec|séjour|arrivée|votre|villa|cher|chère|veuillez|bien|tout|être|vous)\b/i;
-      const isFrench = frenchSignal.test(userContent) || frenchSignal.test(systemPrompt || '');
-      // Map task + language to proxy task name (matches proxy v8 routing table)
+      // Proxy v9 handles language detection and task resolution server-side.
+      // Just pass the task name — the proxy picks the best model + caches when appropriate.
+      //   extract / fast_classify / alerts → Groq fast
+      //   write_fr / chat_fr               → Mistral
+      //   write_en / chat_en               → Groq Llama 70B
+      //   brief / reason                    → DeepSeek
       var resolvedTask = task;
-      if (task === 'extract') resolvedTask = 'extract';                          // Groq fastest
-      else if (task === 'write_fr') resolvedTask = 'write_fr';                  // Mistral leads
-      else if (task === 'brief') resolvedTask = 'brief';                        // DeepSeek leads
-      else if (task === 'reason') resolvedTask = 'reason';                      // DeepSeek leads
-      else if (isFrench) resolvedTask = 'chat_fr';                              // Mistral leads
-      else resolvedTask = 'chat_en';                                             // Groq leads
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
