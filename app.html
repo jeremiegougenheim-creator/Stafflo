@@ -2,9 +2,6 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'><rect width='26' height='26' rx='6' fill='%23C9963A'/><text x='13' y='19' font-family='Georgia' font-size='16' font-weight='700' fill='%230F2318' text-anchor='middle'>S</text></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#0F2318">
@@ -700,7 +697,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 </div><!-- /today -->
 
 <!-- ═══ CLIENTS ════════════════════════════════════════════ -->
-<div class="tab" id="tab-clients"><div id="tab-clients-debug" style="background:red;color:white;padding:10px;font-size:14px;font-weight:bold">TAB CLIENTS VISIBLE ✓</div>
+<div class="tab" id="tab-clients">
 
   <div class="crm-header">
     <div class="crm-stats">
@@ -1127,40 +1124,25 @@ let cloudEnabled = false;
 
 function getCfg() {
   try {
-    const cfg1 = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
-    const cfg2 = JSON.parse(localStorage.getItem('stafflocfg') || '{}');
-    const cfg  = Object.assign({}, cfg2, cfg1);
-
-    let rawUrl = (cfg.sbUrl || cfg.supabaseUrl || cfg2.sbUrl || SB_URL).trim();
-
-    // Repair any malformed URL
-    rawUrl = rawUrl.replace(/^https?:\/\/supabase\.com\/dashboard\/project\//, 'https://');
-    rawUrl = rawUrl.replace(/\/settings\/general.*$/, '');
-    rawUrl = rawUrl.replace(/\/rest\/v1.*$/, '');
-    rawUrl = rawUrl.replace(/\/functions\/v1.*$/, '');
-    rawUrl = rawUrl.replace(/\/$/, '');
-    if (/^[a-z0-9]{15,}$/.test(rawUrl)) rawUrl = 'https://' + rawUrl + '.supabase.co';
-    if (!rawUrl.startsWith('http')) rawUrl = SB_URL;
-
-    // If URL ended up wrong, use hardcoded fallback
-    if (!rawUrl.includes('.supabase.co')) rawUrl = SB_URL;
-
-    const rawKey = (cfg.sbKey || cfg.supabaseKey || cfg.supabaseAnonKey ||
-                    cfg2.sbKey || cfg2.supabaseKey || SB_ANON).trim();
-
-    // Save repaired URL back to localStorage so next load is clean
-    if (rawUrl !== cfg.sbUrl || rawKey !== cfg.sbKey) {
-      cfg.sbUrl = rawUrl; cfg.supabaseUrl = rawUrl;
-      cfg.sbKey = rawKey; cfg.supabaseKey = rawKey;
-      cfg.supabaseAnonKey = rawKey;
+    var c1 = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
+    var c2 = JSON.parse(localStorage.getItem('stafflocfg') || '{}');
+    var cfg = Object.assign({}, c2, c1);
+    var url = (cfg.sbUrl || cfg.supabaseUrl || c2.sbUrl || SB_URL).trim();
+    url = url.replace(/\/rest\/v1.*$/, '').replace(/\/functions\/v1.*$/, '').replace(/\/$/, '');
+    if (/^[a-z0-9]{15,}$/.test(url)) url = 'https://' + url + '.supabase.co';
+    if (!url.startsWith('http')) url = SB_URL;
+    if (!url.includes('.supabase.co')) url = SB_URL;
+    var key = (cfg.sbKey || cfg.supabaseKey || cfg.supabaseAnonKey ||
+               c2.sbKey || c2.supabaseKey || SB_ANON).trim();
+    if (url !== cfg.sbUrl || key !== cfg.sbKey) {
+      cfg.sbUrl = cfg.supabaseUrl = url;
+      cfg.sbKey = cfg.supabaseKey = cfg.supabaseAnonKey = key;
       try { localStorage.setItem('stafflo_cfg', JSON.stringify(cfg)); } catch(e) {}
     }
-
-    cfg.sbUrl = rawUrl; cfg.supabaseUrl = rawUrl;
-    cfg.sbKey = rawKey; cfg.supabaseKey = rawKey;
-    cfg.supabaseAnonKey = rawKey; cfg.supabasePublishableKey = rawKey;
+    cfg.sbUrl = cfg.supabaseUrl = url;
+    cfg.sbKey = cfg.supabaseKey = cfg.supabaseAnonKey = cfg.supabasePublishableKey = key;
     return cfg;
-  } catch {
+  } catch(e) {
     return { sbUrl: SB_URL, supabaseUrl: SB_URL, sbKey: SB_ANON, supabaseKey: SB_ANON, supabaseAnonKey: SB_ANON };
   }
 }
@@ -1185,44 +1167,39 @@ function setSyncDot(s) {
 }
 
 async function loadFromSupabase() {
-  const cfg = getCfg();
-  const _sbUrl = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
-  const _sbKey = cfg.sbKey || SB_ANON;
-  if (!_sbKey) { loadLocal(); return; }
+  var cfg = getCfg();
+  var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+  var key = cfg.sbKey || SB_ANON;
+  if (!key) { loadLocal(); return; }
   setSyncDot('busy');
   try {
-    const r = await fetch(_sbUrl + '/rest/v1/crm_clients?select=*&order=created_at.desc', {
-      headers: { apikey: _sbKey, Authorization: 'Bearer ' + _sbKey }
+    var r = await fetch(url + '/rest/v1/crm_clients?select=*&order=created_at.desc', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
     });
     if (r.ok) {
-      const rows = await r.json();
-      clients = rows.map(r => ({
-        id:r.id, name:r.name, nat:r.nat||'', email:r.email||'', phone:r.phone||'',
-        arrival:r.arrival||'', departure:r.departure||'',
-        guests:r.guests||0, price:r.price||0, commission:r.commission||0,
-        commMode:r.comm_mode||'percent', source:r.source||'Airbnb',
-        notes:r.notes||'', payStatus:r.pay_status||'',
+      var rows = await r.json();
+      clients = rows.map(function(r) { return {
+        id: r.id, name: r.name||'', nat: r.nat||'', email: r.email||'', phone: r.phone||'',
+        arrival: r.arrival||'', departure: r.departure||'',
+        guests: r.guests||0, price: r.price||0, commission: r.commission||0,
+        commMode: r.comm_mode||'percent', source: r.source||'Airbnb',
+        notes: r.notes||'', payStatus: r.pay_status||'',
+        bookingStatus: r.booking_status||'confirmed',
         messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
-        createdAt:r.created_at||new Date().toISOString()
-      }));
-      // Populate _clientMessages cache from loaded data
-      if (!window._clientMessages) window._clientMessages = {};
-      clients.forEach(cl => { if (cl.messages) window._clientMessages[cl.id] = cl.messages; });
-      saveLocal();
-      cloudEnabled = true;
-      setSyncDot('ok');
-      setTimeout(renderTodayQV, 100);
+        createdAt: r.created_at||new Date().toISOString()
+      }; });
+      saveLocal(); renderAll(); setSyncDot('ok');
     } else { loadLocal(); setSyncDot('err'); }
   } catch(e) { loadLocal(); setSyncDot('err'); }
-  renderAll();
 }
 
 async function pushToSupabase(client) {
-  const cfg = getCfg();
-  const _sbUrl = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
-  const _sbKey = cfg.sbKey || SB_ANON;
-  const payload = {
-    id:client.id, name:client.name, nat:client.nat||'', email:client.email||'',
+  var cfg = getCfg();
+  var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+  var key = cfg.sbKey || SB_ANON;
+  if (!key) return;
+  var payload = {
+    id:client.id, name:client.name||'', nat:client.nat||'', email:client.email||'',
     phone:client.phone||'', arrival:client.arrival||null, departure:client.departure||null,
     guests:client.guests||0, price:client.price||0, commission:client.commission||0,
     comm_mode:client.commMode||'percent', source:client.source||'Direct',
@@ -1232,11 +1209,12 @@ async function pushToSupabase(client) {
   };
   setSyncDot('busy');
   try {
-    const r = await fetch(_sbUrl + '/rest/v1/crm_clients?on_conflict=id', {
-      method:'POST', headers:sbHdrs(_sbKey), body:JSON.stringify(payload)
+    var r = await fetch(url + '/rest/v1/crm_clients?on_conflict=id', {
+      method:'POST', headers:sbHdrs(key), body:JSON.stringify(payload)
     });
     setSyncDot(r.ok ? 'ok' : 'err');
-  } catch { setSyncDot('err'); }
+    if (!r.ok) { var err = await r.text(); console.warn('pushToSupabase error:', err); }
+  } catch(e) { setSyncDot('err'); }
 }
 
 async function deleteFromSupabase(id) {
@@ -1266,6 +1244,13 @@ function onPaste() {
   document.getElementById('pasteInput').classList.toggle('has-text', v.length > 0);
 }
 
+function cleanJsonStr(s) {
+  return (s||'')
+    .replace(/```json[\r\n]*/ig,'')
+    .replace(/```[\r\n]*/g,'')
+    .replace(/^[`\s]+/,'').replace(/[`\s]+$/,'')
+    .trim();
+}
 async function analyze() {
   const text = document.getElementById('pasteInput').value.trim();
   if (!text) return;
@@ -1436,7 +1421,7 @@ function renderResult(json) {
   document.getElementById('resNights').textContent = g.nights || '—';
   document.getElementById('resGuests').textContent = g.guests || '—';
   const net = g.price ? Math.round(g.price * (1 - (g.commission||3.6)/100)) : null;
-  document.getElementById('resNet').textContent = net ? net.toLocaleString('fr') + '€' : '—';
+  document.getElementById('resNet').textContent = net ? Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€' : '—';
   
   // Notes from AI
   const notesEl = document.getElementById('resNotes');
@@ -1549,14 +1534,14 @@ function copyPrice() {
 function saveFromResult(g) {
   var norm = function(s) {
     return (s||'').toLowerCase().trim()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-      .replace(/[^a-z0-9 ]/g,'');
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'');
   };
   var gNorm  = norm(g.name);
   var gPhone = (g.phone||'').replace(/[\s\-+().]/g,'');
   var gParts = gNorm.split(' ').filter(Boolean);
   var nowMs  = Date.now();
-  var dupCheck = clients.find(function(x) {
+
+  var dup = clients.find(function(x) {
     var xNorm  = norm(x.name);
     var xPhone = (x.phone||'').replace(/[\s\-+().]/g,'');
     var xParts = xNorm.split(' ').filter(Boolean);
@@ -1566,20 +1551,21 @@ function saveFromResult(g) {
     if (gParts.length === 1 && xParts.length >= 2 && xParts[0] === gParts[0]) {
       if (g.arrival && x.arrival && g.arrival === x.arrival) return true;
       if (x.arrival && Math.abs(new Date(x.arrival).getTime() - nowMs) < 60*86400000) return true;
-      if (x.departure && new Date(x.departure).getTime() >= nowMs - 7*86400000) return true;
     }
     if (xPhone && gPhone && xPhone === gPhone) return true;
     if (x.arrival && g.arrival && x.arrival === g.arrival) return true;
     return false;
   });
-  if (dupCheck) {
-    mergeWithExisting(dupCheck.id, g);
-    toast('✓ ' + dupCheck.name + (lang==='fr' ? ' mis à jour' : ' updated'));
+
+  if (dup) {
+    mergeWithExisting(dup.id, g);
+    toast('\u2713 ' + dup.name + (lang==='fr' ? ' mis \u00e0 jour' : ' updated'));
     return;
   }
-  var newId = Date.now().toString();
+
+  var id = Date.now().toString();
   var client = {
-    id: newId, name: g.name||'', nat: g.nat||'', email: g.email||'',
+    id: id, name: g.name||'', nat: g.nat||'', email: g.email||'',
     phone: g.phone||'', arrival: g.arrival||'', departure: g.departure||'',
     guests: g.guests||0, price: g.price||0, commission: g.commission||3.6,
     commMode: 'percent', source: g.source||'Airbnb',
@@ -1588,10 +1574,13 @@ function saveFromResult(g) {
     createdAt: new Date().toISOString(),
     messages: currentMsgs && Object.keys(currentMsgs).length ? Object.assign({}, currentMsgs) : null
   };
-  if (client.messages) { if (!window._clientMessages) window._clientMessages={}; window._clientMessages[newId]=client.messages; }
+  if (client.messages) {
+    if (!window._clientMessages) window._clientMessages = {};
+    window._clientMessages[id] = client.messages;
+  }
   clients.unshift(client);
   saveLocal(); pushToSupabase(client); renderAll();
-  toast(lang==='fr' ? '✓ Client sauvegardé' : '✓ Guest saved');
+  toast(lang==='fr' ? '\u2713 Client sauvegard\u00e9' : '\u2713 Guest saved');
 }
 
 function mergeWithExisting(existingId, newData) {
@@ -1620,7 +1609,7 @@ function mergeWithExisting(existingId, newData) {
   // Append new notes (don't overwrite existing)
   const newNotes = newData.notes || newData.new_info || '';
   if (newNotes && newNotes !== merged.notes) {
-    const timestamp = new Date().toLocaleString(fr?'fr-FR':'en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+    const timestamp = (function(){ var d=new Date(); return d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); })();
     // Append only if genuinely new info
     if (!merged.notes || !merged.notes.includes(newNotes.slice(0,20))) {
       merged.notes = merged.notes ? merged.notes + ' · ' + newNotes : newNotes;
@@ -1710,10 +1699,10 @@ function renderAll() {
 
 function updateHeaderStats() {
   const total = clients.reduce((s,c) => s + netAmt(c), 0);
-  document.getElementById('hNet').textContent = total.toLocaleString('fr') + '€';
+  document.getElementById('hNet').textContent = Math.round(total).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
   document.getElementById('hCount').textContent = clients.length;
   document.getElementById('crmCount').textContent = clients.length;
-  document.getElementById('crmNet').textContent = total.toLocaleString('fr') + '€';
+  document.getElementById('crmNet').textContent = Math.round(total).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
   const withNights = clients.filter(c => c.arrival && c.departure);
   if (withNights.length) {
     const avg = Math.round(withNights.reduce((s,c)=>s+netAmt(c)/(nights(c)||1),0)/withNights.length);
@@ -1725,7 +1714,7 @@ function renderStaysBar() {
   const bar = document.getElementById('staysBar');
   const today = new Date().toISOString().slice(0,10);
   const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
-  const upcoming = clients.filter(c => c.arrival && c.arrival > today).sort((a,b)=>a.arrival.localeCompare(b.arrival)).slice(0,4);
+  const upcoming = clients.filter(c => c.arrival && c.arrival > today).sort(function(a,b){return a.arrival<b.arrival?-1:a.arrival>b.arrival?1:0;}).slice(0,4);
 
   if (!inHouse && !upcoming.length) {
     bar.innerHTML = `<span style="font-size:11px;color:rgba(255,255,255,.3);font-style:italic">${lang==='fr'?'Aucune réservation à venir':'No upcoming stays'}</span>
@@ -1749,57 +1738,79 @@ function renderStaysBar() {
 }
 
 function renderClients() {
-  console.log('[Stafflo] renderClients: clients.length=', clients.length, 'crmFilter=', crmFilter);
-  const search = (document.getElementById('crmSearch')?.value || '').toLowerCase();
-  let list = [...clients];
+  var fr = lang === 'fr';
+  var searchEl = document.getElementById('crmSearch');
+  var search = searchEl ? (searchEl.value || '').toLowerCase() : '';
+  var list = clients.slice(); // SES-safe copy
 
-  if (search) list = list.filter(c => (c.name||'').toLowerCase().includes(search) || (c.nat||'').toLowerCase().includes(search) || (c.source||'').toLowerCase().includes(search));
-  if (crmFilter === 'inquiry') list = list.filter(c => getStatus(c) === 'inquiry');
-  else if (crmFilter === 'current') list = list.filter(c => getStatus(c) === 'current');
-  else if (crmFilter === 'upcoming') list = list.filter(c => getStatus(c) === 'upcoming');
-  else if (crmFilter === 'past') list = list.filter(c => getStatus(c) === 'past');
+  // Filter
+  if (search) {
+    list = list.filter(function(x) {
+      return (x.name||'').toLowerCase().indexOf(search) !== -1 ||
+             (x.nat||'').toLowerCase().indexOf(search) !== -1 ||
+             (x.source||'').toLowerCase().indexOf(search) !== -1;
+    });
+  }
+  if (crmFilter === 'inquiry')  list = list.filter(function(x){ return getStatus(x) === 'inquiry'; });
+  else if (crmFilter === 'current')  list = list.filter(function(x){ return getStatus(x) === 'current'; });
+  else if (crmFilter === 'upcoming') list = list.filter(function(x){ return getStatus(x) === 'upcoming'; });
+  else if (crmFilter === 'past')     list = list.filter(function(x){ return getStatus(x) === 'past'; });
 
-  const order = {inquiry:0, current:1, upcoming:2, nodate:3, past:4};
-  list.sort((a,b) => {
-    const diff = order[getStatus(a)] - order[getStatus(b)];
-    if (diff !== 0) return diff;
-    if (a.arrival && b.arrival) return a.arrival.localeCompare(b.arrival);
+  // Sort by status then arrival date
+  var order = {inquiry:0, current:1, upcoming:2, nodate:3, past:4};
+  list.sort(function(a, b) {
+    var sa = getStatus(a), sb = getStatus(b);
+    var oa = order[sa] !== undefined ? order[sa] : 99;
+    var ob = order[sb] !== undefined ? order[sb] : 99;
+    if (oa !== ob) return oa - ob;
+    if (a.arrival && b.arrival) {
+      if (a.arrival < b.arrival) return -1;
+      if (a.arrival > b.arrival) return 1;
+    }
     return 0;
   });
 
-  const el = document.getElementById('clientList');
+  var el = document.getElementById('clientList');
+  if (!el) { console.error('[Stafflo] clientList NOT FOUND'); return; }
+
   if (!list.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏡</div><div style="font-size:15px">${lang==='fr'?'Aucun client — collez un message dans Aujourd\'hui':'No guests — paste a message in Today'}</div></div>`;
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏡</div><div style="font-size:15px">' +
+      (fr ? 'Aucun client' : 'No guests') + '</div></div>';
     return;
   }
 
-  const fr = lang === 'fr';
-  try {
-  el.innerHTML = list.map(c => {
-    const s = getStatus(c);
-    const n = nights(c);
-    const net = netAmt(c);
-    const badgeClass = s==='inquiry'?'badge-inquiry':s==='current'?'badge-current':s==='upcoming'?'badge-upcoming':s==='past'?'badge-past':'badge-nodate';
-    const badgeText = s==='inquiry'?'💬 '+(fr?'Demande':'Inquiry'):s==='current'?'🟢 '+(fr?'En cours':'Current'):s==='upcoming'?(fr?'À venir':'Upcoming'):s==='past'?(fr?'Passé':'Past'):(fr?'Sans date':'No date');
-    return `<div class="client-card ${s}" onclick="openDetail('${c.id}')">
-      <div class="cc-top">
-        <div class="cc-avatar">${initials(c.name)}</div>
-        <div>
-          <div class="cc-name">${c.name}</div>
-          <div class="cc-sub">${c.nat||''} ${c.source?'· '+c.source:''}</div>
-        </div>
-        <span class="cc-badge ${badgeClass}">${badgeText}</span>
-      </div>
-      <div class="cc-grid">
-        <div class="cc-item"><label>${fr?'ARRIVÉE':'ARRIVAL'}</label><span>${fmtDate(c.arrival, true)}</span></div>
-        <div class="cc-item"><label>${fr?'NUITS':'NIGHTS'}</label><span>${n||'—'}</span></div>
-        <div class="cc-item"><label>${fr?'PERS.':'GUESTS'}</label><span>${c.guests||'—'}</span></div>
-        ${net ? `<div class="cc-item"><label>${fr?'NET VOUS':'YOUR NET'}</label><span class="net">${net.toLocaleString('fr')}€</span></div>` : ''}
-      </div>
-    </div>`;
-  }).join('');
-  console.log('[Stafflo] clientList innerHTML length:', el.innerHTML.length);
-  } catch(mapErr) { console.error('[Stafflo] renderClients map error:', mapErr.message, mapErr); el.innerHTML = '<div style="padding:20px;color:red;font-size:13px">Render error: '+mapErr.message+'</div>'; };
+  var html = '';
+  for (var i = 0; i < list.length; i++) {
+    var cl = list[i];
+    var s = getStatus(cl);
+    var n = nights(cl);
+    var net = netAmt(cl);
+    var bClass = s==='inquiry' ? 'badge-inquiry' : s==='current' ? 'badge-current' :
+                 s==='upcoming' ? 'badge-upcoming' : s==='past' ? 'badge-past' : 'badge-nodate';
+    var bText  = s==='inquiry'  ? ('💬 ' + (fr?'Demande':'Inquiry')) :
+                 s==='current'  ? ('🟢 ' + (fr?'En cours':'Current')) :
+                 s==='upcoming' ? (fr?'À venir':'Upcoming') :
+                 s==='past'     ? (fr?'Passé':'Past') : (fr?'Sans date':'No date');
+    // SES-safe number format
+    var netStr = net ? (Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f') + '€') : '';
+    html += '<div class="client-card ' + s + '" onclick="openDetail(\'' + cl.id + '\')">' +
+      '<div class="cc-top">' +
+        '<div class="cc-avatar">' + initials(cl.name) + '</div>' +
+        '<div>' +
+          '<div class="cc-name">' + (cl.name||'') + '</div>' +
+          '<div class="cc-sub">' + (cl.nat||'') + (cl.source ? ' · ' + cl.source : '') + '</div>' +
+        '</div>' +
+        '<span class="cc-badge ' + bClass + '">' + bText + '</span>' +
+      '</div>' +
+      '<div class="cc-grid">' +
+        '<div class="cc-item"><label>' + (fr?'ARRIVÉE':'ARRIVAL') + '</label><span>' + fmtDate(cl.arrival, true) + '</span></div>' +
+        '<div class="cc-item"><label>' + (fr?'NUITS':'NIGHTS') + '</label><span>' + (n||'—') + '</span></div>' +
+        '<div class="cc-item"><label>' + (fr?'PERS.':'GUESTS') + '</label><span>' + (cl.guests||'—') + '</span></div>' +
+        (netStr ? '<div class="cc-item"><label>' + (fr?'NET VOUS':'YOUR NET') + '</label><span class="net">' + netStr + '</span></div>' : '') +
+      '</div>' +
+    '</div>';
+  }
+  el.innerHTML = html;
 }
 
 // ════════════════════════════════════════════
@@ -1880,14 +1891,14 @@ function openDetail(id) {
   var netHTML = net ?
     '<div style="margin:12px 16px;background:linear-gradient(135deg,var(--green3),#1B4332);border-radius:12px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">' +
     '<div><div style="font-size:11px;color:rgba(255,255,255,.5);text-transform:uppercase">'+(fr?'Net vous':'Your net')+'</div>' +
-    '<div style="font-family:Fraunces,serif;font-size:26px;color:#fff;font-weight:300">'+net.toLocaleString('fr')+'€</div></div>' +
+    '<div style="font-family:Fraunces,serif;font-size:26px;color:#fff;font-weight:300">'+Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')+'€</div></div>' +
     '<div style="text-align:right"><div style="font-size:11px;color:rgba(255,255,255,.5)">'+(fr?'Par nuit':'Per night')+'</div>' +
-    '<div style="font-size:16px;color:var(--gold);font-weight:600">'+(n?Math.round(net/n).toLocaleString('fr'):'—')+'€</div>' +
+    '<div style="font-size:16px;color:var(--gold);font-weight:600">'+(n?Math.round(net/n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f'):'—')+'€</div>' +
     '<div style="font-size:10px;color:rgba(255,255,255,.4);margin-top:2px">'+(cl.commission||'—')+'% '+(cl.source||'')+'</div></div>' +
     '</div>' : '';
 
   // Rows HTML
-  var rowData = [['Source',cl.source],[fr?'Prix brut':'Gross',cl.price?cl.price.toLocaleString('fr')+'€':null],[fr?'Commission':'Commission',cl.commission?cl.commission+'%':null],[fr?'Paiement':'Payment',payLabel]].filter(function(r){return r[1];});
+  var rowData = [['Source',cl.source],[fr?'Prix brut':'Gross',cl.price?cl.Math.round(price).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')+'€':null],[fr?'Commission':'Commission',cl.commission?cl.commission+'%':null],[fr?'Paiement':'Payment',payLabel]].filter(function(r){return r[1];});
   var rowsHTML = '<div style="margin:0 16px 12px;border-radius:10px;border:1px solid var(--border);overflow:hidden">' +
     rowData.map(function(r,i){
       return '<div style="display:flex;justify-content:space-between;padding:10px 14px;'+(i<rowData.length-1?'border-bottom:1px solid var(--border)':'')+'">' +
@@ -1909,7 +1920,7 @@ function openDetail(id) {
        fmtDate(cl.departure,true)+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Départ':'Departure')+'</span>',
        (n||'—')+'n<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Nuits':'Nights')+'</span>',
        guestsDisplay+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Pers.':'Guests')+'</span>',
-       (net?net.toLocaleString('fr')+'€':'—')+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Net':'Net')+'</span>'
+       (net?Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')+'€':'—')+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Net':'Net')+'</span>'
       ].map(function(h){return '<div style="padding:10px 6px;text-align:center;font-size:12px;font-weight:700;color:var(--ink)">'+h+'</div>';}).join('') +
     '</div>' +
     '<div style="padding:10px 16px 4px">'+renderReadinessBar(cl,fr)+'</div>' +
@@ -2016,7 +2027,7 @@ function updateNetPreview() {
   const el = document.getElementById('netPreview');
   if (p > 0) {
     const net = Math.round(p*(1-comm/100));
-    el.textContent = '→ Net : ' + net.toLocaleString('fr') + '€ (−'+comm+'%)';
+    el.textContent = '→ Net : ' + Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€ (−'+comm+'%)';
     el.style.display = 'block';
   } else { el.style.display = 'none'; }
 }
@@ -2058,26 +2069,18 @@ function deleteClient(id) {
 // SETTINGS
 // ════════════════════════════════════════════
 function loadSettingsUI() {
-  const cfg = getCfg();
-  document.getElementById('cfgVilla').value = cfg.villa || '';
-  document.getElementById('cfgOwner').value = cfg.owner || '';
-  document.getElementById('cfgCity').value = cfg.city || '';
-  document.getElementById('cfgStaff').value = cfg.staff || '';
-  document.getElementById('cfgWa').value = cfg.wa || '';
-  document.getElementById('cfgGps').value = cfg.gps || '';
-  document.getElementById('cfgSbUrl').value = cfg.sbUrl || '';
-  document.getElementById('cfgSbKey').value = cfg.sbKey || '';
-  (function(){ var _e=document.getElementById('cfgGeminiKey'); if(_e) _e.value=cfg.geminiKey||''; })();
-  (function(){ var _e=document.getElementById('cfgDeepseekKey'); if(_e) _e.value=cfg.deepseekKey||''; })();
-  (function(){ var _e=document.getElementById('cfgPerplexityKey'); if(_e) _e.value=cfg.perplexityKey||''; })();
-  (function(){ var _e=document.getElementById('cfgAnthropicKey'); if(_e) _e.value=cfg.anthropicKey||''; })();
-  (function(){ var _e=document.getElementById('cfgOpenaiKey'); if(_e) _e.value=cfg.openaiKey||''; })();
-  (function(){ var _e=document.getElementById('cfgMistralKey'); if(_e) _e.value=cfg.mistralKey||''; })();
-  (function(){ var _e=document.getElementById('cfgGroqKey'); if(_e) _e.value=cfg.groqKey||''; })();
-  const ps = document.getElementById('cfgPublicSessionKey'); if (ps) ps.value = cfg.publicSessionKey || '';
-  const cm = document.getElementById('cfgClientMode'); if (cm) cm.value = cfg.clientMode || 'public';
-  const provSel = document.getElementById('cfgAiProvider');
-  if (provSel) { provSel.value = cfg.aiProvider || 'gemini'; toggleProviderFields(); }
+  var cfg = getCfg();
+  var set = function(id, val) { var e = document.getElementById(id); if (e) e.value = val || ''; };
+  set('cfgVilla', cfg.villa);   set('cfgOwner', cfg.owner);
+  set('cfgCity',  cfg.city);    set('cfgStaff', cfg.staff);
+  set('cfgWa',    cfg.wa);      set('cfgGps',   cfg.gps);
+  set('cfgSbUrl', cfg.sbUrl);   set('cfgSbKey', cfg.sbKey);
+  set('cfgGeminiKey',   cfg.geminiKey);   set('cfgGroqKey',    cfg.groqKey);
+  set('cfgMistralKey',  cfg.mistralKey);  set('cfgDeepseekKey',cfg.deepseekKey);
+  set('cfgAnthropicKey',cfg.anthropicKey);set('cfgOpenaiKey',  cfg.openaiKey);
+  set('cfgPerplexityKey',cfg.perplexityKey);
+  var ps = document.getElementById('cfgPublicSessionKey'); if (ps) ps.value = cfg.publicSessionKey || '';
+  var cm = document.getElementById('cfgClientMode'); if (cm) cm.value = cfg.clientMode || 'public';
 }
 
 async function saveSettings() {
@@ -2175,14 +2178,12 @@ function applyLang() {
 // TABS
 // ════════════════════════════════════════════
 function goTab(t) {
-  console.log('[Stafflo] goTab called:', t);
   ['today','clients','home'].forEach(id => {
     const tab = document.getElementById('tab-'+id);
     const btn = document.getElementById('nb-'+id);
     if (tab) {
       tab.classList.toggle('on', id===t);
       tab.style.display = (id===t) ? 'block' : 'none';
-      console.log('[Stafflo] tab-'+id+' display='+(id===t?'block':'none'));
     }
     if (btn) btn.classList.toggle('on', id===t);
   });
@@ -2275,16 +2276,19 @@ function toast(msg) {
 // INIT
 // ════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-  // Auto-skip onboarding for returning users
-  try { var _cr=JSON.parse(localStorage.getItem('stafflo_cfg')||'{}'); if(_cr.sbKey||_cr.supabaseKey||_cr.supabaseAnonKey||_cr.supabasePublishableKey){localStorage.setItem('stafflo_onboarded','1');} } catch(e) {}
-  // Attach nav button listeners via JS (avoids SES/CSP blocking of inline onclick)
-  document.getElementById('nb-today').addEventListener('click', function() { goTab('today'); });
-  document.getElementById('nb-clients').addEventListener('click', function() { goTab('clients'); });
-  document.getElementById('nb-home').addEventListener('click', function() { goTab('home'); });
-  // Settings gear button
-  var _gearBtn = document.querySelector('.hdr-btn[title="Settings"]');
-  if (_gearBtn) _gearBtn.addEventListener('click', function() { openSettings(); });
-
+  // Migrate old localStorage keys
+  try {
+    var _c = JSON.parse(localStorage.getItem('stafflo_cfg')||'{}');
+    var _c2 = JSON.parse(localStorage.getItem('stafflocfg')||'{}');
+    if (!_c.sbKey && _c2.sbKey) { _c.sbKey = _c2.sbKey; localStorage.setItem('stafflo_cfg', JSON.stringify(_c)); }
+    if (_c.sbKey || _c2.sbKey) localStorage.setItem('stafflo_onboarded','1');
+  } catch(e) {}
+  // Nav listeners (addEventListener avoids SES/CSP issues with inline onclick)
+  document.getElementById('nb-today').addEventListener('click', function(){ goTab('today'); });
+  document.getElementById('nb-clients').addEventListener('click', function(){ goTab('clients'); });
+  document.getElementById('nb-home').addEventListener('click', function(){ goTab('home'); });
+  var _gear = document.querySelector('.hdr-btn[title="Settings"]');
+  if (_gear) _gear.addEventListener('click', openSettings);
   applyLang();
   goTab('today'); // Always start on Today tab
   setTimeout(checkOnboarding, 600);
@@ -2471,11 +2475,11 @@ function updatePrice() {
   document.getElementById('bdMods').style.color = modsTotal >= 0 ? '#97C459' : '#F09595';
   document.getElementById('bdGuests').textContent = d.guestExtra > 0 ? '+'+d.guestExtra+'€/nuit' : '—';
   document.getElementById('bdNights').textContent = d.nights;
-  document.getElementById('bdTotal').textContent = d.gross.toLocaleString('fr') + '€';
-  document.getElementById('bdComm').textContent = '-' + d.comm.toLocaleString('fr') + '€';
+  document.getElementById('bdTotal').textContent = d.Math.round(gross).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
+  document.getElementById('bdComm').textContent = '-' + d.Math.round(comm).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
   const commLbl = document.getElementById('bdCommLbl');
   if (commLbl) commLbl.textContent = 'Airbnb ' + Math.round(d.hostFeeRate*100) + '% (host fee)';
-  document.getElementById('bdNet').textContent = d.net.toLocaleString('fr') + '€';
+  document.getElementById('bdNet').textContent = d.Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
 
   const badge = document.getElementById('heroBadge');
   if (netPN >= 700) { badge.textContent = lang==='fr' ? 'Au-dessus objectif ✓' : 'Above target ✓'; badge.className = 'price-badge-home pbh-good'; }
@@ -2543,12 +2547,12 @@ function renderCompetitors() {
 
   document.getElementById('compContent').innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <div style="font-size:11px;color:var(--text3)">Moyenne marché : <strong style="color:var(--text)">${avgMarket.toLocaleString('fr')}EUR</strong></div>
+      <div style="font-size:11px;color:var(--text3)">Moyenne marché : <strong style="color:var(--text)">${Math.round(avgMarket).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')}EUR</strong></div>
     </div>
     <div class="comp-item" style="background:rgba(201,168,76,.08);border-radius:6px;padding:8px 10px;margin-bottom:4px">
       <div class="comp-name" style="color:#BA7517;font-weight:500">Villa DarJ (vous)</div>
       <div class="comp-bar"><div class="comp-fill comp-you" style="width:${Math.round(yourPrice/maxPrice*100)}%"></div></div>
-      <div class="comp-price" style="color:#BA7517">${yourPrice.toLocaleString('fr')}EUR</div>
+      <div class="comp-price" style="color:#BA7517">${Math.round(yourPrice).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')}EUR</div>
       <div style="font-size:10px;color:#3B6D11;min-width:40px;text-align:right">ref</div>
     </div>
     ${comps.map(c => {
@@ -2556,7 +2560,7 @@ function renderCompetitors() {
       const diff = c.price - yourPrice;
       const diffStr = diff > 0 ? '+'+diff+'EUR' : diff+'EUR';
       const diffColor = diff > 0 ? '#3B6D11' : '#A32D2D';
-      return '<div class="comp-item"><div class="comp-name">'+c.name+'</div><div class="comp-bar"><div class="comp-fill" style="width:'+pct+'%"></div></div><div class="comp-price">'+c.price.toLocaleString('fr')+'EUR</div><div style="color:'+diffColor+';font-size:10px;min-width:40px;text-align:right">'+diffStr+'</div></div><div style="font-size:10px;color:var(--text3);padding:0 0 6px 0;margin-top:-4px">via '+( c.source||'—')+'</div>';
+      return '<div class="comp-item"><div class="comp-name">'+c.name+'</div><div class="comp-bar"><div class="comp-fill" style="width:'+pct+'%"></div></div><div class="comp-price">'+c.Math.round(price).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')+'EUR</div><div style="color:'+diffColor+';font-size:10px;min-width:40px;text-align:right">'+diffStr+'</div></div><div style="font-size:10px;color:var(--text3);padding:0 0 6px 0;margin-top:-4px">via '+( c.source||'—')+'</div>';
     }).join('')}
     <div style="margin-top:10px;padding:8px 10px;border-radius:6px;font-size:12px;${vsAvg < -100 ? 'background:#EAF3DE;color:#3B6D11' : vsAvg > 100 ? 'background:#FAEEDA;color:#854F0B' : 'background:var(--bg);color:var(--text3)'}">
       ${vsAvg < -100 ? 'Vous etes '+Math.abs(vsAvg)+'EUR sous la moyenne - potentiel de hausse' : vsAvg > 100 ? 'Vous etes '+vsAvg+'EUR au-dessus - verifiez le taux de remplissage' : 'Prix dans la moyenne du marche'}
@@ -2624,7 +2628,7 @@ function renderScenarios(pricePN) {
     const net = Math.round(rev * 0.83);
     return `<div class="scenario">
       <div class="scenario-pct">${sc.pct} rempli</div>
-      <div class="scenario-rev">${net.toLocaleString('fr')}€</div>
+      <div class="scenario-rev">${Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')}€</div>
       <div class="scenario-net">net / mois</div>
       <div class="scenario-bar"><div style="height:4px;border-radius:2px;background:${sc.color};width:${sc.nights/30*100}%"></div></div>
     </div>`;
@@ -2874,7 +2878,7 @@ async function generateAlerts(weatherTemp) {
     sub: fr?'Activez la réduction last-minute (-15%) et ciblez les réservations directes.':'Activate last-minute discount (-15%) and target direct bookings.'});
   else if (occupancyRate >= 70) alerts.push({type:'good',
     title:'🎯 ' + occupancyRate + '% ' + (fr?'d\'occupation ce mois':'occupancy this month'),
-    sub: (fr?'Revenu brut: ':'Gross revenue: ') + monthRevenue.toLocaleString('fr') + '€ · ' + (fr?'Excellent mois !':'Excellent month!')});
+    sub: (fr?'Revenu brut: ':'Gross revenue: ') + Math.round(monthRevenue).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€ · ' + (fr?'Excellent mois !':'Excellent month!')});
 
   // Weekend pricing opportunity
   if ((day === 3 || day === 4) && !inHouse) { // Wed/Thu — upcoming weekend gap
@@ -2891,7 +2895,7 @@ async function generateAlerts(weatherTemp) {
     title:'🚀 ' + (fr?'Commencez par ajouter vos réservations':'Start by adding your bookings'),
     sub: fr?'Collez un email Airbnb dans Analyser un message — 1 clic suffit.':'Paste an Airbnb email in Analyse a message — 1 click is all it takes.'});
   
-  const lastCheckout = clients.filter(c => c.departure && c.departure < today).sort((a,b)=>b.departure.localeCompare(a.departure))[0];
+  const lastCheckout = clients.filter(c => c.departure && c.departure < today).sort(function(a,b){return b.departure<a.departure?-1:b.departure>a.departure?1:0;})[0];
   if (lastCheckout && daysFrom(lastCheckout.departure) >= -5 && daysFrom(lastCheckout.departure) < 0) {
     allTips.push({type:'info',
       title:'⭐ ' + (fr?'Demandez un avis à ':'Ask for review from ') + lastCheckout.name,
@@ -3316,14 +3320,14 @@ function renderMarketBand() {
 
 
 function openSettings() {
-  try { loadSettingsUI(); } catch(e) { console.warn('loadSettingsUI error:', e); }
+  try { loadSettingsUI(); } catch(e) {}
   try { updateSessionBadge(); } catch(e) {}
-  const modal = document.getElementById('settingsModal');
-  const panel = document.getElementById('settingsPanel');
-  if (!modal) { console.error('settingsModal not found'); return; }
+  var modal = document.getElementById('settingsModal');
+  var panel = document.getElementById('settingsPanel');
+  if (!modal) return;
   modal.style.cssText = 'display:flex!important;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9998;align-items:flex-start;justify-content:flex-end';
   document.body.style.overflow = 'hidden';
-  if (panel) requestAnimationFrame(() => { panel.style.transform = 'translateX(0)'; });
+  if (panel) requestAnimationFrame(function() { panel.style.transform = 'translateX(0)'; });
 }
 function closeSettings() {
   const panel = document.getElementById('settingsPanel');
@@ -3343,7 +3347,7 @@ function renderTodayQV() {
   // Find in-house and next upcoming
   const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
   const upcoming = clients.filter(c => c.arrival && c.arrival > today)
-    .sort((a,b) => a.arrival.localeCompare(b.arrival));
+    .sort(function(a,b){return a.arrival<b.arrival?-1:a.arrival>b.arrival?1:0;});
   const nextUp = upcoming[0] || null;
   const checkoutToday = clients.filter(c => c.departure === today);
   const checkinToday = clients.filter(c => c.arrival === today);
@@ -3376,7 +3380,7 @@ function renderTodayQV() {
           <div class="qv-stat-lbl">${fr?'NUITS':'NIGHTS'}</div>
         </div>
         <div class="qv-stat">
-          <div class="qv-stat-val">${netPN ? netPN.toLocaleString('fr')+'€' : '—'}</div>
+          <div class="qv-stat-val">${netPN ? Math.round(netPN).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')+'€' : '—'}</div>
           <div class="qv-stat-lbl">${fr?'NET/NUIT':'NET/NIGHT'}</div>
         </div>
       </div>
@@ -4073,8 +4077,6 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
       const cacheKey = (task === 'brief' || task === 'news')
         ? task + ':' + new Date().toISOString().slice(0, 13) // per hour
         : null;
-
-      console.log('[Stafflo] proxy call:', task, 'user length:', (userContent||'').length);
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4091,8 +4093,8 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
       if (r.ok) {
         const d = await r.json();
         if (d.text) {
-          if (d.cached) console.info('[Stafflo] cache hit:', task);
-          else console.info('[Stafflo] proxy →', d.provider, '·', task);
+          if (d.cached) 
+          else 
           return d.text;
         }
       } else if (r.status === 429) {
@@ -4103,7 +4105,7 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
       }
     } catch(e) {
       if (e.message === 'rate_limit') throw e;
-      console.warn('[Stafflo] proxy failed:', e.message, '— trying client keys');
+      
     }
   }
 
@@ -4126,7 +4128,7 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
         if (window._lastUsedAI[task] !== pid) {
           window._lastUsedAI[task] = pid;
           const names = {groq:'Groq ⚡', gemini:'Gemini ✦', mistral:'Mistral 🌟', deepseek:'DeepSeek 🔍'};
-          console.info('[Stafflo] client key →', names[pid] || pid, '·', task);
+          
         }
         return result;
       }
