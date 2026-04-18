@@ -983,6 +983,47 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 </main>
 
+<!-- ══ WA SEND POPUP ══════════════════════════════════════ -->
+<div id="waSendModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9997;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeWASend()">
+  <div style="background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:640px;padding:0;box-shadow:0 -8px 40px rgba(0,0,0,.25)">
+    <!-- Header -->
+    <div style="background:var(--green3);padding:14px 20px 12px;border-radius:20px 20px 0 0;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">MESSAGE PRÊT</div>
+        <div id="waSendClientName" style="font-family:'Fraunces',serif;font-size:17px;color:#fff;font-weight:300">—</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div id="waSendPhone" style="font-size:11px;color:rgba(255,255,255,.4)"></div>
+        <button onclick="closeWASend()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
+      </div>
+    </div>
+    <!-- Message body -->
+    <div style="padding:16px">
+      <div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">MESSAGE (modifiable)</div>
+      <textarea id="waSendBody" rows="7" style="width:100%;padding:12px;border:1.5px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.7;color:var(--ink);background:var(--paper);resize:none;outline:none;transition:border-color .2s" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+      <!-- Actions -->
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <a id="waSendBtn" href="#" target="_blank" onclick="onWASendClick()" style="flex:2;background:#25D366;color:#fff;border:none;border-radius:10px;padding:13px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;text-align:center;text-decoration:none;display:block;cursor:pointer">
+          💬 Envoyer via WhatsApp
+        </a>
+        <button onclick="copyWASendMsg()" style="flex:1;background:none;border:1.5px solid var(--border);border-radius:10px;padding:13px;font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;color:var(--muted)">
+          📋 Copier
+        </button>
+      </div>
+      <!-- Sent log feedback -->
+      <div id="waSentConfirm" style="display:none;margin-top:10px;background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--green);font-weight:500;text-align:center">
+        ✓ Message enregistré dans l'historique
+      </div>
+    </div>
+    <!-- History hint -->
+    <div id="waMsgHistory" style="border-top:1px solid var(--border);padding:10px 16px 14px">
+      <div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">HISTORIQUE ENVOIS</div>
+      <div id="waMsgHistoryList" style="font-size:12px;color:var(--muted)">Chargement...</div>
+    </div>
+  </div>
+</div>
+
+
 <!-- CLIENT DETAIL MODAL -->
 <div class="modal-bg" id="detailModal" onclick="if(event.target===this)closeDetail()">
   <div class="modal" style="position:relative">
@@ -1268,6 +1309,14 @@ function cleanJsonStr(s) {
 async function analyze() {
   const text = document.getElementById('pasteInput').value.trim();
   if (!text) return;
+
+  // ── Detect command intent (e.g. "relance Celia") ──
+  var cmd = detectCommandIntent(text);
+  if (cmd && cmd.type === 'send') {
+    handleSendCommand(cmd.client, text);
+    return;
+  }
+
 
   const btn = document.getElementById('analyzeBtn');
   btn.disabled = true;
@@ -2395,6 +2444,224 @@ function sendDetailByWA(clientId) {
 // ════════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════
+// WA SEND POPUP — send messages + log to Supabase
+// ════════════════════════════════════════════════════════
+
+var _waSendState = { clientId: null, phone: null };
+
+function showWASend(clientId, msgBody, msgType) {
+  var cl = clients.find(function(c) { return c.id === clientId; });
+  if (!cl) return;
+  var phone = (cl.phone || '').replace(/[\s\-+()]/g, '');
+
+  _waSendState = { clientId: clientId, clientName: cl.name, phone: phone, msgType: msgType || 'custom' };
+
+  document.getElementById('waSendClientName').textContent = cl.name + (cl.nat ? ' ' + cl.nat : '');
+  document.getElementById('waSendPhone').textContent = cl.phone || 'Pas de numéro';
+  document.getElementById('waSendBody').value = msgBody || '';
+  document.getElementById('waSentConfirm').style.display = 'none';
+
+  // Update WA link live as user types
+  document.getElementById('waSendBody').oninput = updateWALink;
+  updateWALink();
+
+  // Load history
+  loadMsgHistory(clientId);
+
+  var modal = document.getElementById('waSendModal');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  setTimeout(function() { document.getElementById('waSendBody').focus(); }, 100);
+}
+
+function updateWALink() {
+  var phone = _waSendState.phone;
+  var text = document.getElementById('waSendBody').value;
+  var url = phone
+    ? 'https://wa.me/' + phone + '?text=' + encodeURIComponent(text)
+    : 'https://wa.me/?text=' + encodeURIComponent(text);
+  document.getElementById('waSendBtn').href = url;
+}
+
+function onWASendClick() {
+  // Log the message when WA button is clicked
+  var body = document.getElementById('waSendBody').value;
+  var phone = _waSendState.phone;
+  var url = phone
+    ? 'https://wa.me/' + phone + '?text=' + encodeURIComponent(body)
+    : 'https://wa.me/?text=' + encodeURIComponent(body);
+  logMsgSent(body, url);
+}
+
+function copyWASendMsg() {
+  var text = document.getElementById('waSendBody').value;
+  navigator.clipboard.writeText(text).then(function() {
+    logMsgSent(text, null);
+    toast('📋 ' + (lang === 'fr' ? 'Message copié' : 'Message copied'));
+  });
+}
+
+function closeWASend() {
+  document.getElementById('waSendModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function logMsgSent(body, waLink) {
+  var cfg = getCfg();
+  var url = cfg.sbUrl || SB_URL;
+  var key = cfg.sbKey || SB_ANON;
+  var state = _waSendState;
+
+  var payload = {
+    client_id:   state.clientId || null,
+    client_name: state.clientName || '?',
+    phone:       state.phone || '',
+    msg_type:    state.msgType || 'custom',
+    msg_body:    body,
+    wa_link:     waLink || null
+  };
+
+  try {
+    await fetch(url + '/rest/v1/msg_log', {
+      method: 'POST',
+      headers: sbHdrs(key),
+      body: JSON.stringify(payload)
+    });
+    var confirm = document.getElementById('waSentConfirm');
+    if (confirm) { confirm.style.display = 'block'; }
+    // Refresh history
+    loadMsgHistory(state.clientId);
+  } catch(e) {
+    console.warn('logMsgSent error:', e);
+  }
+}
+
+async function loadMsgHistory(clientId) {
+  var el = document.getElementById('waMsgHistoryList');
+  if (!el) return;
+  if (!clientId) { el.textContent = '—'; return; }
+
+  var cfg = getCfg();
+  var url = cfg.sbUrl || SB_URL;
+  var key = cfg.sbKey || SB_ANON;
+
+  try {
+    var r = await fetch(
+      url + '/rest/v1/msg_log?client_id=eq.' + clientId + '&order=sent_at.desc&limit=5',
+      { headers: { apikey: key, Authorization: 'Bearer ' + key } }
+    );
+    if (!r.ok) { el.textContent = '—'; return; }
+    var rows = await r.json();
+    if (!rows.length) { el.textContent = lang === 'fr' ? 'Aucun envoi enregistré' : 'No messages logged'; return; }
+    el.innerHTML = rows.map(function(row) {
+      var d = new Date(row.sent_at);
+      var dateStr = d.getDate() + '/' + (d.getMonth()+1) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      var preview = (row.msg_body || '').slice(0, 60) + (row.msg_body && row.msg_body.length > 60 ? '…' : '');
+      var waBtn = row.wa_link
+        ? '<a href="' + row.wa_link + '" target="_blank" style="color:#25D366;text-decoration:none;font-weight:600;margin-left:6px">↗ WA</a>'
+        : '';
+      return '<div style="padding:5px 0;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:6px">' +
+        '<span style="color:var(--muted);white-space:nowrap;font-size:10px;margin-top:2px">' + dateStr + '</span>' +
+        '<span style="flex:1">' + preview + '</span>' +
+        waBtn +
+        '</div>';
+    }).join('');
+  } catch(e) {
+    el.textContent = '—';
+  }
+}
+
+// ════════════════════════════════════════════════════════
+// COMMAND DETECTION — "relance Celia", "envoie WA à Remi"
+// ════════════════════════════════════════════════════════
+
+function detectCommandIntent(text) {
+  // Returns {type:'send', clientName:'...'} or null
+  var t = text.toLowerCase().trim();
+  var sendPatterns = [
+    /(?:relance|relancer|recontacte|rappelle)\s+(\w+)/i,
+    /(?:envoie|envoi|send|envoyer)\s+(?:un\s+)?(?:message|msg|whatsapp|wa|sms)?\s*(?:à|a|to)?\s*(\w+)/i,
+    /(?:écris|ecris|write|message)\s+(?:à|a|to)\s+(\w+)/i,
+    /(?:regarde|check|look).+?(\w+).+?(?:relance|message|rappelle|recontacte)/i,
+  ];
+  for (var i = 0; i < sendPatterns.length; i++) {
+    var m = t.match(sendPatterns[i]);
+    if (m) {
+      var name = m[1] || m[2] || '';
+      // Find client matching this name
+      var cl = findClientByName(name);
+      if (cl) return { type: 'send', client: cl };
+    }
+  }
+  return null;
+}
+
+function findClientByName(query) {
+  var q = query.toLowerCase().trim();
+  return clients.find(function(c) {
+    var n = (c.name || '').toLowerCase();
+    return n.startsWith(q) || n.includes(q);
+  }) || null;
+}
+
+async function handleSendCommand(client, originalText) {
+  var fr = lang === 'fr';
+  var btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+
+  // Get last message sent to this client
+  var lastMsg = '';
+  if (client.messages) {
+    var keys = Object.keys(client.messages);
+    lastMsg = client.messages[keys[keys.length - 1]] || '';
+  }
+
+  var prompt = [
+    'Client: ' + client.name + (client.nat ? ' ' + client.nat : ''),
+    client.arrival ? 'Arrivée: ' + client.arrival + (client.departure ? ' → ' + client.departure : '') : '',
+    client.notes ? 'Notes: ' + client.notes : '',
+    lastMsg ? 'Dernier message envoyé:\n' + lastMsg.slice(0, 400) : '',
+    '',
+    "Commande: \"" + originalText + "\"",  // what user typed
+    '',
+    'Écris un message WhatsApp de relance/suivi en ' + (fr ? 'français' : 'English') + '.',
+    'Court, chaleureux, personnalisé. Max 5 lignes. Signe: ' + (getCfg().owner || 'Jérémie') + '.',
+    'Retourne UNIQUEMENT le message, sans explication.'
+  ].filter(Boolean).join('\n');
+
+  try {
+    var msg = await callBestAI('write_fr', '', prompt, 400);
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    // Clear input
+    document.getElementById('pasteInput').value = '';
+    document.getElementById('pasteInput').classList.remove('has-text');
+    btn.disabled = true;
+    // Show WA popup
+    showWASend(client.id, msg.trim(), 'followup');
+  } catch(e) {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    toast('⚠ ' + e.message);
+  }
+}
+
+
+function openRelancePopup(clientId) {
+  // Quick relance: use last message as context
+  var cl = clients.find(function(c) { return c.id === clientId; });
+  if (!cl) return;
+  // Pre-fill pasteInput and trigger command
+  var ta = document.getElementById('pasteInput');
+  var text = (lang === 'fr' ? 'relance ' : 'follow up with ') + cl.name;
+  if (ta) ta.value = text;
+  goTab('today');
+  handleSendCommand(cl, text);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
 
   // ── Migrate old localStorage key name ──
