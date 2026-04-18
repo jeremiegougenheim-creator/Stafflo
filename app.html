@@ -4836,6 +4836,11 @@ async function loadMorningBrief(forceRefresh = false) {
         body: JSON.stringify({ task: 'brief', system: '', user: prompt, max_tokens: 1000 })
       });
       const d = await r.json();
+      if (!r.ok || d.error) {
+        console.warn('Morning brief proxy error:', d.error || r.status);
+        renderBriefFallback(cardsEl, fr);
+        return;
+      }
       raw = d.text || d.choices?.[0]?.message?.content || '';
     } else {
       // Check any key exists
@@ -4855,9 +4860,14 @@ async function loadMorningBrief(forceRefresh = false) {
 
     const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
     const match = cleaned.match(/\[[\s\S]*\]/);
-    if (!match) throw new Error('No JSON array');
+    if (!match) {
+      // Proxy might be returning an error message — show fallback silently
+      console.warn('Morning brief: no JSON array in response, using fallback');
+      renderBriefFallback(cardsEl, fr);
+      return;
+    }
     const cards = JSON.parse(match[0]);
-
+    if (!cards.length) { renderBriefFallback(cardsEl, fr); return; }
     renderBriefCards(cardsEl, cards);
 
   } catch(e) {
@@ -5645,21 +5655,59 @@ function toggleRdy(el) {
       </div>
     </div>
 
-    <!-- Setup instructions -->
-    <div id="inboxSetup" style="margin:14px 16px;background:rgba(201,150,58,.06);border:1px solid rgba(201,150,58,.2);border-radius:10px;padding:12px 14px">
-      <div style="font-size:10px;letter-spacing:2px;color:var(--gold);font-weight:700;margin-bottom:8px">⚡ CONFIGURATION AUTOMATIQUE</div>
-      <div style="font-size:12px;color:var(--ink);line-height:1.6;margin-bottom:8px">
-        Transférez vos emails Airbnb automatiquement :
+    <!-- How it works -->
+    <div style="margin:14px 16px">
+
+      <!-- Method 1 — Chat (always works) -->
+      <div style="background:var(--green-light);border-radius:10px;padding:12px 14px;margin-bottom:10px;border-left:3px solid var(--green)">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--green);font-weight:700;margin-bottom:6px">✅ MÉTHODE 1 — MAINTENANT (ça marche déjà)</div>
+        <div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px">Copier-coller dans le chat</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6">
+          1. Ouvre l'email Airbnb dans Gmail<br>
+          2. Sélectionne tout (Ctrl+A) et copie<br>
+          3. Colle dans le <strong>chat IA</strong> (côté droit de Today)<br>
+          4. L'IA extrait les infos + propose de sauvegarder le client
+        </div>
       </div>
-      <div style="background:var(--paper);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--muted);margin-bottom:8px">
-        <strong style="color:var(--ink)">Webhook URL :</strong><br>
-        <code id="webhookUrl" style="color:var(--green);word-break:break-all;font-size:10px">https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/email-intake</code>
-        <button onclick="navigator.clipboard.writeText(document.getElementById('webhookUrl').textContent).then(()=>toast('📋 URL copiée'))" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:11px;margin-left:4px">📋</button>
+
+      <!-- Method 2 — Auto forwarding -->
+      <div style="background:rgba(201,150,58,.06);border-radius:10px;padding:12px 14px;margin-bottom:10px;border-left:3px solid var(--gold)">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--gold);font-weight:700;margin-bottom:6px">⚡ MÉTHODE 2 — AUTOMATIQUE (setup 5 min)</div>
+        <div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px">Transfert automatique depuis Gmail</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">
+          Chaque email Airbnb est reçu, analysé et affiché ici automatiquement.
+        </div>
+        <div style="font-size:11px;color:var(--ink);line-height:2">
+          <strong>Étapes :</strong><br>
+          1. Va sur <a href="https://zapier.com" target="_blank" style="color:var(--gold)">zapier.com</a> (gratuit jusqu'à 100 emails/mois)<br>
+          2. Crée un Zap : <strong>Gmail → Webhooks</strong><br>
+          3. Trigger : "New Email matching <em>from:airbnb.com</em>"<br>
+          4. Action : POST vers cette URL ↓
+        </div>
+        <div style="background:var(--paper);border-radius:8px;padding:8px 10px;margin-top:6px;display:flex;align-items:center;gap:6px">
+          <code id="webhookUrl" style="color:var(--green);word-break:break-all;font-size:10px;flex:1">https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/email-intake</code>
+          <button onclick="navigator.clipboard.writeText(document.getElementById('webhookUrl').textContent).then(()=>toast('📋 URL copiée !'))" style="background:var(--gold);border:none;color:var(--green3);border-radius:5px;padding:4px 8px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">📋 Copier</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">
+          Dans Zapier, le body POST doit contenir : <code>from</code>, <code>subject</code>, <code>body</code>
+        </div>
       </div>
-      <div style="font-size:11px;color:var(--muted);line-height:1.7">
-        <strong>Gmail :</strong> Filtres → Transférer → Zapier ou Make → POST vers ce webhook<br>
-        <strong>Direct :</strong> Ou collez l'email dans le chat ci-contre — même résultat
+
+      <!-- What happens -->
+      <div style="background:var(--paper);border-radius:10px;padding:12px 14px;border:1px solid var(--border)">
+        <div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:700;margin-bottom:6px">🔄 CE QUI SE PASSE AUTOMATIQUEMENT</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.8">
+          📥 Email reçu → stocké dans la base<br>
+          🤖 IA extrait : nom, dates, prix, commission, notes<br>
+          🔔 Badge rouge apparaît dans le chat<br>
+          👆 Tu cliques → résumé dans le chat + bouton <strong>Sauvegarder</strong><br>
+          ✅ Client créé ou mis à jour dans le CRM
+        </div>
+        <div style="margin-top:8px;padding:8px 10px;background:rgba(192,57,43,.05);border-radius:6px;font-size:11px;color:var(--muted)">
+          ⚠️ <strong>Anciens emails :</strong> non récupérés automatiquement — utilise la méthode 1 pour les importer un par un.
+        </div>
       </div>
+
     </div>
 
     <!-- Email list -->
