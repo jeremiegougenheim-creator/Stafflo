@@ -1124,6 +1124,10 @@ let currentMsgs = {};
 let currentMsgKey = '';
 let cloudEnabled = false;
 
+
+// ════════════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════════════
 function getCfg() {
   try {
     var c1 = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
@@ -1159,6 +1163,10 @@ function setCfg(c) { localStorage.setItem('stafflo_cfg', JSON.stringify(c)); }
 // ════════════════════════════════════════════
 // SUPABASE
 // ════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════
+// SUPABASE — read/write
+// ════════════════════════════════════════════════════════
 function sbHdrs(key) {
   return { 'Content-Type':'application/json', 'apikey':key, 'Authorization':'Bearer '+key, 'Prefer':'resolution=merge-duplicates,return=minimal' };
 }
@@ -1240,6 +1248,10 @@ function saveLocal() { localStorage.setItem('stafflo_clients', JSON.stringify(cl
 // ════════════════════════════════════════════
 // AI ANALYSIS — Claude API
 // ════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════
+// AI — analyze, messages, rendering
+// ════════════════════════════════════════════════════════
 function onPaste() {
   const v = document.getElementById('pasteInput').value.trim();
   document.getElementById('analyzeBtn').disabled = !v;
@@ -1652,6 +1664,10 @@ function clearAll() {
 // ════════════════════════════════════════════
 // CRM
 // ════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════
+// CRM — clients state, calculations
+// ════════════════════════════════════════════════════════
 function getStatus(c) {
   if (!c.arrival) return 'nodate';
   const t = new Date(); t.setHours(0,0,0,0);
@@ -1693,6 +1709,10 @@ function setFilter(f, btn) {
   renderClients();
 }
 
+
+// ════════════════════════════════════════════════════════
+// RENDER — UI updates
+// ════════════════════════════════════════════════════════
 function renderAll() {
   renderStaysBar();
   renderClients();
@@ -1832,6 +1852,10 @@ function renderClients() {
 // ════════════════════════════════════════════
 // CLIENT DETAIL MODAL
 // ════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════
+// MODALS — detail, form, settings
+// ════════════════════════════════════════════════════════
 function openDetail(id) {
   const cl = clients.find(x => x.id === id);
   if (!cl) return;
@@ -2084,6 +2108,8 @@ function deleteClient(id) {
 // ════════════════════════════════════════════
 // SETTINGS
 // ════════════════════════════════════════════
+
+// ─── Settings ───
 function loadSettingsUI() {
   var cfg = getCfg();
   var set = function(id, val) { var e = document.getElementById(id); if (e) e.value = val || ''; };
@@ -2164,6 +2190,10 @@ function updateSessionBadge() {
 // ════════════════════════════════════════════
 // LANGUAGE
 // ════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════
+// LANGUAGE & TABS
+// ════════════════════════════════════════════════════════
 function setLang(l) {
   lang = l;
   localStorage.setItem('stafflo_lang', l);
@@ -2232,6 +2262,10 @@ function goTab(t) {
 // DATA EXPORT / IMPORT
 // ════════════════════════════════════════════
 
+
+// ════════════════════════════════════════════════════════
+// DATA — export/import
+// ════════════════════════════════════════════════════════
 function exportCSV() {
   const fr = lang === 'fr';
   if (!clients.length) { toast(fr ? 'Aucun client à exporter' : 'No guests to export'); return; }
@@ -2281,6 +2315,10 @@ function importData(event) {
 // ════════════════════════════════════════════
 // TOAST
 // ════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════════════════
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -2296,6 +2334,10 @@ function toast(msg) {
 var currentTab = 'arr';
 var currentDay = 'today';
 
+
+// ════════════════════════════════════════════════════════
+// FLIGHTS — stubs & state
+// ════════════════════════════════════════════════════════
 function getNowHHMM() {
   var d = new Date();
   return d.getHours() * 60 + d.getMinutes();
@@ -2349,68 +2391,74 @@ function sendDetailByWA(clientId) {
   window.open(url, '_blank');
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Migrate old localStorage keys
+
+// ════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function() {
+
+  // ── Migrate old localStorage key name ──
   try {
-    var _c = JSON.parse(localStorage.getItem('stafflo_cfg')||'{}');
-    var _c2 = JSON.parse(localStorage.getItem('stafflocfg')||'{}');
-    if (!_c.sbKey && _c2.sbKey) { _c.sbKey = _c2.sbKey; localStorage.setItem('stafflo_cfg', JSON.stringify(_c)); }
-    if (_c.sbKey || _c2.sbKey) localStorage.setItem('stafflo_onboarded','1');
+    var _old = JSON.parse(localStorage.getItem('stafflocfg') || '{}');
+    var _new = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
+    if (!_new.sbKey && _old.sbKey) {
+      _new.sbKey = _old.sbKey;
+      localStorage.setItem('stafflo_cfg', JSON.stringify(_new));
+    }
+    if (_new.sbKey || _old.sbKey) localStorage.setItem('stafflo_onboarded', '1');
   } catch(e) {}
-  // Nav listeners (addEventListener avoids SES/CSP issues with inline onclick)
+
+  // ── Nav tab buttons — addEventListener avoids SES/inline-onclick issues ──
   document.getElementById('nb-today').addEventListener('click', function(){ goTab('today'); });
   document.getElementById('nb-clients').addEventListener('click', function(){ goTab('clients'); });
   document.getElementById('nb-home').addEventListener('click', function(){ goTab('home'); });
   var _gear = document.querySelector('.hdr-btn[title="Settings"]');
   if (_gear) _gear.addEventListener('click', openSettings);
+
+  // ── Apply language, show Today tab ──
   applyLang();
-  goTab('today'); // Always start on Today tab
-  setTimeout(checkOnboarding, 600);
-  // Show cached data immediately, then sync from Supabase
+  goTab('today');
+
+  // ── Show cached data immediately ──
   loadLocal();
   renderAll();
   renderTodayQV();
-  generateAlerts(null);
-  setTimeout(() => loadMorningBrief(), 800);
-  
-  // Then sync fresh from Supabase in background
-  loadFromSupabase().then(() => {
-    renderTodayQV();
-    generateAlerts(null);
-  }).catch(() => {
-    // Already showing local data — silently fail
-  });
-  // Hide API key section if proxy is active
+
+  // ── Load remote data in background (cascading) ──
+  loadFromSupabase()
+    .then(function() {
+      renderTodayQV();
+    })
+    .catch(function() {});
+
+  loadMarrakechEvents()
+    .then(function() { generateAlerts(null); })
+    .catch(function() {});
+
+  setTimeout(function() {
+    loadWeather()
+      .then(function() {
+        var wText = document.getElementById('factorWeather').textContent || '';
+        var match = wText.match(/(\d+)/);
+        generateAlerts(match ? parseInt(match[1]) : null);
+      })
+      .catch(function() { generateAlerts(null); });
+  }, 800);
+
+  setTimeout(function() { loadMorningBrief(); }, 1200);
+  setTimeout(function() { checkOnboarding(); }, 1500);
+
+  // ── Hide backup key section if proxy is active ──
   if (STAFFLO_PROXY) {
-    const apiSec = document.getElementById('apiKeySection');
+    var apiSec = document.getElementById('apiKeySection');
     if (apiSec) {
-      apiSec.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="font-size:18px">✅</span><div><div style="font-size:13px;font-weight:600;color:var(--green)">AI via Stafflo Proxy</div><div style="font-size:11px;color:var(--muted);margin-top:2px">Groq (Llama) — No API key needed. Managed by Stafflo.</div></div></div>';
+      apiSec.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0">' +
+        '<span style="font-size:18px">✅</span>' +
+        '<div><div style="font-size:13px;font-weight:600;color:var(--green)">AI via Stafflo Proxy</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:2px">Groq + Gemini — aucune clé requise.</div></div></div>';
     }
   }
-  // Load events from Supabase
-  // Generate alerts immediately
-  generateAlerts(null);
-  renderTodayQV();
-  // Load Morning Brief
-  setTimeout(() => loadMorningBrief(), 1200);
-  
-  // Then try to load from Supabase and regenerate
-  loadFromSupabase();
-  loadMarrakechEvents().then(() => {
-    generateAlerts(null);
-    renderTodayQV();
-  }).catch(() => {
-    // Events failed but alerts already shown with weather
-  });
-  
-  // Load weather and regenerate alerts with real temp
-  setTimeout(() => {
-    loadWeather().then(() => {
-      const wText = document.getElementById('factorWeather')?.textContent || '';
-      const match = wText.match(/(\d+)/);
-      generateAlerts(match ? parseInt(match[1]) : null);
-    }).catch(() => {});
-  }, 1000);
+
 });
 
 
@@ -2418,6 +2466,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // Events loaded from Supabase — fallback to empty array
 let MARRAKECH_EVENTS = [];
 
+async 
+// ════════════════════════════════════════════════════════
+// VILLA / HOME TAB — pricing, weather, competitors
+// ════════════════════════════════════════════════════════
 async function loadMarrakechEvents() {
   const cfg = getCfg();
   const url = (cfg.supabaseUrl && cfg.supabaseUrl.includes('.supabase.co')) ? cfg.supabaseUrl : SB_URL;
@@ -2709,6 +2761,10 @@ function renderScenarios(pricePN) {
   }).join('');
 }
 
+
+// ════════════════════════════════════════════════════════
+// TODAY TAB — alerts, brief, quick view
+// ════════════════════════════════════════════════════════
 async function generateAlerts(weatherTemp) {
   const alerts = [];
   const fr = lang === 'fr';
@@ -3366,9 +3422,7 @@ function loadHomeData() {
   });
 }
 
-function goTabHome() {
-  loadHomeData();
-}
+
 
 function renderMarketBand() {
   const comps = loadSavedCompetitors ? loadSavedCompetitors() : [];
@@ -3732,7 +3786,7 @@ function saveApiKey() {
   toast(lang==='fr' ? '✓ Clé(s) enregistrée(s)' : '✓ Key(s) saved');
 }
 
-function toggleProviderFields() { /* auto-routing active */ }
+
 
 async function extractFormAI() {
   const text = document.getElementById('fPasteInput').value.trim();
@@ -3973,12 +4027,7 @@ async function installPWA() {
 
 // iOS install instructions (Safari doesn't support beforeinstallprompt)
 
-async function analyzeWithProxy(text, systemPrompt, btn) {
-  // Now handled by callBestAI — kept for backward compat
-  const raw = await callBestAI('extract', systemPrompt, text, 2000);
-  // raw goes to the existing parse logic via the caller
-  return raw;
-}
+async 
 
 // ════════════════════════════════════════════
 // MORNING BRIEF — AI daily prioritization
@@ -4143,6 +4192,10 @@ async function loadMorningBrief(forceRefresh = false) {
 //   'write_fr' → Mistral (French writing, client messages)
 //   'reason'   → DeepSeek (logical analysis, pricing)
 
+async 
+// ════════════════════════════════════════════════════════
+// AI PROVIDERS — routing, calling
+// ════════════════════════════════════════════════════════
 async function callBestAI(task, systemPrompt, userContent, maxTokens) {
   // ── Try proxy first (no client key needed) ──────────
   if (STAFFLO_PROXY) {
@@ -4651,6 +4704,10 @@ function sendStaffBriefAll() {
 // ════════════════════════════════════════════
 // SPRINT 2 — GUEST INTELLIGENCE
 // ════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════
+// GUEST INTELLIGENCE
+// ════════════════════════════════════════════════════════
 function getGuestScore(client) {
   let score = 0;
   const n = (client.notes||'').toLowerCase();
@@ -4714,6 +4771,10 @@ const VILLA_SOP = [
 
 let sopState = JSON.parse(localStorage.getItem('stafflo_sop') || '{}');
 
+
+// ════════════════════════════════════════════════════════
+// VILLA OPS — checklists, SOP
+// ════════════════════════════════════════════════════════
 function renderVillaOpsExtra() {
   // Add SOP checklist to My Home AI / Villa Ops tab
   const homeTab = document.getElementById('tab-home');
@@ -4762,6 +4823,10 @@ function resetSOP() {
 // ════════════════════════════════════════════
 const MAX_FREE_STAYS = 3;
 
+
+// ════════════════════════════════════════════════════════
+// ONBOARDING & TRIAL
+// ════════════════════════════════════════════════════════
 function getTrialCount() {
   return parseInt(localStorage.getItem('stafflo_trial_count') || '0');
 }
