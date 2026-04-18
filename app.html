@@ -3227,14 +3227,34 @@ async function handleChatContextCommand(client, instruction) {
   var contextRows = await loadClientContext(client.id);
   var contextBlock = formatContextForAI(contextRows, client);
 
-  // 2. Build messages history
+  // 2. Build messages history (generated messages)
   var msgHistory = '';
   if (client.messages && Object.keys(client.messages).length) {
-    msgHistory = 'Messages précédents générés:\n';
+    msgHistory = 'Messages générés précédemment:\n';
     Object.entries(client.messages).forEach(function(e) {
-      msgHistory += '[' + e[0] + ']: ' + String(e[1]).slice(0, 200) + '\n';
+      msgHistory += '[' + e[0] + ']: ' + String(e[1]).slice(0, 150) + '\n';
     });
   }
+
+  // 3. Load sent messages log (actual WA conversations)
+  var sentLog = '';
+  try {
+    var cfg2 = getCfg();
+    var logRes = await fetch(SB_URL + '/rest/v1/msg_log?client_id=eq.' + client.id + '&order=sent_at.desc&limit=10', {
+      headers: { apikey: cfg2.sbKey || SB_ANON, Authorization: 'Bearer ' + (cfg2.sbKey || SB_ANON) }
+    });
+    if (logRes.ok) {
+      var logRows = await logRes.json();
+      if (logRows.length) {
+        sentLog = 'Messages envoyés (du plus récent au plus ancien):\n';
+        logRows.forEach(function(row) {
+          var d = new Date(row.sent_at);
+          var dt = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');
+          sentLog += '['+dt+' '+row.msg_type+'] ' + (row.msg_body||'').slice(0, 200) + '\n';
+        });
+      }
+    }
+  } catch(e) {}
 
   // 3. Build full prompt
   var prompt = [
@@ -3249,7 +3269,8 @@ async function handleChatContextCommand(client, instruction) {
     '',
     contextBlock || '(Pas encore d\'infos structurées pour ce client)',
     '',
-    msgHistory ? '=== HISTORIQUE MESSAGES ===\n' + msgHistory : '',
+    msgHistory ? '=== MESSAGES GÉNÉRÉS (brouillons) ===\n' + msgHistory : '',
+    sentLog ? '=== ÉCHANGES WA ENVOYÉS ===\n' + sentLog : '',
     '=== INSTRUCTION ===',
     instruction,
     '',
@@ -3263,11 +3284,14 @@ async function handleChatContextCommand(client, instruction) {
     '  "missing": ["info manquante 1", "info manquante 2"]',
     '}',
     '',
-    'Règles:',
-    '- extracted: toutes les infos structurées trouvées dans la conversation/notes (vols, repas, heure, besoins)',
-    '- missing: infos importantes manquantes à demander',
-    '- Si instruction = envoyer un message, action="send_wa" et response = le message complet',
-    '- Si instruction = analyser, action="info" et response = résumé structuré'
+    'Règles IMPORTANTES:',
+    '- Lis ATTENTIVEMENT les échanges WA pour comprendre où en est la conversation',
+    '- Si le client a déjà répondu → confirme ses réponses dans le message, ne repose pas les mêmes questions',
+    '- Si infos manquantes → pose UNE seule question claire et précise',
+    '- response = message WA complet, chaleureux, court (max 5 lignes), signé avec le prénom du propriétaire',
+    '- extracted = toutes les nouvelles infos trouvées (vol, heure, repas, transport, préférences)',
+    '- missing = seulement les infos VRAIMENT manquantes et utiles',
+    '- action = "send_wa" si message à envoyer, "info" si analyse seulement'
   ].filter(Boolean).join('\n');
 
   var raw = await callBestAI('reason', '', prompt, 800);
