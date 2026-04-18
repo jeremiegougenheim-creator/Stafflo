@@ -2676,8 +2676,22 @@ function chatInit() {
     document.getElementById('chatSendBtn').disabled = !inp.value.trim();
   });
   loadInboxCount();
-  // Show quick-send chips after clients load
   setTimeout(renderChatClientChips, 1500);
+  // Restore last session messages from DB
+  setTimeout(restoreChatSession, 800);
+}
+
+async function restoreChatSession() {
+  var rows = await loadChatHistory({ sessionOnly: true, limit: 20 });
+  if (!rows.length) return;
+  var msgs = document.getElementById('chatMessages');
+  if (!msgs) return;
+  // Pre-populate in-memory history
+  rows.forEach(function(row) {
+    chatHistory.push({ role: row.role, text: row.content || '', ts: new Date(row.created_at).getTime() });
+  });
+  // Show a subtle indicator
+  addChatBubble('system', '↩ ' + rows.length + ' message' + (rows.length > 1 ? 's' : '') + ' chargé' + (rows.length > 1 ? 's' : '') + ' depuis la dernière session');
 }
 
 function renderChatClientChips() {
@@ -2778,24 +2792,39 @@ async function chatSend() {
 async function handleChatQuestion(text) {
   var fr = lang === 'fr';
   var today = new Date().toISOString().slice(0,10);
+  var cfg = getCfg();
+  var ownerName = cfg.owner || 'Jérémie';
+  var villaName = cfg.villa || 'Villa DarJ';
   
-  // Build context
-  var ctx = [
-    'Villa Stafflo — Marrakech. Aujourd\'hui: ' + today + '.',
-    'Clients CRM (' + clients.length + '):',
-    clients.slice(0,10).map(function(c) {
-      return '- ' + c.name + (c.arrival?' arr:'+c.arrival:'') + (c.departure?' dep:'+c.departure:'') + (c.guests?' '+c.guests+'p':'');
-    }).join('\n'),
-    '',
-    'Réponds en ' + (fr ? 'français' : 'English') + ', max 3 phrases, concis.',
-    'Si tu identifies une action (envoyer WA, sauver client), retourne:',
-    'RÉPONSE: [ta réponse]',
-    'ACTION: {"type":"send_wa","clientId":"...","msg":"..."} OU {"type":"save","clientName":"..."}',
-    '',
-    'Question: ' + text
+  // Load recent chat history from DB (includes previous sessions)
+  var dbHistory = await loadRecentChatContext(12);
+  var historyBlock = dbHistory || buildChatHistoryBlock(8);
+  
+  var systemPrompt = [
+    'Tu es l\'assistant personnel de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
+    'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
+    'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
+    'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
+    'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
   ].join('\n');
   
-  var raw = await callBestAI('extract', '', ctx, 300);
+  var userCtx = [
+    'Aujourd\'hui: ' + today,
+    'Clients (' + clients.length + '): ' + clients.slice(0,8).map(function(cl) {
+      return cl.name + (cl.arrival?' →'+cl.arrival:'');
+    }).join(', '),
+    '',
+    historyBlock,
+    '',
+    'Message de ' + ownerName + ': "' + text + '"',
+    '',
+    'Instructions:',
+    '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}',
+    '- Si c\'est une question: réponds directement, max 2-3 phrases',
+    '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule'
+  ].join('\n');
+  
+  var raw = await callBestAI('chat_fr', systemPrompt, userCtx, 500);
   document.getElementById('chatTyping').style.display = 'none';
   
   // Parse response + action
@@ -2961,7 +2990,15 @@ function addChatBubble(role, text, actions) {
   }
   
   msgs.appendChild(div);
-  chatHistory.push({ role, text, ts: Date.now() });
+  // Store in memory (fast, for current session)
+  if (role !== 'system') {
+    var aiRole = role === 'ai' ? 'assistant' : 'user';
+    chatHistory.push({ role: aiRole, text: text, ts: Date.now() });
+    // Also persist to Supabase (async, silent)
+    var activeClientId = window._lastMentionedClientId || null;
+    var activeClientName = window._lastMentionedClientName || null;
+    saveChatMessage(aiRole, text, activeClientId, activeClientName);
+  }
   scrollChat();
 }
 
@@ -2976,6 +3013,11 @@ function clearChat() {
     msgs.innerHTML = '<div class="chat-bubble system">' + (lang==='fr'?'Chat effacé ✓':'Chat cleared ✓') + '</div>';
   }
   chatHistory = [];
+  window._lastMentionedClientId = null;
+  window._lastMentionedClientName = null;
+  // Also clear current session from DB
+  deleteChatHistory(null);
+  _chatSessionId = 'sess_' + Date.now();
 }
 
 function dismissChatAction(btn) {
@@ -3223,20 +3265,18 @@ function formatContextForDisplay(contextRows) {
 async function handleChatContextCommand(client, instruction) {
   var fr = lang === 'fr';
 
-  // 1. Load everything we know about this client
+  // Track which client is being discussed (for auto-tagging saves)
+  window._lastMentionedClientId = client.id;
+  window._lastMentionedClientName = client.name;
+
+  // 1. Load structured context
   var contextRows = await loadClientContext(client.id);
   var contextBlock = formatContextForAI(contextRows, client);
 
-  // 2. Build messages history (generated messages)
-  var msgHistory = '';
-  if (client.messages && Object.keys(client.messages).length) {
-    msgHistory = 'Messages générés précédemment:\n';
-    Object.entries(client.messages).forEach(function(e) {
-      msgHistory += '[' + e[0] + ']: ' + String(e[1]).slice(0, 150) + '\n';
-    });
-  }
+  // 2. Load full persistent chat history for this client from Supabase
+  var clientChatHistory = await loadClientChatContext(client.id, client.name);
 
-  // 3. Load sent messages log (actual WA conversations)
+  // 3. Load sent WA messages log
   var sentLog = '';
   try {
     var cfg2 = getCfg();
@@ -3246,15 +3286,16 @@ async function handleChatContextCommand(client, instruction) {
     if (logRes.ok) {
       var logRows = await logRes.json();
       if (logRows.length) {
-        sentLog = 'Messages envoyés (du plus récent au plus ancien):\n';
+        sentLog = 'Messages WA envoyés:\n';
         logRows.forEach(function(row) {
           var d = new Date(row.sent_at);
           var dt = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');
-          sentLog += '['+dt+' '+row.msg_type+'] ' + (row.msg_body||'').slice(0, 200) + '\n';
+          sentLog += '['+dt+'] ' + (row.msg_body||'').slice(0, 200) + '\n';
         });
       }
     }
   } catch(e) {}
+  var msgHistory = ''; // keep for compatibility
 
   // 3. Build full prompt
   var prompt = [
@@ -3269,10 +3310,15 @@ async function handleChatContextCommand(client, instruction) {
     '',
     contextBlock || '(Pas encore d\'infos structurées pour ce client)',
     '',
-    msgHistory ? '=== MESSAGES GÉNÉRÉS (brouillons) ===\n' + msgHistory : '',
-    sentLog ? '=== ÉCHANGES WA ENVOYÉS ===\n' + sentLog : '',
-    '=== INSTRUCTION ===',
+    clientChatHistory || '',
+    sentLog ? '=== MESSAGES WA ENVOYÉS ===\n' + sentLog : '',
+    buildChatHistoryBlock(4),
+    '',
+    '=== INSTRUCTION DE ' + (getCfg().owner || 'Jérémie').toUpperCase() + ' ===',
     instruction,
+    '',
+    'CONTEXTE: Les messages à rédiger sont écrits PAR ' + (getCfg().owner || 'Jérémie') + ' AU client.',
+    'Utilise toujours "je" pour Jérémie, jamais "nous" sauf si c\'est le ton souhaité.',
     '',
     'Réponds en JSON avec ce format EXACT (pas de markdown):',
     '{',
@@ -3413,6 +3459,145 @@ function showClientContextPanel(clientId) {
     html += '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">';
     html += '<button onclick="closeDetail();openRelancePopup(\''+cl.id+'\')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">✍ Relance</button>';
     html += '<button onclick="var inp=document.getElementById(\'chatInput\');if(inp){inp.value=\'' + (fr?'réponds à ':'reply to ') + cl.name.split(' ')[0] + '\';chatAutoResize(inp);document.getElementById(\'chatSendBtn\').disabled=false}" style="background:var(--paper);border:1.5px solid var(--border);border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">' + (fr?'💬 Message rapide':'💬 Quick msg') + '</button>';
+    html += '</div>';
+    
+    var bubble = document.createElement('div');
+    bubble.className = 'chat-bubble system';
+    bubble.style.cssText = 'max-width:100%;text-align:left';
+    bubble.innerHTML = html;
+    msgs.appendChild(bubble);
+    scrollChat();
+  });
+}
+
+
+function buildChatHistoryBlock(maxTurns) {
+  // Sync version — uses in-memory cache (for immediate use)
+  maxTurns = maxTurns || 8;
+  var history = chatHistory.slice(-maxTurns * 2);
+  if (!history.length) return '';
+  var lines = ['=== CONVERSATION EN COURS ==='];
+  history.forEach(function(h) {
+    var role = h.role === 'user' ? 'Jérémie' : 'Assistant';
+    var text = (h.text || '').replace(/\*\*(.+?)\*\*/g, '$1').slice(0, 300);
+    lines.push(role + ': ' + text);
+  });
+  lines.push('=== FIN ===');
+  return lines.join('\n');
+}
+
+
+// ════════════════════════════════════════════════════════
+// CHAT MEMORY — persistent per-client conversation history
+// Stored in Supabase chat_history table
+// ════════════════════════════════════════════════════════
+
+var _chatSessionId = 'sess_' + Date.now(); // unique per browser session
+
+async function saveChatMessage(role, text, clientId, clientName) {
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    await fetch(SB_URL + '/rest/v1/chat_history', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', apikey: key, Authorization:'Bearer '+key, Prefer:'return=minimal' },
+      body: JSON.stringify({
+        role:         role,           // 'user' | 'assistant'
+        content:      text.slice(0, 2000),
+        client_id:    clientId  || null,
+        client_name:  clientName || null,
+        session_id:   _chatSessionId
+      })
+    });
+  } catch(e) { /* silent — don't break chat if save fails */ }
+}
+
+async function loadChatHistory(options) {
+  // options: { clientId, limit, sessionOnly }
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  var limit = options.limit || 30;
+  var url = SB_URL + '/rest/v1/chat_history?order=created_at.desc&limit=' + limit;
+  if (options.clientId) url += '&client_id=eq.' + options.clientId;
+  if (options.sessionOnly) url += '&session_id=eq.' + _chatSessionId;
+  try {
+    var r = await fetch(url, { headers: { apikey: key, Authorization: 'Bearer ' + key } });
+    if (!r.ok) return [];
+    var rows = await r.json();
+    return rows.reverse(); // chronological
+  } catch(e) { return []; }
+}
+
+async function loadClientChatContext(clientId, clientName) {
+  // Load ALL chat history for a specific client (for AI context)
+  var rows = await loadChatHistory({ clientId: clientId, limit: 50 });
+  if (!rows.length) return '';
+  var lines = ['=== HISTORIQUE CHAT COMPLET AVEC ' + (clientName || 'ce client').toUpperCase() + ' ==='];
+  rows.forEach(function(row) {
+    var d = new Date(row.created_at);
+    var dt = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');
+    var who = row.role === 'user' ? 'Jérémie' : 'Assistant';
+    lines.push('['+dt+'] ' + who + ': ' + (row.content||'').slice(0,250));
+  });
+  lines.push('=== FIN HISTORIQUE ===');
+  return lines.join('\n');
+}
+
+async function loadRecentChatContext(limit) {
+  // Load recent general chat history (last N turns this session)
+  var rows = await loadChatHistory({ sessionOnly: true, limit: limit || 10 });
+  if (!rows.length) return '';
+  var lines = ['=== CONVERSATION EN COURS ==='];
+  rows.forEach(function(row) {
+    var who = row.role === 'user' ? 'Jérémie' : 'Assistant';
+    lines.push(who + ': ' + (row.content||'').slice(0,200));
+  });
+  lines.push('=== FIN ===');
+  return lines.join('\n');
+}
+
+async function deleteChatHistory(clientId) {
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  var url = SB_URL + '/rest/v1/chat_history';
+  if (clientId) url += '?client_id=eq.' + clientId;
+  else url += '?session_id=eq.' + _chatSessionId;
+  try {
+    await fetch(url, { method: 'DELETE', headers: { apikey: key, Authorization: 'Bearer ' + key } });
+  } catch(e) {}
+}
+
+
+function showClientChatHistory(clientId, clientName) {
+  var msgs = document.getElementById('chatMessages');
+  if (!msgs) return;
+  addChatBubble('system', '💬 Chargement historique de ' + clientName + '...');
+  
+  loadChatHistory({ clientId: clientId, limit: 50 }).then(function(rows) {
+    var last = msgs.lastElementChild;
+    if (last && last.textContent.includes('Chargement')) last.remove();
+    
+    if (!rows.length) {
+      addChatBubble('system', '💬 Aucun historique pour ' + clientName + ' — les conversations futures seront sauvegardées ici.');
+      return;
+    }
+    
+    var html = '<div style="font-size:12px;font-weight:600;color:var(--ink);margin-bottom:8px">💬 Historique avec <strong>' + clientName + '</strong> (' + rows.length + ' messages)</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:4px;max-height:300px;overflow-y:auto">';
+    rows.forEach(function(row) {
+      var d = new Date(row.created_at);
+      var dt = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');
+      var isUser = row.role === 'user';
+      html += '<div style="padding:6px 8px;border-radius:8px;font-size:11px;line-height:1.5;' +
+        (isUser ? 'background:var(--green);color:#fff;align-self:flex-end;max-width:85%' : 'background:var(--paper);border:1px solid var(--border);max-width:85%') +
+        '">' +
+        '<div style="font-size:9px;opacity:.6;margin-bottom:2px">' + (isUser ? 'Jérémie' : 'IA') + ' · ' + dt + '</div>' +
+        (row.content||'').slice(0,200) +
+        '</div>';
+    });
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px;margin-top:8px">';
+    html += '<button onclick="deleteChatHistory(\''+clientId+'\').then(()=>{ addChatBubble(\'system\',\'🗑 Historique effacé\'); })" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 10px;font-size:10px;cursor:pointer;font-family:DM Sans,sans-serif">🗑 Effacer</button>';
     html += '</div>';
     
     var bubble = document.createElement('div');
