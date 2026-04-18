@@ -1713,32 +1713,35 @@ function updateHeaderStats() {
 }
 
 function renderStaysBar() {
-  const bar = document.getElementById('staysBar');
-  const today = new Date().toISOString().slice(0,10);
-  const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
-  const upcoming = clients.filter(c => c.arrival && c.arrival > today).sort(function(a,b){return a.arrival<b.arrival?-1:a.arrival>b.arrival?1:0;}).slice(0,4);
+  var bar = document.getElementById('staysBar');
+  var today = new Date().toISOString().slice(0,10);
+  var inHouse = clients.find(function(c) { return c.arrival && c.departure && c.arrival <= today && c.departure >= today; });
+  var upcoming = clients.filter(function(c) { return c.arrival && c.arrival > today; })
+    .sort(function(a,b){ return a.arrival<b.arrival?-1:a.arrival>b.arrival?1:0; }).slice(0,4);
 
   if (!inHouse && !upcoming.length) {
-    bar.innerHTML = `<span style="font-size:11px;color:rgba(255,255,255,.3);font-style:italic">${lang==='fr'?'Aucune réservation à venir':'No upcoming stays'}</span>
-    <button class="btn-new-chip" onclick="openForm()">${lang==='fr'?'+ Nouveau':'+ New'}</button>`;
+    bar.innerHTML = '<span style="font-size:11px;color:rgba(255,255,255,.3);font-style:italic">'+(lang==='fr'?'Aucune réservation à venir':'No upcoming stays')+'</span>' +
+      '<button class="btn-new-chip" id="staysBarNewBtn">'+(lang==='fr'?'+ Nouveau':'+ New')+'</button>';
+    document.getElementById('staysBarNewBtn').addEventListener('click', openForm);
     return;
   }
 
-  let html = '';
+  var html = '';
   if (inHouse) {
-    const dLeft = Math.ceil((new Date(inHouse.departure) - new Date()) / 864e5);
-    html += `<div class="stay-chip" onclick="openDetail('${inHouse.id}')" style="cursor:pointer"><div class="dot"></div><strong>${inHouse.name}</strong> <span>${lang==='fr'?'part dans':'leaves in'} ${dLeft}j · ${inHouse.guests||'?'} pers.</span></div>`;
+    var dLeft = Math.ceil((new Date(inHouse.departure) - new Date()) / 864e5);
+    html += '<div class="stay-chip" data-id="'+inHouse.id+'" style="cursor:pointer"><div class="dot"></div><strong>'+inHouse.name+'</strong> <span>'+(lang==='fr'?'part dans':'leaves in')+' '+dLeft+'j · '+(inHouse.guests||'?')+' pers.</span></div>';
   }
-  upcoming.forEach((c,i) => {
-    const dTo = Math.ceil((new Date(c.arrival) - new Date()) / 864e5);
-    const n = nights(c);
+  upcoming.forEach(function(clnt, i) {
+    var dTo = Math.ceil((new Date(clnt.arrival) - new Date()) / 864e5);
+    var n = nights(clnt);
     if (i>0 || inHouse) html += '<span class="stay-sep">·</span>';
-    html += `<div class="stay-chip" onclick="openDetail('${c.id}')" style="cursor:pointer"><strong>${c.name}</strong> <span style="color:var(--gold)">${lang==='fr'?'dans':'in'} ${dTo}j</span> <span>${n}n · ${c.guests||'?'}p</span></div>`;
+    html += '<div class="stay-chip" data-id="'+clnt.id+'" style="cursor:pointer"><strong>'+clnt.name+'</strong> <span style="color:var(--gold)">'+(lang==='fr'?'dans':'in')+' '+dTo+'j</span> <span>'+n+'n · '+(clnt.guests||'?')+'p</span></div>';
   });
-  html += `<button class="btn-new-chip" onclick="openForm()">${lang==='fr'?'+ Nouveau':'+ New'}</button>`;
+  html += '<button class="btn-new-chip" id="staysBarNewBtn">'+(lang==='fr'?'+ Nouveau':'+ New')+'</button>';
   bar.innerHTML = html;
-  bar.onclick = null;
+  // Event delegation — SES-safe
   bar.addEventListener('click', function(e) {
+    if (e.target.id === 'staysBarNewBtn' || e.target.closest('#staysBarNewBtn')) { openForm(); return; }
     var chip = e.target.closest('[data-id]');
     if (chip) openDetail(chip.getAttribute('data-id'));
   });
@@ -2288,6 +2291,64 @@ function toast(msg) {
 // ════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════
+
+// ── FLIGHT TAB STATE ──
+var currentTab = 'arr';
+var currentDay = 'today';
+
+function getNowHHMM() {
+  var d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function getReqCount() {
+  return parseInt(localStorage.getItem('rak_req_count') || '0');
+}
+function incrementReqCount() {
+  localStorage.setItem('rak_req_count', getReqCount() + 1);
+}
+
+function showHelp(topic) {
+  toast(lang === 'fr' ? 'Collez un email Airbnb, message WhatsApp ou mix des deux' : 'Paste an Airbnb email, WhatsApp chat or mix of both');
+}
+
+function saveDraft(g) {
+  // Same as saveFromResult but marks as inquiry
+  g.bookingStatus = 'inquiry';
+  saveFromResult(g);
+}
+
+function prepareAnalysis(clientId) {
+  var cl = clients.find(function(c) { return c.id === clientId; });
+  if (!cl) return;
+  goTab('today');
+  var ta = document.getElementById('pasteInput');
+  if (ta) {
+    ta.value = (lang === 'fr' ? 'Client: ' : 'Guest: ') + cl.name + (cl.arrival ? ' · ' + cl.arrival : '') + (cl.notes ? ' · ' + cl.notes : '');
+    ta.classList.add('has-text');
+    document.getElementById('analyzeBtn').disabled = false;
+  }
+}
+
+function showDetailMsg(clientId, key, btn) {
+  var el = document.getElementById('detailMsgBody');
+  if (!el) return;
+  var msgs = (window._clientMessages && window._clientMessages[clientId]) || {};
+  el.innerHTML = (msgs[key] || '').replace(/</g, '&lt;');
+  document.querySelectorAll('.msg-tab').forEach(function(b) { b.classList.remove('on'); });
+  if (btn) btn.classList.add('on');
+}
+
+function sendDetailByWA(clientId) {
+  var cl = clients.find(function(c) { return c.id === clientId; });
+  if (!cl) return;
+  var phone = (cl.phone || '').replace(/[\s\-+()]/g, '');
+  var el = document.getElementById('detailMsgBody');
+  var text = el ? el.textContent : '';
+  var url = phone ? 'https://wa.me/' + phone + '?text=' + encodeURIComponent(text) : 'https://wa.me/?text=' + encodeURIComponent(text);
+  window.open(url, '_blank');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Migrate old localStorage keys
   try {
@@ -3291,7 +3352,7 @@ function renderMarketPriceBand() {
 function loadHomeData() {
   updatePrice();
   renderCompetitors();
-  renderScenarios(getPrice());
+  renderScenarios(getPrice().pricePN);
   renderMarketBand();
   // Generate alerts immediately with what we have
   generateAlerts(null);
