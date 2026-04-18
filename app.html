@@ -662,7 +662,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <!-- Welcome message -->
     <div class="chat-bubble system" id="chatWelcome">
       <strong>Stafflo IA</strong> · <span id="chatWelcomeTime"></span><br>
-      Tapez une commande — ex: <em>"relance Celia"</em>, <em>"qui arrive demain ?"</em>, <em>"génère le brief staff"</em>, ou collez un email Airbnb directement.
+      Exemples : <em>"relance Celia"</em> · <em>"qui arrive demain ?"</em> · <em>"brief staff"</em><br>
+      Ou collez un email Airbnb directement ↓
     </div>
   </div>
 
@@ -970,8 +971,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 </main>
 
 <!-- ══ WA SEND POPUP ══════════════════════════════════════ -->
-<div id="waSendModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9997;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeWASend()">
-  <div style="background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:640px;padding:0;box-shadow:0 -8px 40px rgba(0,0,0,.25)">
+<div id="waSendModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9997;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeWASend()">
+  <div style="background:var(--card);border-radius:20px;width:100%;max-width:520px;padding:0;box-shadow:0 24px 64px rgba(0,0,0,.4);max-height:90vh;overflow-y:auto">
     <!-- Header -->
     <div style="background:var(--green3);padding:14px 20px 12px;border-radius:20px 20px 0 0;display:flex;align-items:center;justify-content:space-between">
       <div>
@@ -2003,6 +2004,7 @@ function openDetail(id) {
       ].map(function(h){return '<div style="padding:10px 6px;text-align:center;font-size:12px;font-weight:700;color:var(--ink)">'+h+'</div>';}).join('') +
     '</div>' +
     '<div style="padding:10px 16px 4px">'+renderReadinessBar(cl,fr)+'</div>' +
+    '<div id="detailContextZone" style="padding:0 16px 8px"></div>' +
     notesHTML +
     tasksHTML +
     rowsHTML;
@@ -2036,6 +2038,13 @@ function openDetail(id) {
   dm.classList.add('on');
   document.body.style.overflow = 'hidden';
   setTimeout(function(){ dm.querySelector('.modal').scrollTop = 0; }, 50);
+  // Load structured context into detail
+  loadClientContext(cl.id).then(function(rows) {
+    var zone = document.getElementById('detailContextZone');
+    if (!zone) return;
+    if (!rows.length) { zone.style.display = 'none'; return; }
+    zone.innerHTML = '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">INFOS STRUCTURÉES</div>' + formatContextForDisplay(rows);
+  });
 }
 
 function closeDetail() {
@@ -2666,8 +2675,34 @@ function chatInit() {
   if (inp) inp.addEventListener('input', function() {
     document.getElementById('chatSendBtn').disabled = !inp.value.trim();
   });
-  // Load inbox badge count
   loadInboxCount();
+  // Show quick-send chips after clients load
+  setTimeout(renderChatClientChips, 1500);
+}
+
+function renderChatClientChips() {
+  var msgs = document.getElementById('chatMessages');
+  if (!msgs || !clients.length) return;
+  var existing = document.getElementById('chatChips');
+  if (existing) existing.remove();
+  
+  var today = new Date().toISOString().slice(0,10);
+  // Prioritize: arriving soon, in house, then all
+  var priority = clients.filter(function(c) {
+    return c.arrival && Math.abs(new Date(c.arrival) - new Date()) < 7 * 864e5;
+  }).slice(0,4);
+  if (!priority.length) priority = clients.slice(0,4);
+  
+  var div = document.createElement('div');
+  div.id = 'chatChips';
+  div.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;padding:4px 0';
+  div.innerHTML = priority.map(function(cl) {
+    var phone = (cl.phone||'').replace(/[\s\-+()]/g,'');
+    return '<button onclick="openRelancePopup(\''+cl.id+'\')" style="background:var(--paper);border:1.5px solid var(--border);border-radius:20px;padding:5px 11px;font-size:11px;font-family:DM Sans,sans-serif;cursor:pointer;color:var(--ink);display:flex;align-items:center;gap:5px">' +
+      (cl.phone ? '💬 ' : '📋 ') + cl.name.split(' ')[0] +
+      '</button>';
+  }).join('');
+  msgs.appendChild(div);
 }
 
 function chatKeyDown(e) {
@@ -3083,6 +3118,286 @@ function openInboxEmail(row) {
   }
   
   loadInboxCount();
+}
+
+
+// ════════════════════════════════════════════════════════
+// CLIENT CONTEXT — structured info store per client
+// categories: flight, meals, transport, arrival, preferences, general
+// ════════════════════════════════════════════════════════
+
+var CLIENT_CONTEXT_ICONS = {
+  flight:      '✈️',
+  meals:       '🍽',
+  transport:   '🚕',
+  arrival:     '🕐',
+  preferences: '⭐',
+  general:     '📝'
+};
+
+async function loadClientContext(clientId) {
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/client_context?client_id=eq.' + clientId + '&order=category.asc,key.asc', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    if (!r.ok) return [];
+    return await r.json();
+  } catch(e) { return []; }
+}
+
+async function saveClientContext(clientId, items) {
+  // items: [{category, key, value, source}]
+  if (!items || !items.length) return;
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  var payload = items.map(function(item) {
+    return {
+      client_id: clientId,
+      category:  item.category || 'general',
+      key:       item.key,
+      value:     String(item.value),
+      source:    item.source || 'chat',
+      updated_at: new Date().toISOString()
+    };
+  });
+  try {
+    await fetch(SB_URL + '/rest/v1/client_context?on_conflict=client_id,key', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': key,
+        'Authorization': 'Bearer ' + key,
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch(e) {
+    console.warn('saveClientContext error:', e);
+  }
+}
+
+function formatContextForAI(contextRows, client) {
+  // Build a structured text block for the AI prompt
+  if (!contextRows.length) return '';
+  var grouped = {};
+  contextRows.forEach(function(row) {
+    if (!grouped[row.category]) grouped[row.category] = [];
+    grouped[row.category].push(row.key + ': ' + row.value);
+  });
+  var lines = ['Infos structurées connues sur ' + client.name + ':'];
+  Object.keys(grouped).forEach(function(cat) {
+    var icon = CLIENT_CONTEXT_ICONS[cat] || '📋';
+    lines.push(icon + ' ' + cat.toUpperCase() + ':');
+    grouped[cat].forEach(function(line) { lines.push('  - ' + line); });
+  });
+  return lines.join('\n');
+}
+
+function formatContextForDisplay(contextRows) {
+  if (!contextRows.length) return '';
+  var grouped = {};
+  contextRows.forEach(function(row) {
+    if (!grouped[row.category]) grouped[row.category] = [];
+    grouped[row.category].push({ key: row.key, value: row.value });
+  });
+  var html = '<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">';
+  Object.keys(grouped).forEach(function(cat) {
+    var icon = CLIENT_CONTEXT_ICONS[cat] || '📋';
+    html += '<div style="background:var(--paper);border-radius:8px;padding:8px 10px;border-left:2px solid var(--gold)">';
+    html += '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;margin-bottom:4px">' + icon + ' ' + cat.toUpperCase() + '</div>';
+    grouped[cat].forEach(function(item) {
+      html += '<div style="font-size:12px;color:var(--ink);margin-bottom:2px"><span style="color:var(--muted)">' + item.key + ' :</span> ' + item.value + '</div>';
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+// ════════════════════════════════════════════════════════
+// SMART CHAT COMMAND — full context handler
+// ════════════════════════════════════════════════════════
+
+async function handleChatContextCommand(client, instruction) {
+  var fr = lang === 'fr';
+
+  // 1. Load everything we know about this client
+  var contextRows = await loadClientContext(client.id);
+  var contextBlock = formatContextForAI(contextRows, client);
+
+  // 2. Build messages history
+  var msgHistory = '';
+  if (client.messages && Object.keys(client.messages).length) {
+    msgHistory = 'Messages précédents générés:\n';
+    Object.entries(client.messages).forEach(function(e) {
+      msgHistory += '[' + e[0] + ']: ' + String(e[1]).slice(0, 200) + '\n';
+    });
+  }
+
+  // 3. Build full prompt
+  var prompt = [
+    'Tu es l\'assistant de la Villa ' + (getCfg().villa || 'DarJ') + ', Marrakech.',
+    'Propriétaire: ' + (getCfg().owner || 'Jérémie') + '.',
+    '',
+    '=== CLIENT ===',
+    'Nom: ' + client.name + (client.nat ? ' ' + client.nat : ''),
+    client.arrival ? 'Arrivée: ' + client.arrival + (client.departure ? ' → ' + client.departure : '') : '',
+    client.guests ? 'Personnes: ' + client.guests : '',
+    client.notes ? 'Notes brutes: ' + client.notes : '',
+    '',
+    contextBlock || '(Pas encore d\'infos structurées pour ce client)',
+    '',
+    msgHistory ? '=== HISTORIQUE MESSAGES ===\n' + msgHistory : '',
+    '=== INSTRUCTION ===',
+    instruction,
+    '',
+    'Réponds en JSON avec ce format EXACT (pas de markdown):',
+    '{',
+    '  "response": "Ta réponse ou le message à envoyer (en ' + (fr ? 'français' : 'anglais') + ')",',
+    '  "action": "send_wa" ou "info" ou "question",',
+    '  "extracted": [',
+    '    {"category":"flight|meals|transport|arrival|preferences|general","key":"nom_cle","value":"valeur"}',
+    '  ],',
+    '  "missing": ["info manquante 1", "info manquante 2"]',
+    '}',
+    '',
+    'Règles:',
+    '- extracted: toutes les infos structurées trouvées dans la conversation/notes (vols, repas, heure, besoins)',
+    '- missing: infos importantes manquantes à demander',
+    '- Si instruction = envoyer un message, action="send_wa" et response = le message complet',
+    '- Si instruction = analyser, action="info" et response = résumé structuré'
+  ].filter(Boolean).join('\n');
+
+  var raw = await callBestAI('reason', '', prompt, 800);
+
+  // Parse response
+  var parsed = null;
+  try {
+    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
+    if (m) parsed = JSON.parse(m[0]);
+  } catch(e) {}
+
+  if (!parsed) {
+    // Fallback: use raw as response text
+    addChatBubble('ai', raw || 'Désolé, je n\'ai pas pu traiter cette demande.');
+    return;
+  }
+
+  // Save extracted info to Supabase
+  if (parsed.extracted && parsed.extracted.length) {
+    await saveClientContext(client.id, parsed.extracted.map(function(item) {
+      return { ...item, source: 'chat' };
+    }));
+
+    // Also update client notes in crm_clients if new info
+    var newFacts = parsed.extracted.map(function(i) { return i.key + ': ' + i.value; }).join(' · ');
+    var existingNotes = client.notes || '';
+    var alreadyKnown = parsed.extracted.every(function(i) {
+      return existingNotes.includes(i.value);
+    });
+    if (!alreadyKnown && newFacts) {
+      client.notes = existingNotes ? existingNotes + '\n' + newFacts : newFacts;
+      var idx = clients.findIndex(function(x) { return x.id === client.id; });
+      if (idx >= 0) { clients[idx] = client; saveLocal(); pushToSupabase(client); }
+    }
+  }
+
+  // Build chat bubble
+  var response = parsed.response || '...';
+  var buttons = [];
+
+  if (parsed.action === 'send_wa') {
+    buttons.push({ label: '💬 Envoyer à ' + client.name.split(' ')[0], cls: 'wa', fn: 'openChatWA("'+client.id+'","'+escapeAttr(response)+'")' });
+    buttons.push({ label: '✏️', cls: 'view', fn: 'editChatMsg(this,"'+client.id+'")' });
+    buttons.push({ label: '✕', cls: 'no', fn: 'dismissChatAction(this)' });
+  }
+
+  addChatBubble('ai', response, buttons);
+
+  // Show extracted info as system message if any
+  if (parsed.extracted && parsed.extracted.length) {
+    var savedHtml = '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">💾 Infos sauvegardées pour <strong>' + client.name + '</strong></div>' +
+      formatContextForDisplay(parsed.extracted);
+    var sysDiv = document.createElement('div');
+    sysDiv.className = 'chat-bubble system';
+    sysDiv.style.cssText = 'max-width:100%;text-align:left';
+    sysDiv.innerHTML = savedHtml;
+    document.getElementById('chatMessages').appendChild(sysDiv);
+    scrollChat();
+  }
+
+  // Show missing info as prompts
+  if (parsed.missing && parsed.missing.length) {
+    addChatBubble('system', '❓ À obtenir : ' + parsed.missing.join(' · '));
+  }
+}
+
+// Override chatSend to use context handler for client commands
+var _origDetectCommand = detectCommandIntent;
+
+function detectCommandIntentEnhanced(text) {
+  var base = _origDetectCommand(text);
+  if (base) return base;
+
+  // Detect context-rich commands: "réponds à X", "vérifie pour X", "analyse X"
+  var contextPatterns = [
+    /(?:réponds?|repondre|reply|répondre)\s+(?:à|a|to)\s+(\w+)/i,
+    /(?:vérifie|verifie|check|analyse|regarde)\s+(?:pour\s+)?(\w+)/i,
+    /(?:prépare|prepare|rédige|redige|génère)\s+(?:un\s+message\s+)?(?:pour\s+)?(\w+)/i,
+    /(?:infos?|info|détails?|details?|profil)\s+(?:de\s+|sur\s+)?(\w+)/i,
+  ];
+  for (var i = 0; i < contextPatterns.length; i++) {
+    var m = text.match(contextPatterns[i]);
+    if (m) {
+      var cl = findClientByName(m[1]);
+      if (cl) return { type: 'context', client: cl };
+    }
+  }
+  return null;
+}
+
+// Patch chatSend to use enhanced detection
+var _origChatSend = chatSend;
+
+
+function showClientContextPanel(clientId) {
+  var cl = clients.find(function(x) { return x.id === clientId; });
+  if (!cl) return;
+  var fr = lang === 'fr';
+  
+  // Show in chat
+  goTab('today');
+  addChatBubble('system', '📋 Chargement des infos de ' + cl.name + '...');
+  
+  loadClientContext(clientId).then(function(rows) {
+    var msgs = document.getElementById('chatMessages');
+    // Remove the loading bubble
+    var last = msgs.lastElementChild;
+    if (last && last.textContent.includes('Chargement')) last.remove();
+    
+    var html = '<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:8px">📋 ' + cl.name + (cl.nat?' '+cl.nat:'') + '</div>';
+    
+    if (rows.length) {
+      html += formatContextForDisplay(rows);
+    } else {
+      html += '<div style="font-size:12px;color:var(--muted);font-style:italic">Aucune info structurée encore — posez une question sur ce client dans le chat.</div>';
+    }
+    
+    // Quick actions
+    html += '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">';
+    html += '<button onclick="closeDetail();openRelancePopup(\''+cl.id+'\')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">✍ Relance</button>';
+    html += '<button onclick="var inp=document.getElementById(\'chatInput\');if(inp){inp.value=\'' + (fr?'réponds à ':'reply to ') + cl.name.split(' ')[0] + '\';chatAutoResize(inp);document.getElementById(\'chatSendBtn\').disabled=false}" style="background:var(--paper);border:1.5px solid var(--border);border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">' + (fr?'💬 Message rapide':'💬 Quick msg') + '</button>';
+    html += '</div>';
+    
+    var bubble = document.createElement('div');
+    bubble.className = 'chat-bubble system';
+    bubble.style.cssText = 'max-width:100%;text-align:left';
+    bubble.innerHTML = html;
+    msgs.appendChild(bubble);
+    scrollChat();
+  });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
