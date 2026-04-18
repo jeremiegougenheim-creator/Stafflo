@@ -2767,21 +2767,14 @@ async function chatSend() {
     );
     
     if (isPastedEmail) {
-      // Full analysis flow but result in chat
       typing.style.display = 'none';
       await handleChatEmailAnalysis(text);
       return;
     }
     
-    if (isQuestion || text.length < 150) {
-      // Answer as assistant
-      await handleChatQuestion(text);
-      return;
-    }
-    
-    // Default: full email analysis
-    typing.style.display = 'none';
-    await handleChatEmailAnalysis(text);
+    // Default: treat as a question/instruction (covers corrections,
+    // "utilise la première personne", short commands, etc.)
+    await handleChatQuestion(text);
     
   } catch(e) {
     document.getElementById('chatTyping').style.display = 'none';
@@ -2879,9 +2872,10 @@ async function handleChatSendCommand(client, text) {
   document.getElementById('chatTyping').style.display = 'none';
   
   var phone = (client.phone || '').replace(/[\s\-+()]/g,'');
+  var _waKey = storePendingWA(client.id, msg.trim());
   var buttons = [
-    { label: '💬 Envoyer à ' + client.name.split(' ')[0], cls: 'wa', fn: 'openChatWA("'+client.id+'","'+escapeAttr(msg.trim())+'")' },
-    { label: lang==='fr'?'✏️ Modifier':'✏️ Edit', cls: 'view', fn: 'editChatMsg(this,"'+client.id+'")' },
+    { label: '💬 Envoyer à ' + client.name.split(' ')[0], cls: 'wa', fn: 'sendPendingWA("'+_waKey+'")' },
+    { label: lang==='fr'?'✏️ Modifier':'✏️ Edit', cls: 'view', fn: 'editPendingWA("'+_waKey+'",this)' },
     { label: '✕', cls: 'no', fn: 'dismissChatAction(this)' }
   ];
   
@@ -3379,8 +3373,9 @@ async function handleChatContextCommand(client, instruction) {
   var buttons = [];
 
   if (parsed.action === 'send_wa') {
-    buttons.push({ label: '💬 Envoyer à ' + client.name.split(' ')[0], cls: 'wa', fn: 'openChatWA("'+client.id+'","'+escapeAttr(response)+'")' });
-    buttons.push({ label: '✏️', cls: 'view', fn: 'editChatMsg(this,"'+client.id+'")' });
+    var _ctxWaKey = storePendingWA(client.id, response);
+    buttons.push({ label: '💬 Envoyer à ' + client.name.split(' ')[0], cls: 'wa', fn: 'sendPendingWA("'+_ctxWaKey+'")' });
+    buttons.push({ label: '✏️', cls: 'view', fn: 'editPendingWA("'+_ctxWaKey+'",this)' });
     buttons.push({ label: '✕', cls: 'no', fn: 'dismissChatAction(this)' });
   }
 
@@ -3607,6 +3602,31 @@ function showClientChatHistory(clientId, clientName) {
     msgs.appendChild(bubble);
     scrollChat();
   });
+}
+
+
+// ── Pending WA messages store (avoids inline onclick breakage) ──
+var _pendingWA = {}; // key → {clientId, msg}
+var _pendingWACounter = 0;
+
+function storePendingWA(clientId, msg) {
+  var key = 'wa_' + (++_pendingWACounter);
+  _pendingWA[key] = { clientId: clientId, msg: msg };
+  return key;
+}
+function sendPendingWA(key) {
+  var p = _pendingWA[key];
+  if (!p) return;
+  openChatWA(p.clientId, p.msg);
+  delete _pendingWA[key];
+}
+function editPendingWA(key, btnEl) {
+  var p = _pendingWA[key];
+  if (!p) return;
+  var bubble = btnEl.closest('.chat-bubble');
+  var msgEl = bubble ? bubble.childNodes[0] : null;
+  var text = msgEl ? msgEl.textContent.trim() : (p.msg || '');
+  showWASend(p.clientId, text, 'followup');
 }
 
 document.addEventListener('DOMContentLoaded', function() {
