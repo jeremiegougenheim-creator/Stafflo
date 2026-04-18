@@ -2,6 +2,9 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'><rect width='26' height='26' rx='6' fill='%23C9963A'/><text x='13' y='19' font-family='Georgia' font-size='16' font-weight='700' fill='%230F2318' text-anchor='middle'>S</text></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#0F2318">
@@ -2169,12 +2172,14 @@ function applyLang() {
 // TABS
 // ════════════════════════════════════════════
 function goTab(t) {
+  console.log('[Stafflo] goTab called:', t);
   ['today','clients','home'].forEach(id => {
     const tab = document.getElementById('tab-'+id);
     const btn = document.getElementById('nb-'+id);
     if (tab) {
       tab.classList.toggle('on', id===t);
-      tab.style.display = (id===t) ? 'block' : 'none'; // force display
+      tab.style.display = (id===t) ? 'block' : 'none';
+      console.log('[Stafflo] tab-'+id+' display='+(id===t?'block':'none'));
     }
     if (btn) btn.classList.toggle('on', id===t);
   });
@@ -3831,6 +3836,10 @@ async function extractFormAI() {
 
 // ── PWA SERVICE WORKER ──
 if ('serviceWorker' in navigator) {
+  // Unregister old SW to prevent stale cache
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(r => r.unregister());
+  });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js')
       .then(reg => console.log('✓ SW registered:', reg.scope))
