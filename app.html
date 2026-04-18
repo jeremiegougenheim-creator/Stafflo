@@ -5236,19 +5236,25 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
   // ── Try proxy first (no client key needed) ──────────
   if (STAFFLO_PROXY) {
     try {
-      // Build a cache key for cacheable tasks
-      const cacheKey = (task === 'brief' || task === 'news')
-        ? task + ':' + new Date().toISOString().slice(0, 13) // per hour
-        : null;
+      // Auto-detect language to help proxy route to best AI
+      const frenchSignal = /\b(bonjour|merci|nous|pour|avec|séjour|arrivée|votre|villa|cher|chère|veuillez|bien|tout|être|vous)\b/i;
+      const isFrench = frenchSignal.test(userContent) || frenchSignal.test(systemPrompt || '');
+      // Map task + language to proxy task name (matches proxy v8 routing table)
+      var resolvedTask = task;
+      if (task === 'extract') resolvedTask = 'extract';                          // Groq fastest
+      else if (task === 'write_fr') resolvedTask = 'write_fr';                  // Mistral leads
+      else if (task === 'brief') resolvedTask = 'brief';                        // DeepSeek leads
+      else if (task === 'reason') resolvedTask = 'reason';                      // DeepSeek leads
+      else if (isFrench) resolvedTask = 'chat_fr';                              // Mistral leads
+      else resolvedTask = 'chat_en';                                             // Groq leads
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          task,
+          task: resolvedTask,
           system: systemPrompt || '',
           user: userContent,
           max_tokens: maxTokens || 1000,
-          cache_key: cacheKey,
           session_key: getSessionKeyFromUrl() || getCfg().publicSessionKey || '',
           client_mode: getCfg().clientMode || 'public',
         })
