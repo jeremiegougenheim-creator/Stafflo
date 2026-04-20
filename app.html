@@ -545,9 +545,11 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .chat-send-btn:hover{background:var(--green2)}
 .chat-send-btn:disabled{background:var(--border);cursor:default}
 /* Inbox email card */
-.inbox-card{background:var(--paper);border-radius:10px;padding:10px 12px;border-left:3px solid var(--gold);margin-bottom:6px;font-size:12px;cursor:pointer;transition:background .15s}
-.inbox-card:hover{background:var(--gold-light)}
-.inbox-card.new{border-left-color:var(--red)}
+.inbox-card{background:var(--paper);border-radius:10px;padding:10px 12px;border-left:3px solid var(--gold);margin-bottom:6px;font-size:12px;cursor:pointer;transition:all .15s;user-select:none}
+.inbox-card:hover{background:var(--gold-light);transform:translateX(2px)}
+.inbox-card:active{opacity:.8}
+.inbox-card.new{border-left-color:var(--red);background:rgba(231,76,60,.04)}
+.inbox-card .ic-preview{font-size:11px;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .inbox-card .ic-subject{font-weight:600;color:var(--ink);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inbox-card .ic-meta{color:var(--muted);font-size:11px}
 
@@ -2676,6 +2678,7 @@ function chatInit() {
     document.getElementById('chatSendBtn').disabled = !inp.value.trim();
   });
   loadInboxCount();
+  startEmailPolling();
   setTimeout(renderChatClientChips, 1500);
   // Restore last session messages from DB
   setTimeout(restoreChatSession, 800);
@@ -3068,6 +3071,9 @@ function editChatMsg(btn, clientId) {
 // EMAIL INBOX
 // ════════════════════════════════════════════════════════
 
+var _lastKnownEmailCount = 0;
+var _emailPollInterval = null;
+
 async function loadInboxCount() {
   var cfg = getCfg();
   var key = cfg.sbKey || SB_ANON;
@@ -3075,17 +3081,37 @@ async function loadInboxCount() {
     var r = await fetch(SB_URL + '/rest/v1/email_inbox?status=eq.new&select=id', {
       headers: { apikey: key, Authorization: 'Bearer ' + key, 'Prefer': 'count=exact' }
     });
-    var count = parseInt(r.headers.get('content-range')?.split('/')[1] || '0');
+    var countStr = r.headers.get('content-range') || '0/0';
+    var count = parseInt(countStr.split('/')[1] || '0');
     var badge = document.getElementById('inboxBadge');
     if (badge) {
       if (count > 0) {
-        badge.textContent = count + (lang==='fr' ? ' email' : ' email') + (count > 1 ? 's' : '');
+        badge.textContent = count + ' email' + (count > 1 ? 's' : '');
         badge.classList.add('show');
       } else {
         badge.classList.remove('show');
       }
     }
+    // Alert in chat if NEW emails arrived since last check
+    if (count > _lastKnownEmailCount && _lastKnownEmailCount >= 0) {
+      var diff = count - _lastKnownEmailCount;
+      // Only alert after initial load (not on first check)
+      if (_lastKnownEmailCount > 0 || document.getElementById('chatMessages').children.length > 1) {
+        addChatBubble('system', '📬 ' + diff + ' nouvel email' + (diff>1?'s':'') + ' reçu' + (diff>1?'s':'') + ' — clique sur <strong>Inbox</strong> pour voir');
+        // Also toast notification
+        toast('📬 ' + diff + ' nouvel email' + (diff>1?'s':'') + ' Airbnb !');
+      }
+    }
+    _lastKnownEmailCount = count;
   } catch(e) {}
+}
+
+function startEmailPolling() {
+  // Poll every 30 seconds for new emails
+  if (_emailPollInterval) clearInterval(_emailPollInterval);
+  _emailPollInterval = setInterval(function() {
+    loadInboxCount();
+  }, 30000);
 }
 
 function showInbox() {
@@ -3123,10 +3149,12 @@ async function loadInboxEmails() {
       var ex = row.extracted || {};
       var badge = row.status === 'new' ? '<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">NEW</span>' : '';
       var typeBadge = ex.email_type ? '<span style="background:var(--gold-light);color:#7A5A1A;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">'+ex.email_type+'</span>' : '';
-      return '<div class="inbox-card ' + (row.status==='new'?'new':'') + '" onclick="openInboxEmail('+JSON.stringify(row).replace(/"/g,"'")+')">'+
+      var _eKey = storeInboxEmail(row);
+      return '<div class="inbox-card ' + (row.status==='new'?'new':'') + '" onclick="openInboxEmail(\''+_eKey+'\')" style="cursor:pointer">'+
         '<div class="ic-subject">' + (row.subject||'No subject') + badge + typeBadge + '</div>'+
-        '<div class="ic-meta">' + (row.from_email||'—') + ' · ' + dateStr + 
-        (ex.name ? ' · <strong>'+ex.name+'</strong>' : '') + '</div>'+
+        '<div class="ic-meta">' + (row.from_email||'—') + ' · ' + dateStr +
+        (ex.name ? ' · <strong style=\'color:var(--green)\'>'+ex.name+'</strong>' : '') + '</div>'+
+        (row.body ? '<div class="ic-preview">' + (row.body||'').replace(/[\n\r]+/g,' ').slice(0,80) + '…</div>' : '') +
         '</div>';
     }).join('');
   } catch(e) {
@@ -3134,10 +3162,9 @@ async function loadInboxEmails() {
   }
 }
 
-function openInboxEmail(row) {
-  closeInbox();
-  var ex = row.extracted || {};
-  var fr = lang === 'fr';
+function openInboxEmail(keyOrRow) {
+  var row = (typeof keyOrRow === 'string') ? (_inboxEmails[keyOrRow] || {}) : keyOrRow;
+  if (!row.id) return;
 
   // Mark as processed
   var cfg = getCfg();
@@ -3146,61 +3173,49 @@ function openInboxEmail(row) {
     headers: { 'Content-Type':'application/json', apikey: cfg.sbKey||SB_ANON, Authorization:'Bearer '+(cfg.sbKey||SB_ANON) },
     body: JSON.stringify({ status: 'processed' })
   }).catch(function(){});
-
   loadInboxCount();
 
-  // Show email summary in chat
-  var emailType = ex.email_type || 'email';
-  addChatBubble('user', '📧 ' + (row.subject || 'Email') + ' — ' + (row.from_email || ''));
+  // Show loading state in inbox modal (stay in modal)
+  showInboxDetail('<div style="text-align:center;padding:40px 20px;color:var(--muted)"><div style="font-size:24px;margin-bottom:8px">🤖</div><div style="font-size:13px">Analyse en cours...</div></div>');
 
-  // Show typing
-  document.getElementById('chatTyping').style.display = 'block';
-  scrollChat();
-
-  // Generate analysis + 3 response options
-  handleInboxEmailFull(row, ex).catch(function(e) {
-    document.getElementById('chatTyping').style.display = 'none';
-    addChatBubble('ai', '⚠ ' + e.message);
+  // Analyse and show in modal
+  handleInboxEmailFull(row).catch(function(e) {
+    showInboxDetail('<div style="color:var(--red);padding:16px">Erreur: ' + e.message + '</div>');
   });
 }
 
-async function handleInboxEmailFull(row, ex) {
+async function handleInboxEmailFull(row) {
+  var ex = row.extracted || {};
   var fr = lang === 'fr';
   var owner = getCfg().owner || 'Jérémie';
   var villa = getCfg().villa || 'Villa DarJ';
-  var emailType = ex.email_type || 'email';
 
-  // Build rich prompt
   var prompt = [
-    'Tu analyses un email reçu pour ' + villa + ' à Marrakech (propriétaire: ' + owner + ').',
-    '',
-    '=== EMAIL ===',
-    'De: ' + (row.from_email || ''),
-    'Sujet: ' + (row.subject || ''),
-    'Contenu:\n' + (row.body || '').slice(0, 2000),
-    '',
-    '=== TÂCHE ===',
-    'Retourne UNIQUEMENT un JSON valide avec ce format:',
+    'Analyse cet email reçu pour ' + villa + ' à Marrakech (propriétaire: ' + owner + ').',
+    'Retourne UNIQUEMENT un JSON valide:',
     '{',
-    '  "summary": "Résumé en 1-2 phrases de ce que veut le client",',
-    '  "email_type": "inquiry|confirmation|message|cancellation|review",',
-    '  "guest": {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"phone":"","notes":""},',
-    '  "context": [{"category":"flight|meals|transport|arrival|preferences|general","key":"...","value":"..."}],',
+    '  "summary": "Résumé 1-2 phrases",',
+    '  "email_type": "inquiry|confirmation|message|cancellation",',
+    '  "urgency": "high|medium|low",',
+    '  "guest": {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"phone":"","email":""},',
+    '  "key_questions": ["question posée par le guest 1", "question 2"],',
     '  "responses": [',
-    '    {"label":"Confirmer disponibilité","text":"Message de réponse chaleureux signé ' + owner + '"},',
-    '    {"label":"Demander plus d\'infos","text":"Message demandant les infos manquantes"},',
-    '    {"label":"Réponse personnalisée","text":"Message adapté au contexte spécifique"}',
+    '    {"label":"Réponse chaleureuse","text":"Message complet signé ' + owner + '","channel":"wa"},',
+    '    {"label":"Demander infos manquantes","text":"Message demandant dates/infos","channel":"wa"},',
+    '    {"label":"Réponse par email","text":"Réponse formelle par email","channel":"email"}',
     '  ],',
-    '  "missing": ["infos manquantes importantes"],',
-    '  "alerts": ["alertes ou points d\'attention"]',
+    '  "missing": ["info manquante"],',
+    '  "context": [{"category":"flight|meals|transport|arrival|preferences","key":"...","value":"..."}]',
     '}',
-    'Toujours en ' + (fr ? 'français' : 'English') + '. Pas de markdown.'
+    'Langue de réponse: ' + (fr ? 'français' : 'English') + '. Pas de markdown.',
+    '',
+    'Email de: ' + (row.from_email || ''),
+    'Sujet: ' + (row.subject || ''),
+    'Corps:\n' + (row.body || '').slice(0, 2500)
   ].join('\n');
 
-  var raw = await callBestAI('reason', '', prompt, 1200);
-  document.getElementById('chatTyping').style.display = 'none';
+  var raw = await callBestAI('reason', '', prompt, 1400);
 
-  // Parse
   var parsed = null;
   try {
     var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
@@ -3208,60 +3223,96 @@ async function handleInboxEmailFull(row, ex) {
   } catch(e) {}
 
   if (!parsed) {
-    addChatBubble('ai', raw || 'Email analysé mais format inattendu.');
+    showInboxDetail('<div style="padding:16px"><div style="font-size:13px;color:var(--muted)">Impossible de parser la réponse IA. Email brut :</div><pre style="font-size:11px;overflow:auto;max-height:200px;margin-top:8px">' + (row.body||'').slice(0,500) + '</pre></div>');
     return;
   }
 
   var g = parsed.guest || {};
   var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
   var net = g.price ? Math.round(g.price * (1 - 15.5/100)) : 0;
-
-  // Check if client already exists
   var existing = g.name ? clients.find(function(cl) {
-    return (cl.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);
+    return (cl.name||'').toLowerCase().split(' ')[0] === (g.name||'').toLowerCase().split(' ')[0];
   }) : null;
 
-  // Build summary bubble
-  var summaryHtml = '<div style="font-size:13px;font-weight:600;margin-bottom:6px">📧 ' + (parsed.email_type||'Email').toUpperCase() + '</div>';
-  summaryHtml += '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + (parsed.summary||'') + '</div>';
+  // Build urgency color
+  var urgencyColor = parsed.urgency === 'high' ? 'var(--red)' : parsed.urgency === 'medium' ? 'var(--gold)' : 'var(--green)';
+  var urgencyLabel = parsed.urgency === 'high' ? '🔴 Urgent' : parsed.urgency === 'medium' ? '🟡 Moyen' : '🟢 Normal';
 
+  // Build detail HTML
+  var html = '';
+
+  // Summary card
+  html += '<div style="background:var(--paper);border-radius:10px;padding:12px 14px;margin-bottom:10px;border-left:3px solid ' + urgencyColor + '">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+  html += '<span style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">' + (parsed.email_type||'EMAIL').toUpperCase() + '</span>';
+  html += '<span style="font-size:10px;font-weight:600;color:' + urgencyColor + '">' + urgencyLabel + '</span>';
+  html += '</div>';
+  html += '<div style="font-size:13px;color:var(--ink);line-height:1.5">' + (parsed.summary||'') + '</div>';
+
+  if (parsed.key_questions && parsed.key_questions.length) {
+    html += '<div style="margin-top:8px;font-size:11px;color:var(--muted)">Questions posées : ' + parsed.key_questions.map(function(q){return '"'+q+'"';}).join(' · ') + '</div>';
+  }
+  html += '</div>';
+
+  // Guest info (if found)
   if (g.name) {
-    summaryHtml += '<div style="background:var(--paper);border-radius:8px;padding:8px 10px;margin-bottom:8px;border-left:3px solid var(--' + (existing?'gold':'green') + ')">';
-    summaryHtml += '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:4px">' + (existing ? '⚠️ CLIENT EXISTANT — '+existing.name : '🆕 NOUVEAU CLIENT') + '</div>';
-    if (g.name) summaryHtml += '<div style="font-size:12px"><strong>' + g.name + '</strong>' + (g.nat?' '+g.nat:'') + '</div>';
-    if (g.arrival) summaryHtml += '<div style="font-size:11px;color:var(--muted)">📅 ' + fmtDate(g.arrival,true) + (g.departure?' → '+fmtDate(g.departure,true):'') + (nights?' · '+nights+' nuits':'') + '</div>';
-    if (g.guests) summaryHtml += '<div style="font-size:11px;color:var(--muted)">👥 ' + g.guests + ' pers.</div>';
-    if (net) summaryHtml += '<div style="font-size:11px;color:var(--green)">💰 Net estimé: ~' + net + '€</div>';
-    summaryHtml += '</div>';
+    html += '<div style="background:var(--paper);border-radius:10px;padding:10px 12px;margin-bottom:10px;border-left:3px solid ' + (existing?'var(--gold)':'var(--green)') + '">';
+    html += '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:4px">' + (existing ? '⚠️ CLIENT EXISTANT · '+existing.name : '🆕 NOUVEAU GUEST') + '</div>';
+    html += '<div style="font-size:13px;font-weight:600">' + g.name + (g.nat?' '+g.nat:'') + '</div>';
+    if (g.arrival) html += '<div style="font-size:11px;color:var(--muted)">📅 ' + g.arrival + (g.departure?' → '+g.departure:'') + (nights?' · '+nights+' nuits':'') + '</div>';
+    if (g.guests) html += '<div style="font-size:11px;color:var(--muted)">👥 ' + g.guests + ' pers.</div>';
+    if (net) html += '<div style="font-size:11px;color:var(--green)">💰 Net ~' + net + '€</div>';
+    // Save button
+    html += '<button id="inboxSaveBtn" style="margin-top:8px;background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">' + (existing ? '🔄 Mettre à jour' : '💾 Sauvegarder') + '</button>';
+    html += '</div>';
   }
 
-  if (parsed.alerts && parsed.alerts.length) {
-    summaryHtml += '<div style="background:rgba(231,76,60,.05);border-radius:6px;padding:6px 8px;font-size:11px;color:var(--red);margin-bottom:6px">⚠️ ' + parsed.alerts.join(' · ') + '</div>';
-  }
+  // Missing info
   if (parsed.missing && parsed.missing.length) {
-    summaryHtml += '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">❓ Manquant: ' + parsed.missing.join(', ') + '</div>';
+    html += '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">❓ Manquant: ' + parsed.missing.join(' · ') + '</div>';
   }
 
-  var sysDiv = document.createElement('div');
-  sysDiv.className = 'chat-bubble system';
-  sysDiv.style.cssText = 'max-width:100%;text-align:left';
-  sysDiv.innerHTML = summaryHtml;
-  document.getElementById('chatMessages').appendChild(sysDiv);
+  // 3 Response options
+  html += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:700;margin-bottom:8px">✍ 3 OPTIONS DE RÉPONSE</div>';
 
-  // Save action buttons
-  var _saveKey = g.name ? storePendingWA(existing ? existing.id : null, '') : null;
-  var actDiv = document.createElement('div');
-  actDiv.className = 'chat-actions';
-  actDiv.style.marginTop = '8px';
+  if (parsed.responses && parsed.responses.length) {
+    parsed.responses.forEach(function(resp, i) {
+      var waKey = storePendingWA(existing ? existing.id : null, resp.text);
+      if (existing && existing.phone) _pendingWA[waKey].phone = (existing.phone||'').replace(/[\s\-+()]/g,'');
+      var channelIcon = resp.channel === 'email' ? '📧' : '💬';
+      var channelLabel = resp.channel === 'email' ? 'Email' : 'WhatsApp';
 
-  // Save/update client
-  if (g.name) {
-    var saveBtn = document.createElement('button');
-    saveBtn.className = 'chat-action-btn save';
-    saveBtn.textContent = existing ? '🔄 Mettre à jour ' + existing.name.split(' ')[0] : '💾 Sauvegarder';
+      html += '<div style="background:var(--paper);border-radius:10px;padding:10px 12px;margin-bottom:8px;border:1px solid var(--border)">';
+      html += '<div style="font-size:10px;letter-spacing:1px;color:var(--muted);margin-bottom:4px">OPTION '+(i+1)+' · '+resp.label+'</div>';
+      // Show truncated text
+      var preview = resp.text.length > 160 ? resp.text.slice(0,160)+'…' : resp.text;
+      html += '<div id="resp_text_'+i+'" style="font-size:12px;line-height:1.6;color:var(--ink);margin-bottom:8px">' + preview.replace(/\n/g,'<br>') + '</div>';
+
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+      if (resp.channel !== 'email') {
+        // WA button (use store)
+        html += '<button onclick="sendPendingWA(\''+waKey+'\')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">💬 Envoyer WA</button>';
+        html += '<button onclick="editPendingWA(\''+waKey+'\',this)" style="background:none;border:1.5px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">✏️</button>';
+      } else {
+        // Email copy button
+        html += '<button onclick="navigator.clipboard.writeText(\''+resp.text.replace(/'/g,"\\'").replace(/\n/g,'\\n')+'\').then(function(){toast(\'📋 Texte copié !\');})" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">📧 Copier texte</button>';
+      }
+      if (resp.text.length > 160) {
+        html += '<button onclick="document.getElementById(\'resp_text_'+i+'\').innerHTML=\''+resp.text.replace(/'/g,"\\'").replace(/\n/g,'<br>').slice(0,800)+'\';this.remove()" style="background:none;border:1.5px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">👁 Voir tout</button>';
+      }
+      html += '</div></div>';
+    });
+  }
+
+  // Show in modal
+  showInboxDetail(html);
+
+  // Wire up save button after render
+  setTimeout(function() {
+    var saveBtn = document.getElementById('inboxSaveBtn');
+    if (!saveBtn) return;
     saveBtn.onclick = function() {
       if (existing) {
-        // Merge with existing
         var merged = Object.assign({}, existing, {
           arrival: g.arrival || existing.arrival,
           departure: g.departure || existing.departure,
@@ -3269,71 +3320,28 @@ async function handleInboxEmailFull(row, ex) {
           notes: ((existing.notes||'') + (g.notes?' · '+g.notes:'')).trim()
         });
         pushToSupabase(merged);
-        var idx = clients.findIndex(function(x){return x.id===existing.id;});
-        if(idx>=0){clients[idx]=merged;}
+        var idx2 = clients.findIndex(function(x){return x.id===existing.id;});
+        if(idx2>=0){clients[idx2]=merged;}
         saveLocal(); renderAll();
-        this.textContent = '✅ Mis à jour';
-        this.disabled = true;
       } else {
         saveFromResult(g);
-        this.textContent = '✅ Sauvegardé';
-        this.disabled = true;
       }
-      // Save context items
       if (parsed.context && parsed.context.length) {
         var targetId = existing ? existing.id : null;
         if (!targetId) {
-          var newCl = clients.find(function(x){return (x.name||'').includes(g.name.split(' ')[0]);});
-          if (newCl) targetId = newCl.id;
+          setTimeout(function() {
+            var newCl = clients.find(function(x){return (x.name||'').split(' ')[0]===(g.name||'').split(' ')[0];});
+            if (newCl) saveClientContext(newCl.id, parsed.context);
+          }, 1000);
+        } else {
+          saveClientContext(targetId, parsed.context);
         }
-        if (targetId) saveClientContext(targetId, parsed.context);
       }
+      saveBtn.textContent = '✅ Sauvegardé';
+      saveBtn.disabled = true;
+      saveBtn.style.background = 'var(--muted)';
     };
-    actDiv.appendChild(saveBtn);
-  }
-
-  sysDiv.appendChild(actDiv);
-
-  // 3 response options
-  if (parsed.responses && parsed.responses.length) {
-    addChatBubble('system', '✍ 3 options de réponse — clique pour envoyer :');
-    parsed.responses.forEach(function(resp, i) {
-      var clientId = existing ? existing.id : null;
-      var clientPhone = existing ? existing.phone : g.phone;
-      var waKey = storePendingWA(clientId, resp.text);
-      // Override phone in store
-      if (clientPhone) _pendingWA[waKey].phone = (clientPhone||'').replace(/[\s\-+()]/g,'');
-
-      var bubble = document.createElement('div');
-      bubble.className = 'chat-bubble ai';
-      bubble.style.cursor = 'pointer';
-      var shortText = resp.text.length > 180 ? resp.text.slice(0,180) + '…' : resp.text;
-      bubble.innerHTML = '<div style="font-size:10px;letter-spacing:1.5px;color:rgba(255,255,255,.5);margin-bottom:4px">OPTION '+(i+1)+' · '+resp.label+'</div>' + shortText.replace(/\n/g,'<br>');
-      var btnDiv = document.createElement('div');
-      btnDiv.className = 'chat-actions';
-      var sendBtn = document.createElement('button');
-      sendBtn.className = 'chat-action-btn wa';
-      sendBtn.textContent = '💬 Envoyer';
-      sendBtn.onclick = function() { sendPendingWA(waKey); };
-      var editBtn = document.createElement('button');
-      editBtn.className = 'chat-action-btn view';
-      editBtn.textContent = '✏️';
-      editBtn.onclick = function() { editPendingWA(waKey, editBtn); };
-      var fullBtn = document.createElement('button');
-      fullBtn.className = 'chat-action-btn no';
-      fullBtn.textContent = '👁 Voir';
-      fullBtn.onclick = function() {
-        this.closest('.chat-actions').previousSibling.innerHTML = resp.text.replace(/\n/g,'<br>');
-        this.remove();
-      };
-      btnDiv.appendChild(sendBtn);
-      btnDiv.appendChild(editBtn);
-      if (resp.text.length > 180) btnDiv.appendChild(fullBtn);
-      bubble.appendChild(btnDiv);
-      document.getElementById('chatMessages').appendChild(bubble);
-    });
-    scrollChat();
-  }
+  }, 100);
 }
 
 
@@ -3806,9 +3814,18 @@ function showClientChatHistory(clientId, clientName) {
 }
 
 
-// ── Pending WA messages store (avoids inline onclick breakage) ──
+// ── Pending WA messages store ──
 var _pendingWA = {}; // key → {clientId, msg}
 var _pendingWACounter = 0;
+
+// ── Inbox email store (avoids passing JSON in onclick) ──
+var _inboxEmails = {}; // key → row object
+var _inboxEmailCounter = 0;
+function storeInboxEmail(row) {
+  var key = 'email_' + (++_inboxEmailCounter);
+  _inboxEmails[key] = row;
+  return key;
+}
 
 function storePendingWA(clientId, msg) {
   var key = 'wa_' + (++_pendingWACounter);
@@ -3920,6 +3937,32 @@ async function handleStoreInfo(client, text) {
   // Also update client notes
   window._lastMentionedClientId = client.id;
   window._lastMentionedClientName = client.name;
+}
+
+
+function showInboxList() {
+  document.getElementById('inboxList').style.display = 'block';
+  document.getElementById('inboxDetailPanel').style.display = 'none';
+  document.getElementById('inboxBackBtn').style.display = 'none';
+  document.getElementById('inboxModalTitle').textContent = 'Emails Airbnb reçus';
+  // Also show setup block if visible
+  var sb = document.getElementById('inboxSetupBlock');
+  if (sb && sb._wasVisible) sb.style.display = 'block';
+}
+
+function showInboxDetail(html) {
+  // Hide list, show detail
+  var listEl = document.getElementById('inboxList');
+  var detailEl = document.getElementById('inboxDetailPanel');
+  var backBtn = document.getElementById('inboxBackBtn');
+  if (listEl) listEl.style.display = 'none';
+  if (detailEl) { detailEl.style.display = 'block'; }
+  if (backBtn) backBtn.style.display = 'inline-block';
+  document.getElementById('inboxDetailContent').innerHTML = html;
+  // Hide setup
+  var sb = document.getElementById('inboxSetupBlock');
+  if (sb) { sb._wasVisible = sb.style.display !== 'none'; sb.style.display = 'none'; }
+  document.getElementById('inboxModalTitle').textContent = 'Analyse email';
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -6485,11 +6528,15 @@ function toggleRdy(el) {
 <div id="inboxModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9996;align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeInbox()">
   <div style="background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:640px;max-height:80vh;overflow-y:auto;padding-bottom:20px">
     <div style="background:var(--green3);padding:14px 20px;border-radius:20px 20px 0 0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1">
-      <div>
-        <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">INBOX</div>
-        <div style="font-family:'Fraunces',serif;font-size:17px;color:#fff;font-weight:300">Emails Airbnb reçus</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button id="inboxBackBtn" onclick="showInboxList()" style="display:none;background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer">← Retour</button>
+        <div>
+          <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">INBOX</div>
+          <div id="inboxModalTitle" style="font-family:'Fraunces',serif;font-size:17px;color:#fff;font-weight:300">Emails Airbnb reçus</div>
+        </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="loadInboxEmails()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer">↻</button>
         <button onclick="closeInbox()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
       </div>
     </div>
