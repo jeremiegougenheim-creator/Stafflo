@@ -3279,11 +3279,7 @@ async function handleInboxEmailFull(row, ex) {
   document.getElementById('chatTyping').style.display = 'none';
 
   // Parse
-  var parsed = null;
-  try {
-    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
-    if (m) parsed = JSON.parse(m[0]);
-  } catch(e) {}
+  var parsed = parseAIJson(raw);
 
   if (!parsed) {
     addChatBubble('ai', raw || 'Email analysé mais format inattendu.');
@@ -3604,15 +3600,11 @@ async function handleChatContextCommand(client, instruction) {
   var raw = await callBestAI('reason', '', prompt, 800);
 
   // Parse response
-  var parsed = null;
-  try {
-    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
-    if (m) parsed = JSON.parse(m[0]);
-  } catch(e) {}
+  var parsed = parseAIJson(raw);
 
   if (!parsed) {
-    // Fallback: use raw as response text
-    addChatBubble('ai', raw || 'Désolé, je n\'ai pas pu traiter cette demande.');
+    addChatBubble('ai', lang==='fr' ? '🤔 Réessaie ou reformule ta demande.' : '🤔 Try rephrasing.');
+    console.warn('[context] raw:', raw.slice(0,300));
     return;
   }
 
@@ -3968,11 +3960,7 @@ async function handleStoreInfo(client, text) {
 
   var raw = await callBestAI('extract', '', prompt, 300);
 
-  var parsed = null;
-  try {
-    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
-    if (m) parsed = JSON.parse(m[0]);
-  } catch(e) {}
+  var parsed = parseAIJson(raw);
 
   if (!parsed || !parsed.extracted || !parsed.extracted.length) {
     addChatBubble('ai', fr ? '🤔 Je n\'ai pas pu extraire d\'informations structurées. Essaie : "infos Celia : végétarienne, vol AT1234 à 15h"' : '🤔 Could not extract structured info.');
@@ -4092,13 +4080,14 @@ async function handleWAConvUnknown(text) {
   var raw = await callBestAI('reason', '', prompt, 600);
   document.getElementById('chatTyping').style.display = 'none';
 
-  var parsed = null;
-  try {
-    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
-    if (m) parsed = JSON.parse(m[0]);
-  } catch(e) {}
+  var parsed = parseAIJson(raw);
 
-  if (!parsed) { addChatBubble('ai', raw); return; }
+  if (!parsed) {
+    // Don't show raw JSON — show a helpful message instead
+    addChatBubble('ai', lang==='fr' ? '🤔 Je n\'ai pas pu analyser la réponse. Réessaie.' : '🤔 Could not parse response. Try again.');
+    console.warn('[AI] raw response:', raw.slice(0,200));
+    return;
+  }
 
   var name = parsed.client_name || '?';
   addChatBubble('system', '💬 Conversation avec <strong>' + name + '</strong>' +
@@ -4164,22 +4153,24 @@ async function handleChatContextCommandWithText(client, fullText) {
     'Analyse cette conversation et:',
     '1. Extrais toutes les infos structurées (repas, transport, dates, demandes)',
     '2. Identifie ce qui est en attente de réponse',
-    '3. Rédige la réponse appropriée de ' + owner,
+    '3. Rédige la réponse WA de ' + owner + ' (MAX 6 lignes, chaleureux, concis, signé ' + owner + ')',
+    '   Si le message précédent était trop long → résume en gardant l\'essentiel',
     '',
-    'JSON format:',
-    '{"response":"message complet signé '+owner+'","action":"send_wa","extracted":[{"category":"...","key":"...","value":"..."}],"missing":["..."]}'
+    'JSON format EXACT:',
+    '{"response":"message court max 6 lignes","action":"send_wa","extracted":[{"category":"flight|meals|transport|arrival|preferences|general","key":"snake_case","value":"valeur"}],"missing":["info manquante"]}'
   ].filter(Boolean).join('\n');
 
   var raw = await callBestAI('reason', '', prompt, 1000);
   document.getElementById('chatTyping').style.display = 'none';
 
-  var parsed = null;
-  try {
-    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
-    if (m) parsed = JSON.parse(m[0]);
-  } catch(e) {}
+  var parsed = parseAIJson(raw);
 
-  if (!parsed) { addChatBubble('ai', raw || 'Analyse incomplète'); return; }
+  if (!parsed) {
+    // Don't show raw JSON — show a helpful message instead
+    addChatBubble('ai', lang==='fr' ? '🤔 Je n\'ai pas pu analyser la réponse. Réessaie.' : '🤔 Could not parse response. Try again.');
+    console.warn('[AI] raw response:', raw.slice(0,200));
+    return;
+  }
 
   var response = parsed.response || '';
   var buttons = [];
@@ -4207,6 +4198,37 @@ async function handleChatContextCommandWithText(client, fullText) {
   }
   if (parsed.missing && parsed.missing.length) {
     addChatBubble('system', '❓ Manquant: ' + parsed.missing.join(' · '));
+  }
+}
+
+
+function parseAIJson(raw) {
+  // Strip all markdown code fences
+  var cleaned = raw
+    .replace(/^```[a-z]*\s*/gm, '')
+    .replace(/```\s*$/gm, '')
+    .trim();
+  // Find the first { ... } block
+  var start = cleaned.indexOf('{');
+  if (start === -1) return null;
+  // Find matching closing brace
+  var depth = 0, end = -1;
+  for (var i = start; i < cleaned.length; i++) {
+    if (cleaned[i] === '{') depth++;
+    else if (cleaned[i] === '}') {
+      depth--;
+      if (depth === 0) { end = i + 1; break; }
+    }
+  }
+  if (end === -1) return null;
+  try {
+    return JSON.parse(cleaned.slice(start, end));
+  } catch(e) {
+    // Try stripping control characters
+    try {
+      var safe = cleaned.slice(start, end).replace(/[\x00-\x1F\x7F]/g, ' ');
+      return JSON.parse(safe);
+    } catch(e2) { return null; }
   }
 }
 
