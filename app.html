@@ -572,9 +572,72 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   border-color: var(--gold);
 }
 
+
+.auth-tab { background: transparent; color: var(--muted); }
+.auth-tab.active { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+
 </style>
 </head>
 <body>
+<!-- ══ AUTH SCREEN (Login / Signup) ══════════════════════════ -->
+<div id="authScreen" style="display:none;position:fixed;inset:0;background:linear-gradient(180deg,var(--green3) 0%,#143526 100%);z-index:10000;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
+  <div style="background:var(--card);border-radius:20px;width:100%;max-width:420px;padding:32px 28px;box-shadow:0 24px 64px rgba(0,0,0,.4)">
+    <!-- Brand -->
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:6px">
+        <div style="width:44px;height:44px;background:var(--gold);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:Fraunces,serif;font-weight:600;font-size:22px;color:var(--green3)">S</div>
+        <div style="font-family:Fraunces,serif;font-size:28px;color:var(--green3);font-weight:400">Stafflo</div>
+      </div>
+      <div style="font-size:12px;color:var(--muted)">Villa operations · AI powered</div>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex;background:var(--paper);border-radius:10px;padding:4px;margin-bottom:18px">
+      <button id="authTabSignin" onclick="switchAuthTab('signin')" class="auth-tab active" style="flex:1;border:none;padding:8px;font-size:13px;font-weight:600;cursor:pointer;border-radius:8px;font-family:'DM Sans',sans-serif">Connexion</button>
+      <button id="authTabSignup" onclick="switchAuthTab('signup')" class="auth-tab" style="flex:1;border:none;padding:8px;font-size:13px;font-weight:600;cursor:pointer;border-radius:8px;font-family:'DM Sans',sans-serif">Créer un compte</button>
+    </div>
+
+    <!-- Signin form -->
+    <div id="authFormSignin">
+      <label style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px">EMAIL</label>
+      <input type="email" id="authSigninEmail" placeholder="jeremie@villa.com"
+        style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px">
+      <label style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px">MOT DE PASSE</label>
+      <input type="password" id="authSigninPassword" placeholder="••••••••"
+        style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;outline:none;margin-bottom:14px">
+      <button onclick="doSignIn()" id="btnSignin"
+        style="width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Se connecter</button>
+      <div style="text-align:center;margin-top:10px">
+        <button onclick="doForgotPassword()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline">Mot de passe oublié ?</button>
+      </div>
+    </div>
+
+    <!-- Signup form -->
+    <div id="authFormSignup" style="display:none">
+      <label style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px">VOTRE PRÉNOM</label>
+      <input type="text" id="authSignupName" placeholder="Jérémie"
+        style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px">
+      <label style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px">EMAIL</label>
+      <input type="email" id="authSignupEmail" placeholder="jeremie@villa.com"
+        style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px">
+      <label style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px">MOT DE PASSE (min 8 caractères)</label>
+      <input type="password" id="authSignupPassword" placeholder="••••••••"
+        style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px">
+      <label style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px">NOM DE LA VILLA</label>
+      <input type="text" id="authSignupVilla" placeholder="Villa DarJ"
+        style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:inherit;outline:none;margin-bottom:14px">
+      <button onclick="doSignUp()" id="btnSignup"
+        style="width:100%;background:var(--green);color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">Créer mon compte · Essai 14 jours gratuits</button>
+      <div style="margin-top:10px;font-size:11px;color:var(--muted);text-align:center;line-height:1.5">
+        Aucune carte bancaire requise · Annulation à tout moment
+      </div>
+    </div>
+
+    <!-- Error/info message -->
+    <div id="authMessage" style="display:none;margin-top:12px;padding:10px;border-radius:8px;font-size:12px;text-align:center"></div>
+  </div>
+</div>
+
 
 <header>
   <a href="index.html" class="logo" id="logoLink" onclick="this.href=lang==='en'?'en.html':'index.html'" style="display:flex;align-items:center;gap:7px;text-decoration:none">
@@ -4951,6 +5014,301 @@ function showIntegrationsPanel() {
   document.body.appendChild(modal);
 }
 
+
+// ════════════════════════════════════════════════════════
+// AUTHENTICATION — Supabase Auth integration
+// ════════════════════════════════════════════════════════
+
+var SB_AUTH_URL = SB_URL + '/auth/v1';
+var _stafflo_user = null;         // { id, email }
+var _stafflo_session = null;      // { access_token, refresh_token, expires_at }
+
+async function loadSession() {
+  try {
+    var raw = localStorage.getItem('stafflo_session');
+    if (!raw) return null;
+    var s = JSON.parse(raw);
+    // Check expiry
+    if (s.expires_at && s.expires_at * 1000 < Date.now() + 60000) {
+      // Try refresh
+      var refreshed = await refreshSession(s.refresh_token);
+      if (refreshed) return refreshed;
+      return null;
+    }
+    return s;
+  } catch(e) { return null; }
+}
+
+function saveSession(session) {
+  if (session) {
+    localStorage.setItem('stafflo_session', JSON.stringify(session));
+    _stafflo_session = session;
+    _stafflo_user = session.user;
+  } else {
+    localStorage.removeItem('stafflo_session');
+    _stafflo_session = null;
+    _stafflo_user = null;
+  }
+}
+
+async function refreshSession(refreshToken) {
+  try {
+    var r = await fetch(SB_AUTH_URL + '/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SB_ANON },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    if (!r.ok) return null;
+    var data = await r.json();
+    var session = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: data.expires_at,
+      user: data.user
+    };
+    saveSession(session);
+    return session;
+  } catch(e) { return null; }
+}
+
+async function doSignIn() {
+  var email = document.getElementById('authSigninEmail').value.trim();
+  var password = document.getElementById('authSigninPassword').value;
+  if (!email || !password) return showAuthMessage('error', 'Email et mot de passe requis');
+
+  var btn = document.getElementById('btnSignin');
+  btn.disabled = true; btn.textContent = 'Connexion...';
+
+  try {
+    var r = await fetch(SB_AUTH_URL + '/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SB_ANON },
+      body: JSON.stringify({ email: email, password: password })
+    });
+    var data = await r.json();
+    if (!r.ok) {
+      showAuthMessage('error', data.error_description || data.msg || 'Connexion échouée');
+      btn.disabled = false; btn.textContent = 'Se connecter';
+      return;
+    }
+    saveSession({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: data.expires_at,
+      user: data.user
+    });
+    showAuthMessage('success', '✓ Connecté');
+    setTimeout(onAuthSuccess, 300);
+  } catch(e) {
+    showAuthMessage('error', 'Erreur réseau');
+    btn.disabled = false; btn.textContent = 'Se connecter';
+  }
+}
+
+async function doSignUp() {
+  var name = document.getElementById('authSignupName').value.trim();
+  var email = document.getElementById('authSignupEmail').value.trim();
+  var password = document.getElementById('authSignupPassword').value;
+  var villa = document.getElementById('authSignupVilla').value.trim();
+  if (!email || !password) return showAuthMessage('error', 'Email et mot de passe requis');
+  if (password.length < 8) return showAuthMessage('error', 'Mot de passe : min 8 caractères');
+
+  var btn = document.getElementById('btnSignup');
+  btn.disabled = true; btn.textContent = 'Création...';
+
+  try {
+    var r = await fetch(SB_AUTH_URL + '/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SB_ANON },
+      body: JSON.stringify({
+        email: email, password: password,
+        data: { full_name: name, villa_name: villa }
+      })
+    });
+    var data = await r.json();
+    if (!r.ok) {
+      showAuthMessage('error', data.error_description || data.msg || 'Inscription échouée');
+      btn.disabled = false; btn.textContent = 'Créer mon compte · Essai 14 jours gratuits';
+      return;
+    }
+
+    // Auto-fill villa name in profile
+    if (data.user && data.access_token) {
+      saveSession({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        expires_at: data.expires_at,
+        user: data.user
+      });
+      // Update profile with villa info
+      await fetch(SB_URL + '/rest/v1/profiles?id=eq.' + data.user.id, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: SB_ANON,
+          Authorization: 'Bearer ' + data.access_token
+        },
+        body: JSON.stringify({ villa_name: villa, full_name: name, owner_name: name })
+      }).catch(function(){});
+      showAuthMessage('success', '✓ Compte créé · Essai 14 jours démarré');
+      setTimeout(onAuthSuccess, 500);
+    } else {
+      // Email confirmation required
+      showAuthMessage('info', '📧 Un email de confirmation vous a été envoyé. Vérifiez votre boîte.');
+      btn.disabled = false; btn.textContent = 'Créer mon compte · Essai 14 jours gratuits';
+    }
+  } catch(e) {
+    showAuthMessage('error', 'Erreur réseau');
+    btn.disabled = false; btn.textContent = 'Créer mon compte · Essai 14 jours gratuits';
+  }
+}
+
+async function doForgotPassword() {
+  var email = document.getElementById('authSigninEmail').value.trim();
+  if (!email) return showAuthMessage('error', 'Entrez votre email d\'abord');
+  try {
+    var r = await fetch(SB_AUTH_URL + '/recover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SB_ANON },
+      body: JSON.stringify({ email: email })
+    });
+    if (r.ok) showAuthMessage('success', '📧 Email de réinitialisation envoyé');
+    else showAuthMessage('error', 'Erreur — réessayez');
+  } catch(e) { showAuthMessage('error', 'Erreur réseau'); }
+}
+
+async function doSignOut() {
+  try {
+    if (_stafflo_session) {
+      await fetch(SB_AUTH_URL + '/logout', {
+        method: 'POST',
+        headers: {
+          apikey: SB_ANON,
+          Authorization: 'Bearer ' + _stafflo_session.access_token
+        }
+      });
+    }
+  } catch(e) {}
+  saveSession(null);
+  // Clear all local data
+  localStorage.removeItem('stafflo_clients');
+  localStorage.removeItem('stafflo_onboarded');
+  location.reload();
+}
+
+function switchAuthTab(tab) {
+  document.getElementById('authTabSignin').classList.toggle('active', tab === 'signin');
+  document.getElementById('authTabSignup').classList.toggle('active', tab === 'signup');
+  document.getElementById('authFormSignin').style.display = tab === 'signin' ? 'block' : 'none';
+  document.getElementById('authFormSignup').style.display = tab === 'signup' ? 'block' : 'none';
+  document.getElementById('authMessage').style.display = 'none';
+}
+
+function showAuthMessage(type, msg) {
+  var el = document.getElementById('authMessage');
+  var colors = {
+    error:   { bg:'rgba(231,76,60,.1)',  fg:'var(--red)' },
+    success: { bg:'var(--green-light)',  fg:'var(--green)' },
+    info:    { bg:'rgba(201,150,58,.1)', fg:'var(--gold)' }
+  };
+  var c = colors[type] || colors.info;
+  el.style.background = c.bg;
+  el.style.color = c.fg;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function showAuthScreen() {
+  document.getElementById('authScreen').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  // Hide main app
+  var main = document.querySelector('main');
+  var hdr = document.querySelector('header');
+  if (main) main.style.display = 'none';
+  if (hdr) hdr.style.display = 'none';
+}
+
+function hideAuthScreen() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.body.style.overflow = '';
+  var main = document.querySelector('main');
+  var hdr = document.querySelector('header');
+  if (main) main.style.display = '';
+  if (hdr) hdr.style.display = '';
+}
+
+async function onAuthSuccess() {
+  hideAuthScreen();
+  // Trigger full app init
+  await initAppAfterAuth();
+}
+
+async function initAppAfterAuth() {
+  // Update user indicator in header
+  updateUserIndicator();
+  // Reload data with JWT
+  await loadFromSupabase();
+  renderAll();
+  renderTodayQV();
+}
+
+function updateUserIndicator() {
+  var el = document.getElementById('userIndicator');
+  if (!el) return;
+  if (_stafflo_user) {
+    var email = _stafflo_user.email || '';
+    el.textContent = email.split('@')[0];
+    el.style.display = 'inline-block';
+    el.title = email;
+  }
+}
+
+// ── Add JWT to Supabase fetch headers ──
+// Override sbHdrs to inject JWT when available
+var _origSbHdrs = typeof sbHdrs === 'function' ? sbHdrs : null;
+function getAuthedHeaders(extra) {
+  var h = {
+    'Content-Type': 'application/json',
+    apikey: SB_ANON
+  };
+  if (_stafflo_session && _stafflo_session.access_token) {
+    h.Authorization = 'Bearer ' + _stafflo_session.access_token;
+  } else {
+    h.Authorization = 'Bearer ' + SB_ANON;
+  }
+  if (extra) Object.keys(extra).forEach(function(k){ h[k]=extra[k]; });
+  return h;
+}
+
+// Intercept fetch calls to Supabase to auto-inject JWT
+var _origFetch = window.fetch;
+window.fetch = function(url, opts) {
+  opts = opts || {};
+  var u = typeof url === 'string' ? url : url.url;
+  if (u && u.indexOf(SB_URL) === 0 && _stafflo_session) {
+    opts.headers = opts.headers || {};
+    // Only override if using SB_ANON as Bearer
+    var hasAuth = opts.headers.Authorization || opts.headers.authorization;
+    if (!hasAuth || (hasAuth && hasAuth.indexOf(SB_ANON) > -1)) {
+      if (opts.headers instanceof Headers) {
+        opts.headers.set('Authorization', 'Bearer ' + _stafflo_session.access_token);
+      } else {
+        opts.headers.Authorization = 'Bearer ' + _stafflo_session.access_token;
+      }
+    }
+  }
+  return _origFetch(url, opts);
+};
+
+// Auto-inject user_id on inserts
+function withUserId(payload) {
+  if (!_stafflo_user) return payload;
+  if (Array.isArray(payload)) {
+    return payload.map(function(p) { return Object.assign({ user_id: _stafflo_user.id }, p); });
+  }
+  return Object.assign({ user_id: _stafflo_user.id }, payload);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
 
   // ── Migrate old localStorage key name ──
@@ -4970,11 +5328,38 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('nb-home').addEventListener('click', function(){ goTab('home'); });
   var _gear = document.querySelector('.hdr-btn[title="Settings"]');
   if (_gear) _gear.addEventListener('click', openSettings);
+  // Add user badge
+  var hdr = document.querySelector('header');
+  if (hdr && !document.getElementById('userIndicator')) {
+    var userBadge = document.createElement('span');
+    userBadge.id = 'userIndicator';
+    userBadge.style.cssText = 'display:none;font-size:11px;color:rgba(253,246,236,.7);margin-right:8px;cursor:pointer;padding:4px 8px;background:rgba(255,255,255,.08);border-radius:12px';
+    userBadge.onclick = function() {
+      if (confirm((lang==='fr'?'Se déconnecter ?':'Sign out?'))) doSignOut();
+    };
+    if (_gear) _gear.parentNode.insertBefore(userBadge, _gear);
+  }
 
-  // ── Apply language, show Today tab ──
-  applyLang();
-  goTab('today');
-  chatInit();
+  // ── Check auth session FIRST ──
+  loadSession().then(function(session) {
+    if (session && session.access_token) {
+      _stafflo_session = session;
+      _stafflo_user = session.user;
+      // Continue normal init
+      applyLang();
+      goTab('today');
+      chatInit();
+      updateUserIndicator();
+      loadFromSupabase().then(function() {
+        renderTodayQV();
+      }).catch(function(){});
+    } else {
+      // No session — show login
+      showAuthScreen();
+    }
+  }).catch(function() { showAuthScreen(); });
+
+
 
   // ── Show cached data immediately ──
   loadLocal();
