@@ -2780,7 +2780,8 @@ async function chatSend() {
     // Check if it's a question about clients/villa
     var isQuestion = /qui|quand|combien|quel|comment|prochain|demain|aujourd|revenu|alerte|check/i.test(text);
     var isPastedEmail = text.length > 200 && (
-      /airbnb|booking|check.?in|checkout|guest|réservation|confirmation/i.test(text)
+      /airbnb|booking|check.?in|checkout|guest|réservation|confirmation/i.test(text) ||
+      /\[\d{1,2}\/\d{1,2}\/\d{4}/.test(text) // WA timestamp
     );
     
     if (isPastedEmail) {
@@ -2901,11 +2902,32 @@ async function handleChatSendCommand(client, text) {
 
 async function handleChatEmailAnalysis(text) {
   document.getElementById('chatTyping').style.display = 'block';
-  
-  // Run the existing analyze logic but return result as chat bubble
+
   var fr = lang === 'fr';
   var today = new Date().toISOString().slice(0,10);
-  
+
+  // ── Detect if this is a WhatsApp conversation (not an Airbnb email) ──
+  var isWAConv = /\[\d{1,2}\/\d{1,2}\/\d{4},\s*\d{1,2}:\d{2}:\d{2}\]/.test(text) ||
+                 /~\w+:/.test(text);
+
+  if (isWAConv) {
+    // Extract client name from WA conversation and route to context handler
+    var waClientName = extractClientFromWAConv(text);
+    var waClient = waClientName ? findClientByName(waClientName) : null;
+    if (waClient) {
+      document.getElementById('chatTyping').style.display = 'none';
+      setChatClient(waClient.id, waClient.name);
+      addChatBubble('user', '💬 Conv WhatsApp — ' + waClient.name);
+      document.getElementById('chatTyping').style.display = 'block';
+      await handleChatContextCommandWithText(waClient, text);
+      return;
+    }
+    // No client matched — try to extract + suggest
+    document.getElementById('chatTyping').style.display = 'none';
+    await handleWAConvUnknown(text);
+    return;
+  }
+
   var hasFrench = /\b(bonjour|merci|nous|pour|séjour|réservation|adultes)\b/i.test(text);
   var guestLang = hasFrench ? 'French' : 'English';
   
@@ -3970,6 +3992,181 @@ async function handleStoreInfo(client, text) {
   // Also update client notes
   window._lastMentionedClientId = client.id;
   window._lastMentionedClientName = client.name;
+}
+
+
+// ── Extract client name from WA conversation ──
+function extractClientFromWAConv(text) {
+  // Look for sender names in WA format: [date, time] Name: or ~Name:
+  var lines = text.split('\n').slice(0, 20); // check first 20 lines
+  var names = [];
+  lines.forEach(function(line) {
+    // Format: [13/4/2026, 18:00:27] Sophie Marrakech 2may: ...
+    var m = line.match(/\]\s+([^:]+?):\s+/);
+    if (m) {
+      var name = m[1].trim();
+      // Skip "Jeremie", "Jérémie", owner names
+      var cfg = getCfg();
+      var owner = (cfg.owner || 'Jeremie').toLowerCase();
+      if (!name.toLowerCase().includes(owner) && !name.toLowerCase().includes('jeremie') && !name.toLowerCase().includes('jérémie')) {
+        names.push(name);
+      }
+    }
+    // Format: ~Sophie:
+    var m2 = line.match(/~(\w+):/);
+    if (m2) names.push(m2[1]);
+  });
+
+  if (!names.length) return null;
+  // Try each name against CRM
+  for (var i = 0; i < names.length; i++) {
+    var parts = names[i].split(/\s+/);
+    for (var j = 0; j < parts.length; j++) {
+      if (parts[j].length > 3) {
+        var cl = findClientByName(parts[j]);
+        if (cl) return parts[j];
+      }
+    }
+  }
+  return names[0]; // return first name found even if no CRM match
+}
+
+// ── Handle WA conversation where client is not in CRM ──
+async function handleWAConvUnknown(text) {
+  var fr = lang === 'fr';
+  var prompt = [
+    'Analyse cette conversation WhatsApp. Extrait:',
+    '1. Le nom du client (pas Jérémie)',
+    '2. Les infos clés (dates, repas, transports, demandes)',
+    '3. Le dernier message du client et ce qu\'il attend',
+    '4. La meilleure réponse à envoyer',
+    '',
+    'Réponds en JSON:',
+    '{"client_name":"","summary":"","key_info":[],"pending_request":"","suggested_response":""}',
+    '',
+    'Conversation:',
+    text.slice(0, 3000)
+  ].join('\n');
+
+  var raw = await callBestAI('reason', '', prompt, 600);
+  document.getElementById('chatTyping').style.display = 'none';
+
+  var parsed = null;
+  try {
+    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
+    if (m) parsed = JSON.parse(m[0]);
+  } catch(e) {}
+
+  if (!parsed) { addChatBubble('ai', raw); return; }
+
+  var name = parsed.client_name || '?';
+  addChatBubble('system', '💬 Conversation avec <strong>' + name + '</strong>' +
+    (parsed.summary ? '<br>' + parsed.summary : ''));
+
+  if (parsed.suggested_response) {
+    var waKey = storePendingWA(null, parsed.suggested_response);
+    if (parsed.client_name) _pendingWA[waKey].clientName = parsed.client_name;
+    addChatBubble('ai', parsed.suggested_response, [
+      { label: '💬 Envoyer à ' + name.split(' ')[0], cls: 'wa', fn: 'sendPendingWA("'+waKey+'")' },
+      { label: '✏️', cls: 'view', fn: 'editPendingWA("'+waKey+'",this)' },
+      { label: '✕', cls: 'no', fn: 'dismissChatAction(this)' }
+    ]);
+  }
+
+  // Suggest adding to CRM
+  addChatBubble('system', '👤 ' + name + ' n\'est pas dans le CRM — ' +
+    '<button onclick="openForm()" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">+ Créer client</button>');
+}
+
+// ── Context command called with full text (for WA conv) ──
+async function handleChatContextCommandWithText(client, fullText) {
+  var existingRows = await loadClientContext(client.id);
+  var contextBlock = formatContextForAI(existingRows, client);
+  var clientChatHistory = await loadClientChatContext(client.id, client.name);
+  var sentLog = '';
+  try {
+    var cfg2 = getCfg();
+    var logRes = await fetch(SB_URL + '/rest/v1/msg_log?client_id=eq.' + client.id + '&order=sent_at.desc&limit=5', {
+      headers: { apikey: cfg2.sbKey || SB_ANON, Authorization: 'Bearer ' + (cfg2.sbKey || SB_ANON) }
+    });
+    if (logRes.ok) {
+      var logRows = await logRes.json();
+      if (logRows.length) {
+        sentLog = 'Derniers messages WA envoyés:\n';
+        logRows.forEach(function(r) {
+          sentLog += '- ' + (r.msg_body||'').slice(0,100) + '\n';
+        });
+      }
+    }
+  } catch(e) {}
+
+  var owner = getCfg().owner || 'Jérémie';
+  var villa = getCfg().villa || 'Villa DarJ';
+  var fr = lang === 'fr';
+
+  var prompt = [
+    'Tu es l\'assistant de ' + owner + ', propriétaire de la ' + villa + ' à Marrakech.',
+    'Le message est écrit PAR ' + owner + ' ("je" = ' + owner + ').',
+    '',
+    '=== CLIENT ===',
+    'Nom: ' + client.name,
+    client.arrival ? 'Arrivée: ' + client.arrival + (client.departure ? ' → ' + client.departure : '') : '',
+    client.guests ? 'Personnes: ' + client.guests : '',
+    '',
+    contextBlock || '',
+    clientChatHistory || '',
+    sentLog || '',
+    '',
+    '=== CONVERSATION WHATSAPP COLLÉE ===',
+    fullText.slice(0, 3000),
+    '',
+    'Analyse cette conversation et:',
+    '1. Extrais toutes les infos structurées (repas, transport, dates, demandes)',
+    '2. Identifie ce qui est en attente de réponse',
+    '3. Rédige la réponse appropriée de ' + owner,
+    '',
+    'JSON format:',
+    '{"response":"message complet signé '+owner+'","action":"send_wa","extracted":[{"category":"...","key":"...","value":"..."}],"missing":["..."]}'
+  ].filter(Boolean).join('\n');
+
+  var raw = await callBestAI('reason', '', prompt, 1000);
+  document.getElementById('chatTyping').style.display = 'none';
+
+  var parsed = null;
+  try {
+    var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
+    if (m) parsed = JSON.parse(m[0]);
+  } catch(e) {}
+
+  if (!parsed) { addChatBubble('ai', raw || 'Analyse incomplète'); return; }
+
+  var response = parsed.response || '';
+  var buttons = [];
+  if (parsed.action === 'send_wa' || response) {
+    var waKey = storePendingWA(client.id, response);
+    buttons.push({ label: '💬 Envoyer à ' + client.name.split(' ')[0], cls: 'wa', fn: 'sendPendingWA("'+waKey+'")' });
+    buttons.push({ label: '✏️', cls: 'view', fn: 'editPendingWA("'+waKey+'",this)' });
+    buttons.push({ label: '✕', cls: 'no', fn: 'dismissChatAction(this)' });
+  }
+  if (response) addChatBubble('ai', response, buttons);
+
+  // Save extracted info
+  if (parsed.extracted && parsed.extracted.length) {
+    await saveClientContext(client.id, parsed.extracted.map(function(i) {
+      return { category: i.category, key: i.key, value: i.value, source: 'chat' };
+    }));
+    var html = '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">💾 ' + parsed.extracted.length + ' infos sauvegardées pour <strong>' + client.name + '</strong></div>';
+    html += formatContextForDisplay(parsed.extracted);
+    var b = document.createElement('div');
+    b.className = 'chat-bubble system';
+    b.style.cssText = 'max-width:100%;text-align:left';
+    b.innerHTML = html;
+    document.getElementById('chatMessages').appendChild(b);
+    scrollChat();
+  }
+  if (parsed.missing && parsed.missing.length) {
+    addChatBubble('system', '❓ Manquant: ' + parsed.missing.join(' · '));
+  }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
