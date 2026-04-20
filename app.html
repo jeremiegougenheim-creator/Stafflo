@@ -2060,18 +2060,21 @@ function openDetail(id) {
     var zone = document.getElementById('detailContextZone');
     var mealsZone = document.getElementById('detailMealsPlan');
     if (!zone) return;
-    if (!rows.length) { zone.style.display = 'none'; return; }
 
     // Separate meals from other categories
     var nonMeals = rows.filter(function(r) { return r.category !== 'meals'; });
     var meals = rows.filter(function(r) { return r.category === 'meals'; });
 
-    // Display non-meals context
-    if (nonMeals.length) {
-      zone.innerHTML = '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">INFOS CLIENT</div>' + formatContextForDisplay(nonMeals);
+    // Display non-meals context — EDITABLE
+    if (nonMeals.length || zone) {
+      var hdr = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      hdr += '<span style="font-size:9px;letter-spacing:2px;color:var(--muted)">INFOS CLIENT (✏️ double-clic pour modifier)</span>';
+      hdr += '<button onclick="showContextHistory(\''+cl.id+'\')" style="background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;color:var(--muted);font-family:DM Sans,sans-serif">📜 Historique</button>';
+      hdr += '</div>';
+      zone.innerHTML = nonMeals.length ? hdr + formatContextForDisplay(nonMeals, cl.id, true) : hdr + '<div style="font-size:11px;color:var(--muted);font-style:italic">Aucune info structurée. Tape "infos ' + (cl.name||'').split(' ')[0] + ' : ..." dans le chat.</div>';
     }
 
-    // Display meals as a collapsible plan
+    // Display meals as editable plan
     if (meals.length && mealsZone) {
       mealsZone.style.display = 'block';
       // Sort by key (repas_dim3 etc.)
@@ -2080,27 +2083,8 @@ function openDetail(id) {
 
       var html = '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">🍽 PLAN REPAS</div>';
 
-      if (mealGeneral.length) {
-        html += '<div style="background:rgba(201,150,58,.06);border-radius:8px;padding:8px 10px;margin-bottom:6px">';
-        mealGeneral.forEach(function(r) {
-          html += '<div style="font-size:11px;margin-bottom:2px"><span style="color:var(--muted)">' + r.key.replace(/_/g,' ') + ':</span> ' + r.value + '</div>';
-        });
-        html += '</div>';
-      }
-
-      if (mealDays.length) {
-        mealDays.sort(function(a,b){return a.key.localeCompare(b.key);});
-        html += '<div style="display:flex;flex-direction:column;gap:3px">';
-        mealDays.forEach(function(r) {
-          var dayLabel = r.key.replace('repas_','').replace(/_/g,' ');
-          html += '<div style="background:var(--paper);border-radius:6px;padding:5px 8px;font-size:11px;line-height:1.4">' +
-            '<span style="font-weight:600;color:var(--ink)">' + dayLabel + '</span><br>' +
-            '<span style="color:var(--muted)">' + r.value + '</span></div>';
-        });
-        html += '</div>';
-      }
-
-      mealsZone.innerHTML = html;
+      // Render all meals as editable context rows grouped
+      mealsZone.innerHTML = html + formatContextForDisplay(meals, cl.id, true);
     }
   });
 }
@@ -3495,25 +3479,159 @@ function formatContextForAI(contextRows, client) {
   return lines.join('\n');
 }
 
-function formatContextForDisplay(contextRows) {
+function formatContextForDisplay(contextRows, clientId, editable) {
   if (!contextRows.length) return '';
   var grouped = {};
   contextRows.forEach(function(row) {
     if (!grouped[row.category]) grouped[row.category] = [];
-    grouped[row.category].push({ key: row.key, value: row.value });
+    grouped[row.category].push({ key: row.key, value: row.value, id: row.id || null });
   });
   var html = '<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">';
   Object.keys(grouped).forEach(function(cat) {
     var icon = CLIENT_CONTEXT_ICONS[cat] || '📋';
     html += '<div style="background:var(--paper);border-radius:8px;padding:8px 10px;border-left:2px solid var(--gold)">';
-    html += '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;margin-bottom:4px">' + icon + ' ' + cat.toUpperCase() + '</div>';
+    html += '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">';
+    html += '<span>' + icon + ' ' + cat.toUpperCase() + '</span>';
+    if (editable && clientId) {
+      html += '<button onclick="addContextItem(\'' + clientId + '\',\'' + cat + '\')" style="background:var(--gold);color:#fff;border:none;border-radius:4px;padding:2px 6px;font-size:9px;cursor:pointer;font-family:DM Sans,sans-serif">+ Ajouter</button>';
+    }
+    html += '</div>';
     grouped[cat].forEach(function(item) {
-      html += '<div style="font-size:12px;color:var(--ink);margin-bottom:2px"><span style="color:var(--muted)">' + item.key + ' :</span> ' + item.value + '</div>';
+      var keyLabel = item.key.replace(/_/g,' ');
+      if (editable && clientId) {
+        html += '<div class="ctx-row" data-cid="' + clientId + '" data-key="' + item.key + '" style="font-size:12px;color:var(--ink);padding:3px 0;display:flex;gap:6px;align-items:flex-start;border-top:1px solid rgba(0,0,0,0.04)">';
+        html += '<span style="color:var(--muted);flex-shrink:0;min-width:90px">' + keyLabel + ' :</span>';
+        html += '<span class="ctx-val" style="flex:1;word-break:break-word" ondblclick="editContextInline(this,\'' + clientId + '\',\'' + item.key + '\')">' + item.value + '</span>';
+        html += '<button onclick="editContextInline(this.previousElementSibling,\'' + clientId + '\',\'' + item.key + '\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0 3px" title="Modifier">✏️</button>';
+        html += '<button onclick="deleteContextItem(\'' + clientId + '\',\'' + item.key + '\')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0 3px" title="Supprimer">🗑</button>';
+        html += '</div>';
+      } else {
+        html += '<div style="font-size:12px;color:var(--ink);margin-bottom:2px"><span style="color:var(--muted)">' + keyLabel + ' :</span> ' + item.value + '</div>';
+      }
     });
     html += '</div>';
   });
   html += '</div>';
   return html;
+}
+
+// ── Inline edit: click pencil or double-click value ──
+function editContextInline(span, clientId, key) {
+  var currentVal = span.textContent;
+  var input = document.createElement('textarea');
+  input.value = currentVal;
+  input.style.cssText = 'width:100%;padding:4px 6px;border:1.5px solid var(--gold);border-radius:4px;font-size:12px;font-family:DM Sans,sans-serif;background:#fff;resize:vertical;min-height:28px';
+  input.rows = Math.max(1, Math.ceil(currentVal.length / 50));
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+
+  var save = async function() {
+    var newVal = input.value.trim();
+    if (newVal && newVal !== currentVal) {
+      await updateContextValue(clientId, key, newVal);
+    }
+    // Replace input with span again
+    var newSpan = document.createElement('span');
+    newSpan.className = 'ctx-val';
+    newSpan.style.cssText = 'flex:1;word-break:break-word';
+    newSpan.textContent = newVal || currentVal;
+    newSpan.setAttribute('ondblclick', 'editContextInline(this,\'' + clientId + '\',\'' + key + '\')');
+    input.replaceWith(newSpan);
+  };
+
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = currentVal; input.blur(); }
+  });
+}
+
+async function updateContextValue(clientId, key, newValue) {
+  var cfg = getCfg();
+  var sbKey = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/client_context?client_id=eq.' + clientId + '&key=eq.' + encodeURIComponent(key), {
+      method: 'PATCH',
+      headers: { 'Content-Type':'application/json', apikey: sbKey, Authorization:'Bearer '+sbKey, Prefer: 'return=minimal' },
+      body: JSON.stringify({ value: String(newValue), updated_at: new Date().toISOString() })
+    });
+    if (r.ok) {
+      toast(lang==='fr' ? '✓ Mis à jour' : '✓ Updated');
+      console.log('[context] updated', key, '=', newValue);
+    } else {
+      toast('⚠ ' + (lang==='fr'?'Erreur':'Error'));
+    }
+  } catch(e) { console.warn('updateContextValue:', e); }
+}
+
+async function deleteContextItem(clientId, key) {
+  if (!confirm((lang==='fr'?'Supprimer ':'Delete ') + key.replace(/_/g,' ') + ' ?')) return;
+  var cfg = getCfg();
+  var sbKey = cfg.sbKey || SB_ANON;
+  try {
+    await fetch(SB_URL + '/rest/v1/client_context?client_id=eq.' + clientId + '&key=eq.' + encodeURIComponent(key), {
+      method: 'DELETE',
+      headers: { apikey: sbKey, Authorization: 'Bearer ' + sbKey }
+    });
+    // Remove the row from UI
+    var row = document.querySelector('.ctx-row[data-cid="' + clientId + '"][data-key="' + key + '"]');
+    if (row) row.remove();
+    toast(lang==='fr'?'🗑 Supprimé':'🗑 Deleted');
+  } catch(e) { console.warn('deleteContextItem:', e); }
+}
+
+async function addContextItem(clientId, category) {
+  var key = prompt((lang==='fr'?'Nom de l\'info (ex: vol, heure):':'Info name:'), '');
+  if (!key) return;
+  var value = prompt((lang==='fr'?'Valeur:':'Value:'), '');
+  if (!value) return;
+  await saveClientContext(clientId, [{
+    category: category,
+    key: key.replace(/\s+/g,'_').toLowerCase(),
+    value: value,
+    source: 'manual'
+  }]);
+  // Reload the detail to show new item
+  var cl = clients.find(function(x){return x.id===clientId;});
+  if (cl) { closeDetail(); setTimeout(function(){openDetail(clientId);}, 100); }
+}
+
+// ── Load change history for a client ──
+async function loadContextHistory(clientId) {
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/client_context_history?client_id=eq.' + clientId + '&order=changed_at.desc&limit=20', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    if (!r.ok) return [];
+    return await r.json();
+  } catch(e) { return []; }
+}
+
+function showContextHistory(clientId) {
+  loadContextHistory(clientId).then(function(rows) {
+    if (!rows.length) { toast(lang==='fr'?'Aucun historique':'No history'); return; }
+    var html = '<div style="font-size:12px;font-weight:600;margin-bottom:8px">📜 Historique modifications (' + rows.length + ')</div>';
+    html += '<div style="display:flex;flex-direction:column;gap:4px;max-height:300px;overflow-y:auto">';
+    rows.forEach(function(r) {
+      var d = new Date(r.changed_at);
+      var dt = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');
+      html += '<div style="background:var(--paper);border-radius:6px;padding:6px 8px;font-size:11px">';
+      html += '<div style="color:var(--muted);font-size:10px;margin-bottom:2px">' + dt + ' · ' + (r.category||'') + ' / ' + (r.key||'').replace(/_/g,' ') + '</div>';
+      if (r.old_value) html += '<div><span style="color:var(--red);text-decoration:line-through">' + r.old_value + '</span></div>';
+      html += '<div><strong>' + r.new_value + '</strong></div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    var bubble = document.createElement('div');
+    bubble.className = 'chat-bubble system';
+    bubble.style.cssText = 'max-width:100%;text-align:left';
+    bubble.innerHTML = html;
+    document.getElementById('chatMessages').appendChild(bubble);
+    scrollChat();
+  });
 }
 
 // ════════════════════════════════════════════════════════
@@ -3614,16 +3732,16 @@ async function handleChatContextCommand(client, instruction) {
       return { ...item, source: 'chat' };
     }));
 
-    // Also update client notes in crm_clients if new info
-    var newFacts = parsed.extracted.map(function(i) { return i.key + ': ' + i.value; }).join(' · ');
-    var existingNotes = client.notes || '';
-    var alreadyKnown = parsed.extracted.every(function(i) {
-      return existingNotes.includes(i.value);
+    // Sync key fields to crm_clients (guests count, arrival time)
+    var updated = false;
+    parsed.extracted.forEach(function(i) {
+      if (i.key === 'guests_count' || i.key === 'nombre' || i.key === 'number') {
+        var n = parseInt(i.value); if (!isNaN(n) && n !== client.guests) { client.guests = n; updated = true; }
+      }
     });
-    if (!alreadyKnown && newFacts) {
-      client.notes = existingNotes ? existingNotes + '\n' + newFacts : newFacts;
+    if (updated) {
       var idx = clients.findIndex(function(x) { return x.id === client.id; });
-      if (idx >= 0) { clients[idx] = client; saveLocal(); pushToSupabase(client); }
+      if (idx >= 0) { clients[idx] = client; saveLocal(); pushToSupabase(client); renderAll(); }
     }
   }
 
