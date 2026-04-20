@@ -238,7 +238,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
 @media(max-width:520px){.hm-grid{grid-template-columns:1fr}}
 .hm-card{background:var(--card);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:12px}
 .hm-hdr{background:var(--green3);padding:10px 16px;display:flex;align-items:center;justify-content:space-between}
-.hm-hdr-lbl{font-size:9px;letter-spacing:3px;color:rgba(253,246,236,.5);font-family:'DM Sans',sans-serif}
+.hm-hdr-lbl{font-size:13px;letter-spacing:2px;color:var(--gold);font-weight:700;font-family:'DM Sans',sans-serif;text-transform:uppercase}
 .hm-refresh{background:none;border:none;color:var(--gold);font-size:13px;cursor:pointer;line-height:1}
 .hm-body{padding:14px 16px}
 .price-hero-home{background:var(--green);border-radius:12px;padding:20px 18px;margin-bottom:14px}
@@ -550,6 +550,27 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .inbox-card.new{border-left-color:var(--red)}
 .inbox-card .ic-subject{font-weight:600;color:var(--ink);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inbox-card .ic-meta{color:var(--muted);font-size:11px}
+
+
+/* Section nav chips */
+.today-section-nav::-webkit-scrollbar { display: none; }
+.today-section-nav .nav-chip {
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.today-section-nav .nav-chip:hover {
+  background: var(--gold-light);
+  border-color: var(--gold);
+}
 
 </style>
 </head>
@@ -2139,7 +2160,12 @@ function openDetail(id) {
 
   document.getElementById('detailActions').innerHTML =
     '<button class="btn-action primary" onclick="closeDetail();openForm(\''+cl.id+'\')" style="flex:1">✏️ '+(fr?'Modifier':'Edit')+'</button>' +
-    (cl.phone?'<a class="btn-action wa" href="https://wa.me/'+clPhone+'" target="_blank" style="flex:1">💬 WA</a>':'') +
+    (cl.phone?
+    '<a class="btn-action wa" href="https://wa.me/'+clPhone+'" target="_blank" style="flex:1">💬 WA</a>'+
+    '<button class="btn-action" onclick="openPhoneEditor(\''+cl.id+'\')" style="flex:0.3;padding:0 8px" title="Modifier le numéro">✏️</button>'
+   :
+    '<button class="btn-action" onclick="openPhoneEditor(\''+cl.id+'\')" style="flex:1;background:#25D366;color:#fff;border-color:#25D366">📱 + Ajouter WhatsApp</button>'
+  ) +
     '<button class="btn-action" onclick="deleteClient(\''+cl.id+'\')" style="flex:1;color:var(--red);border-color:var(--red)">🗑</button>';
 
   var dm = document.getElementById('detailModal');
@@ -4443,6 +4469,265 @@ function parseAIJson(raw) {
       return JSON.parse(safe);
     } catch(e2) { return null; }
   }
+}
+
+
+function scrollToSection(id) {
+  var el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+
+// ── Flight verification ──
+async function verifyFlight(clientId, flightNumber, arrivalDate) {
+  try {
+    var r = await fetch(SB_URL + '/functions/v1/verify-flight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ flight_number: flightNumber, expected_date: arrivalDate })
+    });
+    return await r.json();
+  } catch(e) {
+    return { status: 'error', message: e.message };
+  }
+}
+
+async function showFlightCheck(clientId) {
+  var cl = clients.find(function(x){return x.id===clientId;});
+  if (!cl) return;
+  var rows = await loadClientContext(clientId);
+  var flight = (rows.find(function(r){return r.key==='flight_number';})||{}).value || '';
+  var arrTime = (rows.find(function(r){return r.key==='arrival_time';})||{}).value || '';
+
+  if (!flight) {
+    var ask = prompt('Numéro de vol (ex: AT1234, RAM411) ?', '');
+    if (!ask) return;
+    flight = ask;
+    await saveClientContext(clientId, [{
+      category:'flight', key:'flight_number', value: flight.toUpperCase(), source:'manual'
+    }]);
+  }
+
+  var result = await verifyFlight(clientId, flight, cl.arrival);
+
+  var monthsFr = ['jan','fév','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
+  var arrDate = cl.arrival ? new Date(cl.arrival) : null;
+  var dateStr = arrDate ? arrDate.getDate() + '/' + (arrDate.getMonth()+1) + '/' + arrDate.getFullYear() : '—';
+
+  var html = '<div style="font-size:13px;font-weight:600;margin-bottom:8px">✈️ Vérification vol — ' + cl.name + '</div>';
+  html += '<div style="background:var(--paper);border-radius:8px;padding:10px;margin-bottom:8px">';
+  html += '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">INFOS ACTUELLES</div>';
+  html += '<div style="font-size:12px"><strong>Vol:</strong> ' + (result.flight || flight) + '</div>';
+  if (result.airline) html += '<div style="font-size:12px"><strong>Compagnie:</strong> ' + result.airline + '</div>';
+  html += '<div style="font-size:12px"><strong>Date arrivée:</strong> ' + dateStr + '</div>';
+  if (arrTime) html += '<div style="font-size:12px"><strong>Heure annoncée:</strong> ' + arrTime + '</div>';
+  html += '</div>';
+
+  if (result.warnings && result.warnings.length) {
+    html += '<div style="background:rgba(231,76,60,.08);border-radius:8px;padding:8px 10px;margin-bottom:8px">';
+    html += '<div style="font-size:10px;color:var(--red);font-weight:700;margin-bottom:4px">⚠️ À VÉRIFIER</div>';
+    result.warnings.forEach(function(w) {
+      html += '<div style="font-size:11px;color:var(--ink);margin-bottom:2px">• ' + w + '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+  if (result.online_check_url) {
+    html += '<a href="' + result.online_check_url + '" target="_blank" style="flex:1;background:var(--green);color:#fff;padding:6px 10px;border-radius:6px;font-size:11px;text-align:center;text-decoration:none;font-weight:600">🔍 Vérifier Google</a>';
+  }
+  if (result.fr24_url) {
+    html += '<a href="' + result.fr24_url + '" target="_blank" style="flex:1;background:var(--paper);border:1px solid var(--border);color:var(--ink);padding:6px 10px;border-radius:6px;font-size:11px;text-align:center;text-decoration:none">📡 FlightRadar24</a>';
+  }
+  html += '</div>';
+
+  // Staff note
+  html += '<div style="margin-top:10px;padding:8px 10px;background:var(--green-light);border-radius:8px">';
+  html += '<div style="font-size:10px;color:var(--green);font-weight:700;margin-bottom:4px">📝 NOTE POUR CHAUFFEUR</div>';
+  html += '<div style="font-size:11px;line-height:1.6">';
+  html += 'Récupérer <strong>' + cl.name + '</strong> — vol <strong>' + (result.flight||flight) + '</strong>';
+  if (result.airline) html += ' (' + result.airline + ')';
+  html += '<br>Arrivée: <strong>' + dateStr + (arrTime?' à '+arrTime:'') + '</strong>';
+  if (cl.guests) html += '<br>' + cl.guests + ' pers.';
+  html += '<br><em style="color:var(--muted)">→ Vérifier vol en temps réel 2h avant</em>';
+  html += '</div></div>';
+
+  goTab('today');
+  var bubble = document.createElement('div');
+  bubble.className = 'chat-bubble system';
+  bubble.style.cssText = 'max-width:100%;text-align:left';
+  bubble.innerHTML = html;
+  document.getElementById('chatMessages').appendChild(bubble);
+  scrollChat();
+  closeDetail();
+}
+
+
+// ════════════════════════════════════════════════════════
+// WHATSAPP NUMBER — quick add + validate
+// ════════════════════════════════════════════════════════
+
+// Country code guess based on nationality flag
+var NAT_TO_CC = {
+  '🇫🇷': '33', '🇬🇧': '44', '🇺🇸': '1', '🇨🇦': '1',
+  '🇨🇭': '41', '🇩🇪': '49', '🇮🇹': '39', '🇪🇸': '34',
+  '🇧🇪': '32', '🇳🇱': '31', '🇵🇹': '351', '🇲🇦': '212',
+  '🇦🇪': '971', '🇸🇦': '966', '🇷🇺': '7',  '🇨🇳': '86',
+  '🇯🇵': '81', '🇦🇺': '61', '🇧🇷': '55', '🇦🇷': '54'
+};
+
+function cleanPhoneNumber(raw, defaultCountryCode) {
+  if (!raw) return { clean: '', formatted: '', valid: false, reason: 'empty' };
+  var s = String(raw).trim();
+
+  // Remove everything except digits and leading +
+  var hasPlus = s.charAt(0) === '+' || /^00/.test(s);
+  s = s.replace(/[^0-9]/g, '');
+
+  // Handle "00" international prefix
+  if (s.startsWith('00')) { s = s.slice(2); hasPlus = true; }
+
+  // French numbers: 06 12 34 56 78 → add 33 (drop leading 0)
+  if (!hasPlus && defaultCountryCode === '33' && s.charAt(0) === '0') {
+    s = '33' + s.slice(1);
+    hasPlus = true;
+  }
+  // UK: 07xxx → 447xxx
+  if (!hasPlus && defaultCountryCode === '44' && s.charAt(0) === '0') {
+    s = '44' + s.slice(1);
+    hasPlus = true;
+  }
+  // No country code → prepend default
+  if (!hasPlus && defaultCountryCode) {
+    // Check if it already starts with the country code
+    if (!s.startsWith(defaultCountryCode)) {
+      // Drop leading 0 if present
+      if (s.charAt(0) === '0') s = s.slice(1);
+      s = defaultCountryCode + s;
+    }
+    hasPlus = true;
+  }
+
+  // Validate length (8-15 digits per E.164)
+  if (s.length < 8 || s.length > 15) {
+    return { clean: s, formatted: '+' + s, valid: false, reason: 'length' };
+  }
+
+  return {
+    clean: s,
+    formatted: '+' + s,
+    valid: true,
+    waLink: 'https://wa.me/' + s
+  };
+}
+
+// Show modal to add/edit phone
+function openPhoneEditor(clientId) {
+  var cl = clients.find(function(x){return x.id===clientId;});
+  if (!cl) return;
+
+  // Guess country code from nationality
+  var natEmoji = (cl.nat || '').match(/\p{RI}\p{RI}/u);
+  var defaultCC = '33'; // France default
+  if (natEmoji) {
+    var found = NAT_TO_CC[natEmoji[0]];
+    if (found) defaultCC = found;
+  }
+
+  var modal = document.getElementById('phoneEditorModal');
+  if (modal) modal.remove();
+  modal = document.createElement('div');
+  modal.id = 'phoneEditorModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9998;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+
+  modal.innerHTML = '\
+    <div style="background:var(--card);border-radius:20px;width:100%;max-width:440px;box-shadow:0 24px 64px rgba(0,0,0,.4);overflow:hidden" onclick="event.stopPropagation()">\
+      <div style="background:#25D366;padding:16px 20px;color:#fff">\
+        <div style="font-size:11px;letter-spacing:2px;opacity:.8">AJOUTER NUMÉRO WHATSAPP</div>\
+        <div style="font-family:Fraunces,serif;font-size:18px;font-weight:400;margin-top:3px">' + cl.name + '</div>\
+      </div>\
+      <div style="padding:18px 20px">\
+        <div style="background:var(--green-light);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:11px;color:var(--green);line-height:1.5">\
+          💡 <strong>Astuce:</strong> Ouvre <a href="https://web.whatsapp.com" target="_blank" style="color:var(--green);font-weight:700">web.whatsapp.com</a> → clique sur la conversation avec ' + cl.name.split(" ")[0] + ' → copie le numéro affiché en haut\
+        </div>\
+        <label style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px">NUMÉRO WHATSAPP</label>\
+        <input type="tel" id="phoneEditorInput" placeholder="+33 6 12 34 56 78" \
+          style="width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;font-family:inherit;outline:none" \
+          value="' + (cl.phone || '') + '">\
+        <div id="phoneEditorPreview" style="margin-top:8px;font-size:12px;min-height:20px"></div>\
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">\
+          <button onclick="insertCountryCode(\'' + defaultCC + '\')" style="background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit">+' + defaultCC + ' (' + (natEmoji ? natEmoji[0] : 'défaut') + ')</button>\
+          <button onclick="insertCountryCode(\'33\')" style="background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit">+33 🇫🇷</button>\
+          <button onclick="insertCountryCode(\'44\')" style="background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit">+44 🇬🇧</button>\
+          <button onclick="insertCountryCode(\'1\')" style="background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit">+1 🇺🇸🇨🇦</button>\
+          <button onclick="insertCountryCode(\'212\')" style="background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit">+212 🇲🇦</button>\
+        </div>\
+        <div style="display:flex;gap:8px;margin-top:16px">\
+          <button onclick="document.getElementById(\'phoneEditorModal\').remove()" style="flex:1;background:var(--paper);border:1.5px solid var(--border);border-radius:10px;padding:12px;font-size:13px;cursor:pointer;font-family:inherit;color:var(--muted)">Annuler</button>\
+          <button id="phoneSaveBtn" onclick="savePhoneNumber(\'' + cl.id + '\',\'' + defaultCC + '\')" style="flex:2;background:#25D366;color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">💾 Enregistrer + tester</button>\
+        </div>\
+      </div>\
+    </div>';
+
+  document.body.appendChild(modal);
+
+  var input = document.getElementById('phoneEditorInput');
+  input.addEventListener('input', function() { updatePhonePreview(defaultCC); });
+  input.addEventListener('paste', function() { setTimeout(function(){ updatePhonePreview(defaultCC); }, 50); });
+  setTimeout(function(){ input.focus(); input.select(); }, 100);
+  updatePhonePreview(defaultCC);
+}
+
+function insertCountryCode(cc) {
+  var inp = document.getElementById('phoneEditorInput');
+  if (!inp) return;
+  var v = inp.value.replace(/^\+\d+\s*/, '').replace(/^0/, '');
+  inp.value = '+' + cc + ' ' + v;
+  inp.focus();
+  updatePhonePreview(cc);
+}
+
+function updatePhonePreview(defaultCC) {
+  var inp = document.getElementById('phoneEditorInput');
+  var prev = document.getElementById('phoneEditorPreview');
+  if (!inp || !prev) return;
+  var result = cleanPhoneNumber(inp.value, defaultCC);
+  if (!inp.value.trim()) {
+    prev.innerHTML = '<span style="color:var(--muted)">Tape le numéro…</span>';
+    return;
+  }
+  if (result.valid) {
+    prev.innerHTML = '<span style="color:var(--green);font-weight:600">✓ ' + result.formatted + '</span>' +
+      ' · <a href="' + result.waLink + '" target="_blank" style="color:#25D366;font-weight:700;text-decoration:none">Tester WhatsApp ↗</a>';
+  } else {
+    prev.innerHTML = '<span style="color:var(--red)">⚠ Format invalide (' + result.reason + ')</span>';
+  }
+}
+
+async function savePhoneNumber(clientId, defaultCC) {
+  var inp = document.getElementById('phoneEditorInput');
+  if (!inp) return;
+  var result = cleanPhoneNumber(inp.value, defaultCC);
+  if (!result.valid) {
+    toast('⚠ Format invalide');
+    return;
+  }
+
+  var cl = clients.find(function(x){return x.id===clientId;});
+  if (!cl) return;
+
+  cl.phone = result.formatted;
+  var idx = clients.findIndex(function(x){return x.id===clientId;});
+  clients[idx] = cl;
+  saveLocal();
+  await pushToSupabase(cl);
+  renderAll();
+
+  // Open WA to verify
+  document.getElementById('phoneEditorModal').remove();
+  toast('✓ Numéro enregistré — ouverture WhatsApp…');
+  setTimeout(function() { window.open(result.waLink, '_blank'); }, 500);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
