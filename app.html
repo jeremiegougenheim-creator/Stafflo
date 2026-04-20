@@ -1913,6 +1913,96 @@ function renderClients() {
 // ════════════════════════════════════════════════════════
 // MODALS — detail, form, settings
 // ════════════════════════════════════════════════════════
+// ── Helper: format a readable guest summary (dates, guests breakdown, flight) ──
+function formatGuestSummary(cl, contextRows, fr) {
+  var rows = contextRows || [];
+  var getCtx = function(key) { var r = rows.find(function(x){return x.key===key;}); return r ? r.value : ''; };
+
+  // Parse dates
+  var arrDate = cl.arrival ? new Date(cl.arrival) : null;
+  var depDate = cl.departure ? new Date(cl.departure) : null;
+  var monthsFr = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  var daysFr   = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  var fmtDay = function(d) {
+    if (!d) return '—';
+    return daysFr[d.getDay()] + ' ' + d.getDate() + ' ' + monthsFr[d.getMonth()] + ' ' + d.getFullYear();
+  };
+
+  // Get arrival/departure times from context
+  var arrTime = getCtx('arrival_time') || getCtx('arrival_date_time') || '';
+  var depTime = getCtx('departure_time') || getCtx('departure_date_time') || '';
+  var flight  = getCtx('flight_number') || '';
+
+  // Parse time from ISO datetime if needed
+  if (arrTime.includes('T')) arrTime = arrTime.split('T')[1].slice(0,5);
+  if (depTime.includes('T')) depTime = depTime.split('T')[1].slice(0,5);
+
+  // Guests breakdown
+  var adults = getCtx('adults') || getCtx('adultes') || '';
+  var kids   = getCtx('children') || getCtx('enfants') || getCtx('kids') || '';
+  var babies = getCtx('babies') || getCtx('bebes') || getCtx('baby') || '';
+
+  // Fallback: try to parse from notes
+  if (!adults && !kids && !babies) {
+    var notesL = (cl.notes||'').toLowerCase();
+    var aM = notesL.match(/(\d+)\s*(adults?|adultes?)/);
+    var kM = notesL.match(/(\d+)\s*(kids?|children|enfants?)/);
+    var bM = notesL.match(/(\d+)\s*(bab(?:y|ies)|bébés?|bebes?)/) || notesL.match(/bébé\s+(\d+)\s*mois/);
+    if (aM) adults = aM[1];
+    if (kM) kids   = kM[1];
+    if (bM) babies = '1';
+  }
+
+  var guestParts = [];
+  if (adults) guestParts.push(adults + ' ' + (adults==='1'?(fr?'adulte':'adult'):(fr?'adultes':'adults')));
+  if (kids)   guestParts.push(kids   + ' ' + (kids==='1'?(fr?'enfant':'child'):(fr?'enfants':'children')));
+  if (babies) guestParts.push(babies + ' ' + (babies==='1'?(fr?'bébé':'baby'):(fr?'bébés':'babies')));
+  var guestsLine = guestParts.length ? guestParts.join(' · ') : (cl.guests + ' ' + (fr?'pers.':'guests'));
+
+  var n = nights(cl);
+
+  var html = '<div style="background:linear-gradient(180deg,var(--green-light),var(--paper));border-radius:12px;padding:12px 14px;margin:10px 16px 8px;border:1px solid var(--border)">';
+
+  // Dates block
+  html += '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-bottom:10px">';
+
+  // Arrival
+  html += '<div>';
+  html += '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:2px">✈️ ' + (fr?'ARRIVÉE':'ARRIVAL') + '</div>';
+  html += '<div style="font-size:13px;font-weight:600;color:var(--ink)">' + fmtDay(arrDate) + '</div>';
+  if (arrTime) html += '<div style="font-size:12px;color:var(--green);font-weight:600;margin-top:2px">🕐 ' + arrTime + (flight?' · ' + flight:'') + '</div>';
+  else if (flight) html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">✈️ ' + flight + '</div>';
+  html += '</div>';
+
+  // Nights in middle
+  html += '<div style="text-align:center;padding:0 10px;border-left:1px solid var(--border);border-right:1px solid var(--border)">';
+  html += '<div style="font-family:Fraunces,serif;font-size:22px;color:var(--gold);font-weight:600">' + (n||'—') + '</div>';
+  html += '<div style="font-size:9px;letter-spacing:1.5px;color:var(--muted)">' + (fr?'NUITS':'NIGHTS') + '</div>';
+  html += '</div>';
+
+  // Departure
+  html += '<div style="text-align:right">';
+  html += '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:2px">🛫 ' + (fr?'DÉPART':'DEPARTURE') + '</div>';
+  html += '<div style="font-size:13px;font-weight:600;color:var(--ink)">' + fmtDay(depDate) + '</div>';
+  if (depTime) html += '<div style="font-size:12px;color:var(--green);font-weight:600;margin-top:2px">🕐 ' + depTime + '</div>';
+  html += '</div>';
+
+  html += '</div>';
+
+  // Guests breakdown
+  html += '<div style="border-top:1px solid var(--border);padding-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">';
+  html += '<div style="display:flex;align-items:center;gap:6px">';
+  html += '<span style="font-size:16px">👥</span>';
+  html += '<span style="font-size:13px;color:var(--ink);font-weight:500">' + guestsLine + '</span>';
+  html += '</div>';
+  html += '<span style="font-size:11px;color:var(--muted)">' + (cl.guests||0) + ' ' + (fr?'total':'total') + '</span>';
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+
 function openDetail(id) {
   const cl = clients.find(x => x.id === id);
   if (!cl) return;
@@ -2020,6 +2110,7 @@ function openDetail(id) {
        (net?Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')+'€':'—')+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Net':'Net')+'</span>'
       ].map(function(h){return '<div style="padding:10px 6px;text-align:center;font-size:12px;font-weight:700;color:var(--ink)">'+h+'</div>';}).join('') +
     '</div>' +
+    '<div id="detailGuestSummary" style="min-height:90px"></div>' +
     '<div style="padding:10px 16px 4px">'+renderReadinessBar(cl,fr)+'</div>' +
     '<div id="detailContextZone" style="padding:0 16px 8px"></div>' +
     notesHTML +
@@ -2057,6 +2148,10 @@ function openDetail(id) {
   setTimeout(function(){ dm.querySelector('.modal').scrollTop = 0; }, 50);
   // Load structured context into detail — split by category
   loadClientContext(cl.id).then(function(rows) {
+    // Fill the guest summary block first
+    var summaryZone = document.getElementById('detailGuestSummary');
+    if (summaryZone) summaryZone.innerHTML = formatGuestSummary(cl, rows, fr);
+
     var zone = document.getElementById('detailContextZone');
     var mealsZone = document.getElementById('detailMealsPlan');
     if (!zone) return;
