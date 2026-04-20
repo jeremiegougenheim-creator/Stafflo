@@ -2055,12 +2055,53 @@ function openDetail(id) {
   dm.classList.add('on');
   document.body.style.overflow = 'hidden';
   setTimeout(function(){ dm.querySelector('.modal').scrollTop = 0; }, 50);
-  // Load structured context into detail
+  // Load structured context into detail — split by category
   loadClientContext(cl.id).then(function(rows) {
     var zone = document.getElementById('detailContextZone');
+    var mealsZone = document.getElementById('detailMealsPlan');
     if (!zone) return;
     if (!rows.length) { zone.style.display = 'none'; return; }
-    zone.innerHTML = '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">INFOS STRUCTURÉES</div>' + formatContextForDisplay(rows);
+
+    // Separate meals from other categories
+    var nonMeals = rows.filter(function(r) { return r.category !== 'meals'; });
+    var meals = rows.filter(function(r) { return r.category === 'meals'; });
+
+    // Display non-meals context
+    if (nonMeals.length) {
+      zone.innerHTML = '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">INFOS CLIENT</div>' + formatContextForDisplay(nonMeals);
+    }
+
+    // Display meals as a collapsible plan
+    if (meals.length && mealsZone) {
+      mealsZone.style.display = 'block';
+      // Sort by key (repas_dim3 etc.)
+      var mealDays = meals.filter(function(r) { return r.key.startsWith('repas_'); });
+      var mealGeneral = meals.filter(function(r) { return !r.key.startsWith('repas_'); });
+
+      var html = '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">🍽 PLAN REPAS</div>';
+
+      if (mealGeneral.length) {
+        html += '<div style="background:rgba(201,150,58,.06);border-radius:8px;padding:8px 10px;margin-bottom:6px">';
+        mealGeneral.forEach(function(r) {
+          html += '<div style="font-size:11px;margin-bottom:2px"><span style="color:var(--muted)">' + r.key.replace(/_/g,' ') + ':</span> ' + r.value + '</div>';
+        });
+        html += '</div>';
+      }
+
+      if (mealDays.length) {
+        mealDays.sort(function(a,b){return a.key.localeCompare(b.key);});
+        html += '<div style="display:flex;flex-direction:column;gap:3px">';
+        mealDays.forEach(function(r) {
+          var dayLabel = r.key.replace('repas_','').replace(/_/g,' ');
+          html += '<div style="background:var(--paper);border-radius:6px;padding:5px 8px;font-size:11px;line-height:1.4">' +
+            '<span style="font-weight:600;color:var(--ink)">' + dayLabel + '</span><br>' +
+            '<span style="color:var(--muted)">' + r.value + '</span></div>';
+        });
+        html += '</div>';
+      }
+
+      mealsZone.innerHTML = html;
+    }
   });
 }
 
