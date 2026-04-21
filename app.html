@@ -5510,8 +5510,8 @@ const RAK_DEPARTURES = [
   {dest:'GVA',city:'Genève',airline:'Air Arabia / easyJet',times:['11:55','20:50'],freq:'2x/jour'},
   {dest:'DUS',city:'Düsseldorf',airline:'Condor / TUI',times:['14:15'],freq:'1x/jour'},
 ];
-const WEATHER_KEY = '796d11e58c122335c77cb055fd5e3814';
-const AVIATION_KEY = '365e212b94d85280fc046c60fc9b5047';
+const WEATHER_KEY = ''; // Moved to Edge Function weather-proxy;
+const AVIATION_KEY = ''; // Moved to Edge Function flight-proxy;
 
 
 function updatePrice() {
@@ -5813,7 +5813,7 @@ async function generateAlerts(weatherTemp) {
   const upcomingFlightGuests = clients.filter(c => c.arrival && daysFrom(c.arrival) >= 0 && daysFrom(c.arrival) <= 1);
   if (upcomingFlightGuests.length && AVIATION_KEY) {
     try {
-      const flightRes = await fetch('https://api.aviationstack.com/v1/flights?access_key=' + AVIATION_KEY + '&arr_iata=RAK&limit=20');
+      const flightRes = await fetch(`${SB_URL}/functions/v1/flight-proxy?airport=RAK&mode=arr&limit=20`);
       const flightData = await flightRes.json();
       if (flightData.data) {
         const delayed = flightData.data.filter(f => f.arrival?.delay > 30);
@@ -6057,8 +6057,8 @@ async function loadWeather() {
   try {
     // Fetch current weather + 5-day forecast (cnt=40 = 5 days x 8 per day)
     const [curRes, foreRes] = await Promise.all([
-      fetch(`https://api.openweathermap.org/data/2.5/weather?q=Marrakech,MA&appid=${WEATHER_KEY}&units=metric&lang=fr`),
-      fetch(`https://api.openweathermap.org/data/2.5/forecast?q=Marrakech,MA&appid=${WEATHER_KEY}&units=metric&lang=fr&cnt=40`)
+      fetch(`${SB_URL}/functions/v1/weather-proxy?q=Marrakech,MA&lang=fr&mode=current`),
+      fetch(`${SB_URL}/functions/v1/weather-proxy?q=Marrakech,MA&lang=fr&mode=forecast`)
     ]);
     const cur = await curRes.json();
     const fore = await foreRes.json();
@@ -6279,8 +6279,8 @@ async function fetchLiveFlights() {
   try {
     const isArr = currentTab === 'arr';
     const endpoint = isArr
-      ? `https://api.aviationstack.com/v1/flights?access_key=${AVIATION_KEY}&arr_iata=RAK&limit=10`
-      : `https://api.aviationstack.com/v1/flights?access_key=${AVIATION_KEY}&dep_iata=RAK&limit=10`;
+      ? `${SB_URL}/functions/v1/flight-proxy?airport=RAK&mode=arr&limit=10`
+      : `${SB_URL}/functions/v1/flight-proxy?airport=RAK&mode=dep&limit=10`;
 
     const r = await fetch(endpoint);
     const data = await r.json();
