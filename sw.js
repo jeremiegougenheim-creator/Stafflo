@@ -1,106 +1,44 @@
-// Stafflo Service Worker v1.0
-// Offline-first caching strategy
+// Stafflo Service Worker — cache only what actually exists
+const CACHE = 'stafflo-v3';
+const CORE = ['./app.html'];
 
-const CACHE_NAME = 'stafflo-v1';
-const ASSETS_TO_CACHE = [
-  '/Stafflo/app.html',
-  '/Stafflo/manifest.json',
-  'https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:wght@300;400;500;600&display=swap',
-];
-
-// ── INSTALL: cache core assets ──
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('[SW] Caching core assets');
-        return cache.addAll(ASSETS_TO_CACHE.map(url => new Request(url, {mode: 'no-cors'})));
-      })
-      .then(() => self.skipWaiting())
-      .catch(err => console.warn('[SW] Cache failed:', err))
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(CORE)).catch(() => {})
   );
+  self.skipWaiting();
 });
 
-// ── ACTIVATE: clean old caches ──
-self.addEventListener('activate', event => {
-  event.waitUntil(
+self.addEventListener('activate', e => {
+  e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(
-        keys.filter(key => key !== CACHE_NAME)
-            .map(key => caches.delete(key))
-      )
-    ).then(() => self.clients.claim())
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    )
   );
+  self.clients.claim();
 });
 
-// ── FETCH: network-first for API, cache-first for assets ──
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-
-  // Always network for API calls
+self.addEventListener('fetch', e => {
+  // Only cache GET requests for same origin
+  if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  // Don't cache Supabase API calls or external APIs
   if (url.hostname.includes('supabase') ||
       url.hostname.includes('groq') ||
-      url.hostname.includes('openweathermap') ||
-      url.hostname.includes('aviationstack') ||
-      url.hostname.includes('exchangerate') ||
-      url.hostname.includes('googleapis.com/v1beta') ||
-      url.hostname.includes('anthropic')) {
-    return; // Let browser handle API calls normally
-  }
+      url.hostname.includes('mistral') ||
+      url.hostname.includes('deepseek') ||
+      url.hostname.includes('googleapis')) return;
 
-  // Cache-first for fonts and static assets
-  if (url.hostname.includes('fonts.gstatic') || url.hostname.includes('fonts.googleapis')) {
-    event.respondWith(
-      caches.match(event.request).then(cached => {
-        return cached || fetch(event.request).then(response => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-          return response;
-        });
-      })
-    );
-    return;
-  }
-
-  // Network-first for HTML (always get latest version)
-  if (event.request.destination === 'document') {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-});
-
-// ── BACKGROUND SYNC (future: sync CRM when back online) ──
-self.addEventListener('sync', event => {
-  if (event.tag === 'sync-crm') {
-    console.log('[SW] Background sync: CRM');
-  }
-});
-
-// ── PUSH NOTIFICATIONS (future: alert on new booking) ──
-self.addEventListener('push', event => {
-  if (event.data) {
-    const data = event.data.json();
-    self.registration.showNotification(data.title || 'Stafflo', {
-      body: data.body || 'New notification',
-      icon: '/Stafflo/icon-192.png',
-      badge: '/Stafflo/icon-192.png',
-      tag: 'stafflo-notification',
-      data: { url: data.url || '/Stafflo/app.html' }
-    });
-  }
-});
-
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  event.waitUntil(
-    clients.openWindow(event.notification.data.url || '/Stafflo/app.html')
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      const fresh = fetch(e.request).then(res => {
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return res;
+      }).catch(() => cached);
+      return cached || fresh;
+    })
   );
 });
