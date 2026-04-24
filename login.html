@@ -1,3 +1,38 @@
+const supabaseUrl = 'TON_SUPABASE_URL';
+const supabaseAnonKey = 'TON_SUPABASE_ANON_KEY';
+const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+let APP_STATE = {
+  user: null,
+  villas: [],
+  currentVillaId: null,
+  currentVilla: null
+};
+
+async function requireSession() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    window.location.href = 'login.html';
+    return null;
+  }
+  APP_STATE.user = session.user;
+  return session.user;
+}
+
+async function loadVillas() {
+  const user = APP_STATE.user;
+  const { data, error } = await supabase
+    .from('villas')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+
+  APP_STATE.villas = data || [];
+  APP_STATE.currentVilla = APP_STATE.villas[0] || null;
+  APP_STATE.currentVillaId = APP_STATE.currentVilla ? APP_STATE.currentVilla.id : null;
+}
 <!doctype html>
 <html lang="fr">
 <head>
