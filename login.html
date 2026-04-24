@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Stafflo — Login</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root{
+      --bg:#f6f0e8;
+      --card:#ffffff;
+      --text:#1f1a17;
+      --muted:#6f6258;
+      --accent:#1e4b3a;
+      --accent2:#c58f5c;
+      --border:#e6ddd2;
+      --error:#b42318;
+      --success:#067647;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      min-height:100vh;
+      display:grid;
+      place-items:center;
+      background:linear-gradient(180deg,#f8f3ec 0%,#efe4d7 100%);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      color:var(--text);
+      padding:24px;
+    }
+    .wrap{
+      width:min(100%,420px);
+    }
+    .brand{
+      margin-bottom:18px;
+      text-align:center;
+    }
+    .brand h1{
+      margin:0 0 6px;
+      font-size:34px;
+      letter-spacing:-0.03em;
+    }
+    .brand p{
+      margin:0;
+      color:var(--muted);
+      font-size:14px;
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:20px;
+      padding:24px;
+      box-shadow:0 20px 60px rgba(0,0,0,.08);
+    }
+    label{
+      display:block;
+      font-size:13px;
+      font-weight:600;
+      margin:14px 0 8px;
+    }
+    input{
+      width:100%;
+      padding:14px 14px;
+      border:1px solid var(--border);
+      border-radius:14px;
+      font-size:15px;
+      outline:none;
+      background:#fff;
+    }
+    input:focus{
+      border-color:var(--accent2);
+      box-shadow:0 0 0 3px rgba(197,143,92,.15);
+    }
+    .row{
+      display:flex;
+      gap:12px;
+      margin-top:18px;
+    }
+    button{
+      flex:1;
+      border:0;
+      border-radius:14px;
+      padding:14px 16px;
+      font-size:15px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    .primary{
+      background:var(--accent);
+      color:white;
+    }
+    .secondary{
+      background:#f1e7db;
+      color:var(--text);
+    }
+    .msg{
+      margin-top:16px;
+      padding:12px 14px;
+      border-radius:12px;
+      font-size:14px;
+      display:none;
+    }
+    .msg.error{background:#fef3f2;color:var(--error);display:block;}
+    .msg.success{background:#ecfdf3;color:var(--success);display:block;}
+    .hint{
+      margin-top:16px;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.5;
+    }
+    .small{
+      margin-top:12px;
+      font-size:12px;
+      color:var(--muted);
+      text-align:center;
+    }
+    .loading{
+      opacity:.7;
+      pointer-events:none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <h1>Stafflo</h1>
+      <p>Connexion sécurisée au dashboard</p>
+    </div>
+
+    <div class="card" id="card">
+      <label for="email">Email</label>
+      <input id="email" type="email" placeholder="ton@email.com" autocomplete="email" />
+
+      <label for="password">Mot de passe</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+
+      <div class="row">
+        <button class="primary" id="loginBtn">Se connecter</button>
+        <button class="secondary" id="signupBtn">Créer le compte</button>
+      </div>
+
+      <div class="msg" id="msg"></div>
+
+      <div class="hint">
+        Utilise le même email que dans Supabase Auth. Si ton compte existe déjà, clique “Se connecter”. Sinon crée le compte une seule fois.
+      </div>
+
+      <div class="small">Stafflo — version pilote</div>
+    </div>
+  </div>
+
+  <script>
+    const supabaseUrl = 'TON_SUPABASE_URL';
+    const supabaseAnonKey = 'TON_SUPABASE_ANON_KEY';
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+    const emailEl = document.getElementById('email');
+    const passwordEl = document.getElementById('password');
+    const msgEl = document.getElementById('msg');
+    const cardEl = document.getElementById('card');
+    const loginBtn = document.getElementById('loginBtn');
+    const signupBtn = document.getElementById('signupBtn');
+
+    function showMsg(text, type='error') {
+      msgEl.className = `msg ${type}`;
+      msgEl.textContent = text;
+    }
+
+    function setLoading(v) {
+      cardEl.classList.toggle('loading', v);
+      loginBtn.disabled = v;
+      signupBtn.disabled = v;
+    }
+
+    async function goToApp() {
+      
