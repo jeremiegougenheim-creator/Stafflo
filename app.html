@@ -8,10 +8,6 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Stafflo">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="description" content="Villa management app for luxury staffed villas">
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' rx='40' fill='%230F2318'/><rect x='15' y='15' width='150' height='150' rx='30' fill='%23C9963A' opacity='.15'/><text x='90' y='125' font-family='Georgia,serif' font-size='100' font-weight='700' fill='%23C9963A' text-anchor='middle'>S</text></svg>">
     <title>Stafflo — Villa Operations</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,7 +16,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
-        /* CSS de base reprenant ta charte Stafflo */
         :root {
             --bg-color: #FAFAFA;
             --text-main: #0F2318;
@@ -54,7 +49,6 @@
             margin: 0;
         }
 
-        /* ── TABS ── */
         nav {
             display: flex;
             border-bottom: 1px solid #E0E0E0;
@@ -86,6 +80,18 @@
         .content-section.active {
             display: block;
         }
+
+        .client-card {
+            padding: 16px; 
+            background: #FFF; 
+            border-radius: 12px; 
+            border: 1px solid #EEE; 
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
     </style>
 </head>
 <body>
@@ -108,25 +114,26 @@
     <main>
         <div id="today" class="content-section active">
             <h2 style="font-family: var(--font-heading);">Opérations du jour</h2>
-            <p>Chargement des données de la villa...</p>
+            <div id="today-content">Chargement...</div>
         </div>
+
         <div id="crm" class="content-section">
             <h2 style="font-family: var(--font-heading);">Clients</h2>
-            <p>Liste des clients à venir.</p>
+            <div id="crm-list">Chargement des clients...</div>
         </div>
+
         <div id="chat" class="content-section">
             <h2 style="font-family: var(--font-heading);">Messages</h2>
-            <p>Boîte de réception unifiée.</p>
+            <p>Boîte de réception unifiée (WhatsApp/OTA).</p>
         </div>
     </main>
 
     <script>
-        // 1. INITIALISATION SUPABASE (À REMPLACER PAR TES VRAIES CLÉS)
+        // 1. CONFIGURATION (METS TES CLÉS ICI)
         const supabaseUrl = 'TON_SUPABASE_URL';
         const supabaseAnonKey = 'TON_SUPABASE_ANON_KEY';
         const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
 
-        // 2. ÉTAT DE L'APPLICATION
         let APP_STATE = {
             user: null,
             villas: [],
@@ -134,11 +141,10 @@
             currentVilla: null
         };
 
-        // 3. FONCTIONS PRINCIPALES
+        // 2. AUTH ET VILLA LOADING
         async function requireSession() {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
-                // Redirection si non connecté
                 window.location.href = 'login.html'; 
                 return null;
             }
@@ -147,103 +153,102 @@
         }
 
         async function loadVillas() {
-            const user = APP_STATE.user;
             const { data, error } = await supabase
                 .from('villas')
                 .select('*')
-                .eq('user_id', user.id)
+                .eq('user_id', APP_STATE.user.id)
                 .order('created_at', { ascending: true });
                 
-            if (error) {
-                console.error("Erreur de chargement des villas:", error);
-                return;
-            }
+            if (error) { console.error("Erreur villas:", error); return; }
             
             APP_STATE.villas = data || [];
             APP_STATE.currentVilla = APP_STATE.villas[0] || null;
             APP_STATE.currentVillaId = APP_STATE.currentVilla ? APP_STATE.currentVilla.id : null;
         }
 
+        // 3. UI RENDERING
         function renderVillaSwitcher() {
             const el = document.getElementById('villaSwitcher');
-            if (!el) return;
-            
-            if (!APP_STATE.villas || APP_STATE.villas.length === 0) {
-                el.innerHTML = '<div style="padding:12px;background:#FFF;border:1px solid #ddd;border-radius:12px;">Aucune villa trouvée. Veuillez en configurer une.</div>';
-                return;
-            }
-            
-            if (APP_STATE.villas.length === 1) {
-                el.innerHTML = `
-                    <div style="padding:12px;background:#FFF;border:1px solid #ddd;border-radius:12px;">
-                        Villa active : <strong style="color:var(--text-main); font-family:var(--font-heading);">${APP_STATE.villas[0].name}</strong>
-                    </div>
-                `;
-                return;
-            }
+            if (!el || APP_STATE.villas.length === 0) return;
             
             el.innerHTML = `
                 <label style="display:block;margin-bottom:6px;font-weight:500;font-size:14px;color:#666;">Propriété active</label>
                 <select id="villaSelect" style="width:100%;padding:12px;border-radius:12px;border:1px solid #ddd;font-family:var(--font-body);font-size:16px;background:#FFF;color:var(--text-main);">
-                    ${APP_STATE.villas.map(v => `
-                        <option value="${v.id}" ${v.id === APP_STATE.currentVillaId ? 'selected' : ''}>
-                            ${v.name}
-                        </option>
-                    `).join('')}
+                    ${APP_STATE.villas.map(v => `<option value="${v.id}" ${v.id === APP_STATE.currentVillaId ? 'selected' : ''}>${v.name}</option>`).join('')}
                 </select>
             `;
             
             document.getElementById('villaSelect').addEventListener('change', (e) => {
                 const villaId = e.target.value;
-                const villa = APP_STATE.villas.find(v => v.id === villaId);
                 APP_STATE.currentVillaId = villaId;
-                APP_STATE.currentVilla = villa;
+                APP_STATE.currentVilla = APP_STATE.villas.find(v => v.id === villaId);
                 refreshCurrentVillaData();
             });
         }
 
+        // 4. DATA REFRESH (LA FONCTION QUI FILTRE TOUT)
         async function refreshCurrentVillaData() {
-            console.log('Reload data for villa:', APP_STATE.currentVillaId);
-            // C'est ici que tu mettras tes requêtes .eq('villa_id', APP_STATE.currentVillaId) 
-            // pour filtrer les tâches, les clients et les messages.
-            
-            const todayTab = document.getElementById('today');
-            if(APP_STATE.currentVilla) {
-                todayTab.innerHTML = `
-                    <h2 style="font-family: var(--font-heading);">Opérations du jour</h2>
-                    <p>Affichage des données filtrées pour : <strong>${APP_STATE.currentVilla.name}</strong></p>
-                `;
+            if (!APP_STATE.currentVillaId) return;
+
+            // Mise à jour rapide du titre dans l'onglet Today
+            document.getElementById('today-content').innerHTML = `<p>Chargement pour <strong>${APP_STATE.currentVilla.name}</strong>...</p>`;
+
+            // Récupération des clients filtrés par villa_id
+            const { data: clients, error } = await supabase
+                .from('clients')
+                .select('*')
+                .eq('villa_id', APP_STATE.currentVillaId);
+
+            if (error) {
+                console.error("Erreur chargement clients:", error);
+                return;
+            }
+
+            // Rendu de l'onglet Today
+            document.getElementById('today-content').innerHTML = `
+                <div style="padding:15px; background:rgba(201, 150, 58, 0.1); border-radius:12px; border:1px solid var(--accent); color: var(--text-main);">
+                    <strong>${clients.length}</strong> client(s) enregistré(s) pour cette villa.
+                </div>
+            `;
+
+            // Rendu de l'onglet CRM (Liste complète)
+            const crmList = document.getElementById('crm-list');
+            if (clients.length === 0) {
+                crmList.innerHTML = `<p>Aucun client trouvé pour cette propriété.</p>`;
+            } else {
+                crmList.innerHTML = clients.map(c => `
+                    <div class="client-card">
+                        <div>
+                            <div style="font-weight:600;">${c.first_name || ''} ${c.last_name || 'Client'}</div>
+                            <div style="font-size:12px; color:#666;">Check-in : ${c.check_in || 'Non défini'}</div>
+                        </div>
+                        <div style="color:var(--accent); font-weight:bold; font-size:14px;">${c.status || 'Actif'}</div>
+                    </div>
+                `).join('');
             }
         }
 
-        // Gestionnaire de navigation (Tabs)
+        // NAVIGATION
         function switchTab(tabId) {
             document.querySelectorAll('.content-section').forEach(sec => sec.classList.remove('active'));
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            
             document.getElementById(tabId).classList.add('active');
             event.currentTarget.classList.add('active');
         }
 
-        // Déconnexion
+        // LOGOUT
         document.getElementById('logoutBtn').addEventListener('click', async () => {
             await supabase.auth.signOut();
             window.location.href = 'login.html';
         });
 
-        // 4. DÉMARRAGE DE L'APPLICATION
-        (async function initApp() {
+        // INIT APP
+        (async function init() {
             const user = await requireSession();
-            if (!user) return; // Stoppe l'exécution si non connecté (redirection gérée)
+            if (!user) return;
             
             await loadVillas();
             renderVillaSwitcher();
-            
-            if (!APP_STATE.currentVilla) {
-                console.log('Aucune villa trouvée');
-                return;
-            }
-            
             await refreshCurrentVillaData();
         })();
     </script>
