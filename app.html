@@ -1225,6 +1225,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 const STAFFLO_PROXY = 'https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/ai-proxy';
 // ── Hardcoded Supabase constants (never broken by bad localStorage) ──
 const SB_URL  = 'https://rcjhgilpmojohmrqzokx.supabase.co';
+var _stafflo_session = null; // global JWT session
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
 
 // ── Global state — declared here to avoid initialization order errors ──
@@ -1308,7 +1309,7 @@ async function loadFromSupabase() {
   setSyncDot('busy');
   try {
     var r = await fetch(url + '/rest/v1/crm_clients?select=*&order=created_at.desc', {
-      headers: { apikey: key, Authorization: 'Bearer ' + key }
+      headers: { apikey: key, Authorization: 'Bearer ' + (_stafflo_session && _stafflo_session.access_token ? _stafflo_session.access_token : key) }
     });
     if (r.ok) {
       var rows = await r.json();
@@ -2780,7 +2781,7 @@ async function loadMsgHistory(clientId) {
   try {
     var r = await fetch(
       url + '/rest/v1/msg_log?client_id=eq.' + clientId + '&order=sent_at.desc&limit=5',
-      { headers: { apikey: key, Authorization: 'Bearer ' + key } }
+      { headers: { apikey: key, Authorization: 'Bearer ' + (_stafflo_session && _stafflo_session.access_token ? _stafflo_session.access_token : key) } }
     );
     if (!r.ok) { el.textContent = '—'; return; }
     var rows = await r.json();
@@ -3324,7 +3325,7 @@ async function loadInboxCount() {
   var key = cfg.sbKey || SB_ANON;
   try {
     var r = await fetch(SB_URL + '/rest/v1/email_inbox?status=eq.new&select=id', {
-      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Prefer': 'count=exact' }
+      headers: { apikey: key, Authorization: 'Bearer ' + (_stafflo_session && _stafflo_session.access_token ? _stafflo_session.access_token : key), 'Prefer': 'count=exact' }
     });
     var count = parseInt(r.headers.get('content-range')?.split('/')[1] || '0');
     var badge = document.getElementById('inboxBadge');
@@ -3359,7 +3360,7 @@ async function loadInboxEmails() {
   var key = cfg.sbKey || SB_ANON;
   try {
     var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=20', {
-      headers: { apikey: key, Authorization: 'Bearer ' + key }
+      headers: { apikey: key, Authorization: 'Bearer ' + (_stafflo_session && _stafflo_session.access_token ? _stafflo_session.access_token : key) }
     });
     var rows = await r.json();
     if (!rows.length) {
@@ -3646,7 +3647,7 @@ async function loadClientContext(clientId) {
   var key = cfg.sbKey || SB_ANON;
   try {
     var r = await fetch(SB_URL + '/rest/v1/client_context?client_id=eq.' + clientId + '&order=category.asc,key.asc', {
-      headers: { apikey: key, Authorization: 'Bearer ' + key }
+      headers: { apikey: key, Authorization: 'Bearer ' + (_stafflo_session && _stafflo_session.access_token ? _stafflo_session.access_token : key) }
     });
     if (!r.ok) return [];
     return await r.json();
@@ -3835,7 +3836,7 @@ async function loadContextHistory(clientId) {
   var key = cfg.sbKey || SB_ANON;
   try {
     var r = await fetch(SB_URL + '/rest/v1/client_context_history?client_id=eq.' + clientId + '&order=changed_at.desc&limit=20', {
-      headers: { apikey: key, Authorization: 'Bearer ' + key }
+      headers: { apikey: key, Authorization: 'Bearer ' + (_stafflo_session && _stafflo_session.access_token ? _stafflo_session.access_token : key) }
     });
     if (!r.ok) return [];
     return await r.json();
@@ -4125,7 +4126,7 @@ async function saveChatMessage(role, text, clientId, clientName) {
   try {
     await fetch(SB_URL + '/rest/v1/chat_history', {
       method: 'POST',
-      headers: { 'Content-Type':'application/json', apikey: key, Authorization:'Bearer '+key, Prefer:'return=minimal' },
+      headers: { 'Content-Type':'application/json', apikey: key, Authorization:'Bearer '+(_stafflo_session && _stafflo_session.access_token ? _stafflo_session.access_token : key), Prefer:'return=minimal' },
       body: JSON.stringify({
         role:         role,           // 'user' | 'assistant'
         content:      text.slice(0, 2000),
@@ -4146,7 +4147,7 @@ async function loadChatHistory(options) {
   if (options.clientId) url += '&client_id=eq.' + options.clientId;
   if (options.sessionOnly) url += '&session_id=eq.' + _chatSessionId;
   try {
-    var r = await fetch(url, { headers: { apikey: key, Authorization: 'Bearer ' + key } });
+    var r = await fetch(url, { headers: { apikey: key, Authorization: 'Bearer ' + (_stafflo_session && _stafflo_session.access_token ? _stafflo_session.access_token : key) } });
     if (!r.ok) return [];
     var rows = await r.json();
     return rows.reverse(); // chronological
@@ -4188,7 +4189,7 @@ async function deleteChatHistory(clientId) {
   if (clientId) url += '?client_id=eq.' + clientId;
   else url += '?session_id=eq.' + _chatSessionId;
   try {
-    await fetch(url, { method: 'DELETE', headers: { apikey: key, Authorization: 'Bearer ' + key } });
+    await fetch(url, { method: 'DELETE', headers: { apikey: key, Authorization: 'Bearer ' + (_stafflo_session && _stafflo_session.access_token ? _stafflo_session.access_token : key) } });
   } catch(e) {}
 }
 
