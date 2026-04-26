@@ -589,10 +589,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .info-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);background:rgba(30,30,30,0.93);color:#fff;font-size:12px;font-weight:400;line-height:1.5;padding:8px 12px;border-radius:9px;white-space:pre-line;width:220px;text-align:left;pointer-events:none;opacity:0;transition:opacity .18s;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.25)}
 .info-tip:hover::after{opacity:1}
 
-/* ── ⓘ Tooltips info ── */
-.info-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,0.12);color:var(--muted);font-size:10px;font-weight:700;cursor:help;position:relative;margin-left:5px;vertical-align:middle;flex-shrink:0}
-.info-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);background:rgba(30,30,30,0.93);color:#fff;font-size:12px;font-weight:400;line-height:1.5;padding:8px 12px;border-radius:9px;white-space:pre-line;width:220px;text-align:left;pointer-events:none;opacity:0;transition:opacity .18s;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.25)}
-.info-tip:hover::after{opacity:1}
+
 
 /* ── AGENT MODE ── */
 .agent-toggle{background:none;border:1.5px solid rgba(255,255,255,.25);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s}
@@ -2306,6 +2303,7 @@ function openDetail(id) {
     '<div id="detailGuestSummary" style="min-height:90px"></div>' +
     '<div style="padding:10px 16px 4px">'+renderReadinessBar(cl,fr)+'</div>' +
     '<div id="detailContextZone" style="padding:0 16px 8px"></div>' +
+    '<div id="detailStayTimeline" style="padding:0 16px 8px"></div>' +
     notesHTML +
     tasksHTML +
     rowsHTML;
@@ -2329,6 +2327,23 @@ function openDetail(id) {
     '<button onclick="closeDetail();prepareAnalysis(\''+cl.id+'\')" style="font-size:11px;color:var(--gold);background:none;border:1px solid var(--gold);border-radius:6px;padding:5px 12px;cursor:pointer;font-family:DM Sans,sans-serif">'+(fr?'→ Analyser':'→ Analyse')+'</button>' +
     '</div>';
   document.getElementById('detailBody').insertAdjacentHTML('beforeend', detailMsgSection);
+
+  var note = document.getElementById('detailStayNote');
+  if (!note) {
+    note = document.createElement('div');
+    note.id = 'detailStayNote';
+    note.style.cssText = 'padding:0 16px 10px;font-size:11px;color:var(--muted);font-style:italic;line-height:1.5';
+    note.textContent = lang==='fr' ? 'Vue additionnelle pour lire le séjour par jour. Les catégories restent la source de vérité.' : 'Additional view to read the stay by day. Categories remain the source of truth.';
+    var ctx = document.getElementById('detailContextZone');
+    if (ctx && ctx.parentNode) ctx.parentNode.insertBefore(note, ctx.nextSibling);
+  }
+
+  var stayEl = document.getElementById('detailStayTimeline');
+  if (stayEl) {
+    var rowsForStay = (window._detailContextRows || []);
+    stayEl.innerHTML = buildStayTimeline(rowsForStay, cl);
+    if (!stayEl.innerHTML) stayEl.style.display = 'none';
+  }
 
   document.getElementById('detailActions').innerHTML =
     '<button class="btn-action primary" onclick="closeDetail();openForm(\''+cl.id+'\')" style="flex:1">✏️ '+(fr?'Modifier':'Edit')+'</button>' +
@@ -3872,6 +3887,84 @@ async function mergeAllQuotesWA(clientId) {
   msg += '\nN\'hésitez pas si vous avez des questions !\n\n' + owner;
   showWASend(clientId, msg, 'quote');
 }
+
+function parseStayDateFromText(value, fallbackYear) {
+  if (!value) return null;
+  const s = String(value).toLowerCase();
+  const months = {
+    jan:0, janv:0, january:0,
+    fev:1, fév:1, feb:1, february:1,
+    mar:2, mars:2, march:2,
+    avr:3, apr:3, april:3,
+    mai:4, may:4,
+    jun:5, juin:5, june:5,
+    jul:6, juil:6, july:6,
+    aou:7, aoû:7, août:7, aug:7, august:7,
+    sep:8, sept:8, september:8,
+    oct:9, october:9,
+    nov:10, november:10,
+    dec:11, déc:11, decembre:11, décembre:11, december:11
+  };
+  const m = s.match(/(?:lun|mar|mer|jeu|ven|sam|dim|mon|tue|wed|thu|fri|sat)?\s*(\d{1,2})\s*([a-zéûôîàç\.]{3,12})/i);
+  if (!m) return null;
+  const day = parseInt(m[1], 10);
+  const monthKey = m[2].replace(/\./g,'').trim().slice(0,4);
+  let month = months[monthKey] ?? months[monthKey.slice(0,3)];
+  if (month === undefined) return null;
+  const year = fallbackYear || new Date().getFullYear();
+  return new Date(year, month, day, 12, 0, 0);
+}
+
+function buildStayTimeline(contextRows, client) {
+  const fr = lang === 'fr';
+  const ref = client && (client.departure || client.arrival) ? new Date((client.departure || client.arrival) + 'T00:00:00') : new Date();
+  const year = ref.getFullYear();
+  const items = [];
+  (contextRows || []).forEach(function(row) {
+    const txt = (row.value || '').trim();
+    const date = parseStayDateFromText(txt, year);
+    if (!date) return;
+    const timeM = txt.match(/(\d{1,2})(?:h|:)(\d{2})?/i);
+    const time = timeM ? (timeM[2] ? timeM[1] + ':' + timeM[2] : timeM[1] + 'h') : '';
+    const k = (row.key || '').toLowerCase();
+    const c = (row.category || '').toLowerCase();
+    let icon = '📌';
+    if (k.includes('meal') || c === 'meals') icon = '🍽️';
+    else if (k.includes('transfer') || k.includes('driver') || c === 'transport') icon = '🚐';
+    else if (k.includes('hammam') || k.includes('massage') || k.includes('spa')) icon = '🧖‍♂️';
+    else if (k.includes('zoo') || k.includes('majorelle') || k.includes('jardin') || k.includes('wake')) icon = '🌿';
+    else if (k.includes('baby')) icon = '👶';
+    else if (k.includes('checkout') || k.includes('depart') || k.includes('departure')) icon = '🏨';
+    else if (k.includes('flight') || k.includes('vol') || k.includes('arrival')) icon = '✈️';
+    items.push({ date: date, time: time, icon: icon, key: row.key, value: row.value, id: row.id });
+  });
+  items.sort(function(a,b){ return a.date - b.date || a.time.localeCompare(b.time); });
+  if (!items.length) return '';
+  const groups = {};
+  items.forEach(function(it){
+    const key = it.date.toISOString().slice(0,10);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(it);
+  });
+  const dayNames = fr ? ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'] : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const monthNames = fr ? ['janv','fév','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'] : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  let html = '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">🗓 ' + (fr ? 'PROGRAMME DU SÉJOUR' : 'STAY TIMELINE') + '</div>';
+  Object.keys(groups).sort().forEach(function(dayKey){
+    const d = new Date(dayKey + 'T12:00:00');
+    html += '<div style="margin-bottom:10px;padding:10px 12px;background:var(--paper);border:1px solid var(--border);border-radius:10px">';
+    html += '<div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:6px">' + dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + monthNames[d.getMonth()] + '</div>';
+    groups[dayKey].forEach(function(it){
+      html += '<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-top:1px solid rgba(0,0,0,0.04)">' +
+        '<span style="font-size:15px;min-width:18px">' + it.icon + '</span>' +
+        '<span style="font-size:11px;color:var(--gold);min-width:38px;display:inline-block;font-weight:700">' + (it.time || '—') + '</span>' +
+        '<span style="font-size:12px;color:var(--ink);flex:1;word-break:break-word">' + String(it.value || '').replace(/</g,'&lt;') + '</span>' +
+      '</div>';
+    });
+    html += '</div>';
+  });
+  return html;
+}
+
 function formatContextForDisplay(contextRows, clientId, editable) {
   if (!contextRows.length) return '';
   var grouped = {};
@@ -7305,21 +7398,15 @@ async function loadMorningBrief(forceRefresh = false) {
 // AI PROVIDERS — routing, calling
 // ════════════════════════════════════════════════════════
 async function callBestAI(task, systemPrompt, userContent, maxTokens) {
-  // ── Try proxy first (no client key needed) ──────────
+
+  // ── 1. PROXY STAFFLO (priorité absolue) ─────────────────────────────────
   if (STAFFLO_PROXY) {
     try {
-      // Proxy v9 handles language detection and task resolution server-side.
-      // Just pass the task name — the proxy picks the best model + caches when appropriate.
-      //   extract / fast_classify / alerts → Groq fast
-      //   write_fr / chat_fr               → Mistral
-      //   write_en / chat_en               → Groq Llama 70B
-      //   brief / reason                    → DeepSeek
-      var resolvedTask = task;
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          task: resolvedTask,
+          task,
           system: systemPrompt || '',
           user: userContent,
           max_tokens: maxTokens || 1000,
@@ -7329,98 +7416,153 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
       });
       if (r.ok) {
         const d = await r.json();
-        if (d.text) {
-          return d.text;
-        }
+        if (d.text) return d.text;
       } else if (r.status === 429) {
-        toast(lang==='fr'
-          ? '⏳ Limite atteinte — réessayez dans une heure'
-          : '⏳ Rate limit — try again in an hour');
+        toast(lang === 'fr' ? '⏳ Limite IA — réessayez dans 1h' : '⏳ Rate limit — retry in 1h');
         throw new Error('rate_limit');
       }
     } catch(e) {
       if (e.message === 'rate_limit') throw e;
-      
+      // Proxy KO → fallback silencieux sur clés client
     }
   }
 
-  // ── Fallback: client API keys ────────────────────────
-  const cfg = getCfg();
-  const routes = {
-    extract:  ['groq',    'gemini',  'mistral', 'deepseek'],
-    brief:    ['gemini',  'deepseek','groq',    'mistral'],
-    write_fr: ['mistral', 'gemini',  'groq',    'deepseek'],
-    reason:   ['deepseek','gemini',  'mistral', 'groq'],
+  // ── 2. FALLBACK CLIENT — routing optimisé par tâche ────────────────────
+  // extract  : Groq ⚡ (JSON rapide) → DeepSeek → Gemini → Mistral
+  // brief    : DeepSeek 🔍 (structuration) → Gemini → GPT-4o → Groq
+  // chat_fr  : Mistral 🌟 (français naturel) → Groq → DeepSeek → Gemini
+  // write_fr : Mistral 🌟 (ton fr chaleureux) → Groq → DeepSeek → Gemini
+  // write_en : Groq ⚡ (anglais fluide, rapide) → Mistral → DeepSeek → Gemini
+  // reason   : DeepSeek 🔍 (raisonnement + agent) → Gemini → GPT-4o → Groq
+  const MODEL_ROUTING = {
+    // extract  : Groq ⚡ (vitesse JSON) → DeepSeek → Gemini → Mistral
+    // brief    : DeepSeek 🔍 (structuration) → Gemini → GPT-4o → Groq
+    // chat_fr  : Mistral 🌟 (français naturel) → Groq → DeepSeek → Gemini
+    // chat_en  : Mistral 🌟 (anglais naturel) → Groq → DeepSeek → Gemini
+    // write_fr : Mistral 🌟 (ton fr chaleureux) → Groq (vitesse) → DeepSeek → Gemini
+    // write_en : Groq ⚡ (rapide, anglais fluide) → Mistral → DeepSeek → Gemini
+    // reason   : DeepSeek 🔍 (chaînes de pensée + agent) → Gemini → GPT-4o → Groq
+    extract:  ['groq',    'deepseek', 'gemini',  'mistral'],
+    brief:    ['deepseek','gemini',   'openai',  'groq'   ],
+    chat_fr:  ['mistral', 'groq',     'deepseek','gemini' ],
+    chat_en:  ['mistral', 'groq',     'deepseek','gemini' ],
+    write_fr: ['mistral', 'groq',     'deepseek','gemini' ],
+    write_en: ['groq',    'mistral',  'deepseek','gemini' ],
+    reason:   ['deepseek','gemini',   'openai',  'groq'   ],
   };
-  const order = routes[task] || routes.extract;
+
+  // Température par type de tâche (plus bas = plus déterministe)
+  const TEMP_MAP = {
+    extract: 0.1,   // JSON strict → très déterministe
+    brief:   0.3,   // structuré mais un peu créatif
+    reason:  0.2,   // chaînes de pensée → précis
+    write_fr:0.7,   // messages → chaleureux, varié
+    writefr: 0.7,
+    write_en:0.7,
+    writeen: 0.7,
+    chat_fr: 0.6,
+    chatfr:  0.6,
+  };
+
+  const cfg = getCfg();
+  const order = MODEL_ROUTING[task] || MODEL_ROUTING.reason;
+  const temp  = TEMP_MAP[task] ?? 0.4;
+
+  let lastErr = null;
   for (const pid of order) {
     const key = getProviderKey(cfg, pid);
     if (!key) continue;
     try {
-      const result = await callProviderAPI(pid, key, systemPrompt, userContent, maxTokens || 1000);
-      if (result) {
-        if (!window._lastUsedAI) window._lastUsedAI = {};
-        if (window._lastUsedAI[task] !== pid) {
-          window._lastUsedAI[task] = pid;
-          const names = {groq:'Groq ⚡', gemini:'Gemini ✦', mistral:'Mistral 🌟', deepseek:'DeepSeek 🔍'};
-          
-        }
+      const result = await callProviderAPI(pid, key, systemPrompt, userContent, maxTokens || 1000, temp);
+      if (result && result.trim()) {
+        // Log quel modèle a répondu (debug silencieux)
+        if (!window._aiStats) window._aiStats = {};
+        window._aiStats[task] = window._aiStats[task] || {};
+        window._aiStats[task][pid] = (window._aiStats[task][pid] || 0) + 1;
         return result;
       }
-    } catch(e) { continue; }
+    } catch(e) {
+      lastErr = e;
+      console.warn('[callBestAI] ' + pid + ' failed for task=' + task + ':', e.message);
+      continue;
+    }
   }
 
-  throw new Error(lang==='fr'
-    ? 'Service IA indisponible — réessayez ou configurez une clé dans Réglages'
-    : 'AI service unavailable — retry or add a key in Settings');
+  throw new Error(lang === 'fr'
+    ? '⚠ Service IA indisponible — réessayez ou configurez une clé dans Réglages'
+    : '⚠ AI unavailable — retry or add a key in Settings');
 }
+
 
 function getProviderKey(cfg, provider) {
-  return provider === 'gemini' ? (cfg.geminiKey||'') : provider === 'deepseek' ? (cfg.deepseekKey||'') : provider === 'perplexity' ? (cfg.perplexityKey||'') : provider === 'anthropic' ? (cfg.anthropicKey||'') : provider === 'openai' ? (cfg.openaiKey||'') : provider === 'mistral' ? (cfg.mistralKey||'') : provider === 'groq' ? (cfg.groqKey||'') : '';
+  const map = {
+    gemini:      cfg.geminiKey     || '',
+    deepseek:    cfg.deepseekKey   || '',
+    perplexity:  cfg.perplexityKey || '',
+    anthropic:   cfg.anthropicKey  || '',
+    openai:      cfg.openaiKey     || '',
+    mistral:     cfg.mistralKey    || '',
+    groq:        cfg.groqKey       || '',
+  };
+  return map[provider] || '';
 }
 
-async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxTokens) {
-  // OpenAI-compatible providers
-  const OAI = ['deepseek', 'perplexity', 'openai', 'mistral', 'groq'];
-  if (OAI.includes(provider)) {
-    const urlMap = { 'deepseek': 'https://api.deepseek.com/chat/completions', 'perplexity': 'https://api.perplexity.ai/chat/completions', 'openai': 'https://api.openai.com/v1/chat/completions', 'mistral': 'https://api.mistral.ai/v1/chat/completions', 'groq': 'https://api.groq.com/openai/v1/chat/completions' };
-    const modelMap = { 'deepseek': 'deepseek-chat', 'perplexity': 'sonar', 'openai': 'gpt-4o-mini', 'mistral': 'mistral-small-latest', 'groq': 'llama-3.3-70b-versatile' };
-    const r = await fetch(urlMap[provider], {
+
+async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxTokens, temperature) {
+  const temp = temperature ?? 0.4;
+  const maxTok = maxTokens || 1000;
+
+  // ── Providers compatibles OpenAI ──────────────────────────────────────────
+  const OAI_PROVIDERS = ['deepseek', 'perplexity', 'openai', 'mistral', 'groq'];
+  if (OAI_PROVIDERS.includes(provider)) {
+    const URL_MAP = {
+      deepseek:   'https://api.deepseek.com/chat/completions',
+      perplexity: 'https://api.perplexity.ai/chat/completions',
+      openai:     'https://api.openai.com/v1/chat/completions',
+      mistral:    'https://api.mistral.ai/v1/chat/completions',
+      groq:       'https://api.groq.com/openai/v1/chat/completions',
+    };
+    const MODEL_MAP = {
+      deepseek:   'deepseek-chat',
+      perplexity: 'sonar',
+      openai:     'gpt-4o-mini',
+      mistral:    'mistral-small-latest',
+      groq:       'llama-3.3-70b-versatile',
+    };
+    const messages = systemPrompt && systemPrompt.trim()
+      ? [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }]
+      : [{ role: 'user', content: userContent }];
+
+    const r = await fetch(URL_MAP[provider], {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey},
-      body: JSON.stringify({
-        model: modelMap[provider],
-        max_tokens: maxTokens || 2000,
-        temperature: 0.3,
-        messages: systemPrompt && systemPrompt.trim()
-          ? [{role:'system',content:systemPrompt},{role:'user',content:userContent}]
-          : [{role:'user',content:userContent}]
-      })
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify({ model: MODEL_MAP[provider], max_tokens: maxTok, temperature: temp, messages })
     });
-    if (!r.ok) throw new Error(provider + ' ' + r.status + ': ' + await r.text());
+    if (!r.ok) throw new Error(provider + ' HTTP ' + r.status);
     const d = await r.json();
     return d.choices?.[0]?.message?.content || '';
   }
 
-  // Gemini
+  // ── Gemini ────────────────────────────────────────────────────────────────
   if (provider === 'gemini') {
+    const fullPrompt = systemPrompt ? systemPrompt + '\n\n' + userContent : userContent;
     const r = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey,
       {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{parts: [{text: systemPrompt + '\n\n' + userContent}]}],
-          generationConfig: {maxOutputTokens: maxTokens || 2000, temperature: 0.3}
+          contents: [{ parts: [{ text: fullPrompt }] }],
+          generationConfig: { maxOutputTokens: maxTok, temperature: temp }
         })
       }
     );
-    if (!r.ok) throw new Error('Gemini ' + r.status + ': ' + await r.text());
+    if (!r.ok) throw new Error('Gemini HTTP ' + r.status);
     const d = await r.json();
     return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
   }
 
-  // Anthropic Claude
+  // ── Anthropic Claude (si clé dispo) ──────────────────────────────────────
   if (provider === 'anthropic') {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -7432,18 +7574,19 @@ async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxT
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: maxTokens || 2000,
-        system: systemPrompt,
-        messages: [{role: 'user', content: userContent}]
+        max_tokens: maxTok,
+        system: systemPrompt || undefined,
+        messages: [{ role: 'user', content: userContent }]
       })
     });
-    if (!r.ok) throw new Error('Claude ' + r.status + ': ' + await r.text());
+    if (!r.ok) throw new Error('Claude HTTP ' + r.status);
     const d = await r.json();
     return d.content?.[0]?.text || '';
   }
 
   throw new Error('Unknown provider: ' + provider);
 }
+
 
 // Store brief card actions and data for tap handlers
 window._briefActions = {};
