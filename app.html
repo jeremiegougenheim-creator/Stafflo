@@ -593,6 +593,29 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .info-tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,0.12);color:var(--muted);font-size:10px;font-weight:700;cursor:help;position:relative;margin-left:5px;vertical-align:middle;flex-shrink:0}
 .info-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);background:rgba(30,30,30,0.93);color:#fff;font-size:12px;font-weight:400;line-height:1.5;padding:8px 12px;border-radius:9px;white-space:pre-line;width:220px;text-align:left;pointer-events:none;opacity:0;transition:opacity .18s;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.25)}
 .info-tip:hover::after{opacity:1}
+
+/* ── AGENT MODE ── */
+.agent-toggle{background:none;border:1.5px solid rgba(255,255,255,.25);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s}
+.agent-toggle.on{background:var(--gold);border-color:var(--gold);color:var(--green3);font-weight:700}
+.agent-thought{background:rgba(201,150,58,.08);border:1px solid rgba(201,150,58,.2);border-radius:8px;padding:6px 10px;font-size:11px;color:var(--muted);margin:2px 0;cursor:pointer;user-select:none}
+.agent-thought summary{list-style:none;display:flex;align-items:center;gap:6px;outline:none}
+.agent-thought summary::marker{display:none}
+.agent-thought-icon{font-size:12px;flex-shrink:0}
+.agent-thought-body{margin-top:6px;font-size:11px;color:var(--ink);line-height:1.5;border-top:1px solid rgba(201,150,58,.15);padding-top:6px}
+.agent-plan{background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:6px 0;font-size:12px}
+.agent-plan-title{font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;margin-bottom:8px}
+.agent-task{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(44,31,20,.05)}
+.agent-task:last-child{border-bottom:none}
+.agent-task-icon{font-size:13px;flex-shrink:0}
+.agent-task-text{flex:1;font-size:12px;color:var(--ink)}
+.agent-task.done .agent-task-text{text-decoration:line-through;color:var(--muted)}
+.agent-task.todo .agent-task-icon::before{content:'○'}
+.agent-task.done .agent-task-icon{color:var(--green2)}
+.agent-task.done .agent-task-icon::before{content:'✓'}
+.agent-task.inprogress .agent-task-icon::before{content:'◐'}
+.agent-opts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.agent-opt{background:var(--paper);border:1.5px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;color:var(--ink);transition:all .15s;text-align:left}
+.agent-opt:hover{border-color:var(--gold);color:var(--ink)}
 </style>
 </head>
 <body>
@@ -766,6 +789,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       <span class="chat-inbox-badge" id="inboxBadge" onclick="showInbox()">0 emails</span>
       <button onclick="showInbox()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">📬 Inbox</button>
       <button onclick="showIntegrationsPanel()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif" title="Intégrations">🔌</button>
+      <button id="agentToggleBtn" class="agent-toggle" onclick="toggleAgentMode()" title="Mode Orchestrateur IA">🤖 Agent</button>
       <button onclick="clearChat()" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer">✕</button>
     </div>
   </div>
@@ -1474,21 +1498,54 @@ async function analyze() {
     : 'No existing clients.';
 
   // ── PASS 1 system prompt — extraction only, tight schema ──────
-  const p1Schema = `{"guest":{"existing_id":null,"match_confidence":"none","name":"Full Name","nat":"🇫🇷 Français","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":4,"guests":6,"price":2116,"commission":15.5,"source":"Airbnb","phone":"","returning":false,"bookingStatus":"inquiry","question":"verbatim guest question if inquiry else null","notes":"ops details: diet, kids ages, occasions, transport, arrival time","lang":"${guestLang}"},"alerts":[{"type":"urgent","text":"specific action"}],"price_advice":{"amount":750,"reason":"brief"}}`;
+  const p1Schema = `{
+  "guest_name": "string | null",
+  "email": "string | null",
+  "phone": "string | null",
+  "check_in": "YYYY-MM-DD | null",
+  "check_out": "YYYY-MM-DD | null",
+  "total_guests": "number | null",
+  "adults": "number | null",
+  "children_ages": "number[] | []",
+  "infants": "number | 0",
+  "special_diets": "string[] | []",
+  "allergies": "string[] | []",
+  "special_occasions": "string[] | []",
+  "preferred_contact_method": "email | phone | whatsapp | null",
+  "language": "${guestLang}",
+  "requests": "string[] | []",
+  "nat": "flag emoji + language from city/country",
+  "source": "Airbnb | Booking | Direct",
+  "price": "number | 0",
+  "commission": "number | 15.5",
+  "returning": false,
+  "bookingStatus": "inquiry | confirmed",
+  "question": "verbatim guest question if inquiry else null",
+  "notes": "ops details: diet, kids ages, occasions, transport, arrival time",
+  "existing_id": null,
+  "match_confidence": "none | low | high",
+  "alerts": [{"type": "urgent | warn | info | good", "text": "specific action"}],
+  "price_advice": {"amount": 750, "reason": "brief"}
+}`;
 
   const p1Prompt = [
-    `Villa ops ${villaName}, ${cityName}. Owner: ${ownerName}. Today: ${today}.`,
-    inHouse ? `In house: ${inHouse.name} until ${inHouse.departure}.` : 'No current guests.',
+    `Tu es un extracteur d'informations pour une conciergerie de luxe — villa ${villaName}, ${cityName}. Propriétaire: ${ownerName}. Aujourd'hui: ${today}.`,
+    `Réponds UNIQUEMENT avec un objet JSON valide, sans autre texte ni markdown.`,
+    inHouse ? `Client en cours: ${inHouse.name} jusqu'au ${inHouse.departure}.` : 'Aucun client en cours.',
     clientCtx,
     '',
-    'Extract from pasted message. Return ONLY valid JSON, no markdown:',
+    'Extrais du message collé. Retourne UNIQUEMENT le JSON, pas de markdown:',
     p1Schema,
     '',
-    'Rules: bookingStatus="inquiry" if question/availability check. "confirmed" if paid booking.',
-    'price=Guest paid total (not host payout). commission from "Host service fee %" field.',
-    'existing_id: check CRM list above — match by name (first name alone counts if unique), phone, or arrival date. WhatsApp chats: guest = non-owner participant (not Jérémie/owner).',
-    'nat: flag emoji + language from city/country context.',
-    'alerts: 2-3 specific ops items. price_advice: Apr750 JulAug850 Dec950 Xmas1500 wknd+50.',
+    `Règles:
+- bookingStatus="inquiry" si question/dispo. "confirmed" si réservation payée.
+- price = total payé par le client (pas host payout). commission depuis champ "Host service fee %".
+- existing_id: cherche dans le CRM — match par nom (prénom seul compte si unique), téléphone, ou date d'arrivée.
+- WhatsApp: le client = le participant non-propriétaire (pas ${ownerName}).
+- nat: flag emoji + langue depuis ville/pays mentionné.
+- Normalise les dates en YYYY-MM-DD. Si date relative ("dans 2 semaines"), calcule depuis aujourd'hui ${today}.
+- alerts: 2-3 actions ops spécifiques. price_advice: Avr750 JulAoût850 Déc950 Noël1500 wknd+50.
+- Si tu n'es pas sûr d'un champ, mets null. Ne jamais inventer de données.`,
   ].join('\n');
 
   try {
@@ -1542,15 +1599,17 @@ async function analyze() {
       .toLocaleDateString(guestLang === 'French' ? 'fr-FR' : 'en-GB', {day:'numeric',month:'long'}) : '?';
 
     const p2Prompt = [
-      `You generate guest messages for ${villaName} (${cityName}). Owner: ${ownerName}. Staff: ${staffNames}. GPS: ${gpsInfo}.`,
-      `Guest: ${gName}${g.nat?' '+g.nat:''}, ${g.guests||'?'} guests, ${arrFmt}–${depFmt}, ${g.nights||'?'} nights.`,
+      `Tu génères des messages pour les clients de ${villaName} (${cityName}). Propriétaire: ${ownerName}. Staff: ${staffNames}. GPS: ${gpsInfo}.`,
+      `Client: ${gName}${g.nat?' '+g.nat:''}, ${g.guests||'?'} personnes, ${arrFmt}–${depFmt}, ${g.nights||'?'} nuits.`,
       g.notes ? `Notes: ${g.notes}` : '',
-      isInquiry && g.question ? `Guest question: "${g.question}"` : '',
+      g.allergies && g.allergies.length ? `⚠️ Allergies: ${g.allergies.join(', ')}` : '',
+      g.special_occasions && g.special_occasions.length ? `🎉 Occasions: ${g.special_occasions.join(', ')}` : '',
+      isInquiry && g.question ? `Question du client: "${g.question}"` : '',
       '',
-      `Write all 6 messages in ${guestLang}. Each must be complete, warm, and ready to send. Return ONLY valid JSON:`,
+      `Écris les 6 messages en ${guestLang}. Chaque message doit être complet, chaleureux, prêt à envoyer. Retourne UNIQUEMENT un JSON valide:`,
       isInquiry
-        ? `{"messages":{"airbnb":"direct reply to guest question. Pool heated 28°C year-round. Invite to book. Sign ${ownerName}.","welcome":"pre-approval: highlight villa for their group size. Excite them.","driver":"airport transfer info.","staff":"internal note: guest profile + their question + what to prepare.","passport":"polite ID request, required by law.","checkout":"template for after stay, review request."}}`
-        : `{"messages":{"airbnb":"booking confirmation reply, excited + welcoming, sign ${ownerName}.","welcome":"WhatsApp welcome: arrival ${arrFmt}, check-in 14h, checkout 12h, wifi, pool 28°C, chef ${staffFirst} available. Personal details from notes.","driver":"driver brief: ${gName}, ${g.guests||'?'} pax, arrival ${arrFmt}, villa GPS ${gpsInfo}.","staff":"staff prep brief: ${gName} arrival ${arrFmt}, ${g.nights||'?'}n, ${g.guests||'?'} guests. Notes: ${g.notes||'none'}. Checklist: rooms, pool, welcome gifts, chef menu.","passport":"polite passport copy request before arrival.","checkout":"post-stay checkout + review request, sign ${ownerName}."}}`,
+        ? `{"messages":{"airbnb":"Réponse directe à la question du client. Piscine chauffée 28°C toute l'année. Inviter à réserver. Signé ${ownerName}.","welcome":"Pré-approbation: mettre en valeur la villa pour leur groupe. Les enthousiasmer.","driver":"Info transfert aéroport.","staff":"Note interne: profil client + leur question + ce qui est à préparer. Mentionner allergies et occasions spéciales.","passport":"Demande de pièce d'identité, polie, obligatoire par la loi.","checkout":"Template fin de séjour + demande d'avis."}}`
+        : `{"messages":{"airbnb":"Confirmation de réservation, enthousiaste et accueillant, signé ${ownerName}.","welcome":"Message WhatsApp de bienvenue: arrivée ${arrFmt}, check-in 14h, checkout 12h, wifi, piscine 28°C, chef ${staffFirst} disponible. Détails personnalisés selon les notes. Si allergies/occasions: les mentionner chaleureusement.","driver":"Brief chauffeur: ${gName}, ${g.guests||'?'} pax, arrivée ${arrFmt}, GPS villa ${gpsInfo}.","staff":"Brief préparation staff: ${gName} arrivée ${arrFmt}, ${g.nights||'?'}n, ${g.guests||'?'} personnes. Notes: ${g.notes||'aucune'}. Allergies: ${g.allergies||'aucune'}. Occasions: ${g.special_occasions||'aucune'}. Checklist: chambres, piscine, cadeaux de bienvenue, menu chef.","passport":"Demande de passeport avant arrivée, ton poli.","checkout":"Message post-séjour + demande d'avis, signé ${ownerName}."}}`,
     ].filter(Boolean).join('\n');
 
     // Run pass 2 and update UI when done
@@ -8003,6 +8062,380 @@ function toggleCollapse(id) {
   body.classList.toggle('open', !isOpen);
   if (arrow) arrow.classList.toggle('open', !isOpen);
 }
+
+
+// ═══════════════════════════════════════════════════════════════════
+// STAFFLO AGENT — Boucle agentique ReAct (thought → action → observe)
+// ═══════════════════════════════════════════════════════════════════
+
+var agentMode = false;
+var agentContext = {
+  plan: [],
+  memory: {},
+  history: [],   // [{role:'user'|'agent'|'tool', content:string}]
+  activeTask: null,
+  paused: false, // true when waiting for user input (ask_user)
+  pendingInput: null
+};
+var AGENT_MAX_STEPS = 6;
+
+function toggleAgentMode() {
+  agentMode = !agentMode;
+  var btn = document.getElementById('agentToggleBtn');
+  if (btn) {
+    btn.classList.toggle('on', agentMode);
+    btn.textContent = agentMode ? '🤖 Agent ON' : '🤖 Agent';
+  }
+  if (agentMode) {
+    addChatBubble('system', '🤖 <strong>Mode Orchestrateur activé</strong> — Je peux décomposer des tâches complexes.<br>Exemples : <em>"prépare l\'arrivée de Sophie"</em> · <em>"check tout pour demain"</em>');
+  }
+}
+
+// Tool definitions exposed to the LLM
+var AGENT_TOOLS = [
+  {
+    name: 'get_guest',
+    description: 'Récupère le profil complet d\'un client à partir de son prénom ou nom. Retourne ses infos CRM.',
+    parameters: { guest_name: 'string' }
+  },
+  {
+    name: 'get_context',
+    description: 'Récupère les informations structurées stockées pour un client (transport, repas, préférences, notes).',
+    parameters: { guest_name: 'string' }
+  },
+  {
+    name: 'update_context',
+    description: 'Enregistre une nouvelle information sur un client dans la base (catégorie + clé + valeur).',
+    parameters: { guest_name: 'string', category: 'string', key: 'string', value: 'string' }
+  },
+  {
+    name: 'generate_message',
+    description: 'Génère un message WhatsApp prêt à envoyer pour un client donné selon une instruction.',
+    parameters: { guest_name: 'string', instruction: 'string' }
+  },
+  {
+    name: 'send_whatsapp',
+    description: 'Prépare l\'envoi d\'un message WhatsApp à un client. Ouvre le panneau d\'envoi pour validation.',
+    parameters: { guest_name: 'string', message: 'string' }
+  },
+  {
+    name: 'list_guests',
+    description: 'Retourne la liste de tous les clients avec leurs dates d\'arrivée, départ et statut.',
+    parameters: {}
+  },
+  {
+    name: 'update_plan',
+    description: 'Met à jour le plan en cours avec une liste de sous-tâches.',
+    parameters: { tasks: '[{id:number, desc:string, status:"todo"|"done"|"inprogress"}]' }
+  },
+  {
+    name: 'ask_user',
+    description: 'Pose une question à l\'utilisateur et attend sa réponse avant de continuer. Utilise pour valider ou obtenir des infos manquantes.',
+    parameters: { question: 'string', options: '["option1","option2"] — optionnel' }
+  },
+  {
+    name: 'final_answer',
+    description: 'Termine la tâche et affiche un résumé à l\'utilisateur.',
+    parameters: { summary: 'string' }
+  }
+];
+
+function agentToolsPrompt() {
+  return 'OUTILS DISPONIBLES:\n' + AGENT_TOOLS.map(function(t) {
+    return '- ' + t.name + ': ' + t.description + ' | params: ' + JSON.stringify(t.parameters);
+  }).join('\n');
+}
+
+function agentBuildSystemPrompt() {
+  var cfg = getCfg();
+  var today = new Date().toISOString().slice(0,10);
+  var clientList = clients.length
+    ? clients.slice(0,12).map(function(c){ return c.name + (c.arrival?' (arr:'+c.arrival+')':''); }).join(', ')
+    : 'aucun client';
+  var planBlock = agentContext.plan.length
+    ? 'PLAN EN COURS:\n' + agentContext.plan.map(function(t){ return '['+t.status+'] '+t.desc; }).join('\n')
+    : '';
+  return [
+    'Tu es un agent IA pour la villa ' + (cfg.villa||'DarJ') + ' à Marrakech. Propriétaire: ' + (cfg.owner||'Jérémie') + '. Aujourd\'hui: ' + today + '.',
+    'Clients CRM: ' + clientList + '.',
+    planBlock,
+    '',
+    agentToolsPrompt(),
+    '',
+    'FORMAT DE RÉPONSE — retourne UNIQUEMENT un JSON valide, sans markdown:',
+    '{"thought":"ton raisonnement interne","action":"nom_outil","action_input":{...}}',
+    '',
+    'Règles:',
+    '- Décompose les objectifs complexes en sous-tâches avec update_plan en premier.',
+    '- Appelle get_guest ou get_context avant de générer un message.',
+    '- ask_user quand une info critique est manquante.',
+    '- final_answer quand toutes les tâches sont accomplies.',
+    '- Ne génère pas de messages sans avoir d\'abord vérifié le profil client.',
+    '- Maximum ' + AGENT_MAX_STEPS + ' actions par tâche.'
+  ].filter(Boolean).join('\n');
+}
+
+// Execute a tool action called by the LLM
+async function agentExecuteTool(action, actionInput) {
+  switch (action) {
+
+    case 'get_guest': {
+      var name = actionInput.guest_name || '';
+      var cl = findClientByName(name);
+      if (!cl) return { error: 'Client "' + name + '" introuvable dans le CRM.' };
+      return { id: cl.id, name: cl.name, nat: cl.nat, arrival: cl.arrival, departure: cl.departure,
+               guests: cl.guests, price: cl.price, source: cl.source, notes: cl.notes,
+               phone: cl.phone, bookingStatus: cl.bookingStatus };
+    }
+
+    case 'get_context': {
+      var name2 = actionInput.guest_name || '';
+      var cl2 = findClientByName(name2);
+      if (!cl2) return { error: 'Client "' + name2 + '" introuvable.' };
+      var rows = await loadClientContext(cl2.id);
+      if (!rows || !rows.length) return { message: 'Aucun contexte stocké pour ' + cl2.name };
+      return { client: cl2.name, context: rows.map(function(r){ return r.category+'/'+r.key+': '+r.value; }) };
+    }
+
+    case 'update_context': {
+      var name3 = actionInput.guest_name || '';
+      var cl3 = findClientByName(name3);
+      if (!cl3) return { error: 'Client "' + name3 + '" introuvable.' };
+      await saveClientContext(cl3.id, [{
+        category: actionInput.category || 'general',
+        key: actionInput.key,
+        value: actionInput.value,
+        source: 'agent'
+      }]);
+      return { success: true, saved: actionInput.key + ': ' + actionInput.value };
+    }
+
+    case 'generate_message': {
+      var name4 = actionInput.guest_name || '';
+      var cl4 = findClientByName(name4);
+      var cfg2 = getCfg();
+      var prompt = 'Rédige un message WhatsApp chaleureux et concis (max 8 lignes) pour ' + (cl4 ? cl4.name : name4) + '.\n'
+        + (cl4 && cl4.notes ? 'Notes: ' + cl4.notes + '\n' : '')
+        + 'Instruction: ' + (actionInput.instruction || '') + '\n'
+        + 'Signé: ' + (cfg2.owner || 'Jérémie');
+      var msg = await callBestAI('write' + lang, '', prompt, 400);
+      return { message: msg ? msg.trim() : 'Erreur génération', client_id: cl4 ? cl4.id : null };
+    }
+
+    case 'send_whatsapp': {
+      var name5 = actionInput.guest_name || '';
+      var cl5 = findClientByName(name5);
+      var msg5 = actionInput.message || '';
+      if (cl5 && cl5.id) {
+        var waKey = storePendingWA(cl5.id, msg5);
+        // Show WA send panel
+        setTimeout(function(){ showWASend(cl5.id, msg5, 'agent'); }, 300);
+        return { success: true, note: 'Panneau d\'envoi WhatsApp ouvert pour ' + cl5.name };
+      }
+      return { error: 'Client introuvable pour l\'envoi WA.' };
+    }
+
+    case 'list_guests': {
+      var today2 = new Date().toISOString().slice(0,10);
+      return clients.slice(0,15).map(function(c) {
+        var status = !c.arrival ? 'no-date' : c.arrival <= today2 && c.departure >= today2 ? 'inhouse' : c.arrival > today2 ? 'upcoming' : 'past';
+        return { name: c.name, arrival: c.arrival, departure: c.departure, guests: c.guests, status: status };
+      });
+    }
+
+    case 'update_plan': {
+      var tasks = actionInput.tasks || [];
+      agentContext.plan = tasks;
+      agentRenderPlan();
+      return { success: true, tasks_count: tasks.length };
+    }
+
+    case 'ask_user': {
+      // Special: pause loop and ask user
+      return { __ask_user: true, question: actionInput.question, options: actionInput.options || [] };
+    }
+
+    case 'final_answer': {
+      return { __final: true, summary: actionInput.summary || actionInput };
+    }
+
+    default:
+      return { error: 'Outil inconnu: ' + action };
+  }
+}
+
+// Render the agent plan as a visual checklist
+function agentRenderPlan() {
+  if (!agentContext.plan.length) return;
+  var html = '<div class="agent-plan"><div class="agent-plan-title">📋 PLAN EN COURS</div>'
+    + agentContext.plan.map(function(t) {
+        return '<div class="agent-task ' + (t.status||'todo') + '">'
+          + '<span class="agent-task-icon"></span>'
+          + '<span class="agent-task-text">' + t.desc + '</span></div>';
+      }).join('')
+    + '</div>';
+  var msgs = document.getElementById('chatMessages');
+  if (!msgs) return;
+  // Remove existing plan if any
+  var existing = msgs.querySelector('.agent-plan-bubble');
+  if (existing) existing.remove();
+  var el = document.createElement('div');
+  el.className = 'chat-bubble system agent-plan-bubble';
+  el.style.cssText = 'max-width:100%;text-align:left';
+  el.innerHTML = html;
+  msgs.appendChild(el);
+  scrollChat();
+}
+
+// Show agent thought as a collapsible bubble
+function agentShowThought(thought, action, stepNum) {
+  var msgs = document.getElementById('chatMessages');
+  if (!msgs || !thought) return;
+  var el = document.createElement('div');
+  el.className = 'chat-bubble system';
+  el.style.cssText = 'max-width:100%;text-align:left;padding:0';
+  el.innerHTML = '<details class="agent-thought"><summary>'
+    + '<span class="agent-thought-icon">🧠</span>'
+    + '<span style="font-size:11px;color:var(--muted)">Étape ' + stepNum + ' · <em>' + action + '</em></span>'
+    + '</summary>'
+    + '<div class="agent-thought-body">' + thought + '</div>'
+    + '</details>';
+  msgs.appendChild(el);
+  scrollChat();
+}
+
+// Show ask_user question with options
+function agentShowQuestion(question, options, resolve) {
+  var msgs = document.getElementById('chatMessages');
+  if (!msgs) return;
+  var el = document.createElement('div');
+  el.className = 'chat-bubble ai';
+  var optsHtml = '';
+  if (options && options.length) {
+    optsHtml = '<div class="agent-opts">'
+      + options.map(function(opt) {
+          return '<button class="agent-opt" onclick="agentResumeWithInput(\'' + opt.replace(/'/g,"&#39;") + '\')">' + opt + '</button>';
+        }).join('')
+      + '</div>';
+  }
+  el.innerHTML = '🤖 ' + question + optsHtml;
+  msgs.appendChild(el);
+  scrollChat();
+  agentContext.paused = true;
+  agentContext.pendingResolve = resolve;
+}
+
+// Resume after user clicks an option or types a response
+function agentResumeWithInput(value) {
+  agentContext.paused = false;
+  if (agentContext.pendingResolve) {
+    agentContext.pendingResolve(value);
+    agentContext.pendingResolve = null;
+  }
+}
+
+// Main agent loop
+async function agentProcess(userMessage) {
+  var fr = lang === 'fr';
+  agentContext.history.push({ role: 'user', content: userMessage });
+  agentContext.paused = false;
+
+  var systemPrompt = agentBuildSystemPrompt();
+  var steps = 0;
+
+  document.getElementById('chatTyping').style.display = 'block';
+  scrollChat();
+
+  while (steps < AGENT_MAX_STEPS) {
+    steps++;
+
+    // Build messages for LLM
+    var historyBlock = agentContext.history.slice(-10).map(function(h) {
+      return (h.role === 'user' ? 'USER' : h.role === 'tool' ? 'TOOL_RESULT' : 'AGENT') + ': ' + h.content;
+    }).join('\n');
+
+    var raw = await callBestAI('reason', systemPrompt, historyBlock, 600);
+    document.getElementById('chatTyping').style.display = 'none';
+
+    if (!raw) {
+      addChatBubble('ai', fr ? '⚠ L\'agent n\'a pas répondu.' : '⚠ Agent did not respond.');
+      break;
+    }
+
+    // Parse LLM response
+    var parsed = null;
+    try {
+      var clean = raw.replace(/```json/gi,'').replace(/```/g,'').trim();
+      var m = clean.match(/\{[\s\S]*\}/);
+      if (m) parsed = JSON.parse(m[0]);
+    } catch(e) {
+      addChatBubble('ai', raw.slice(0,300));
+      break;
+    }
+
+    if (!parsed) { addChatBubble('ai', raw.slice(0,300)); break; }
+
+    var thought = parsed.thought || '';
+    var action  = parsed.action || 'final_answer';
+    var actionInput = parsed.action_input || parsed.action_Input || {};
+
+    // Show thought bubble (collapsible)
+    agentShowThought(thought, action, steps);
+
+    // Add to history
+    agentContext.history.push({ role: 'agent', content: JSON.stringify(parsed) });
+
+    // Execute tool
+    var result = await agentExecuteTool(action, actionInput);
+
+    // Handle special returns
+    if (result && result.__final) {
+      var summary = result.summary || '';
+      addChatBubble('ai', '✅ ' + summary);
+      agentContext.history = []; // reset for next task
+      agentContext.plan = [];
+      break;
+    }
+
+    if (result && result.__ask_user) {
+      // Pause loop, wait for user input
+      await new Promise(function(resolve) {
+        agentShowQuestion(result.question, result.options, resolve);
+      });
+      // User replied — push their input into history and continue
+      var userReply = agentContext.lastUserInput || result.options[0] || 'ok';
+      agentContext.history.push({ role: 'user', content: 'Réponse: ' + userReply });
+      document.getElementById('chatTyping').style.display = 'block';
+      scrollChat();
+      continue;
+    }
+
+    // Normal tool result
+    var resultStr = JSON.stringify(result).slice(0, 800);
+    agentContext.history.push({ role: 'tool', content: action + ' → ' + resultStr });
+
+    // Show tool result as subtle system message
+    var msgs = document.getElementById('chatMessages');
+    if (msgs && action !== 'update_plan') {
+      var el = document.createElement('div');
+      el.className = 'chat-bubble system';
+      el.style.cssText = 'max-width:100%;text-align:left;font-size:11px;padding:4px 10px';
+      el.textContent = '⚙ ' + action + ' → ' + resultStr.slice(0, 120) + (resultStr.length > 120 ? '…' : '');
+      msgs.appendChild(el);
+      scrollChat();
+    }
+
+    document.getElementById('chatTyping').style.display = 'block';
+    scrollChat();
+  }
+
+  document.getElementById('chatTyping').style.display = 'none';
+
+  if (steps >= AGENT_MAX_STEPS) {
+    addChatBubble('ai', fr ? '⚠ Limite d\'étapes atteinte. Reformulez la tâche.' : '⚠ Step limit reached.');
+  }
+}
+
 </script>
 
 <!-- ══ EMAIL INBOX MODAL ════════════════════════════════════ -->
