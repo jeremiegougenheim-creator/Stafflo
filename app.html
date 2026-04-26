@@ -455,6 +455,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   border-left: 3px solid var(--green);
 }
 
+#todayAlerts{display:none!important;}
+
 /* todayQV: who does what */
 #todayQV {
   margin-bottom: 14px;
@@ -616,6 +618,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 </style>
 </head>
 <body>
+<button id="fabChat" onclick="openChatOverlay()" style="display:none;position:fixed;bottom:22px;right:22px;z-index:9999;background:var(--green);color:#fff;border:none;border-radius:999px;width:56px;height:56px;font-size:24px;box-shadow:0 6px 18px rgba(0,0,0,.22);cursor:pointer;align-items:center;justify-content:center">💬</button>
+
 <!-- ══ AUTH SCREEN (Login / Signup) ══════════════════════════ -->
 <div id="authScreen" style="display:none;position:fixed;inset:0;background:linear-gradient(180deg,var(--green3) 0%,#143526 100%);z-index:10000;align-items:center;justify-content:center;padding:20px;overflow-y:auto">
   <div style="background:var(--card);border-radius:20px;width:100%;max-width:420px;padding:32px 28px;box-shadow:0 24px 64px rgba(0,0,0,.4)">
@@ -6691,6 +6695,11 @@ function renderTodayQV() {
     <div class="qv-inhouse">
       <div class="qv-inhouse-name"><span onclick="openDetail('${inHouse.id}')" style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.3)">${inHouse.name} ${inHouse.nat||''}</span></div>
       <div class="qv-inhouse-sub">${dLeftLabel} · ${fr?'Arrivé le':'Arrived'} ${fmtDate(inHouse.arrival, true)}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px">
+        <span style="display:inline-flex;align-items:center;background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:600">👥 ${inHouse.guests||'—'}</span>
+        <span style="display:inline-flex;align-items:center;background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:600">🛏 ${n||'—'} ${fr?'nuits':'nights'}</span>
+        <span style="display:inline-flex;align-items:center;background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:600">⏳ ${dLeftLabel}</span>
+      </div>
       <div class="qv-inhouse-grid">
         <div class="qv-stat">
           <div class="qv-stat-val">${inHouse.guests||'—'}</div>
@@ -6706,6 +6715,14 @@ function renderTodayQV() {
         </div>
       </div>
       ${meals ? `<div class="qv-meals"><div class="qv-meals-lbl">${fr?'NOTES':'NOTES'}</div>${meals}</div>` : ''}
+      ${(function(){
+        const txt=(inHouse.notes||'').toLowerCase();
+        const chips=[];
+        if(/allerg|intol|diet|vegan|vegetar/i.test(txt)) chips.push(`<span style="display:inline-block;background:#FDE8E8;color:var(--red);border-left:3px solid var(--red);padding:4px 8px;border-radius:6px;font-size:12px;margin:0 4px 4px 0">⚠️ ${fr?'Allergies / régime':'Allergies / diet'}</span>`);
+        if(/vol|arrival|retour|departure|checkout|départ|depart/i.test(txt)) chips.push(`<span style="display:inline-block;background:#E6F1FB;color:#0A2A4A;border-left:3px solid #378ADD;padding:4px 8px;border-radius:6px;font-size:12px;margin:0 4px 4px 0">✈️ ${fr?'Vol / trajet':'Flight / travel'}</span>`);
+        if(/repas|breakfast|lunch|dinner|déjeuner|diner|dîner/i.test(txt)) chips.push(`<span style="display:inline-block;background:#FAEEDA;color:#5A3800;border-left:3px solid #BA7517;padding:4px 8px;border-radius:6px;font-size:12px;margin:0 4px 4px 0">🍽️ ${fr?'Repas':'Meals'}</span>`);
+        return chips.length ? `<div style="display:flex;flex-wrap:wrap;margin-bottom:8px">${chips.join('')}</div>` : '';
+      })()}
       <div class="qv-btns">
         ${phone ? `<a class="qv-btn" href="https://wa.me/${phone}" target="_blank">💬 WhatsApp</a>` : ''}
         <button class="qv-btn" onclick="openDetail('${inHouse.id}')">${fr?'Voir fiche':'View profile'}</button>
@@ -7805,6 +7822,59 @@ function updateMsgButtons(msgType) {
 // ── WHY MODAL ──
 window._briefCards = [];
 
+
+
+function openChatOverlay() {
+  var panel = document.getElementById('chatPanel');
+  if (!panel) return;
+  panel.style.position = 'fixed';
+  panel.style.inset = '0';
+  panel.style.zIndex = '9998';
+  panel.style.borderRadius = '0';
+  panel.style.width = '100%';
+  panel.style.height = '100%';
+  panel.style.maxHeight = '100vh';
+  document.body.style.overflow = 'hidden';
+}
+function closeChatOverlay() {
+  var panel = document.getElementById('chatPanel');
+  if (!panel) return;
+  panel.style.position = '';
+  panel.style.inset = '';
+  panel.style.zIndex = '';
+  panel.style.borderRadius = '';
+  panel.style.width = '';
+  panel.style.height = '';
+  panel.style.maxHeight = '';
+  document.body.style.overflow = '';
+}
+function generateChatWelcome() {
+  var fr = lang === 'fr';
+  var today = new Date().toISOString().slice(0,10);
+  var arrivals = clients.filter(function(c){ return c.arrival === today; }).map(function(c){ return c.name; }).slice(0,3);
+  var departures = clients.filter(function(c){ return c.departure === today; }).map(function(c){ return c.name; }).slice(0,3);
+  var parts = [];
+  if (arrivals.length) parts.push((fr ? 'Arrivées' : 'Arrivals') + ' : ' + arrivals.join(', '));
+  if (departures.length) parts.push((fr ? 'Départs' : 'Departures') + ' : ' + departures.join(', '));
+  if (!parts.length) parts.push(fr ? 'Journée calme' : 'Quiet day');
+  return parts.join(' · ');
+}
+
+
+function refreshChatWelcome() {
+  var txt = generateChatWelcome ? generateChatWelcome() : '';
+  var ids = ['chatWelcome','welcomeText','chatIntro','chatEmpty'];
+  for (var i=0;i<ids.length;i++) {
+    var el = document.getElementById(ids[i]);
+    if (el) {
+      el.textContent = txt || el.textContent;
+      break;
+    }
+  }
+}
+
+setTimeout(function(){ try { refreshChatWelcome(); } catch(e) {} }, 0);
+
 function showWhyModal(idx) {
   const card = window._briefCards[idx];
   if (!card) return;
@@ -8605,3 +8675,5 @@ async function agentProcess(userMessage) {
 
 </body>
 </html>
+
+window.addEventListener("resize", function(){ var f=document.getElementById("fabChat"); if(f) f.style.display = window.innerWidth <= 1023 ? "flex" : "none"; });
