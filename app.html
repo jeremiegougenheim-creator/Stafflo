@@ -674,6 +674,15 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <span data-fr="Hors ligne — les modifications seront sauvegardées à la reconnexion" data-en="Offline — changes will sync when you reconnect">Hors ligne — les modifications seront sauvegardées à la reconnexion</span>
 </div>
 
+<!-- ═══ DEMO MODE BANNER ═════════════════════════════════════ -->
+<div id="demoBanner" style="display:none;background:#FAEEDA;padding:8px 14px;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid rgba(186,117,23,.25);font-family:'DM Sans',sans-serif">
+  <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#5A3800;min-width:0;flex:1">
+    <span style="flex-shrink:0;font-size:13px">✨</span>
+    <span data-fr="Mode démo · explorez avec des données fictives" data-en="Demo mode · explore with sample data" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Mode démo · explorez avec des données fictives</span>
+  </div>
+  <button onclick="goToSignup()" style="background:var(--green3);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;letter-spacing:.3px" data-fr="Créer mon compte →" data-en="Sign up →">Créer mon compte →</button>
+</div>
+
 <main>
 
 <!-- ═══ TODAY ═════════════════════════════════════════════ -->
@@ -1352,9 +1361,97 @@ async function syncNow() {
 }
 
 function loadLocal() {
+  if (isDemoMode()) return;
   try { clients = JSON.parse(localStorage.getItem('stafflo_clients') || '[]'); } catch { clients = []; }
 }
-function saveLocal() { localStorage.setItem('stafflo_clients', JSON.stringify(clients)); }
+function saveLocal() {
+  if (isDemoMode()) return;
+  localStorage.setItem('stafflo_clients', JSON.stringify(clients));
+}
+
+// ════════════════════════════════════════════
+// DEMO MODE — seed data for cold visitors
+// ════════════════════════════════════════════
+function isDemoMode() {
+  return localStorage.getItem('stafflo_demo_mode') === '1';
+}
+
+function loadDemoSeed() {
+  const today = new Date();
+  const iso = (d) => d.toISOString().slice(0,10);
+  const add = (n) => { const x = new Date(today); x.setDate(x.getDate()+n); return iso(x); };
+
+  clients = [
+    {
+      id: 'demo-sophie',
+      name: 'Sophie Martin',
+      nat: '🇫🇷',
+      arrival: add(-4),
+      departure: add(1),
+      guests: 4,
+      phone: '+33612345678',
+      email: 'sophie.martin@example.com',
+      notes: 'Anniversaire Tom 40 ans samedi soir — décoration florale.\nCouscous traditionnel vendredi soir.\nAllergie noix (Tom).\nDriver aéroport mardi 14h00.',
+      price: 3200,
+      source: 'airbnb',
+      paid: true,
+      __demo: true
+    },
+    {
+      id: 'demo-thomas',
+      name: 'Thomas Chen',
+      nat: '🇬🇧',
+      arrival: add(2),
+      departure: add(7),
+      guests: 6,
+      phone: '+447712345678',
+      email: 'thomas.chen@example.com',
+      notes: 'Vol AF1234 arrivée Marrakech 19h45.\nPremier voyage à Marrakech, famille avec 2 enfants (8 et 11 ans).\nNous adorons le couscous, chef pour 3 dîners.\nDriver pour visite Atlas samedi.',
+      price: 4500,
+      source: 'booking',
+      paid: false,
+      __demo: true
+    }
+  ];
+}
+
+function enterDemoMode() {
+  // Don't enter if user already has real data
+  try {
+    const existing = JSON.parse(localStorage.getItem('stafflo_clients') || '[]');
+    const hasReal = existing.some(c => c && c.id && !String(c.id).startsWith('demo-'));
+    if (hasReal) return false;
+  } catch(e) {}
+
+  localStorage.setItem('stafflo_demo_mode', '1');
+  loadDemoSeed();
+  showDemoBanner();
+  return true;
+}
+
+function showDemoBanner() {
+  const b = document.getElementById('demoBanner');
+  if (b) b.style.display = 'flex';
+}
+
+function hideDemoBanner() {
+  const b = document.getElementById('demoBanner');
+  if (b) b.style.display = 'none';
+}
+
+function exitDemoMode() {
+  localStorage.removeItem('stafflo_demo_mode');
+  clients = [];
+  try { localStorage.setItem('stafflo_clients', '[]'); } catch(e){}
+  hideDemoBanner();
+}
+
+function goToSignup() {
+  exitDemoMode();
+  if (typeof renderAll === 'function') renderAll();
+  if (typeof renderTodayQV === 'function') renderTodayQV();
+  showAuthScreen();
+}
 
 // ════════════════════════════════════════════
 // AI ANALYSIS — Claude API
@@ -5230,6 +5327,12 @@ function hideAuthScreen() {
 
 async function onAuthSuccess() {
   hideAuthScreen();
+  // Clear any demo state — fresh slate for new user
+  if (isDemoMode()) {
+    localStorage.removeItem('stafflo_demo_mode');
+    hideDemoBanner();
+    clients = [];
+  }
   // Trigger full app init
   await initAppAfterAuth();
 }
@@ -5348,7 +5451,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (session && session.access_token) {
       _stafflo_session = session;
       _stafflo_user = session.user;
-      // Continue normal init
+      // Authenticated — make sure demo mode is OFF
+      if (isDemoMode()) {
+        localStorage.removeItem('stafflo_demo_mode');
+        hideDemoBanner();
+        clients = [];
+      }
       applyLang();
       goTab('today');
       chatInit();
@@ -5357,10 +5465,23 @@ document.addEventListener('DOMContentLoaded', function() {
         renderTodayQV();
       }).catch(function(){});
     } else {
-      // No session — show login
-      showAuthScreen();
+      // No session — enter demo mode (visitors explore before committing)
+      enterDemoMode();
+      applyLang();
+      goTab('today');
+      chatInit();
+      renderAll();
+      renderTodayQV();
     }
-  }).catch(function() { showAuthScreen(); });
+  }).catch(function() {
+    // On error, fall back to demo mode rather than blocking
+    enterDemoMode();
+    applyLang();
+    goTab('today');
+    chatInit();
+    renderAll();
+    renderTodayQV();
+  });
 
 
 
@@ -5391,7 +5512,8 @@ document.addEventListener('DOMContentLoaded', function() {
   }, 800);
 
   setTimeout(function() { loadMorningBrief(); }, 1200);
-  setTimeout(function() { checkOnboarding(); }, 1500);
+  // Old onboarding modal disabled — demo seed data is the new onboarding flow
+  // setTimeout(function() { checkOnboarding(); }, 1500);
 
   // ── Hide backup key section if proxy is active ──
   if (STAFFLO_PROXY) {
