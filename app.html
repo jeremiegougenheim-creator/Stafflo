@@ -363,11 +363,17 @@ main{max-width:760px;margin:0 auto;padding:16px}
 /* ── WHY MODAL ── */
 .why-modal{position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:600;display:none;align-items:center;justify-content:center;padding:20px}
 .why-modal.on{display:flex}
-.why-box{background:var(--card);border-radius:16px;padding:20px;max-width:340px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.4)}
-.why-box h3{font-family:'Fraunces',serif;font-size:17px;font-weight:400;margin-bottom:12px;color:var(--ink)}
-.why-sources{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
-.why-source{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink);background:var(--paper);border-radius:8px;padding:8px 10px}
-.why-source-icon{font-size:14px;flex-shrink:0}
+.why-box{background:var(--card);border-radius:16px;padding:20px;max-width:360px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.4);position:relative}
+.why-box h3{font-family:'Fraunces',serif;font-size:17px;font-weight:400;margin-bottom:12px;color:var(--ink);padding-right:24px}
+.why-sources{display:flex;flex-direction:column;gap:6px;margin-bottom:4px}
+.why-source{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink);background:var(--paper);border-radius:8px;padding:10px 12px;border:1px solid transparent;transition:background .15s,border-color .15s,transform .15s;width:100%;text-align:left}
+.why-source-clickable{cursor:pointer}
+.why-source-clickable:hover{background:#FAEEDA;border-color:rgba(186,117,23,.25)}
+.why-source-clickable:active{transform:scale(.98)}
+.why-source-icon{font-size:15px;flex-shrink:0}
+.why-source-arrow{margin-left:auto;color:var(--gold);font-weight:600;font-size:15px;flex-shrink:0}
+.why-close-x{position:absolute;top:12px;right:12px;width:28px;height:28px;border:none;background:rgba(44,31,20,.06);color:var(--muted);border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;font-family:inherit;line-height:1;padding:0;transition:background .15s}
+.why-close-x:hover{background:rgba(44,31,20,.12)}
 .why-close{width:100%;padding:12px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif}
 
 /* ── MORNING BRIEF ── */
@@ -1208,9 +1214,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 <!-- WHY MODAL -->
 <div class="why-modal" id="whyModal" onclick="if(event.target===this)closeWhyModal()">
   <div class="why-box">
+    <button class="why-close-x" onclick="closeWhyModal()" aria-label="Fermer">✕</button>
     <h3 id="whyTitle">Pourquoi cette alerte ?</h3>
     <div class="why-sources" id="whySources"></div>
-    <button class="why-close" onclick="closeWhyModal()" data-fr="Compris" data-en="Got it">Compris</button>
   </div>
 </div>
 
@@ -6519,6 +6525,57 @@ function renderTodayQV() {
   const fr = lang === 'fr';
   const today = new Date().toISOString().slice(0,10);
 
+  // ── EMPTY STATE — authenticated user with no clients ──
+  if ((clients || []).length === 0 && !isDemoMode()) {
+    el.innerHTML =
+      '<div style="background:var(--card);border-radius:16px;padding:28px 24px;box-shadow:var(--shadow);text-align:center;margin-bottom:14px">' +
+        '<div style="font-size:32px;margin-bottom:10px">✨</div>' +
+        '<div style="font-family:\'Fraunces\',serif;font-size:22px;font-weight:300;color:var(--ink);margin-bottom:6px">' +
+          (fr ? 'Bienvenue sur Stafflo' : 'Welcome to Stafflo') +
+        '</div>' +
+        '<div style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:20px;max-width:420px;margin-left:auto;margin-right:auto">' +
+          (fr
+            ? 'Pour commencer, collez un message Airbnb, Booking, ou WhatsApp. Stafflo extrait le client, les dates, et prépare le brief staff en 3 secondes.'
+            : 'To get started, paste an Airbnb, Booking, or WhatsApp message. Stafflo extracts the guest, dates, and prepares the staff brief in 3 seconds.') +
+        '</div>' +
+        '<textarea id="pasteInput" oninput="onPaste()" placeholder="' +
+          (fr ? 'Collez un email Airbnb, message WhatsApp, ou note de réservation…' : 'Paste an Airbnb email, WhatsApp message, or booking note…') +
+        '" style="width:100%;min-height:110px;padding:14px 16px;border:1.5px solid var(--border);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:14px;color:var(--ink);background:var(--paper);resize:vertical;outline:none;line-height:1.5;box-sizing:border-box;transition:border-color .15s" onfocus="this.style.borderColor=\'var(--green)\'" onblur="this.style.borderColor=\'var(--border)\'"></textarea>' +
+        '<button id="analyzeBtn" onclick="analyze()" disabled style="width:100%;margin-top:10px;padding:13px;background:var(--green);color:#fff;border:none;border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.3px;opacity:.4;transition:opacity .15s">' +
+          '✦ ' + (fr ? 'Analyser' : 'Analyse') +
+        '</button>' +
+        '<div style="margin-top:14px;font-size:12px;color:var(--muted)">' +
+          (fr ? 'ou ' : 'or ') +
+          '<button onclick="openForm()" style="background:none;border:none;color:var(--gold);font-weight:600;font-size:12px;cursor:pointer;font-family:inherit;padding:0;text-decoration:underline">' +
+            (fr ? 'ajouter manuellement' : 'add manually') +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+      // Quick tips below
+      '<div style="background:var(--paper);border-radius:12px;padding:14px 18px;border:1px solid var(--border)">' +
+        '<div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);font-weight:700;margin-bottom:10px">' +
+          (fr ? 'EXEMPLES DE CE QUE STAFFLO EXTRAIT' : 'WHAT STAFFLO EXTRACTS') +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;color:var(--ink)">' +
+          '<div>📅 ' + (fr ? 'Dates d\'arrivée et départ' : 'Arrival and departure dates') + '</div>' +
+          '<div>👥 ' + (fr ? 'Nombre d\'invités' : 'Number of guests') + '</div>' +
+          '<div>✈️ ' + (fr ? 'Vol et heure d\'arrivée' : 'Flight and arrival time') + '</div>' +
+          '<div>🍽 ' + (fr ? 'Repas et préférences' : 'Meals and preferences') + '</div>' +
+          '<div>⚠️ ' + (fr ? 'Allergies et restrictions' : 'Allergies and restrictions') + '</div>' +
+          '<div>💬 ' + (fr ? 'Numéro WhatsApp' : 'WhatsApp number') + '</div>' +
+        '</div>' +
+      '</div>';
+    // Pre-style the analyze button when textarea has content
+    const ta = document.getElementById('pasteInput');
+    if (ta) {
+      ta.addEventListener('input', function() {
+        const btn = document.getElementById('analyzeBtn');
+        if (btn) btn.style.opacity = ta.value.trim() ? '1' : '.4';
+      });
+    }
+    return; // skip rest of normal Today rendering
+  }
+
   // Find in-house and next upcoming
   const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
   const upcoming = clients.filter(c => c.arrival && c.arrival > today)
@@ -7618,32 +7675,81 @@ function showWhyModal(idx) {
   if (!card) return;
   document.getElementById('whyTitle').textContent = card.title || 'Pourquoi ?';
   const fr = lang === 'fr';
-  
-  // Parse why into bullet points
+
   const why = card.why || (fr ? 'Basé sur les données de votre villa.' : 'Based on your villa data.');
   const sources = [];
-  
-  // Add contextual sources based on card type
+
+  // Try to find a matching client from card title or detail
+  const searchStr = ((card.title || '') + ' ' + (card.detail || '')).toLowerCase();
+  const matchedClient = (clients || []).find(c => c && c.name && searchStr.includes(c.name.toLowerCase()));
+
+  // ── CRM source: link to specific client OR clients tab ──
   if (card.icon === '🏡' || card.icon === '🧳' || card.icon === '📅') {
-    sources.push({icon: '👥', text: fr ? 'Données CRM — réservations en cours' : 'CRM data — current bookings'});
+    if (matchedClient) {
+      sources.push({
+        icon: '👥',
+        text: (fr ? 'Voir la fiche de ' : 'See ') + matchedClient.name + (fr ? '' : "'s profile"),
+        action: 'openDetail(\'' + matchedClient.id + '\')'
+      });
+    } else {
+      sources.push({
+        icon: '👥',
+        text: fr ? 'Voir tous les clients' : 'See all guests',
+        action: 'goTab(\'clients\')'
+      });
+    }
   }
+
+  // ── Weather source: link to villa tab weather ──
   if (why.toLowerCase().includes('météo') || why.toLowerCase().includes('weather') || why.toLowerCase().includes('°')) {
-    sources.push({icon: '🌤', text: fr ? 'OpenWeatherMap — météo temps réel' : 'OpenWeatherMap — live weather'});
+    sources.push({
+      icon: '🌤',
+      text: fr ? 'Voir la météo détaillée' : 'See detailed weather',
+      action: 'goTab(\'home\')'
+    });
   }
+
+  // ── Market source: link to villa tab market ──
   if (why.toLowerCase().includes('prix') || why.toLowerCase().includes('price') || why.toLowerCase().includes('marché') || why.toLowerCase().includes('market')) {
-    sources.push({icon: '📊', text: fr ? 'Comparateur de marché — concurrents' : 'Market comparison — competitors'});
+    sources.push({
+      icon: '📊',
+      text: fr ? 'Voir le comparateur de prix' : 'See price comparison',
+      action: 'goTab(\'home\')'
+    });
   }
+
+  // ── Events source: link to villa tab events ──
   if (why.toLowerCase().includes('événement') || why.toLowerCase().includes('event') || why.toLowerCase().includes('festival') || why.toLowerCase().includes('pâques') || why.toLowerCase().includes('ramadan')) {
-    sources.push({icon: '📅', text: fr ? 'Calendrier Marrakech — événements locaux' : 'Marrakech calendar — local events'});
+    sources.push({
+      icon: '📅',
+      text: fr ? 'Voir les événements locaux' : 'See local events',
+      action: 'goTab(\'home\')'
+    });
   }
+
+  // ── Fallback (informational only, no action) ──
   if (sources.length === 0) {
-    sources.push({icon: '🧠', text: fr ? 'Analyse IA — contexte villa complet' : 'AI analysis — full villa context'});
+    sources.push({
+      icon: '🧠',
+      text: fr ? 'Analyse IA — contexte villa complet' : 'AI analysis — full villa context',
+      action: null
+    });
   }
-  
-  document.getElementById('whySources').innerHTML = 
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-style:italic">' + why + '</div>' +
-    sources.map(s => '<div class="why-source"><span class="why-source-icon">' + s.icon + '</span><span>' + s.text + '</span></div>').join('');
-  
+
+  document.getElementById('whySources').innerHTML =
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;font-style:italic;line-height:1.5">' + why + '</div>' +
+    sources.map(function(s) {
+      const clickable = !!s.action;
+      const onclickAttr = clickable ? ' onclick="closeWhyModal();' + s.action + '"' : '';
+      const cls = 'why-source' + (clickable ? ' why-source-clickable' : '');
+      const arrow = clickable ? '<span class="why-source-arrow">→</span>' : '';
+      return '<div class="' + cls + '"' + onclickAttr + '>' +
+        '<span class="why-source-icon">' + s.icon + '</span>' +
+        '<span style="flex:1;line-height:1.4">' + s.text + '</span>' +
+        arrow +
+        '</div>';
+    }).join('');
+
   document.getElementById('whyModal').classList.add('on');
 }
 
