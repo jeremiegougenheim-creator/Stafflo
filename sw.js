@@ -1,5 +1,5 @@
-// Stafflo Service Worker — cache only what actually exists
-const CACHE = 'stafflo-v3';
+// Stafflo Service Worker — v4 (chrome-extension safe)
+const CACHE = 'stafflo-v4';
 const CORE = ['./app.html'];
 
 self.addEventListener('install', e => {
@@ -19,22 +19,32 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Only cache GET requests for same origin
+  const url = e.request.url;
+
+  // ✅ FIX: ignore anything that isn't http(s) — chrome-extension://, data:, blob:, etc.
+  if (!url.startsWith('http')) return;
+
+  // Only handle GET
   if (e.request.method !== 'GET') return;
-  const url = new URL(e.request.url);
-  // Don't cache Supabase API calls or external APIs
-  if (url.hostname.includes('supabase') ||
-      url.hostname.includes('groq') ||
-      url.hostname.includes('mistral') ||
-      url.hostname.includes('deepseek') ||
-      url.hostname.includes('googleapis')) return;
+
+  // Skip external APIs — let them go directly to network
+  const { hostname } = new URL(url);
+  if (
+    hostname.includes('supabase') ||
+    hostname.includes('groq') ||
+    hostname.includes('mistral') ||
+    hostname.includes('deepseek') ||
+    hostname.includes('googleapis') ||
+    hostname.includes('openai')
+  ) return;
 
   e.respondWith(
     caches.match(e.request).then(cached => {
       const fresh = fetch(e.request).then(res => {
-        if (res.ok) {
+        // Only cache successful same-origin or CDN responses
+        if (res.ok && res.type !== 'opaque') {
           const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
+          caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});
         }
         return res;
       }).catch(() => cached);
