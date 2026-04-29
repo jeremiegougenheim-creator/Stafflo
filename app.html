@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -714,6 +715,41 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .mode-chip.active{background:var(--green);border-color:var(--green);color:#fff}
 .mode-chip:hover:not(.active){border-color:var(--gold);color:var(--ink)}
 
+/* ── CHAT FILE ATTACHMENTS ── */
+.chat-attachments{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 0;max-height:140px;overflow-y:auto}
+.chat-attach{position:relative;display:inline-flex;align-items:center;gap:6px;padding:6px 10px 6px 8px;background:var(--gold-light);border:1px solid var(--gold);border-radius:8px;font-size:12px;color:var(--ink);max-width:200px}
+.chat-attach .att-icon{font-size:14px;flex-shrink:0}
+.chat-attach .att-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.chat-attach .att-rm{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0 0 0 4px;line-height:1;flex-shrink:0}
+.chat-attach .att-rm:hover{color:var(--red)}
+.chat-attach.image{padding:0;background:none;border:none;width:60px;height:60px}
+.chat-attach.image img{width:60px;height:60px;object-fit:cover;border-radius:8px;border:1.5px solid var(--gold)}
+.chat-attach.image .att-rm{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;padding:0}
+
+/* ── CHAT INPUT BUTTONS (mic, attach, send) ── */
+.chat-input-area{display:flex;align-items:flex-end;gap:6px;padding:10px 12px;border-top:1px solid var(--border);background:var(--card)}
+.chat-icon-btn{width:38px;height:38px;border-radius:50%;border:1px solid var(--border);background:var(--paper);color:var(--muted);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;-webkit-tap-highlight-color:transparent}
+.chat-icon-btn:hover{border-color:var(--green);color:var(--green)}
+.chat-icon-btn.recording{background:var(--red);color:#fff;border-color:var(--red);animation:micPulse 1.2s ease infinite}
+@keyframes micPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+
+/* ── TAB-END AI ASK BUTTON ── */
+.tab-ai-ask{display:flex;align-items:center;gap:10px;padding:14px 18px;margin:20px 0 12px;background:linear-gradient(135deg,var(--green) 0%,var(--green2) 100%);border-radius:14px;cursor:pointer;color:#fff;border:none;width:100%;font-family:'DM Sans',sans-serif;text-align:left;box-shadow:var(--shadow);transition:all .15s;-webkit-tap-highlight-color:transparent}
+.tab-ai-ask:hover{transform:translateY(-1px);box-shadow:var(--shadow-lg)}
+.tab-ai-ask:active{transform:translateY(0)}
+.tab-ai-ask .icon{font-size:22px;flex-shrink:0}
+.tab-ai-ask .text{flex:1}
+.tab-ai-ask .ttl{font-size:14px;font-weight:600;margin-bottom:2px}
+.tab-ai-ask .sub{font-size:12px;color:rgba(255,255,255,.7)}
+.tab-ai-ask .arrow{font-size:18px;opacity:.6}
+
+/* ── CLIENT DETAIL: AI ASK ── */
+.client-ai-ask{margin:14px 16px 8px;padding:12px 14px;background:var(--gold-light);border:1px solid var(--gold);border-radius:10px;display:flex;align-items:center;gap:10px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.client-ai-ask:hover{background:#FCE9C0}
+.client-ai-ask .icon{font-size:18px}
+.client-ai-ask .text{flex:1;font-size:13px;color:var(--ink);font-weight:500}
+.client-ai-ask .arrow{color:var(--gold);font-size:16px}
+
 </style>
 </head>
 <body>
@@ -874,8 +910,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
   <!-- QUICK ACTIONS STRIP -->
   <div class="quick-actions" id="quickActionsStrip">
-    <button class="qa-btn primary" onclick="document.getElementById('pasteInput').focus();document.getElementById('pasteInput').scrollIntoView({behavior:'smooth'})">
-      <span class="qa-icon">✦</span><span data-fr="Coller un message" data-en="Paste message">Coller un message</span>
+    <button class="qa-btn primary" onclick="askAIAbout('')">
+      <span class="qa-icon">💬</span><span data-fr="Demander à l'IA" data-en="Ask AI">Demander à l'IA</span>
     </button>
     <button class="qa-btn" onclick="openForm()">
       <span class="qa-icon">➕</span><span data-fr="Nouveau client" data-en="New guest">Nouveau client</span>
@@ -1002,8 +1038,18 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <div class="guest-actions" id="resActions"></div>
   </div>
 
-  <!-- AI PASTE ZONE — secondary action -->
   </div>
+
+  <!-- AI ASK -->
+  <button class="tab-ai-ask" onclick="askAIAbout(lang==='fr'?'Brief du jour : ':'Today brief: ')">
+    <span class="icon">💬</span>
+    <span class="text">
+      <div class="ttl" data-fr="Demander à l'IA" data-en="Ask the AI">Demander à l'IA</div>
+      <div class="sub" data-fr="Brief, urgences, demain, prochaines arrivées…" data-en="Brief, urgent, tomorrow, upcoming arrivals…">Brief, urgences, demain, prochaines arrivées…</div>
+    </span>
+    <span class="arrow">→</span>
+  </button>
+
 </div><!-- /today-cols -->
 </div><!-- /tab-today -->
 
@@ -1043,6 +1089,16 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   </div>
 
   <div id="clientList"></div>
+
+  <!-- AI ASK -->
+  <button class="tab-ai-ask" onclick="askAIAbout(lang==='fr'?'À propos de mes clients : ':'About my guests: ')">
+    <span class="icon">💬</span>
+    <span class="text">
+      <div class="ttl" data-fr="Demander à l'IA" data-en="Ask the AI">Demander à l'IA</div>
+      <div class="sub" data-fr="Questions sur vos clients, relances, infos…" data-en="Questions about your guests, follow-ups, info…">Questions sur vos clients, relances, infos…</div>
+    </span>
+    <span class="arrow">→</span>
+  </button>
 
 </div><!-- /clients -->
 
@@ -1227,6 +1283,16 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     </div>
   </div>
 
+  <!-- AI ASK -->
+  <button class="tab-ai-ask" onclick="askAIAbout(lang==='fr'?'À propos du pricing et de la villa : ':'About pricing and villa: ')">
+    <span class="icon">💬</span>
+    <span class="text">
+      <div class="ttl" data-fr="Demander à l'IA" data-en="Ask the AI">Demander à l'IA</div>
+      <div class="sub" data-fr="Conseils prix, événements, météo, concurrents…" data-en="Pricing advice, events, weather, competitors…">Conseils prix, événements, météo, concurrents…</div>
+    </span>
+    <span class="arrow">→</span>
+  </button>
+
 </div><!-- /home -->
 
 
@@ -1350,11 +1416,19 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <span></span><span></span><span></span>
   </div>
 
+  <!-- Attachment previews -->
+  <div class="chat-attachments" id="chatAttachments" style="display:none"></div>
+
+  <!-- Hidden file input -->
+  <input type="file" id="chatFileInput" accept="image/*,application/pdf,.txt,.md,.eml,.csv" multiple style="display:none" onchange="onChatFileSelected(event)">
+
   <div class="chat-input-area">
+    <button class="chat-icon-btn" id="chatAttachBtn" onclick="document.getElementById('chatFileInput').click()" title="Joindre fichier/photo">📎</button>
+    <button class="chat-icon-btn" id="chatMicBtn" onclick="toggleChatVoice()" title="Dicter">🎤</button>
     <textarea class="chat-input" id="chatInput"
-      placeholder="Message, commande ou email Airbnb..."
-      data-placeholder-fr="Message, commande ou email Airbnb..."
-      data-placeholder-en="Message, command or Airbnb email..."
+      placeholder="Message, commande ou email..."
+      data-placeholder-fr="Message, commande ou email..."
+      data-placeholder-en="Message, command or email..."
       rows="1"
       onkeydown="chatKeyDown(event)"
       oninput="chatAutoResize(this)"></textarea>
@@ -2825,7 +2899,8 @@ function openDetail(id) {
   document.getElementById('detailBody').insertAdjacentHTML('beforeend', detailMsgSection);
 
   document.getElementById('detailActions').innerHTML =
-    '<button class="btn-action primary" onclick="closeDetail();openForm(\''+cl.id+'\')" style="flex:1">✏️ '+(fr?'Modifier':'Edit')+'</button>' +
+    '<button class="btn-action primary" onclick="closeDetail();askAIAboutClient(\''+cl.id+'\')" style="flex:1.4;background:var(--gold);border-color:var(--gold);color:var(--green3)">💬 '+(fr?'IA':'AI')+'</button>' +
+    '<button class="btn-action" onclick="closeDetail();openForm(\''+cl.id+'\')" style="flex:1">✏️ '+(fr?'Modifier':'Edit')+'</button>' +
     (cl.phone?
     '<a class="btn-action wa" href="https://wa.me/'+clPhone+'" target="_blank" style="flex:1">💬 WA</a>'+
     '<button class="btn-action" onclick="openPhoneEditor(\''+cl.id+'\')" style="flex:0.3;padding:0 8px" title="Modifier le numéro">✏️</button>'
@@ -3609,17 +3684,246 @@ function chatAutoResize(el) {
   document.getElementById('chatSendBtn').disabled = !el.value.trim();
 }
 
+// ── CHAT ATTACHMENTS, VOICE, ASK-AI ──────────────────
+window._chatAttachments = [];
+
+function onChatFileSelected(e) {
+  Array.from(e.target.files || []).forEach(handleChatFile);
+  e.target.value = '';
+}
+
+async function handleChatFile(file) {
+  if (file.size > 8 * 1024 * 1024) { toast(lang==='fr'?'⚠ Max 8MB':'⚠ Max 8MB'); return; }
+  var isImg = file.type.startsWith('image/');
+  var isTxt = file.type.startsWith('text/') || /\.(txt|md|eml|csv)$/i.test(file.name);
+  var isPdf = file.type === 'application/pdf';
+  try {
+    if (isImg) {
+      var b64 = await fileToB64(file);
+      var c = await compressImg(b64, 1024);
+      window._chatAttachments.push({type:'image', name:file.name, mime:file.type, dataB64:c, thumb:c});
+    } else if (isTxt) {
+      var t = await file.text();
+      window._chatAttachments.push({type:'doc', name:file.name, text:t.slice(0,10000)});
+    } else if (isPdf) {
+      var b = await fileToB64(file);
+      window._chatAttachments.push({type:'doc', name:file.name, mime:'application/pdf', dataB64:b, text:'[PDF: '+file.name+']'});
+    } else { toast(lang==='fr'?'Format non supporté':'Format not supported'); return; }
+    renderChatAttachments();
+    var sb = document.getElementById('chatSendBtn'); if (sb) sb.disabled = false;
+  } catch(err) { toast('⚠ '+err.message); }
+}
+
+function fileToB64(file) {
+  return new Promise(function(res, rej) {
+    var r = new FileReader();
+    r.onload = function(){ res(r.result); }; r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+function compressImg(dataUrl, maxDim) {
+  return new Promise(function(res) {
+    var img = new Image();
+    img.onload = function() {
+      var w=img.width, h=img.height;
+      if (w>maxDim||h>maxDim) { var r=Math.min(maxDim/w,maxDim/h); w=Math.round(w*r); h=Math.round(h*r); }
+      var c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      res(c.toDataURL('image/jpeg',0.78));
+    };
+    img.onerror = function(){ res(dataUrl); };
+    img.src = dataUrl;
+  });
+}
+
+function escHtml(s){return String(s||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+function renderChatAttachments() {
+  var box = document.getElementById('chatAttachments');
+  if (!box) return;
+  if (!window._chatAttachments.length) { box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='flex';
+  box.innerHTML = window._chatAttachments.map(function(a, i) {
+    if (a.type==='image') return '<div class="chat-attach image"><img src="'+a.thumb+'" alt=""><button class="att-rm" onclick="removeChatAttachment('+i+')">✕</button></div>';
+    var icon = a.mime==='application/pdf' ? '📄' : '📝';
+    return '<div class="chat-attach"><span class="att-icon">'+icon+'</span><span class="att-name">'+escHtml(a.name)+'</span><button class="att-rm" onclick="removeChatAttachment('+i+')">✕</button></div>';
+  }).join('');
+}
+
+function removeChatAttachment(i) {
+  window._chatAttachments.splice(i,1);
+  renderChatAttachments();
+  var sb = document.getElementById('chatSendBtn');
+  var inp = document.getElementById('chatInput');
+  if (sb) sb.disabled = (!window._chatAttachments.length && !(inp && inp.value.trim()));
+}
+
+// Chat voice (separate from main voice input)
+var _chatVoiceRec = null, _chatVoiceOn = false;
+function toggleChatVoice() {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { toast(lang==='fr'?'🎤 Non supporté':'🎤 Not supported'); return; }
+  if (_chatVoiceOn) { try { _chatVoiceRec.stop(); } catch(e){} return; }
+  if (!_chatVoiceRec) {
+    _chatVoiceRec = new SR();
+    _chatVoiceRec.continuous = false;
+    _chatVoiceRec.interimResults = true;
+    _chatVoiceRec.onresult = function(ev) {
+      var inp = document.getElementById('chatInput'); if (!inp) return;
+      var fin='', itm='';
+      for (var i=ev.resultIndex; i<ev.results.length; i++) {
+        if (ev.results[i].isFinal) fin += ev.results[i][0].transcript;
+        else itm += ev.results[i][0].transcript;
+      }
+      if (fin) {
+        inp.value = (inp.value?inp.value+' ':'') + fin;
+        chatAutoResize(inp);
+        document.getElementById('chatSendBtn').disabled = false;
+      } else if (itm) {
+        inp.placeholder = '🎤 ' + itm;
+      }
+    };
+    _chatVoiceRec.onerror = function(ev) {
+      if (ev.error==='not-allowed') toast(lang==='fr'?'🎤 Autorisez le micro':'🎤 Allow mic');
+      stopChatVoice();
+    };
+    _chatVoiceRec.onend = stopChatVoice;
+  }
+  _chatVoiceRec.lang = lang==='fr'?'fr-FR':'en-US';
+  _chatVoiceOn = true;
+  var b = document.getElementById('chatMicBtn'); if (b) b.classList.add('recording');
+  try { _chatVoiceRec.start(); } catch(e) { stopChatVoice(); }
+}
+function stopChatVoice() {
+  _chatVoiceOn = false;
+  var b = document.getElementById('chatMicBtn'); if (b) b.classList.remove('recording');
+  var inp = document.getElementById('chatInput');
+  if (inp) inp.placeholder = lang==='fr'?'Message, commande ou email...':'Message, command or email...';
+}
+
+// Ask AI with prefilled context
+function askAIAbout(ctx) {
+  toggleChatPanel();
+  setTimeout(function() {
+    var inp = document.getElementById('chatInput');
+    if (inp) {
+      inp.value = ctx; chatAutoResize(inp);
+      var sb = document.getElementById('chatSendBtn'); if (sb) sb.disabled = false;
+      inp.focus();
+    }
+  }, 250);
+}
+
+function askAIAboutClient(clientId) {
+  var c = clients.find(function(x){ return x.id === clientId; });
+  if (!c) return;
+  var fr = lang === 'fr';
+  askAIAbout((fr?'À propos de ':'About ') + (c.name||'') + ' : ');
+}
+
+// Handle attached files/images with AI vision
+async function handleChatAttachments(text, atts) {
+  var fr = lang === 'fr';
+  var typing = document.getElementById('chatTyping');
+  typing.style.display = 'block';
+  
+  try {
+    var hasImage = atts.some(function(a){ return a.type === 'image'; });
+    var docTexts = atts.filter(function(a){ return a.type === 'doc' && a.text; }).map(function(a){ return '['+a.name+']\n'+a.text; }).join('\n\n');
+    
+    // Build minimal prompt — token-efficient
+    var userQ = text || (fr ? 'Que vois-tu ?' : 'What do you see?');
+    
+    if (hasImage) {
+      // Vision: use Gemini Flash (free + fast vision support)
+      var imgs = atts.filter(function(a){ return a.type === 'image'; });
+      var prompt = userQ + (docTexts ? '\n\nDocs:\n'+docTexts : '');
+      var raw = await callVisionAI(prompt, imgs);
+      typing.style.display = 'none';
+      addChatBubble('ai', raw || (fr?'Analyse impossible.':'Analysis failed.'));
+    } else {
+      // Doc only — text task
+      var prompt2 = (text || (fr?'Résume ces documents.':'Summarize these documents.')) + '\n\n' + docTexts;
+      var task = fr ? 'chat_fr' : 'chat_en';
+      var raw2 = await callBestAI(task, '', prompt2, 600);
+      typing.style.display = 'none';
+      addChatBubble('ai', raw2 || (fr?'Analyse impossible.':'Failed.'));
+    }
+  } catch(e) {
+    typing.style.display = 'none';
+    addChatBubble('ai', '⚠ ' + (e.message||'Error'));
+  }
+}
+
+// Vision call — Gemini Flash supports inline images
+async function callVisionAI(prompt, imgs) {
+  var cfg = getCfg();
+  var key = (cfg.providers && cfg.providers.gemini && cfg.providers.gemini.key) || '';
+  
+  // Try proxy first
+  if (STAFFLO_PROXY) {
+    try {
+      var r = await fetch(STAFFLO_PROXY, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          task: 'vision',
+          system: '',
+          user: prompt,
+          images: imgs.map(function(im){ return { mime:im.mime, dataB64: im.dataB64.split(',')[1] }; }),
+          max_tokens: 800,
+          session_key: getSessionKeyFromUrl() || cfg.publicSessionKey || '',
+          client_mode: cfg.clientMode || 'public'
+        })
+      });
+      if (r.ok) {
+        var d = await r.json();
+        if (d.text) return d.text;
+      }
+    } catch(e) {}
+  }
+  
+  // Fallback: direct Gemini
+  if (!key) throw new Error(lang==='fr'?'Vision: clé Gemini requise (Réglages)':'Vision: Gemini key required (Settings)');
+  var parts = [{ text: prompt }];
+  imgs.forEach(function(im) {
+    parts.push({ inline_data: { mime_type: im.mime, data: im.dataB64.split(',')[1] } });
+  });
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + key;
+  var res = await fetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ contents:[{ parts: parts }], generationConfig:{ maxOutputTokens: 800 } })
+  });
+  var json = await res.json();
+  return json.candidates && json.candidates[0] && json.candidates[0].content.parts[0].text || '';
+}
+
 async function chatSend() {
   var inp = document.getElementById('chatInput');
   var text = inp.value.trim();
-  if (!text) return;
+  var atts = (window._chatAttachments || []).slice();
+  if (!text && !atts.length) return;
   
   inp.value = '';
   inp.style.height = 'auto';
   document.getElementById('chatSendBtn').disabled = true;
   
-  // Add user bubble
-  addChatBubble('user', text);
+  // Build user bubble (with attachment thumbnails inline)
+  var bubbleText = text;
+  if (atts.length) {
+    var attTags = atts.map(function(a) {
+      if (a.type === 'image') return '🖼 ' + a.name;
+      return '📄 ' + a.name;
+    }).join(' · ');
+    bubbleText = (text ? text + '\n\n' : '') + attTags;
+  }
+  addChatBubble('user', bubbleText);
+  
+  // Clear attachments UI
+  window._chatAttachments = [];
+  renderChatAttachments();
   
   // Show typing
   var typing = document.getElementById('chatTyping');
@@ -3627,21 +3931,24 @@ async function chatSend() {
   scrollChat();
 
   try {
+    // If attachments → route to attachment handler
+    if (atts.length) {
+      typing.style.display = 'none';
+      await handleChatAttachments(text, atts);
+      return;
+    }
+    
     // Detect intent
     var cmd = detectCommandIntent(text);
-    
     if (cmd && cmd.type === 'send') {
-      // Followup/relance command
       typing.style.display = 'none';
       await handleChatSendCommand(cmd.client, text);
       return;
     }
     
-    // Check if it's a question about clients/villa (FR + EN)
-    var isQuestion = /qui|quand|combien|quel|comment|prochain|demain|aujourd|revenu|alerte|check|who|when|how|next|tomorrow|today|revenue|alert|arriving|guest/i.test(text);
     var isPastedEmail = text.length > 200 && (
       /airbnb|booking|check.?in|checkout|guest|réservation|confirmation/i.test(text) ||
-      /\[\d{1,2}\/\d{1,2}\/\d{4}/.test(text) // WA timestamp
+      /\[\d{1,2}\/\d{1,2}\/\d{4}/.test(text)
     );
     
     if (isPastedEmail) {
@@ -3650,8 +3957,6 @@ async function chatSend() {
       return;
     }
     
-    // Default: treat as a question/instruction (covers corrections,
-    // "utilise la première personne", short commands, etc.)
     await handleChatQuestion(text);
     
   } catch(e) {
@@ -3664,88 +3969,68 @@ async function handleChatQuestion(text) {
   var fr = lang === 'fr';
   var today = new Date().toISOString().slice(0,10);
   var cfg = getCfg();
-  var ownerName = cfg.owner || 'Jérémie';
-  var villaName = cfg.villa || 'Villa DarJ';
+  var owner = cfg.owner || 'Jérémie';
+  var villa = cfg.villa || 'Villa DarJ';
   
-  // Load recent chat history from DB (includes previous sessions)
-  var dbHistory = await loadRecentChatContext(12);
-  var historyBlock = dbHistory || buildChatHistoryBlock(8);
+  // Detect if question is about a specific client → load that client's chat history (token-efficient)
+  var mentioned = null;
+  var lcText = text.toLowerCase();
+  for (var i = 0; i < clients.length; i++) {
+    var first = (clients[i].name || '').split(' ')[0].toLowerCase();
+    if (first && first.length > 2 && lcText.indexOf(first) >= 0) { mentioned = clients[i]; break; }
+  }
   
-  var systemPrompt = fr
-    ? [
-      'Tu es l\'assistant personnel de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
-      'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
-      'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
-      'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
-      'Réponds en français — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
-    ].join('\n')
-    : [
-      'You are the personal assistant of ' + ownerName + ', owner of ' + villaName + ' in Marrakech.',
-      'You help ' + ownerName + ' manage guests, draft messages, and organize stays.',
-      'When ' + ownerName + ' says "use first person" or "say I" → write the message AS ' + ownerName + ' (I = ' + ownerName + ').',
-      'When drafting a WA message, write it ON BEHALF of ' + ownerName + ', signed "' + ownerName + '".',
-      'Reply in English — NEVER as the villa, always as ' + ownerName + '\'s assistant.'
-    ].join('\n');
+  // Compact system prompt — ~30 tokens vs old ~120
+  var sys = fr
+    ? 'Assistant de '+owner+' ('+villa+', Marrakech). Réponds en FR, max 3 phrases. Signe les WA "'+owner+'".'
+    : 'Assistant for '+owner+' ('+villa+', Marrakech). Reply in EN, max 3 sentences. Sign WA "'+owner+'".';
   
-  // ── CRM snapshot — all useful data for AI ──
-  var today2 = new Date();
-  var crmSnapshot = clients.slice(0,12).map(function(cl) {
-    var n = (cl.arrival && cl.departure) ? Math.round((new Date(cl.departure)-new Date(cl.arrival))/864e5) : '';
-    var net = cl.price ? Math.round(cl.price*(1-(cl.commission||3.6)/100)) : '';
-    var status = getStatus(cl);
-    return [
-      cl.name + (cl.nat?' '+cl.nat:''),
-      (fr?'arrivée':'arrival')+':' + (cl.arrival||'?'),
-      (fr?'départ':'departure')+':' + (cl.departure||'?'),
-      n ? n+(fr?'nuits':'nights') : '',
-      cl.guests ? cl.guests+(fr?'pers':'guests') : '',
-      net ? net+'€net' : '',
-      cl.source||'',
-      cl.phone ? 'tel:'+cl.phone : '',
-      status,
-      cl.notes ? 'notes:'+cl.notes.slice(0,80) : ''
-    ].filter(Boolean).join(' | ');
+  // Compact CRM — only active/upcoming clients (max 8), abbreviated
+  var nowDate = today;
+  var relevant = clients.filter(function(c){ return !c.departure || c.departure >= nowDate; }).slice(0, 8);
+  var crm = relevant.map(function(c){
+    var bits = [c.name];
+    if (c.arrival) bits.push(c.arrival + (c.departure ? '→'+c.departure.slice(5) : ''));
+    if (c.guests) bits.push(c.guests+'p');
+    if (c.price) bits.push(Math.round(c.price*0.96)+'€');
+    if (c.notes) bits.push('('+c.notes.slice(0,40)+')');
+    return bits.join(' ');
   }).join('\n');
-
-  var userCtx = [
-    (fr ? 'Aujourd\'hui: ' : 'Today: ') + today,
-    (fr ? 'Clients CRM (' : 'CRM Guests (') + clients.length + '):',
-    crmSnapshot || (fr ? '(aucun client)' : '(no guests)'),
-    '',
-    historyBlock,
-    '',
-    (fr ? 'Message de ' : 'Message from ') + ownerName + ': "' + text + '"',
-    '',
-    'Instructions:',
-    fr
-      ? '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}'
-      : '- If it\'s a WA message request: reply with RESPONSE: [full message signed ' + ownerName + '] and ACTION: {"type":"send_wa","clientId":"id_or_name","msg":"..."}',
-    fr
-      ? '- Si c\'est une question: réponds directement, max 2-3 phrases'
-      : '- If it\'s a question: answer directly, max 2-3 sentences',
-    fr
-      ? '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule'
-      : '- If it\'s a correction ("no", "use first person", "that was a test"): take it into account and rephrase'
-  ].join('\n');
   
-  var chatTask = fr ? 'chat_fr' : 'chat_en';
-  var raw = await callBestAI(chatTask, systemPrompt, userCtx, 500);
+  // Client conversation history if mentioned
+  var convo = '';
+  if (mentioned && mentioned.messages && Object.keys(mentioned.messages).length) {
+    var ks = Object.keys(mentioned.messages).slice(-3);
+    convo = '\n\nDerniers msgs '+mentioned.name+':\n' + ks.map(function(k){ return '['+k+'] '+ (''+mentioned.messages[k]).slice(0,200); }).join('\n');
+  }
+  
+  // Recent chat history — capped
+  var hist = await loadRecentChatContext(6);
+  if (!hist) hist = buildChatHistoryBlock(4);
+  var histShort = (hist || '').slice(0, 1200);
+  
+  var userMsg = (fr?'Date: ':'Date: ') + today + '\n' +
+    (fr?'CRM (':'CRM (') + relevant.length + '):\n' + (crm || '(none)') +
+    convo +
+    (histShort ? '\n\n' + histShort : '') +
+    '\n\nQ: ' + text +
+    '\n\n' + (fr
+      ? 'Format: réponse directe. Si demande de message WA → "RÉPONSE: [msg]\\nACTION: {"type":"send_wa","clientId":"X","msg":"..."}"'
+      : 'Format: direct answer. If WA message request → "RESPONSE: [msg]\\nACTION: {"type":"send_wa","clientId":"X","msg":"..."}"');
+  
+  var raw = await callBestAI(fr?'chat_fr':'chat_en', sys, userMsg, 400);
   document.getElementById('chatTyping').style.display = 'none';
   
-  // Parse response + action
   var response = raw || '...';
   var action = null;
   var respMatch = raw.match(/R[ÉE]PONSE:\s*(.+?)(?=\nACTION:|$)/s) || raw.match(/RESPONSE:\s*(.+?)(?=\nACTION:|$)/s);
   var actionMatch = raw.match(/ACTION:\s*(\{.+?\})/s);
-  
   if (respMatch) response = respMatch[1].trim();
-  if (actionMatch) {
-    try { action = JSON.parse(actionMatch[1]); } catch(e) {}
-  }
+  if (actionMatch) { try { action = JSON.parse(actionMatch[1]); } catch(e) {} }
   
   var buttons = [];
   if (action && action.type === 'send_wa') {
-    var cl = clients.find(function(c){ return c.id === action.clientId; });
+    var cl = clients.find(function(c){ return c.id === action.clientId; }) || mentioned;
     if (cl) {
       buttons.push({
         label: (fr ? '💬 Envoyer à ' : '💬 Send to ') + (cl.name.split(' ')[0]),
@@ -7997,39 +8282,15 @@ async function loadMorningBrief(forceRefresh = false) {
   };
 
   const prompt = [
-    'You are the intelligent assistant for ' + (cfg.villa||'Villa DarJ') + ' in ' + (cfg.city||'Marrakech') + ', managed by ' + (cfg.owner||'Jérémie') + '.',
-    'Analyse ALL the context below and identify the 4-5 most important actions for TODAY.',
-    'Think like an experienced luxury villa manager — combine multiple signals (e.g. weather + guests = pool prep, event + pricing = raise rates).',
+    'Villa ' + (cfg.villa||'Villa DarJ') + ' (' + (cfg.city||'Marrakech') + '), ' + (cfg.owner||'Jérémie') + '.',
+    'Donne 4-5 actions prioritaires AUJOURD\'HUI. Combine signaux (météo+arrivée=piscine, event+prix=hausse).',
+    'CTX: ' + JSON.stringify(contextData),
     '',
-    'TODAY CONTEXT:',
-    JSON.stringify(contextData, null, 1),
+    'JSON array uniquement, pas markdown:',
+    '[{"urgency":1-10,"icon":"emoji","title":"max 7 mots","detail":"pourquoi+conséquence","why":"data points (15 mots)","action":"max 5 mots","action_type":"whatsapp|open_guests|open_home|copy|none"}]',
     '',
-    'Return ONLY a valid JSON array (no markdown, no text):',
-    '[{',
-    '  "urgency": 9,',
-    '  "icon": "emoji",',
-    '  "title": "Action title max 7 words",',
-    '  "detail": "One sentence: why this matters + what happens if ignored",',
-    '  "why": "Brief reasoning: which data points led to this card (max 15 words)",',
-    '  "action": "Exact next step max 5 words",',
-    '  "action_type": "whatsapp|open_guests|open_home|copy|none"',
-    '}]',
-    '',
-    'action_type values:',
-    '- whatsapp: opens WhatsApp to send a message to someone',
-    '- open_guests: navigates to Guests tab',
-    '- open_home: navigates to My Home AI tab',
-    '- copy: copies something to clipboard',
-    '- none: informational only',
-    '',
-    'Rules:',
-    '- urgency 1-10 (10=guest arriving NOW, 1=nice to know)',
-    '- Cross-correlate signals: if hot weather + guests arriving = pool+cold drinks prep',
-    '- If below market price + event this week = raise price alert',
-    '- If checkout today + checkin tomorrow = tight turnaround alert',
-    '- Be hyper-specific: use real names, real temps, real prices from the data',
-    '- Respond in ' + (fr ? 'French' : 'English'),
-    '- If guests arriving in 0-3 days: include a staff preparation card with action_type=whatsapp and specific checklist items in detail',
+    'Règles: urgency=10 client arrive NOW. Spécifique (vrais noms/temps/prix). ' + (fr ? 'En français.' : 'In English.'),
+    '+staff prep card (action_type=whatsapp) si arrivée 0-3j.',
   ].join('\n');
 
   try {
@@ -8143,12 +8404,14 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
   const cfg = getCfg();
   const routes = {
     extract:   ['groq',    'gemini',  'mistral', 'deepseek'],
+    fast_classify: ['groq', 'gemini', 'mistral', 'deepseek'],
     brief:     ['gemini',  'deepseek','groq',    'mistral'],
     write_fr:  ['mistral', 'gemini',  'groq',    'deepseek'],
     write_en:  ['groq',    'gemini',  'deepseek','mistral'],
     chat_fr:   ['mistral', 'gemini',  'groq',    'deepseek'],
     chat_en:   ['groq',    'gemini',  'deepseek','mistral'],
     reason:    ['deepseek','gemini',  'mistral', 'groq'],
+    vision:    ['gemini'], // only Gemini supports vision in our stack
   };
   const order = routes[task] || routes.extract;
   for (const pid of order) {
