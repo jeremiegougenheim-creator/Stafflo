@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -3047,6 +3048,26 @@ function importData(event) {
 // ════════════════════════════════════════════════════════
 // UTILS
 // ════════════════════════════════════════════════════════
+// ── Empty state helpers (avoid duplicate IDs) ──
+function onPasteEmpty() {
+  var ta = document.getElementById('emptyPasteInput');
+  var btn = document.getElementById('emptyAnalyzeBtn');
+  if (ta && btn) { btn.disabled = !ta.value.trim(); btn.style.opacity = ta.value.trim() ? '1' : '.4'; }
+}
+function emptyAnalyze() {
+  // Copy text to main pasteInput, switch to main view, and analyze
+  var ta = document.getElementById('emptyPasteInput');
+  if (!ta || !ta.value.trim()) return;
+  var mainTa = document.getElementById('pasteInput');
+  if (mainTa) { mainTa.value = ta.value; mainTa.classList.add('has-text'); }
+  var btn = document.getElementById('analyzeBtn');
+  if (btn) btn.disabled = false;
+  analyze();
+}
+
+// ── Weather strip stub ──
+function showWeatherStrip() { /* handled inline by loadWeather */ }
+
 function toast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -6677,6 +6698,16 @@ function renderFlights() {
   const search = (document.getElementById('flightSearch')?.value || '').toLowerCase().trim();
   let data = isArr ? RAK_ARRIVALS : RAK_DEPARTURES;
 
+  // Flight-specific status based on scheduled time vs now
+  function getFlightStatus(timeStr) {
+    var nowMins = getNowHHMM();
+    var parts = timeStr.split(':').map(Number);
+    var flightMins = parts[0] * 60 + (parts[1]||0);
+    if (flightMins < nowMins - 60) return {label:'Atterri', cls:'status-land'};
+    if (flightMins < nowMins + 30) return {label:'En approche', cls:'status-on'};
+    return {label:'Prévu', cls:'status-on'};
+  }
+
   // Filter by city, IATA code or flight number
   if (search) {
     data = data.filter(r => {
@@ -6713,7 +6744,7 @@ function renderFlights() {
       if (isTomorrow) {
         st = {label:'Prévu', cls:'status-on'};
       } else {
-        st = getStatus(t);
+        st = getFlightStatus(t);
       }
       const [h,m] = t.split(':').map(Number);
       const passed = !isTomorrow && (h*60+m) < getNowHHMM();
@@ -6741,15 +6772,15 @@ function renderFlights() {
 
 function showTab(tab) {
   currentTab = tab;
-  document.getElementById('tab-arr').classList.toggle('active', tab === 'arr');
-  document.getElementById('tab-dep').classList.toggle('active', tab === 'dep');
+  document.getElementById('flt-arr').classList.toggle('active', tab === 'arr');
+  document.getElementById('flt-dep').classList.toggle('active', tab === 'dep');
   renderFlights();
 }
 
 function showDay(day) {
   currentDay = day;
-  document.getElementById('tab-today').classList.toggle('active', day === 'today');
-  document.getElementById('tab-tomorrow').classList.toggle('active', day === 'tomorrow');
+  document.getElementById('flt-today').classList.toggle('active', day === 'today');
+  document.getElementById('flt-tomorrow').classList.toggle('active', day === 'tomorrow');
   renderFlights();
 }
 
@@ -6923,10 +6954,10 @@ function renderTodayQV() {
             ? 'Pour commencer, collez un message Airbnb, Booking, ou WhatsApp. Stafflo extrait le client, les dates, et prépare le brief staff en 3 secondes.'
             : 'To get started, paste an Airbnb, Booking, or WhatsApp message. Stafflo extracts the guest, dates, and prepares the staff brief in 3 seconds.') +
         '</div>' +
-        '<textarea id="pasteInput" oninput="onPaste()" placeholder="' +
+        '<textarea id="emptyPasteInput" oninput="onPasteEmpty()" placeholder="' +
           (fr ? 'Collez un email Airbnb, message WhatsApp, ou note de réservation…' : 'Paste an Airbnb email, WhatsApp message, or booking note…') +
         '" style="width:100%;min-height:110px;padding:14px 16px;border:1.5px solid var(--border);border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:14px;color:var(--ink);background:var(--paper);resize:vertical;outline:none;line-height:1.5;box-sizing:border-box;transition:border-color .15s" onfocus="this.style.borderColor=\'var(--green)\'" onblur="this.style.borderColor=\'var(--border)\'"></textarea>' +
-        '<button id="analyzeBtn" onclick="analyze()" disabled style="width:100%;margin-top:10px;padding:13px;background:var(--green);color:#fff;border:none;border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.3px;opacity:.4;transition:opacity .15s">' +
+        '<button id="emptyAnalyzeBtn" onclick="emptyAnalyze()" disabled style="width:100%;margin-top:10px;padding:13px;background:var(--green);color:#fff;border:none;border-radius:10px;font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.3px;opacity:.4;transition:opacity .15s">' +
           '✦ ' + (fr ? 'Analyser' : 'Analyse') +
         '</button>' +
         '<div style="margin-top:14px;font-size:12px;color:var(--muted)">' +
@@ -6951,11 +6982,14 @@ function renderTodayQV() {
         '</div>' +
       '</div>';
     // Pre-style the analyze button when textarea has content
-    const ta = document.getElementById('pasteInput');
+    const ta = document.getElementById('emptyPasteInput');
     if (ta) {
       ta.addEventListener('input', function() {
-        const btn = document.getElementById('analyzeBtn');
-        if (btn) btn.style.opacity = ta.value.trim() ? '1' : '.4';
+        const btn = document.getElementById('emptyAnalyzeBtn');
+        if (btn) {
+          btn.style.opacity = ta.value.trim() ? '1' : '.4';
+          btn.disabled = !ta.value.trim();
+        }
       });
     }
     return; // skip rest of normal Today rendering
@@ -7185,6 +7219,7 @@ function renderTodayQV() {
       const doneItems = items.filter(i=>i.auto).length + staffTasks.filter(t => sDone(t.key)).length;
       const pctR = Math.round(doneItems/totalItems*100);
       const urgC = dTo<=1?'var(--red)':dTo<=2?'#BA7517':'var(--green)';
+      const urgCLight = dTo<=1?'#F09595':dTo<=2?'var(--gold)':'#7EC850'; // Light version for dark bg
       const dToLabel = dTo===0?(fr?'AUJOURD\'HUI':'TODAY'):dTo===1?(fr?'DEMAIN':'TOMORROW'):(fr?'DANS '+dTo+'J':'IN '+dTo+'D');
 
       const readEl = document.createElement('div');
@@ -7193,12 +7228,12 @@ function renderTodayQV() {
       readEl.innerHTML =
         '<div class="hm-hdr" style="cursor:default;padding:10px 14px">' +
           '<div style="flex:1">' +
-            '<div class="hm-hdr-lbl" style="color:'+urgC+'">🛎 '+(fr?'PRÉPARATION — ':'PREPARATION — ')+nextUp.name+' · '+dToLabel+'</div>' +
-            '<div style="margin-top:5px;height:3px;background:var(--border);border-radius:2px">' +
-              '<div style="height:3px;background:'+urgC+';border-radius:2px;width:'+pctR+'%;transition:width .3s"></div>' +
+            '<div class="hm-hdr-lbl" style="color:'+urgCLight+';text-transform:none;letter-spacing:1px;font-size:14px">🛎 '+(fr?'PRÉPARATION — ':'PREPARATION — ')+nextUp.name+' · <span style="background:'+urgC+';color:#fff;padding:2px 8px;border-radius:6px;font-size:10px;letter-spacing:1.5px;vertical-align:middle;margin-left:4px">'+dToLabel+'</span></div>' +
+            '<div style="margin-top:5px;height:3px;background:rgba(255,255,255,.15);border-radius:2px">' +
+              '<div style="height:3px;background:'+urgCLight+';border-radius:2px;width:'+pctR+'%;transition:width .3s"></div>' +
             '</div>' +
           '</div>' +
-          '<span style="font-size:13px;font-weight:700;color:'+urgC+';margin-left:12px">'+doneItems+'/'+totalItems+'</span>' +
+          '<span style="font-size:13px;font-weight:700;color:'+urgCLight+';margin-left:12px">'+doneItems+'/'+totalItems+'</span>' +
         '</div>' +
         '<div class="hm-body" style="padding:10px 14px">' +
           // Villa checklist section
