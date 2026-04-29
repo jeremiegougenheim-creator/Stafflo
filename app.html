@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -32,7 +33,33 @@
   --text:#1A1208;--text3:#8A8070;
 }
 html{scroll-behavior:smooth}
-body{font-family:'DM Sans',sans-serif;font-size:15px;color:var(--ink);background:var(--paper);min-height:100vh}
+body{font-family:'DM Sans',sans-serif;font-size:15px;color:var(--ink);background:var(--paper);min-height:100vh;-webkit-text-size-adjust:100%}
+
+/* ── READABILITY BOOST — for all users including 60+ ── */
+/* Base text sizes bumped */
+.alert-hm,.alert-item{font-size:14px;line-height:1.6}
+.alert-hm .sub,.alert-item div:last-child{font-size:13px}
+.cc-sub{font-size:13px}
+.cc-name{font-size:18px}
+.cc-item span{font-size:14px}
+.cc-item label{font-size:10px}
+.gs-lbl{font-size:10px}
+.gs-val{font-size:20px}
+.msg-body{font-size:14px;line-height:1.8}
+.msg-tab{font-size:13px}
+.brief-title{font-size:16px}
+.detail-label{font-size:12px}
+.detail-value{font-size:14px}
+.crm-search{font-size:15px}
+.cf-btn{font-size:13px}
+.sc-occ{font-size:10px}
+.sc-val{font-size:22px}
+.sc-sub{font-size:10px}
+.nav-btn{font-size:14px}
+/* Ensure minimum contrast — no text lighter than #8A8070 on white */
+.bd-lbl{font-size:13px}
+.bd-val{font-size:14px}
+.fl-lbl,.fl-val{font-size:13px}
 
 /* ── HEADER ── */
 header{background:var(--green3);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.25)}
@@ -1768,32 +1795,46 @@ function initVoiceInput() {
     var voiceMode = document.getElementById('modeVoice');
     if (voiceMode) {
       voiceMode.style.opacity = '0.4';
-      voiceMode.title = lang === 'fr' ? 'Non supporté par ce navigateur' : 'Not supported in this browser';
+      voiceMode.onclick = function() { toast(lang === 'fr' ? '🎤 Non supporté par ce navigateur' : '🎤 Not supported in this browser'); };
     }
     return;
   }
   _voiceRecognition = new SpeechRecognition();
-  _voiceRecognition.continuous = true;
+  _voiceRecognition.continuous = false; // single utterance — more reliable
   _voiceRecognition.interimResults = true;
+  _voiceRecognition.maxAlternatives = 1;
   _voiceRecognition.lang = lang === 'fr' ? 'fr-FR' : 'en-US';
   
+  var _fullTranscript = '';
+  
   _voiceRecognition.onresult = function(event) {
-    var transcript = '';
-    var isFinal = false;
+    var interim = '';
+    var final = '';
     for (var i = event.resultIndex; i < event.results.length; i++) {
-      transcript += event.results[i][0].transcript;
-      if (event.results[i].isFinal) isFinal = true;
+      if (event.results[i].isFinal) {
+        final += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
     }
+    
     var el = document.getElementById('voiceTranscript');
     if (el) {
-      el.textContent = transcript;
       el.classList.add('show');
+      if (final) {
+        _fullTranscript += ((_fullTranscript ? ' ' : '') + final);
+        el.innerHTML = '<span style="color:var(--ink)">' + _fullTranscript + '</span>' +
+          (interim ? '<span style="color:var(--muted);font-style:italic"> ' + interim + '</span>' : '');
+      } else {
+        el.innerHTML = (_fullTranscript ? '<span style="color:var(--ink)">' + _fullTranscript + '</span> ' : '') +
+          '<span style="color:var(--muted);font-style:italic">' + interim + '</span>';
+      }
     }
-    if (isFinal) {
-      // Copy to paste input for analysis
+    
+    if (final) {
       var ta = document.getElementById('pasteInput');
       if (ta) {
-        ta.value = (ta.value ? ta.value + '\n' : '') + transcript;
+        ta.value = _fullTranscript;
         ta.classList.add('has-text');
         document.getElementById('analyzeBtn').disabled = false;
       }
@@ -1802,18 +1843,35 @@ function initVoiceInput() {
   
   _voiceRecognition.onerror = function(event) {
     console.warn('Voice error:', event.error);
-    stopVoiceInput();
     if (event.error === 'not-allowed') {
-      toast(lang === 'fr' ? '🎤 Autorisez le micro dans les paramètres' : '🎤 Allow microphone access');
+      toast(lang === 'fr' ? '🎤 Autorisez le micro dans les paramètres du navigateur' : '🎤 Allow microphone in browser settings');
+      stopVoiceInput();
+    } else if (event.error === 'no-speech') {
+      // Timeout — restart if still active
+      if (_voiceActive) {
+        try { _voiceRecognition.start(); } catch(e) {}
+      }
+    } else if (event.error === 'aborted') {
+      // Ignore — happens on manual stop
+    } else {
+      toast('🎤 ' + event.error);
+      stopVoiceInput();
     }
   };
   
   _voiceRecognition.onend = function() {
     if (_voiceActive) {
-      // Auto-restart if still active
-      try { _voiceRecognition.start(); } catch(e) { stopVoiceInput(); }
+      // Auto-restart for next utterance (simulates continuous mode)
+      setTimeout(function() {
+        if (_voiceActive) {
+          try { _voiceRecognition.start(); } catch(e) { stopVoiceInput(); }
+        }
+      }, 300);
     }
   };
+  
+  // Store ref for reset
+  _voiceRecognition._resetTranscript = function() { _fullTranscript = ''; };
 }
 
 function toggleVoiceInput() {
@@ -1832,12 +1890,21 @@ function startVoiceInput() {
       return;
     }
   }
+  // Reset transcript
+  if (_voiceRecognition._resetTranscript) _voiceRecognition._resetTranscript();
+  var el = document.getElementById('voiceTranscript');
+  if (el) { el.textContent = ''; el.classList.remove('show'); }
+  
   _voiceRecognition.lang = lang === 'fr' ? 'fr-FR' : 'en-US';
   _voiceActive = true;
   try {
     _voiceRecognition.start();
   } catch(e) {
-    // Already started
+    // Already started — stop and restart
+    try { _voiceRecognition.stop(); } catch(e2) {}
+    setTimeout(function() {
+      try { _voiceRecognition.start(); } catch(e3) { stopVoiceInput(); }
+    }, 200);
   }
   var btn = document.getElementById('voiceBtn');
   if (btn) btn.classList.add('recording');
@@ -6341,6 +6408,7 @@ function openAllCompetitors() {
 }
 
 function renderScenarios(pricePN) {
+  var fr = lang === 'fr';
   const netPN = Math.round(pricePN * 0.83);
   const s = [
     {pct:'30%', nights:9, color:'#E24B4A'},
@@ -6351,12 +6419,12 @@ function renderScenarios(pricePN) {
   document.getElementById('scenarioContent').innerHTML = s.map(sc => {
     const rev = sc.nights * pricePN;
     const net = Math.round(rev * 0.83);
-    return `<div class="scenario">
-      <div class="scenario-pct">${sc.pct} rempli</div>
-      <div class="scenario-rev">${Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')}€</div>
-      <div class="scenario-net">net / mois</div>
-      <div class="scenario-bar"><div style="height:4px;border-radius:2px;background:${sc.color};width:${sc.nights/30*100}%"></div></div>
-    </div>`;
+    return '<div class="sc-box">' +
+      '<div class="sc-occ">' + sc.pct + (fr?' rempli':' filled') + '</div>' +
+      '<div class="sc-val" style="color:' + sc.color + '">' + net.toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€</div>' +
+      '<div class="sc-sub">net / ' + (fr?'mois':'month') + '</div>' +
+      '<div class="sc-bar" style="background:var(--border)"><div style="height:4px;border-radius:2px;background:' + sc.color + ';width:' + Math.round(sc.nights/30*100) + '%"></div></div>' +
+    '</div>';
   }).join('');
 }
 
@@ -6694,128 +6762,145 @@ async function generateAlerts(weatherTemp) {
 }
 
 async function loadWeather() {
+  var fr = lang === 'fr';
   try {
-    // Fetch current weather + 5-day forecast (cnt=40 = 5 days x 8 per day)
-    const [curRes, foreRes] = await Promise.all([
-      fetch(`${SB_URL}/functions/v1/weather-proxy?q=Marrakech,MA&lang=fr&mode=current`),
-      fetch(`${SB_URL}/functions/v1/weather-proxy?q=Marrakech,MA&lang=fr&mode=forecast`)
-    ]);
-    const cur = await curRes.json();
-    const fore = await foreRes.json();
-    if (cur.cod !== 200) throw new Error('API error');
+    // Open-Meteo — 100% free, no API key, no proxy needed
+    // Marrakech coordinates: 31.6295, -7.9811
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=31.6295&longitude=-7.9811' +
+      '&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m' +
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max' +
+      '&timezone=Africa%2FCasablanca&forecast_days=6';
+    var res = await fetch(url);
+    var data = await res.json();
+    if (!data.current) throw new Error('No data');
 
-    const temp = Math.round(cur.main.temp);
-    const feels = Math.round(cur.main.feels_like);
-    const desc = cur.weather[0].description;
-    const humidity = cur.main.humidity;
-    const wind = Math.round(cur.wind.speed * 3.6);
-    const tempMin = Math.round(cur.main.temp_min);
-    const tempMax = Math.round(cur.main.temp_max);
-    const sunrise = new Date(cur.sys.sunrise * 1000).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'});
-    const sunset = new Date(cur.sys.sunset * 1000).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'});
-    const icon = getWeatherIcon(cur.weather[0].main);
+    var cur = data.current;
+    var daily = data.daily;
+    var temp = Math.round(cur.temperature_2m);
+    var feels = Math.round(cur.apparent_temperature);
+    var humidity = cur.relative_humidity_2m;
+    var wind = Math.round(cur.wind_speed_10m);
+    var wCode = cur.weather_code;
+    var desc = getWMODescription(wCode, fr);
+    var icon = getWMOIcon(wCode);
 
-    let impact = 'Conditions normales';
-    let impactColor = 'var(--green)';
-    if (temp > 38) { impact = 'Canicule — piscine essentielle · +15% prix recommandé'; impactColor = '#A32D2D'; }
-    else if (temp > 30) { impact = 'Très chaud — piscine très demandée · +8% prix'; impactColor = '#854F0B'; }
-    else if (temp >= 18 && temp <= 28) { impact = 'Météo idéale pour Marrakech · Prix optimal'; impactColor = '#3B6D11'; }
-    else if (temp < 12) { impact = 'Frais · Cheminée appréciée · Impact neutre sur prix'; impactColor = '#185FA5'; }
+    // Today's min/max from daily
+    var tempMin = Math.round(daily.temperature_2m_min[0]);
+    var tempMax = Math.round(daily.temperature_2m_max[0]);
+    var sunrise = daily.sunrise[0].slice(11,16);
+    var sunset = daily.sunset[0].slice(11,16);
 
-    document.getElementById('factorWeather').textContent = temp + '°C · ' + desc;
+    // Pricing impact
+    var impact = fr ? 'Conditions normales' : 'Normal conditions';
+    var impactColor = 'var(--green)';
+    if (temp > 38) { impact = fr ? 'Canicule — piscine essentielle · +15% prix recommandé' : 'Heatwave — pool essential · +15% recommended'; impactColor = '#A32D2D'; }
+    else if (temp > 30) { impact = fr ? 'Très chaud — piscine très demandée · +8% prix' : 'Very hot — pool in high demand · +8% price'; impactColor = '#854F0B'; }
+    else if (temp >= 18 && temp <= 28) { impact = fr ? 'Météo idéale pour Marrakech · Prix optimal' : 'Ideal Marrakech weather · Optimal pricing'; impactColor = '#3B6D11'; }
+    else if (temp < 12) { impact = fr ? 'Frais · Cheminée appréciée · Impact neutre' : 'Cool · Fireplace appreciated · Neutral impact'; impactColor = '#185FA5'; }
 
-    // Update today tab weather strip
-    const strip = document.getElementById('weatherStripContent');
+    var factorEl = document.getElementById('factorWeather');
+    if (factorEl) factorEl.textContent = temp + '°C · ' + desc;
+
+    // Weather strip for Today tab
+    var strip = document.getElementById('weatherStripContent');
     if (strip) {
-      const icon2 = getWeatherIcon(cur.weather[0].main);
-      const impactShort = temp > 38 ? '🔥 Canicule — piscine essentielle' : temp > 30 ? '☀️ Très chaud — piscine très demandée' : temp >= 18 ? '✅ Météo idéale' : '🔥 Frais — cheminée appréciée';
-      strip.innerHTML = `<span style="font-size:18px">${icon2}</span><strong style="font-size:15px">${temp}°C</strong><span style="color:var(--text3)">${desc}</span><span style="color:rgba(44,31,20,.25)">·</span><span style="font-size:11px;color:${temp>38?'#A32D2D':temp>=18?'#3B6D11':'#185FA5'}">${impactShort}</span>`;
+      strip.innerHTML = '<span style="font-size:18px">' + icon + '</span>' +
+        '<strong style="font-size:16px">' + temp + '°C</strong>' +
+        '<span style="color:var(--muted)">' + desc + '</span>';
     }
 
-    // Group forecast by day — pick midday slot, compute real min/max per day
-    const dayMap = {};
-    fore.list.forEach(item => {
-      const d = new Date(item.dt * 1000);
-      // Use local Marrakech time (UTC+1)
-      const localHour = (d.getUTCHours() + 1) % 24;
-      const dateKey = new Date(item.dt * 1000 + 3600000).toISOString().slice(0,10);
-      if (!dayMap[dateKey]) {
-        dayMap[dateKey] = {
-          ref: item, min: item.main.temp_min, max: item.main.temp_max, localHour
-        };
-      } else {
-        // Keep ref closest to noon
-        if (Math.abs(localHour - 12) < Math.abs(dayMap[dateKey].localHour - 12)) {
-          dayMap[dateKey].ref = item;
-          dayMap[dateKey].localHour = localHour;
-        }
-        // Accumulate real min/max
-        if (item.main.temp_min < dayMap[dateKey].min) dayMap[dateKey].min = item.main.temp_min;
-        if (item.main.temp_max > dayMap[dateKey].max) dayMap[dateKey].max = item.main.temp_max;
-      }
-    });
+    // 5-day forecast cards
+    var dayNames = fr ? ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'] : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var forecastCards = '';
+    for (var i = 0; i < Math.min(daily.time.length, 5); i++) {
+      var d = new Date(daily.time[i] + 'T12:00:00');
+      var isToday = i === 0;
+      var label = isToday ? (fr ? "Aujourd'hui" : 'Today') : (i === 1 ? (fr ? 'Demain' : 'Tomorrow') : dayNames[d.getDay()] + ' ' + d.getDate());
+      var fmin = Math.round(daily.temperature_2m_min[i]);
+      var fmax = Math.round(daily.temperature_2m_max[i]);
+      var ftemp = Math.round((fmin + fmax) / 2);
+      var ficon = getWMOIcon(daily.weather_code[i]);
+      var fdesc = getWMODescription(daily.weather_code[i], fr);
+      var fwind = Math.round(daily.wind_speed_10m_max[i]);
+      var precipProb = daily.precipitation_probability_max[i] || 0;
 
-    const today = new Date(Date.now() + 3600000).toISOString().slice(0,10);
-    const days = Object.keys(dayMap).sort().slice(0,5);
+      forecastCards += '<div style="flex:1;min-width:90px;background:' + (isToday ? 'var(--green)' : 'var(--paper)') + ';border-radius:10px;padding:12px 8px;text-align:center;border:1px solid ' + (isToday ? 'transparent' : 'var(--border)') + '">' +
+        '<div style="font-size:11px;letter-spacing:1px;color:' + (isToday ? 'rgba(255,255,255,.6)' : 'var(--muted)') + ';margin-bottom:6px">' + label + '</div>' +
+        '<div style="font-size:24px;margin-bottom:4px">' + ficon + '</div>' +
+        '<div style="font-size:20px;font-weight:500;font-family:\'Fraunces\',serif;color:' + (isToday ? '#fff' : 'var(--ink)') + ';line-height:1">' + fmax + '°</div>' +
+        '<div style="font-size:11px;color:' + (isToday ? 'rgba(255,255,255,.5)' : 'var(--muted)') + ';margin-top:3px">' + fmin + '° — ' + fmax + '°</div>' +
+        '<div style="font-size:11px;color:' + (isToday ? 'rgba(255,255,255,.5)' : 'var(--muted)') + ';margin-top:2px">' + fdesc + '</div>' +
+        '<div style="font-size:11px;color:' + (isToday ? 'rgba(255,255,255,.4)' : 'var(--muted)') + ';margin-top:4px">💧' + precipProb + '% · 💨' + fwind + 'km/h</div>' +
+      '</div>';
+    }
 
-    const dayNames = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-    const monthNames = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-
-    const forecastCards = days.map((dateKey, i) => {
-      const entry = dayMap[dateKey];
-      const f = entry.ref;
-      const d = new Date(dateKey + 'T12:00:00');
-      const isToday = dateKey === today;
-      const isTomorrow = i === 1;
-      const label = isToday ? "Aujourd'hui" : isTomorrow ? 'Demain' : dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + monthNames[d.getMonth()];
-      const ftemp = Math.round(f.main.temp);
-      const fmin = Math.round(entry.min);
-      const fmax = Math.round(entry.max);
-      const fdesc = f.weather[0].description;
-      const ficon = getWeatherIcon(f.weather[0].main);
-      const fhum = f.main.humidity;
-      const fwind = Math.round(f.wind.speed * 3.6);
-      return `<div style="flex:1;min-width:100px;background:${isToday?'var(--green)':'var(--bg)'};border-radius:8px;padding:12px 8px;text-align:center;border:1px solid ${isToday?'transparent':'rgba(44,31,20,.08)'}">
-        <div style="font-size:10px;letter-spacing:1px;color:${isToday?'rgba(253,246,236,.6)':'var(--text3)'};margin-bottom:6px">${label}</div>
-        <div style="font-size:22px;margin-bottom:4px">${ficon}</div>
-        <div style="font-size:20px;font-weight:400;color:${isToday?'var(--cream)':'var(--text)'};line-height:1">${ftemp}°</div>
-        <div style="font-size:10px;color:${isToday?'rgba(253,246,236,.5)':'var(--text3)'};margin-top:3px">${fmin}° — ${fmax}°</div>
-        <div style="font-size:10px;color:${isToday?'rgba(253,246,236,.5)':'var(--text3)'};margin-top:2px">${fdesc}</div>
-        <div style="font-size:10px;color:${isToday?'rgba(253,246,236,.4)':'var(--text3)'};margin-top:4px">💧${fhum}% · 💨${fwind}km/h</div>
-      </div>`;
-    }).join('');
-
-    document.getElementById('weatherContent').innerHTML = `
-      <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
-        <div style="font-size:20px">${icon}</div>
-        <div style="flex:1">
-          <div style="font-size:22px;font-weight:400;color:var(--text);line-height:1">${temp}° <span style="font-size:13px;color:var(--text3)">${tempMin}°–${tempMax}°</span></div>
-          <div style="font-size:12px;color:var(--text);margin-top:2px">${desc.charAt(0).toUpperCase()+desc.slice(1)}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">Ressenti ${feels}° · 💧${humidity}% · 💨${wind}km/h · 🌅${sunrise} 🌇${sunset}</div>
-        </div>
-      </div>
-      <div style="padding:8px 10px;border-radius:6px;margin-bottom:12px;font-size:12px;color:${impactColor};background:${impactColor}18;border-left:3px solid ${impactColor}">${impact}</div>
-      <div style="font-size:10px;letter-spacing:3px;color:var(--text3);margin-bottom:8px">PRÉVISIONS 5 JOURS</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">${forecastCards}</div>
-      <div style="font-size:10px;color:var(--text3);margin-top:8px;text-align:right">OpenWeatherMap · Marrakech · Mis à jour ${new Date().toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}</div>`;
+    document.getElementById('weatherContent').innerHTML =
+      '<div style="display:flex;align-items:center;gap:16px;margin-bottom:14px">' +
+        '<div style="font-size:28px">' + icon + '</div>' +
+        '<div style="flex:1">' +
+          '<div style="font-size:26px;font-weight:400;font-family:\'Fraunces\',serif;color:var(--ink);line-height:1">' + temp + '° <span style="font-size:14px;color:var(--muted)">' + tempMin + '°–' + tempMax + '°</span></div>' +
+          '<div style="font-size:14px;color:var(--ink);margin-top:4px">' + desc.charAt(0).toUpperCase() + desc.slice(1) + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:3px">' + (fr?'Ressenti ':'Feels ') + feels + '° · 💧' + humidity + '% · 💨' + wind + 'km/h · 🌅' + sunrise + ' 🌇' + sunset + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px;color:' + impactColor + ';background:' + impactColor + '18;border-left:3px solid ' + impactColor + '">' + impact + '</div>' +
+      '<div style="font-size:10px;letter-spacing:3px;color:var(--muted);margin-bottom:10px">' + (fr?'PRÉVISIONS 5 JOURS':'5-DAY FORECAST') + '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + forecastCards + '</div>' +
+      '<div style="font-size:10px;color:var(--muted);margin-top:8px;text-align:right">Open-Meteo · Marrakech · ' + new Date().toLocaleTimeString(fr?'fr':'en',{hour:'2-digit',minute:'2-digit'}) + '</div>';
 
   } catch(e) {
-    document.getElementById('weatherContent').innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <div style="font-size:28px">🌤</div>
-        <div>
-          <div style="font-size:22px;color:var(--text)">24°C</div>
-          <div style="font-size:12px;color:var(--text3)">Données offline — Marrakech</div>
-        </div>
-      </div>
-      <div style="padding:8px 10px;border-radius:6px;font-size:12px;color:#3B6D11;background:#EAF3DE;border-left:3px solid #3B6D11">Météo normale pour la saison</div>`;
-    document.getElementById('factorWeather').textContent = '24°C · Ensoleillé';
+    console.warn('Weather load error:', e);
+    document.getElementById('weatherContent').innerHTML =
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">' +
+        '<div style="font-size:28px">🌤</div>' +
+        '<div>' +
+          '<div style="font-size:22px;font-family:\'Fraunces\',serif;color:var(--ink)">—°C</div>' +
+          '<div style="font-size:13px;color:var(--muted)">' + (fr?'Données indisponibles':'Data unavailable') + '</div>' +
+        '</div>' +
+      '</div>';
+    var fe = document.getElementById('factorWeather');
+    if (fe) fe.textContent = '—';
   }
 }
 
-function getWeatherIcon(main) {
-  const icons = {Clear:'☀',Clouds:'⛅',Rain:'🌧',Drizzle:'🌦',Thunderstorm:'⛈',Snow:'❄',Mist:'🌫',Fog:'🌫',Haze:'🌫'};
-  return icons[main] || '🌤';
+// WMO Weather Code → icon
+function getWMOIcon(code) {
+  if (code <= 1) return '☀';
+  if (code <= 3) return '⛅';
+  if (code <= 48) return '🌫';
+  if (code <= 57) return '🌦';
+  if (code <= 67) return '🌧';
+  if (code <= 77) return '❄';
+  if (code <= 82) return '🌧';
+  if (code <= 86) return '❄';
+  if (code >= 95) return '⛈';
+  return '🌤';
+}
+
+// WMO Weather Code → description
+function getWMODescription(code, fr) {
+  var descs = fr ? {
+    0:'Ciel dégagé', 1:'Principalement dégagé', 2:'Partiellement nuageux', 3:'Couvert',
+    45:'Brouillard', 48:'Brouillard givrant', 51:'Bruine légère', 53:'Bruine modérée',
+    55:'Bruine forte', 56:'Bruine verglaçante', 57:'Bruine verglaçante forte',
+    61:'Pluie légère', 63:'Pluie modérée', 65:'Pluie forte',
+    66:'Pluie verglaçante', 67:'Pluie verglaçante forte',
+    71:'Neige légère', 73:'Neige modérée', 75:'Neige forte',
+    77:'Grésil', 80:'Averses légères', 81:'Averses modérées', 82:'Averses violentes',
+    85:'Averses de neige', 86:'Averses de neige fortes',
+    95:'Orage', 96:'Orage et grêle', 99:'Orage violent'
+  } : {
+    0:'Clear sky', 1:'Mainly clear', 2:'Partly cloudy', 3:'Overcast',
+    45:'Foggy', 48:'Rime fog', 51:'Light drizzle', 53:'Moderate drizzle',
+    55:'Dense drizzle', 56:'Freezing drizzle', 57:'Dense freezing drizzle',
+    61:'Light rain', 63:'Moderate rain', 65:'Heavy rain',
+    66:'Freezing rain', 67:'Heavy freezing rain',
+    71:'Light snow', 73:'Moderate snow', 75:'Heavy snow',
+    77:'Snow grains', 80:'Light showers', 81:'Moderate showers', 82:'Violent showers',
+    85:'Snow showers', 86:'Heavy snow showers',
+    95:'Thunderstorm', 96:'Thunderstorm w/ hail', 99:'Severe thunderstorm'
+  };
+  return descs[code] || (fr ? 'Ciel variable' : 'Variable');
 }
 
 function renderFlights() {
