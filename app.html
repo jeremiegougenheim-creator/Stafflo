@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -588,8 +589,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .chat-header-left{display:flex;align-items:center;gap:8px}
 .chat-title{font-family:'Fraunces',serif;font-size:16px;color:#fff;font-weight:300}
 .chat-online{width:7px;height:7px;border-radius:50%;background:#52b788;flex-shrink:0}
-.chat-inbox-badge{background:var(--red);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:2px 6px;display:none;cursor:pointer}
-.chat-inbox-badge.show{display:inline-block}
+.chat-inbox-badge{background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:3px 9px;display:none;cursor:pointer;transition:all .2s}
+.chat-inbox-badge.show{display:inline-flex;align-items:center;gap:4px;animation:pulse 2s infinite}
+.chat-inbox-badge.show::before{content:'●';font-size:7px;opacity:.8}
 .chat-messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;scroll-behavior:smooth}
 .chat-bubble{max-width:88%;padding:10px 13px;border-radius:14px;font-size:13px;line-height:1.6;word-wrap:break-word}
 .chat-bubble.user{align-self:flex-end;background:var(--green);color:#fff;border-radius:14px 14px 3px 14px}
@@ -4281,28 +4283,605 @@ function editChatMsg(btn, clientId) {
 }
 
 // ════════════════════════════════════════════════════════
-// EMAIL INBOX
+// EMAIL INBOX — Gmail OAuth + auto-polling + full extraction
 // ════════════════════════════════════════════════════════
 
-async function loadInboxCount() {
+var _inboxFilter = 'all';
+var _inboxPollTimer = null;
+var _inboxLastCheck = null;
+var _gmailToken = null;
+var GMAIL_CLIENT_ID = ''; // Set in Settings
+
+// ── Gmail OAuth ──
+function connectGmail() {
+  var cfg = getCfg();
+  var clientId = cfg.gmailClientId || GMAIL_CLIENT_ID;
+  if (!clientId) {
+    // Show instructions
+    toast(lang==='fr' ? '⚙ Ajoutez votre Google Client ID dans Réglages' : '⚙ Add your Google Client ID in Settings');
+    showGmailSetup();
+    return;
+  }
+  var scope = encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly');
+  var redirect = encodeURIComponent(window.location.href.split('?')[0]);
+  var url = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=' + clientId +
+    '&redirect_uri=' + redirect +
+    '&response_type=token&scope=' + scope + '&prompt=consent';
+  // Store state for after redirect
+  sessionStorage.setItem('gmail_oauth_pending', '1');
+  window.location.href = url;
+}
+
+function checkGmailOAuthReturn() {
+  var hash = window.location.hash;
+  if (!hash.includes('access_token=')) return;
+  var params = {};
+  hash.slice(1).split('&').forEach(function(p) {
+    var kv = p.split('='); params[kv[0]] = decodeURIComponent(kv[1]||'');
+  });
+  if (params.access_token) {
+    _gmailToken = params.access_token;
+    localStorage.setItem('stafflo_gmail_token', _gmailToken);
+    var expiry = Date.now() + (parseInt(params.expires_in||'3600') * 1000);
+    localStorage.setItem('stafflo_gmail_expiry', expiry);
+    // Clean URL
+    history.replaceState(null, '', window.location.pathname);
+    toast('✅ Gmail connecté !');
+    updateGmailBtnLabel();
+    startInboxPolling();
+  }
+}
+
+function getGmailToken() {
+  if (_gmailToken) return _gmailToken;
+  var stored = localStorage.getItem('stafflo_gmail_token');
+  var expiry = parseInt(localStorage.getItem('stafflo_gmail_expiry')||'0');
+  if (stored && Date.now() < expiry - 60000) { _gmailToken = stored; return stored; }
+  return null;
+}
+
+function updateGmailBtnLabel() {
+  var btn = document.getElementById('gmailBtnLabel');
+  var banner = document.getElementById('gmailSetupBanner');
+  if (!btn) return;
+  var tok = getGmailToken();
+  btn.textContent = tok ? '📬 Gmail connecté ↻' : 'Connecter Gmail';
+  if (banner) banner.style.display = tok ? 'none' : '';
+}
+
+// ── Gmail fetch ──
+async function fetchGmailEmails() {
+  var token = getGmailToken();
+  if (!token) return [];
+  
+  // Search for booking-related emails from last 7 days
+  var q = encodeURIComponent('from:(automated@airbnb.com OR noreply@booking.com OR no-reply@vrbo.com OR homes@airbnbmail.com OR reservations@holidaylettings.co.uk) newer_than:7d');
+  var listUrl = 'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=' + q + '&maxResults=20';
+  
+  try {
+    var lr = await fetch(listUrl, { headers: { Authorization: 'Bearer ' + token } });
+    if (!lr.ok) { 
+      if (lr.status === 401) { _gmailToken = null; localStorage.removeItem('stafflo_gmail_token'); }
+      return [];
+    }
+    var ld = await lr.json();
+    var messages = (ld.messages || []).slice(0, 10);
+    if (!messages.length) return [];
+    
+    // Fetch each message (parallel, capped)
+    var fetched = await Promise.all(messages.map(async function(m) {
+      try {
+        var mr = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/' + m.id + '?format=full', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        if (!mr.ok) return null;
+        var md = await mr.json();
+        return parseGmailMessage(md);
+      } catch(e) { return null; }
+    }));
+    return fetched.filter(Boolean);
+  } catch(e) { return []; }
+}
+
+function parseGmailMessage(msg) {
+  var headers = {};
+  (msg.payload.headers||[]).forEach(function(h){ headers[h.name.toLowerCase()] = h.value; });
+  
+  var body = '';
+  function extractBody(part) {
+    if (part.mimeType === 'text/plain' && part.body && part.body.data) {
+      body += atob(part.body.data.replace(/-/g,'+').replace(/_/g,'/'));
+    } else if (part.parts) {
+      part.parts.forEach(extractBody);
+    }
+  }
+  extractBody(msg.payload);
+  
+  // Detect source
+  var from = headers.from || '';
+  var source = from.includes('airbnb') ? 'Airbnb' :
+               from.includes('booking.com') ? 'Booking.com' :
+               from.includes('vrbo') || from.includes('homeaway') ? 'VRBO' : 'Direct';
+  
+  return {
+    id: 'gmail_' + msg.id,
+    gmail_id: msg.id,
+    subject: headers.subject || '',
+    from_email: from,
+    body: body.slice(0, 4000),
+    received_at: new Date(parseInt(msg.internalDate)).toISOString(),
+    status: 'new',
+    source: source,
+    extracted: {}
+  };
+}
+
+// ── Supabase inbox operations ──
+async function saveEmailToSupabase(email) {
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  // Check if already exists
+  var r = await fetch(SB_URL + '/rest/v1/email_inbox?gmail_id=eq.' + (email.gmail_id||email.id), {
+    headers: { apikey: key, Authorization: 'Bearer ' + key }
+  });
+  var existing = await r.json();
+  if (existing && existing.length > 0) return existing[0]; // already saved
+  
+  var r2 = await fetch(SB_URL + '/rest/v1/email_inbox', {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', apikey: key, Authorization:'Bearer '+key, Prefer:'return=representation' },
+    body: JSON.stringify(email)
+  });
+  var saved = await r2.json();
+  return Array.isArray(saved) ? saved[0] : saved;
+}
+
+// ── Auto-extract email with AI ──
+async function autoExtractEmail(row) {
+  if (row.extracted && row.extracted.email_type) return row; // already done
+  var fr = lang === 'fr';
+  var owner = getCfg().owner || 'Jérémie';
+  
+  var prompt = 'Email for ' + owner + ':\nFrom: ' + row.from_email + '\nSubject: ' + row.subject + '\n\n' + (row.body||'').slice(0,2000) +
+    '\n\nReturn JSON only: {"email_type":"inquiry|confirmation|cancellation|message","name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","guests":0,"price":0,"phone":"","notes":"","source":"Airbnb|Booking|VRBO|Direct"}\nToday: ' + new Date().toISOString().slice(0,10);
+  
+  try {
+    var raw = await callBestAI('extract', '', prompt, 300);
+    var m = raw.replace(/```[a-z]*\n?/g,'').match(/\{[\s\S]*\}/);
+    if (m) {
+      var ex = JSON.parse(m[0]);
+      // Save extracted to Supabase
+      var cfg2 = getCfg();
+      var key2 = cfg2.sbKey || SB_ANON;
+      await fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + row.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json', apikey:key2, Authorization:'Bearer '+key2 },
+        body: JSON.stringify({ extracted: ex, status: row.status === 'new' ? 'new' : row.status })
+      });
+      row.extracted = ex;
+    }
+  } catch(e) {}
+  return row;
+}
+
+// ── Polling ──
+function startInboxPolling() {
+  if (_inboxPollTimer) clearInterval(_inboxPollTimer);
+  pollInboxNow();
+  _inboxPollTimer = setInterval(pollInboxNow, 2 * 60 * 1000); // every 2 min
+}
+
+async function pollInboxNow() {
+  var token = getGmailToken();
+  if (!token) return;
+  
+  try {
+    var gmailEmails = await fetchGmailEmails();
+    var newCount = 0;
+    
+    for (var i = 0; i < gmailEmails.length; i++) {
+      var em = gmailEmails[i];
+      var saved = await saveEmailToSupabase(em);
+      if (saved && saved.status === 'new') {
+        // Auto-extract in background
+        autoExtractEmail(saved).then(function(extracted) {
+          if (extracted.extracted && extracted.extracted.name) {
+            showNewEmailToast(extracted);
+          }
+        });
+        newCount++;
+      }
+    }
+    
+    if (newCount > 0) {
+      updateInboxBadge();
+      if (document.getElementById('inboxModal').style.display !== 'none') {
+        loadInboxEmails(); // Refresh if open
+      }
+    }
+    _inboxLastCheck = new Date();
+  } catch(e) { console.warn('Inbox poll error:', e); }
+}
+
+function showNewEmailToast(row) {
+  var ex = row.extracted || {};
+  var subject = row.subject || 'Nouvel email';
+  var name = ex.name || '';
+  var source = ex.source || row.source || '';
+  var msg = '📬 ' + source + (name ? ' — ' + name : '') + '\n' + subject.slice(0, 50);
+  
+  // Show persistent notification badge (not just toast)
+  var badge = document.getElementById('newEmailFloatingBadge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'newEmailFloatingBadge';
+    badge.className = 'inbox-badge-new';
+    badge.onclick = function() {
+      badge.remove();
+      showInbox();
+    };
+    document.body.appendChild(badge);
+  }
+  badge.innerHTML = '📬 <div><div style="font-weight:700">' + source + (name?' · '+name:'') + '</div><div style="font-size:11px;font-weight:400;opacity:.85">' + subject.slice(0,45) + (subject.length>45?'…':'') + '</div></div><span style="opacity:.6">→</span>';
+  
+  // Also update header badge
+  updateInboxBadge();
+}
+
+async function updateInboxBadge() {
   var cfg = getCfg();
   var key = cfg.sbKey || SB_ANON;
   try {
     var r = await fetch(SB_URL + '/rest/v1/email_inbox?status=eq.new&select=id', {
-      headers: { apikey: key, Authorization: 'Bearer ' + key, 'Prefer': 'count=exact' }
+      headers: { apikey:key, Authorization:'Bearer '+key, Prefer:'count=exact' }
     });
-    var count = parseInt(r.headers.get('content-range')?.split('/')[1] || '0');
+    var count = parseInt((r.headers.get('content-range')||'').split('/')[1] || '0');
+    
+    // Chat header badge
     var badge = document.getElementById('inboxBadge');
     if (badge) {
       if (count > 0) {
-        badge.textContent = count + (lang==='fr' ? ' email' : ' email') + (count > 1 ? 's' : '');
+        badge.textContent = count + ' email' + (count>1?'s':'');
         badge.classList.add('show');
+        badge.style.cssText = badge.style.cssText + ';animation:pulse 2s infinite';
       } else {
+        badge.textContent = '';
         badge.classList.remove('show');
       }
     }
+    
+    // Inbox modal count
+    var mc = document.getElementById('inboxNewCount');
+    if (mc) {
+      if (count > 0) { mc.textContent = count + ' new'; mc.style.display = ''; }
+      else mc.style.display = 'none';
+    }
   } catch(e) {}
 }
+
+// ── Inbox UI ──
+function setInboxFilter(f, btn) {
+  _inboxFilter = f;
+  document.querySelectorAll('.inbox-filter').forEach(function(b){ b.classList.remove('on'); });
+  if (btn) btn.classList.add('on');
+  loadInboxEmails();
+}
+
+async function refreshInbox() {
+  await pollInboxNow();
+  await loadInboxEmails();
+}
+
+function showInbox() {
+  var modal = document.getElementById('inboxModal');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  updateGmailBtnLabel();
+  loadInboxEmails();
+  // Remove floating badge
+  var fb = document.getElementById('newEmailFloatingBadge');
+  if (fb) fb.remove();
+}
+
+function closeInbox() {
+  document.getElementById('inboxModal').style.display = 'none';
+  document.getElementById('inboxEmailDetail').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function loadInboxEmails() {
+  var el = document.getElementById('inboxList');
+  if (!el) return;
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px"><div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>';
+  
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  var url = SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=30';
+  if (_inboxFilter === 'new') url += '&status=eq.new';
+  else if (_inboxFilter === 'processed') url += '&status=eq.processed';
+  else if (_inboxFilter === 'inquiry') url += '&extracted->email_type=eq.inquiry';
+  else if (_inboxFilter === 'confirmation') url += '&extracted->email_type=eq.confirmation';
+  
+  try {
+    var r = await fetch(url, { headers: { apikey:key, Authorization:'Bearer '+key } });
+    var rows = await r.json();
+    
+    if (!rows || rows.error) throw new Error(rows && rows.message || 'Error');
+    if (!rows.length) {
+      el.innerHTML = '<div style="padding:24px;text-align:center"><div style="font-size:32px;margin-bottom:8px">📭</div>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--ink);margin-bottom:4px">' + (lang==='fr'?'Aucun email':'No emails') + '</div>' +
+        '<div style="font-size:12px;color:var(--muted)">' + (lang==='fr'?'Connectez Gmail pour recevoir les réservations automatiquement':'Connect Gmail to receive bookings automatically') + '</div></div>';
+      return;
+    }
+    
+    window._inboxEmails = {};
+    rows.forEach(function(row){ window._inboxEmails[row.id] = row; });
+    
+    el.innerHTML = rows.map(function(row) {
+      var ex = row.extracted || {};
+      var d = new Date(row.received_at);
+      var now = new Date();
+      var diffH = Math.round((now - d) / 3600000);
+      var timeStr = diffH < 1 ? 'À l\'instant' : diffH < 24 ? diffH + 'h' : Math.round(diffH/24) + 'j';
+      
+      var srcClass = row.source === 'Airbnb' ? 'src-airbnb' :
+                     row.source === 'Booking.com' ? 'src-booking' :
+                     row.source === 'VRBO' ? 'src-vrbo' :
+                     ex.source === 'Direct' ? 'src-direct' : 'src-other';
+      var srcLabel = row.source || ex.source || 'Email';
+      
+      var typeLabel = ex.email_type ? {inquiry:'💬 Demande',confirmation:'✅ Réservation',cancellation:'❌ Annulation',message:'📨 Message',review:'⭐ Avis'}[ex.email_type] || ex.email_type : '';
+      
+      return '<div class="inbox-card ' + (row.status==='new'?'new':'') + '" data-id="' + row.id + '">' +
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:5px">' +
+          '<div class="ic-subject">' + escHtml(row.subject || 'Sans sujet') + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0">' + timeStr + '</div>' +
+        '</div>' +
+        '<div class="ic-meta">' +
+          '<span class="ic-source ' + srcClass + '">' + srcLabel + '</span>' +
+          (typeLabel ? '<span style="font-size:11px">' + typeLabel + '</span>' : '') +
+          (ex.name ? '<strong style="font-size:12px;color:var(--ink)">' + escHtml(ex.name) + '</strong>' : '') +
+          (ex.arrival ? '<span>📅 ' + ex.arrival + (ex.departure ? ' → ' + ex.departure.slice(5) : '') + '</span>' : '') +
+        '</div>' +
+        '<div style="display:flex;gap:6px;margin-top:8px">' +
+          '<button class="inbox-open-btn" data-id="' + row.id + '" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">' +
+            (row.status==='new'?'📖 Analyser & Traiter':'📋 Voir détails') +
+          '</button>' +
+          (row.status==='new' ? '<button class="inbox-dismiss-btn" data-id="' + row.id + '" style="background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif">✓ Lu</button>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+    
+    el.querySelectorAll('.inbox-open-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var row = window._inboxEmails[btn.getAttribute('data-id')];
+        if (row) openEmailDetail(row);
+      });
+    });
+    el.querySelectorAll('.inbox-dismiss-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        markEmailRead(btn.getAttribute('data-id'));
+      });
+    });
+    el.querySelectorAll('.inbox-card').forEach(function(card) {
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('button')) return;
+        var row = window._inboxEmails[card.getAttribute('data-id')];
+        if (row) openEmailDetail(row);
+      });
+    });
+  } catch(e) {
+    el.innerHTML = '<div style="padding:12px;color:var(--red);font-size:12px">⚠ ' + e.message + '</div>';
+  }
+}
+
+async function markEmailRead(id) {
+  var cfg = getCfg(); var key = cfg.sbKey||SB_ANON;
+  await fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + id, {
+    method:'PATCH',
+    headers:{'Content-Type':'application/json',apikey:key,Authorization:'Bearer '+key},
+    body: JSON.stringify({status:'processed'})
+  });
+  await loadInboxEmails();
+  updateInboxBadge();
+}
+
+async function openEmailDetail(row) {
+  var detail = document.getElementById('inboxEmailDetail');
+  var body = document.getElementById('inboxEmailDetailBody');
+  var subj = document.getElementById('detailSubjectLine');
+  var badge = document.getElementById('detailStatusBadge');
+  
+  detail.style.display = 'block';
+  if (subj) subj.textContent = row.subject || 'Email';
+  if (badge) {
+    badge.textContent = row.status === 'new' ? 'NEW' : 'TRAITÉ';
+    badge.style.cssText = 'font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;background:' + (row.status==='new'?'var(--red)':'var(--green)') + ';color:#fff';
+  }
+  
+  // Show skeleton while extracting
+  body.innerHTML = '<div style="padding:12px"><div class="brief-skeleton"><div class="skel-card"></div><div class="skel-card"></div></div></div>';
+  
+  // Mark as processing
+  if (row.status === 'new') markEmailRead(row.id);
+  
+  // Extract if needed
+  if (!row.extracted || !row.extracted.email_type) {
+    row = await autoExtractEmail(row);
+  }
+  
+  renderEmailDetail(row);
+}
+
+function renderEmailDetail(row) {
+  var body = document.getElementById('inboxEmailDetailBody');
+  if (!body) return;
+  var ex = row.extracted || {};
+  var fr = lang === 'fr';
+  
+  var h = '';
+  
+  // ── Extracted data card (editable) ──
+  h += '<div style="padding:14px 16px 0">';
+  h += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">' + (fr?'DONNÉES EXTRAITES — VÉRIFIEZ ET CONFIRMEZ':'EXTRACTED DATA — VERIFY AND CONFIRM') + '</div>';
+  h += '<div class="inbox-extract-card">';
+  
+  var fields = [
+    {key:'email_type', label:fr?'TYPE':'TYPE', val:ex.email_type||'—'},
+    {key:'name', label:fr?'NOM':'NAME', val:ex.name||'—', editable:true},
+    {key:'arrival', label:fr?'ARRIVÉE':'ARRIVAL', val:ex.arrival||'—', editable:true, type:'date'},
+    {key:'departure', label:fr?'DÉPART':'DEPARTURE', val:ex.departure||'—', editable:true, type:'date'},
+    {key:'guests', label:fr?'PERS.':'GUESTS', val:ex.guests||'—', editable:true},
+    {key:'price', label:'PRIX', val:ex.price ? ex.price+'€' : '—', editable:true},
+    {key:'phone', label:fr?'TÉL':'PHONE', val:ex.phone||'—', editable:true},
+    {key:'source', label:'SOURCE', val:ex.source||row.source||'—'},
+    {key:'notes', label:'NOTES', val:ex.notes||'—', editable:true},
+  ];
+  
+  fields.forEach(function(f) {
+    h += '<div class="iec-field">';
+    h += '<span class="iec-label">' + f.label + '</span>';
+    h += '<span class="iec-val" id="ef_' + row.id + '_' + f.key + '">' + escHtml(String(f.val)) + '</span>';
+    if (f.editable) {
+      h += '<button class="iec-edit" onclick="editEmailField(\'' + row.id + '\',\'' + f.key + '\',\'' + (f.type||'text') + '\')" title="Modifier">✏️</button>';
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  
+  // ── Alerts ──
+  if (ex.alerts && ex.alerts.length) {
+    h += '<div style="background:rgba(231,76,60,.05);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;color:var(--red)">⚠️ ' + ex.alerts.join(' · ') + '</div>';
+  }
+  
+  // ── Action buttons ──
+  h += '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">';
+  
+  // Save to CRM
+  var existing = ex.name ? clients.find(function(c){ return (c.name||'').toLowerCase().includes((ex.name||'').toLowerCase().split(' ')[0]); }) : null;
+  h += '<button onclick="saveEmailToClient(\'' + row.id + '\')" style="flex:2;min-width:120px;background:var(--green);color:#fff;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">' +
+    (existing ? (fr?'🔄 Mettre à jour ':'🔄 Update ') + existing.name.split(' ')[0] : (fr?'💾 Enregistrer client':'💾 Save guest')) + '</button>';
+  h += '<button onclick="analyzeEmailInChat(\'' + row.id + '\')" style="flex:1;min-width:100px;background:var(--gold);color:var(--green3);border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">' +
+    (fr?'💬 Chat IA':'💬 Chat AI') + '</button>';
+  h += '</div>';
+  
+  // ── Raw email ──
+  h += '<div style="margin-top:14px">';
+  h += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">';
+  h += '<span>' + (fr?'EMAIL COMPLET':'FULL EMAIL') + '</span>';
+  h += '<button onclick="this.closest(\'div\').nextElementSibling.style.display=this.closest(\'div\').nextElementSibling.style.display===\'none\'?\'block\':\'none\'" style="background:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;color:var(--muted);font-family:\'DM Sans\',sans-serif">' + (fr?'Voir / Masquer':'Show / Hide') + '</button>';
+  h += '</div>';
+  h += '<div style="display:none;background:var(--paper);border-radius:8px;padding:12px;font-size:12px;color:var(--ink);white-space:pre-wrap;line-height:1.6;max-height:300px;overflow-y:auto;border:1px solid var(--border)">' + escHtml((row.body||'').slice(0,3000)) + (row.body && row.body.length > 3000 ? '\n[…tronqué]' : '') + '</div>';
+  h += '</div>';
+  
+  h += '</div>'; // padding container
+  body.innerHTML = h;
+}
+
+function editEmailField(rowId, key, type) {
+  var el = document.getElementById('ef_' + rowId + '_' + key);
+  if (!el) return;
+  var current = el.textContent === '—' ? '' : el.textContent;
+  var input = document.createElement(type === 'textarea' ? 'textarea' : 'input');
+  input.type = type || 'text';
+  input.value = current;
+  input.style.cssText = 'width:100%;padding:4px 6px;border:1.5px solid var(--gold);border-radius:4px;font-family:\'DM Sans\',sans-serif;font-size:13px;color:var(--ink);background:#fff;outline:none';
+  el.innerHTML = '';
+  el.appendChild(input);
+  input.focus();
+  input.onblur = function() {
+    var newVal = input.value.trim() || '—';
+    el.textContent = newVal;
+    // Update in-memory extracted
+    var row = window._inboxEmails && window._inboxEmails[rowId];
+    if (row) {
+      if (!row.extracted) row.extracted = {};
+      row.extracted[key] = newVal === '—' ? '' : newVal;
+    }
+  };
+}
+
+async function saveEmailToClient(rowId) {
+  var row = window._inboxEmails && window._inboxEmails[rowId];
+  if (!row) return;
+  var ex = row.extracted || {};
+  if (!ex.name) { toast(lang==='fr'?'Pas de nom extrait':'No name extracted'); return; }
+  
+  var existing = clients.find(function(c){ return (c.name||'').toLowerCase().includes((ex.name||'').toLowerCase().split(' ')[0]); });
+  if (existing) {
+    var updated = Object.assign({}, existing);
+    if (ex.arrival && !existing.arrival) updated.arrival = ex.arrival;
+    if (ex.departure && !existing.departure) updated.departure = ex.departure;
+    if (ex.guests && !existing.guests) updated.guests = ex.guests;
+    if (ex.price && !existing.price) updated.price = ex.price;
+    if (ex.phone && !existing.phone) updated.phone = ex.phone;
+    if (ex.notes) updated.notes = ((existing.notes||'') + (existing.notes?' | ':'') + ex.notes).slice(0,300);
+    await saveClient(updated);
+    toast('✅ ' + existing.name.split(' ')[0] + (lang==='fr'?' mis à jour':' updated'));
+  } else {
+    var newClient = {
+      id: 'cl_' + Date.now(),
+      name: ex.name,
+      nat: ex.nat || '',
+      arrival: ex.arrival || '',
+      departure: ex.departure || '',
+      guests: parseInt(ex.guests)||0,
+      price: parseFloat(ex.price)||0,
+      phone: ex.phone || '',
+      source: ex.source || row.source || 'Email',
+      notes: ex.notes || '',
+      bookingStatus: ex.email_type || 'inquiry',
+    };
+    clients.unshift(newClient);
+    await saveClient(newClient);
+    toast('💾 ' + newClient.name + (lang==='fr'?' enregistré':' saved'));
+  }
+  closeEmailDetail();
+  closeInbox();
+  renderAll();
+}
+
+function analyzeEmailInChat(rowId) {
+  var row = window._inboxEmails && window._inboxEmails[rowId];
+  if (!row) return;
+  closeInbox();
+  // Inject email body into chat for full analysis
+  toggleChatPanel();
+  setTimeout(function() {
+    var inp = document.getElementById('chatInput');
+    if (inp) {
+      inp.value = (row.subject ? row.subject + '\n\n' : '') + (row.body||'').slice(0,2000);
+      chatAutoResize(inp);
+      var sb = document.getElementById('chatSendBtn'); if (sb) sb.disabled = false;
+    }
+  }, 300);
+}
+
+function closeEmailDetail() {
+  var d = document.getElementById('inboxEmailDetail');
+  if (d) d.style.display = 'none';
+}
+
+function showGmailSetup() {
+  var b = document.getElementById('gmailSetupBanner');
+  if (b) b.style.display = '';
+  showInbox();
+}
+
+function showForwardingInstructions() {
+  var fr = lang === 'fr';
+  var msg = fr
+    ? 'Pour les emails non-Gmail :\n\n1. Créez un Gmail dédié (ex: villa@gmail.com)\n2. Dans votre boîte principale → Paramètres → Transfert → Ajoutez villa@gmail.com\n3. Activez le transfert pour les emails Airbnb/Booking\n4. Connectez ce Gmail dans Stafflo'
+    : 'For non-Gmail emails:\n\n1. Create a dedicated Gmail (e.g. villa@gmail.com)\n2. In your main inbox → Settings → Forwarding → Add villa@gmail.com\n3. Enable forwarding for Airbnb/Booking emails\n4. Connect that Gmail in Stafflo';
+  alert(msg);
+}
+
+async function loadInboxCount() { return updateInboxBadge(); }
+
+function openInboxEmail(row) { return openEmailDetail(row); }
+
 
 function showInbox() {
   document.getElementById('inboxModal').style.display = 'flex';
@@ -6396,6 +6975,12 @@ document.addEventListener('DOMContentLoaded', function() {
   setTimeout(function() { loadMorningBrief(); }, 1200);
   // Initialize voice input
   setTimeout(function() { initVoiceInput(); }, 500);
+  // Gmail OAuth return check + inbox polling
+  setTimeout(function() {
+    checkGmailOAuthReturn();
+    updateInboxBadge();
+    if (getGmailToken()) startInboxPolling();
+  }, 600);
   // Old onboarding modal disabled — demo seed data is the new onboarding flow
   // setTimeout(function() { checkOnboarding(); }, 1500);
 
@@ -9256,26 +9841,86 @@ function toggleRdy(el) {
 </script>
 
 <!-- ══ EMAIL INBOX MODAL ════════════════════════════════════ -->
-<div id="inboxModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9996;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeInbox()">
-  <div style="background:var(--card);border-radius:20px;width:100%;max-width:640px;max-height:85vh;overflow-y:auto;padding-bottom:20px;box-shadow:0 24px 64px rgba(0,0,0,.4)">
-    <div style="background:var(--green3);padding:14px 20px;border-radius:20px 20px 0 0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1">
-      <div>
-        <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">INBOX</div>
-        <div style="font-family:'Fraunces',serif;font-size:17px;color:#fff;font-weight:300">Emails Airbnb reçus</div>
+<div id="inboxModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9996;align-items:center;justify-content:center;padding:12px" onclick="if(event.target===this)closeInbox()">
+  <div style="background:var(--card);border-radius:20px;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.4);overflow:hidden">
+
+    <!-- Header -->
+    <div style="background:var(--green3);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div>
+          <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4)">INBOX</div>
+          <div style="font-family:'Fraunces',serif;font-size:17px;color:#fff;font-weight:300" data-fr="Emails entrants" data-en="Incoming Emails">Emails entrants</div>
+        </div>
+        <span id="inboxNewCount" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:2px 8px"></span>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <button onclick="closeInbox()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
+        <button onclick="connectGmail()" id="gmailConnectBtn" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:5px">
+          <span>📬</span><span id="gmailBtnLabel">Connecter Gmail</span>
+        </button>
+        <button onclick="refreshInbox()" style="background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.6);width:32px;height:32px;border-radius:50%;font-size:14px;cursor:pointer">↻</button>
+        <button onclick="closeInbox()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);width:32px;height:32px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
       </div>
     </div>
 
+    <!-- Gmail setup banner (shown when not connected) -->
+    <div id="gmailSetupBanner" style="display:none;background:#FAEEDA;border-bottom:1px solid rgba(186,117,23,.25);padding:12px 18px;font-size:13px;color:#5A3800">
+      <strong>📬 Connectez votre boîte email</strong> pour recevoir automatiquement les réservations Airbnb, Booking.com, VRBO et emails directs.<br>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button onclick="connectGmail()" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📬 Gmail OAuth</button>
+        <button onclick="showForwardingInstructions()" style="background:none;border:1px solid rgba(186,117,23,.4);color:#5A3800;border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✉️ Autre email → transfert</button>
+      </div>
+    </div>
 
+    <!-- Filters -->
+    <div style="display:flex;gap:6px;padding:10px 16px 0;flex-shrink:0;overflow-x:auto;scrollbar-width:none">
+      <button class="inbox-filter on" data-f="all" onclick="setInboxFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
+      <button class="inbox-filter" data-f="new" onclick="setInboxFilter('new',this)" data-fr="🔴 Nouveaux" data-en="🔴 New">🔴 Nouveaux</button>
+      <button class="inbox-filter" data-f="inquiry" onclick="setInboxFilter('inquiry',this)" data-fr="💬 Demandes" data-en="💬 Inquiries">💬 Demandes</button>
+      <button class="inbox-filter" data-f="confirmation" onclick="setInboxFilter('confirmation',this)" data-fr="✅ Confirmés" data-en="✅ Confirmed">✅ Confirmés</button>
+      <button class="inbox-filter" data-f="processed" onclick="setInboxFilter('processed',this)" data-fr="✔ Traités" data-en="✔ Processed">✔ Traités</button>
+    </div>
 
     <!-- Email list -->
-    <div style="padding:0 16px">
-      <div id="inboxList" style="font-size:13px;color:var(--muted)">Chargement...</div>
+    <div id="inboxList" style="flex:1;overflow-y:auto;padding:10px 16px"></div>
+
+    <!-- Email detail pane (slides up) -->
+    <div id="inboxEmailDetail" style="display:none;position:absolute;inset:0;background:var(--card);border-radius:20px;overflow-y:auto;z-index:2">
+      <div style="background:var(--green3);padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:1">
+        <button onclick="closeEmailDetail()" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer">←</button>
+        <div style="flex:1;font-size:13px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="detailSubjectLine">—</div>
+        <span id="detailStatusBadge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px"></span>
+      </div>
+      <div id="inboxEmailDetailBody" style="padding:16px"></div>
     </div>
   </div>
 </div>
+
+<!-- ══ EMAIL DETAIL FULL VIEW ══ -->
+<style>
+.inbox-filter{padding:6px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--card);font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;color:var(--muted);white-space:nowrap;flex-shrink:0;transition:all .15s}
+.inbox-filter.on{background:var(--green);border-color:var(--green);color:#fff}
+.inbox-card{background:var(--card);border-radius:12px;border:1.5px solid var(--border);padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:all .15s;position:relative}
+.inbox-card:hover{border-color:var(--gold);box-shadow:var(--shadow)}
+.inbox-card.new{border-left:3px solid var(--red);background:rgba(192,57,43,.03)}
+.inbox-card.new::before{content:'';position:absolute;top:10px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.5s infinite}
+.ic-subject{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:4px;line-height:1.3}
+.ic-meta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ic-source{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px}
+.src-airbnb{background:#FFE5E0;color:#C0392B}
+.src-booking{background:#E5F0FF;color:#154B9A}
+.src-vrbo{background:#E5F6FF;color:#0072B1}
+.src-direct{background:#EAF3DE;color:#3B6D11}
+.src-other{background:var(--paper);color:var(--muted)}
+.inbox-extract-card{background:var(--paper);border-radius:10px;padding:12px 14px;margin-bottom:10px;border:1px solid var(--border)}
+.iec-field{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(44,31,20,.06)}
+.iec-field:last-child{border-bottom:none}
+.iec-label{font-size:10px;letter-spacing:1.5px;color:var(--muted);width:90px;flex-shrink:0}
+.iec-val{flex:1;font-size:13px;color:var(--ink);font-weight:500}
+.iec-edit{background:none;border:none;color:var(--gold);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;font-family:'DM Sans',sans-serif}
+.iec-edit:hover{background:var(--gold-light)}
+.inbox-badge-new{position:fixed;top:60px;right:16px;background:var(--red);color:#fff;border-radius:12px;padding:8px 14px;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;box-shadow:0 4px 20px rgba(192,57,43,.4);z-index:1000;cursor:pointer;display:flex;align-items:center;gap:8px;animation:slideDown .3s ease}
+@keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
+</style>
 
 </body>
 </html>
