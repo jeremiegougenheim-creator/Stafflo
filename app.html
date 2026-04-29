@@ -782,6 +782,19 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 <!-- ═══ CLIENTS ════════════════════════════════════════════ -->
 <div class="tab" id="tab-clients">
 
+  <!-- TIMELINE CALENDRIER — vue séjours style Airbnb -->
+  <div id="staysTimeline" style="background:var(--green3);border-radius:12px;padding:12px 14px;margin-bottom:12px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.4);font-weight:700">CALENDRIER 3 MOIS</div>
+      <div style="display:flex;gap:4px" id="timelineMonthNav">
+        <button onclick="timelineShift(-1)" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:12px">‹</button>
+        <span id="timelineMonthLabel" style="font-size:11px;color:rgba(255,255,255,.6);align-self:center;min-width:60px;text-align:center"></span>
+        <button onclick="timelineShift(1)" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:12px">›</button>
+      </div>
+    </div>
+    <div id="timelineGrid" style="overflow-x:auto;-webkit-overflow-scrolling:touch"></div>
+  </div>
+
   <div class="crm-header">
     <div class="crm-stats">
       <div class="crm-stat"><label data-fr="CLIENTS" data-en="GUESTS">CLIENTS</label><span id="crmCount">0</span></div>
@@ -3123,11 +3136,30 @@ async function handleChatQuestion(text) {
     'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
   ].join('\n');
   
+  // ── CRM snapshot riche — toutes les données utiles à l'IA ──
+  var today2 = new Date();
+  var crmSnapshot = clients.slice(0,12).map(function(cl) {
+    var n = (cl.arrival && cl.departure) ? Math.round((new Date(cl.departure)-new Date(cl.arrival))/864e5) : '';
+    var net = cl.price ? Math.round(cl.price*(1-(cl.commission||3.6)/100)) : '';
+    var status = getStatus(cl);
+    return [
+      cl.name + (cl.nat?' '+cl.nat:''),
+      'arrivée:' + (cl.arrival||'?'),
+      'départ:' + (cl.departure||'?'),
+      n ? n+'nuits' : '',
+      cl.guests ? cl.guests+'pers' : '',
+      net ? net+'€net' : '',
+      cl.source||'',
+      cl.phone ? 'tel:'+cl.phone : '',
+      status,
+      cl.notes ? 'notes:'+cl.notes.slice(0,80) : ''
+    ].filter(Boolean).join(' | ');
+  }).join('\n');
+
   var userCtx = [
     'Aujourd\'hui: ' + today,
-    'Clients (' + clients.length + '): ' + clients.slice(0,8).map(function(cl) {
-      return cl.name + (cl.arrival?' →'+cl.arrival:'');
-    }).join(', '),
+    'Clients CRM (' + clients.length + '):',
+    crmSnapshot || '(aucun client)',
     '',
     historyBlock,
     '',
@@ -5438,6 +5470,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('nb-today').addEventListener('click', function(){ goTab('today'); });
   document.getElementById('nb-clients').addEventListener('click', function(){ goTab('clients'); });
   document.getElementById('nb-home').addEventListener('click', function(){ goTab('home'); });
+  initFAB();
   var _gear = document.querySelector('.hdr-btn[title="Settings"]');
   if (_gear) _gear.addEventListener('click', openSettings);
   // Add user badge
@@ -5860,30 +5893,30 @@ async function generateAlerts(weatherTemp) {
 
   // Same-day turnover (checkout + checkin same day) — critical
   if (checkoutToday.length && checkinToday.length) {
-    alerts.push({type:'urgent',
+    alerts.push({type:'urgent', tab:'clients',
       title:'⚡ ' + (fr?'Rotation même jour':'Same-day turnover') + ' — ' + checkoutToday.map(c=>c.name).join(', ') + ' → ' + checkinToday.map(c=>c.name).join(', '),
       sub: fr?'Départ ET arrivée aujourd\'hui — coordonnez le ménage, vous avez peu de temps.':'Checkout AND checkin today — coordinate cleaning, very tight window.'});
   } else {
-    if (checkoutToday.length) alerts.push({type:'urgent',
+    if (checkoutToday.length) alerts.push({type:'urgent', clientId: checkoutToday[0].id,
       title:'🧳 ' + (fr?'Départ aujourd\'hui':'Checkout today') + ' — ' + checkoutToday.map(c=>c.name).join(', '),
       sub: fr?'Envoyez le message de départ, préparez le ménage, vérifiez l\'inventaire.':'Send checkout message, prepare cleaning, check inventory.'});
-    if (checkinToday.length) alerts.push({type:'urgent',
+    if (checkinToday.length) alerts.push({type:'urgent', clientId: checkinToday[0].id,
       title:'🏡 ' + (fr?'Arrivée aujourd\'hui':'Arrival today') + ' — ' + checkinToday.map(c=>c.name).join(', ') + (checkinToday[0]?.guests ? ' · ' + checkinToday[0].guests + (fr?' pers.':' guests') : ''),
       sub: fr?'Vérifiez: chambres, piscine, fleurs, courses, code porte, WiFi.':'Check: rooms, pool, flowers, groceries, door code, WiFi.'});
   }
 
-  if (checkin1d.length) alerts.push({type:'warn',
+  if (checkin1d.length) alerts.push({type:'warn', clientId: checkin1d[0].id,
     title:'📅 ' + (fr?'Arrivée demain':'Arrival tomorrow') + ' — ' + checkin1d.map(c=>c.name).join(', '),
     sub: fr?'Confirmez transfert et repas. Préparez la villa ce soir.':'Confirm transfer and meals. Prepare villa tonight.'});
 
-  if (checkout1d.length && !checkin1d.length) alerts.push({type:'info',
+  if (checkout1d.length && !checkin1d.length) alerts.push({type:'info', clientId: checkout1d[0].id,
     title:'📦 ' + (fr?'Départ demain':'Checkout tomorrow') + ' — ' + checkout1d.map(c=>c.name).join(', '),
     sub: fr?'Envoyez le message de départ ce soir. Demandez un avis.':'Send checkout message tonight. Request a review.'});
 
   // Upcoming gaps — no booking in next 7 days
   const next7 = clients.filter(c => c.arrival && c.arrival > today && daysFrom(c.arrival) <= 7);
   if (!inHouse && !checkinToday.length && !checkin1d.length && !checkin2d.length && next7.length === 0) {
-    alerts.push({type:'info',
+    alerts.push({type:'info', tab:'home',
       title:'📭 ' + (fr?'Aucune réservation dans les 7 prochains jours':'No bookings in next 7 days'),
       sub: fr?'Activez la promotion last-minute (-15%) pour remplir le calendrier.':'Activate last-minute discount (-15%) to fill the calendar.'});
   }
@@ -5896,17 +5929,17 @@ async function generateAlerts(weatherTemp) {
     const timing = dTo <= 0 ? (fr?'En cours':'Current') : (fr?'Dans ':'In ') + dTo + (fr?'j':'d');
     // Birthday / celebration
     if (n2.includes('birthday') || n2.includes('anniversaire') || n2.includes('fête') || n2.includes('fete')) {
-      alerts.push({type:'warn', title:'🎂 ' + cl.name + ' — ' + (fr?'Célébration · ':'Celebration · ') + timing,
+      alerts.push({type:'warn', clientId: cl.id, title:'🎂 ' + cl.name + ' — ' + (fr?'Célébration · ':'Celebration · ') + timing,
         sub: cl.notes.slice(0,100) + (fr?' · Décorations, gâteau, ambiance spéciale requise':' · Decorations, cake, special setup required')});
     }
     // Children / kids
     if (n2.includes('kids') || n2.includes('children') || n2.includes('enfants')) {
-      alerts.push({type:'info', title:'👶 ' + cl.name + ' — ' + (fr?'Enfants · ':'Children · ') + timing,
+      alerts.push({type:'info', clientId: cl.id, title:'👶 ' + cl.name + ' — ' + (fr?'Enfants · ':'Children · ') + timing,
         sub: cl.notes.slice(0,100) + (fr?' · Adaptez la villa (sécurité piscine, lits enfants)':' · Adapt villa (pool safety, kids beds)')});
     }
     // Special meals
     if (n2.includes('vegan') || n2.includes('vegetar') || n2.includes('halal') || n2.includes('allerg') || n2.includes('couscous') || n2.includes('moroccan')) {
-      alerts.push({type:'info', title:'🍽 ' + cl.name + ' — ' + (fr?'Préférences repas · ':'Meal preferences · ') + timing,
+      alerts.push({type:'info', clientId: cl.id, title:'🍽 ' + cl.name + ' — ' + (fr?'Préférences repas · ':'Meal preferences · ') + timing,
         sub: cl.notes.slice(0,100) + (fr?' · Briefez Faiza':' · Brief Faiza')});
     }
     // Transfer / cars
@@ -6124,14 +6157,18 @@ async function generateAlerts(weatherTemp) {
     sub: fr?'Aucune action urgente. Bonne journée !':'No urgent actions. Have a great day!'});
 
   // ── RENDER ──
-  const renderAlert = (a) => `
-    <div class="alert-hm ${a.type}">
-      <span style="flex-shrink:0;font-size:14px">${a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡'}</span>
-      <div>
-        <div style="font-weight:600;font-size:12px;margin-bottom:2px">${a.title}</div>
-        <div style="font-size:11px;opacity:.85;line-height:1.4">${a.sub}</div>
-      </div>
-    </div>`;
+  const renderAlert = (a) => {
+    const clickHandler = a.clientId 
+      ? 'onclick="openDetail(\'' + a.clientId + '\')" style="cursor:pointer"'
+      : a.tab ? 'onclick="goTab(\'' + a.tab + '\')" style="cursor:pointer"'
+      : '';
+    const arrow = (a.clientId || a.tab) ? '<span style="margin-left:auto;font-size:10px;opacity:.5">→</span>' : '';
+    return '<div class="alert-hm ' + a.type + '" ' + clickHandler + '>' +
+      '<span style="flex-shrink:0;font-size:14px">' + (a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡') + '</span>' +
+      '<div style="flex:1"><div style="font-weight:600;font-size:12px;margin-bottom:2px">' + a.title + '</div>' +
+      '<div style="font-size:11px;opacity:.85;line-height:1.4">' + a.sub + '</div></div>' +
+      arrow + '</div>';
+  };
 
   const SHOW_FIRST = 4;
   const visible = alerts.slice(0, SHOW_FIRST);
@@ -7085,7 +7122,165 @@ async function extractFormAI() {
   spinner.style.display = 'none'; label.style.display = 'inline'; btn.disabled = false;
 }
 
-// ── PWA SERVICE WORKER ──
+// ════════════════════════════════════════════════════════
+// FAB — Floating AI Chat Button (tous les onglets)
+// ════════════════════════════════════════════════════════
+function initFAB() {
+  if (document.getElementById('chatFAB')) return;
+  var fab = document.createElement('button');
+  fab.id = 'chatFAB';
+  fab.innerHTML = '💬';
+  fab.title = 'Assistant IA';
+  fab.style.cssText = [
+    'position:fixed',
+    'bottom:24px',
+    'right:20px',
+    'width:52px',
+    'height:52px',
+    'border-radius:50%',
+    'background:var(--green)',
+    'color:#fff',
+    'border:none',
+    'font-size:22px',
+    'cursor:pointer',
+    'box-shadow:0 4px 20px rgba(27,67,50,.45)',
+    'z-index:400',
+    'display:none',
+    'align-items:center',
+    'justify-content:center',
+    'transition:transform .15s,background .15s',
+  ].join(';');
+  fab.addEventListener('click', function() {
+    goTab('today');
+    setTimeout(function() {
+      var inp = document.getElementById('chatInput');
+      if (inp) inp.focus();
+    }, 200);
+  });
+  fab.addEventListener('mouseenter', function(){ fab.style.transform='scale(1.1)'; fab.style.background='var(--green2)'; });
+  fab.addEventListener('mouseleave', function(){ fab.style.transform=''; fab.style.background='var(--green)'; });
+  document.body.appendChild(fab);
+}
+
+function updateFABVisibility(tab) {
+  var fab = document.getElementById('chatFAB');
+  if (!fab) return;
+  // Show on Guests and Villa tabs (Today tab already has the chat panel)
+  fab.style.display = (tab === 'clients' || tab === 'home') ? 'flex' : 'none';
+}
+
+// Patch goTab to update FAB visibility
+var _origGoTab = goTab;
+goTab = function(t) {
+  _origGoTab(t);
+  updateFABVisibility(t);
+};
+
+// ════════════════════════════════════════════════════════
+// TIMELINE CALENDRIER — vue séjours style Airbnb
+// ════════════════════════════════════════════════════════
+var _timelineOffset = 0; // months offset from today
+
+function renderTimeline() {
+  var grid = document.getElementById('timelineGrid');
+  var label = document.getElementById('timelineMonthLabel');
+  if (!grid) return;
+
+  var base = new Date();
+  base.setDate(1);
+  base.setMonth(base.getMonth() + _timelineOffset);
+  
+  var year = base.getFullYear();
+  var month = base.getMonth();
+  var daysInMonth = new Date(year, month+1, 0).getDate();
+  var monthNames = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  
+  if (label) label.textContent = monthNames[month] + ' ' + year;
+  
+  // Days header
+  var days = [];
+  for (var d = 1; d <= daysInMonth; d++) days.push(d);
+  
+  var today = new Date().toISOString().slice(0,10);
+  var monthStr = year + '-' + String(month+1).padStart(2,'0');
+  
+  // Filter clients with stays in this month
+  var relevant = clients.filter(function(c) {
+    if (!c.arrival || !c.departure) return false;
+    var arr = c.arrival.slice(0,7);
+    var dep = c.departure.slice(0,7);
+    return arr <= monthStr && dep >= monthStr;
+  });
+  
+  // Build grid
+  var cellW = 28; // px per day
+  var totalW = daysInMonth * cellW;
+  
+  var html = '<div style="min-width:' + totalW + 'px">';
+  
+  // Day headers
+  html += '<div style="display:flex;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:4px;margin-bottom:6px">';
+  for (var i = 0; i < daysInMonth; i++) {
+    var dayDate = new Date(year, month, i+1);
+    var isToday = (year+'-'+String(month+1).padStart(2,'0')+'-'+String(i+1).padStart(2,'0')) === today;
+    var isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
+    html += '<div style="width:'+cellW+'px;text-align:center;font-size:9px;font-weight:'+(isToday?'700':'400')+';color:'+(isToday?'var(--gold)':isWeekend?'rgba(255,255,255,.5)':'rgba(255,255,255,.3)')+';">'+(i+1)+'</div>';
+  }
+  html += '</div>';
+  
+  if (!relevant.length) {
+    html += '<div style="font-size:11px;color:rgba(255,255,255,.3);padding:10px 4px;font-style:italic">' + (lang==='fr'?'Aucune réservation ce mois':'No bookings this month') + '</div>';
+  }
+  
+  // Guest rows
+  relevant.forEach(function(cl) {
+    var arrDate = new Date(cl.arrival + 'T12:00:00');
+    var depDate = new Date(cl.departure + 'T12:00:00');
+    var monthStart = new Date(year, month, 1);
+    var monthEnd = new Date(year, month, daysInMonth);
+    
+    // Clamp to month
+    var startDay = Math.max(1, arrDate >= monthStart ? arrDate.getDate() : 1);
+    var endDay = Math.min(daysInMonth, depDate <= monthEnd ? depDate.getDate() : daysInMonth);
+    var barLeft = (startDay-1) * cellW;
+    var barWidth = (endDay - startDay + 1) * cellW - 3;
+    var status = getStatus(cl);
+    var barColor = status==='current'?'var(--gold)':status==='upcoming'?'#52b788':'rgba(255,255,255,.3)';
+    
+    html += '<div style="position:relative;height:28px;margin-bottom:4px;cursor:pointer" onclick="openDetail(\''+cl.id+'\')" title="'+cl.name+'">';
+    // Background cells (for weekends)
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dDate = new Date(year, month, d);
+      if (dDate.getDay()===0||dDate.getDay()===6) {
+        html += '<div style="position:absolute;left:'+((d-1)*cellW)+'px;top:0;width:'+cellW+'px;height:100%;background:rgba(255,255,255,.03)"></div>';
+      }
+    }
+    // Stay bar
+    html += '<div style="position:absolute;left:'+barLeft+'px;top:4px;width:'+barWidth+'px;height:20px;background:'+barColor+';border-radius:4px;display:flex;align-items:center;padding:0 6px;overflow:hidden">';
+    html += '<span style="font-size:10px;font-weight:600;color:'+(status==='current'?'var(--green3)':'#fff')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+cl.name.split(' ')[0]+(cl.guests?' ·'+cl.guests:'')+'</span>';
+    html += '</div>';
+    html += '</div>';
+  });
+  
+  // Empty month dots (days with no booking)
+  if (!relevant.length) {} // already handled above
+  
+  html += '</div>';
+  grid.innerHTML = html;
+}
+
+function timelineShift(delta) {
+  _timelineOffset += delta;
+  renderTimeline();
+}
+
+// Hook renderClients to also render timeline
+var _origRenderClients = renderClients;
+renderClients = function() {
+  _origRenderClients();
+  renderTimeline();
+};
+
 if ('serviceWorker' in navigator) {
   // Unregister old SW to prevent stale cache
   navigator.serviceWorker.getRegistrations().then(regs => {
@@ -7943,46 +8138,137 @@ let sopState = JSON.parse(localStorage.getItem('stafflo_sop') || '{}');
 // VILLA OPS — checklists, SOP
 // ════════════════════════════════════════════════════════
 function renderVillaOpsExtra() {
-  // Add SOP checklist to My Home AI / Villa Ops tab
   const homeTab = document.getElementById('tab-home');
   if (!homeTab || document.getElementById('sopSection')) return;
   
   const fr = lang === 'fr';
+  // Dynamic checklist: custom items stored in localStorage
+  const defaultItems = [
+    {id:'pool',       lFR:'🏊 Piscine vérifiée', lEN:'🏊 Pool checked',        cat:'arrivée'},
+    {id:'flowers',    lFR:'🌸 Fleurs fraîches',   lEN:'🌸 Fresh flowers',       cat:'arrivée'},
+    {id:'rooms',      lFR:'🛏 Chambres préparées', lEN:'🛏 Rooms prepared',      cat:'arrivée'},
+    {id:'wifi',       lFR:'📱 WiFi + code porte',  lEN:'📱 WiFi + door code',    cat:'arrivée'},
+    {id:'groceries',  lFR:'🛒 Courses faites',      lEN:'🛒 Groceries done',      cat:'arrivée'},
+    {id:'welcome',    lFR:'💬 Message bienvenue envoyé', lEN:'💬 Welcome message sent', cat:'comm'},
+    {id:'passport',   lFR:'🛂 Passeports demandés', lEN:'🛂 Passports requested', cat:'comm'},
+    {id:'driver',     lFR:'🚕 Transfert confirmé',  lEN:'🚕 Transfer confirmed',   cat:'logistique'},
+  ];
+
+  // Load custom items + merge with defaults
+  let customItems = [];
+  try { customItems = JSON.parse(localStorage.getItem('stafflo_sop_custom')||'[]'); } catch(e){}
+  const allItems = [...defaultItems, ...customItems];
+  
+  // Current state
+  sopState = JSON.parse(localStorage.getItem('stafflo_sop') || '{}');
+  
+  // Get next arrival for context
+  const today2 = new Date().toISOString().slice(0,10);
+  const nextArr = clients.filter(c=>c.arrival&&c.arrival>=today2).sort((a,b)=>a.arrival<b.arrival?-1:1)[0];
+  const stayKey = nextArr ? nextArr.id : 'generic';
+  const getVal = (id) => localStorage.getItem('sop_'+id+'_'+stayKey);
+  
+  const doneCount = allItems.filter(i=>getVal(i.id)==='done').length;
+  const pct = allItems.length ? Math.round(doneCount/allItems.length*100) : 0;
+  
   const sopHtml = '<div class="hm-card" id="sopSection" style="margin-top:14px">' +
-    '<div class="hm-hdr"><div class="hm-hdr-lbl">' + (fr?'✅ CHECKLIST VILLA':'✅ VILLA CHECKLIST') + '</div>' +
-    '<button class="hm-refresh" onclick="resetSOP()" title="Reset">↺</button></div>' +
+    '<div class="hm-hdr">' +
+      '<div style="flex:1">' +
+        '<div class="hm-hdr-lbl">✅ ' + (fr?'CHECKLIST VILLA':'VILLA CHECKLIST') + (nextArr?' — '+nextArr.name:'') + '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-top:4px">' +
+          '<div style="flex:1;height:3px;background:rgba(255,255,255,.15);border-radius:2px">' +
+            '<div style="height:3px;background:var(--gold);border-radius:2px;width:'+pct+'%;transition:width .3s"></div>' +
+          '</div>' +
+          '<span style="font-size:10px;color:var(--gold);font-weight:700">'+doneCount+'/'+allItems.length+'</span>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:4px;align-items:center;margin-left:10px">' +
+        '<button onclick="sopAddItem()" style="background:var(--gold);border:none;color:var(--green3);border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;cursor:pointer" title="Ajouter">+</button>' +
+        '<button class="hm-refresh" onclick="resetSOPStay()" title="Reset séjour">↺</button>' +
+      '</div>' +
+    '</div>' +
     '<div class="hm-body" style="padding:8px 14px">' +
-    VILLA_SOP.map(item => {
-      const done = sopState[item.id];
-      const label = fr ? item.label_fr : item.label_en;
-      return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">' +
-        '<input type="checkbox" id="sop_' + item.id + '" ' + (done?'checked':'') + 
-        ' onchange="toggleSOP(\'' + item.id + '\',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">' +
-        '<label for="sop_' + item.id + '" style="font-size:13px;color:' + (done?'var(--muted)':'var(--ink)') + ';' + (done?'text-decoration:line-through':'') + ';cursor:pointer;flex:1">' + label + '</label>' +
-        '<span style="font-size:10px;color:var(--muted);background:var(--paper);padding:2px 6px;border-radius:4px">' + (fr ? (item.category==='arrival'?'Arrivée':item.category==='communication'?'Comm.':'Logistique') : item.category) + '</span>' +
-        '</div>';
+    allItems.map(item => {
+      const val = getVal(item.id);
+      const done = val === 'done';
+      const hidden = val === 'hidden';
+      const label = fr ? item.lFR : item.lEN;
+      const isCustom = item.custom;
+      return hidden ? '' :
+      '<div id="soprow_'+item.id+'" style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(44,31,20,.06)">' +
+        '<input type="checkbox" ' + (done?'checked':'') + 
+        ' onchange="toggleSOPItem(\''+item.id+'\',\''+stayKey+'\',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">' +
+        '<label style="font-size:13px;color:'+(done?'var(--muted)':'var(--ink)')+';'+(done?'text-decoration:line-through':'') + ';cursor:pointer;flex:1">' + label + '</label>' +
+        '<span style="font-size:9px;color:var(--muted);background:var(--paper);padding:2px 5px;border-radius:4px">'+(fr?item.cat:item.cat)+'</span>' +
+        '<button onclick="hideSOPItem(\''+item.id+'\',\''+stayKey+'\')" style="background:none;border:none;color:var(--border);cursor:pointer;font-size:14px;padding:0 2px" title="Masquer">✕</button>' +
+        (isCustom ? '<button onclick="deleteSOPItem(\''+item.id+'\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px;padding:0 2px" title="Supprimer">🗑</button>' : '') +
+      '</div>';
     }).join('') +
+    '<button onclick="showHiddenSOPItems(\''+stayKey+'\')" style="width:100%;margin-top:6px;padding:6px;background:none;border:1px dashed var(--border);border-radius:6px;font-size:11px;color:var(--muted);cursor:pointer;font-family:DM Sans,sans-serif">' +
+      (fr?'↻ Afficher les items masqués':'↻ Show hidden items') + '</button>' +
     '</div></div>';
   
   homeTab.insertAdjacentHTML('beforeend', sopHtml);
 }
 
-function toggleSOP(id, checked) {
-  sopState[id] = checked;
-  localStorage.setItem('stafflo_sop', JSON.stringify(sopState));
-  // Update label style
-  const label = document.querySelector('label[for="sop_' + id + '"]');
-  if (label) {
-    label.style.color = checked ? 'var(--muted)' : 'var(--ink)';
-    label.style.textDecoration = checked ? 'line-through' : 'none';
+function toggleSOPItem(id, stayKey, checked) {
+  localStorage.setItem('sop_'+id+'_'+stayKey, checked ? 'done' : 'todo');
+  const row = document.getElementById('soprow_'+id);
+  if (row) {
+    const lbl = row.querySelector('label');
+    const cb = row.querySelector('input');
+    if (lbl) { lbl.style.color = checked?'var(--muted)':'var(--ink)'; lbl.style.textDecoration = checked?'line-through':''; }
+    if (cb) cb.checked = checked;
   }
-}
-
-function resetSOP() {
-  sopState = {};
-  localStorage.removeItem('stafflo_sop');
+  // Update progress bar
   document.getElementById('sopSection')?.remove();
   renderVillaOpsExtra();
+}
+
+function hideSOPItem(id, stayKey) {
+  localStorage.setItem('sop_'+id+'_'+stayKey, 'hidden');
+  document.getElementById('soprow_'+id)?.remove();
+  document.getElementById('sopSection')?.remove();
+  renderVillaOpsExtra();
+}
+
+function showHiddenSOPItems(stayKey) {
+  // Clear all hidden flags for this stay
+  const allKeys = Object.keys(localStorage).filter(k => k.startsWith('sop_') && k.endsWith('_'+stayKey));
+  allKeys.forEach(k => { if (localStorage.getItem(k) === 'hidden') localStorage.removeItem(k); });
+  document.getElementById('sopSection')?.remove();
+  renderVillaOpsExtra();
+}
+
+function sopAddItem() {
+  const label = prompt(lang==='fr' ? 'Libellé de la tâche :' : 'Task label:', '');
+  if (!label) return;
+  let custom = [];
+  try { custom = JSON.parse(localStorage.getItem('stafflo_sop_custom')||'[]'); } catch(e){}
+  const id = 'custom_'+Date.now();
+  custom.push({id, lFR: label, lEN: label, cat:'custom', custom:true});
+  localStorage.setItem('stafflo_sop_custom', JSON.stringify(custom));
+  document.getElementById('sopSection')?.remove();
+  renderVillaOpsExtra();
+}
+
+function deleteSOPItem(id) {
+  let custom = [];
+  try { custom = JSON.parse(localStorage.getItem('stafflo_sop_custom')||'[]'); } catch(e){}
+  localStorage.setItem('stafflo_sop_custom', JSON.stringify(custom.filter(i=>i.id!==id)));
+  document.getElementById('sopSection')?.remove();
+  renderVillaOpsExtra();
+}
+
+function resetSOPStay() {
+  const today2 = new Date().toISOString().slice(0,10);
+  const nextArr = clients.filter(c=>c.arrival&&c.arrival>=today2).sort((a,b)=>a.arrival<b.arrival?-1:1)[0];
+  const stayKey = nextArr ? nextArr.id : 'generic';
+  // Clear all sop keys for this stay
+  Object.keys(localStorage).filter(k=>k.endsWith('_'+stayKey)&&k.startsWith('sop_')).forEach(k=>localStorage.removeItem(k));
+  document.getElementById('sopSection')?.remove();
+  renderVillaOpsExtra();
+  toast(lang==='fr'?'↺ Checklist réinitialisée':'↺ Checklist reset');
 }
 
 // ════════════════════════════════════════════
