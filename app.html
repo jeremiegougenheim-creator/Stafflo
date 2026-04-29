@@ -58,10 +58,10 @@ nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,
 .nav-badge{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;animation:pulse 1.5s infinite}
 
 /* ── MAIN ── */
-/* TODAY 70/30 */
+/* TODAY — single column now that chat is global floating */
 .today-col-side{margin-top:8px;position:relative;z-index:1}
 @media(min-width:1024px){
-  .today-cols{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:start}
+  .today-cols{max-width:760px}
   .today-col-main{min-width:0}
   .today-col-side{margin-top:0;position:sticky;top:72px;z-index:1}
 }
@@ -512,6 +512,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 /* ── AI CHAT PANEL ── */
 .chat-panel{display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid var(--border);height:520px;max-height:75vh}
+@media(max-width:480px){
+  #chatPanel{bottom:0!important;right:0!important;left:0!important;width:100%!important;max-width:100%!important;border-radius:16px 16px 0 0!important;height:80vh!important;max-height:80vh!important}
+}
 .chat-header{background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .chat-header-left{display:flex;align-items:center;gap:8px}
 .chat-title{font-family:'Fraunces',serif;font-size:16px;color:#fff;font-weight:300}
@@ -915,50 +918,6 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
   <!-- AI PASTE ZONE — secondary action -->
   </div>
-<div class="today-col-side">
-
-<!-- ══ AI CHAT PANEL ════════════════════════════════════ -->
-<div class="chat-panel" id="chatPanel">
-  <div class="chat-header">
-    <div class="chat-header-left">
-      <div class="chat-online"></div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <div class="chat-title">Assistant Stafflo</div>
-        <span id="chatClientIndicator" style="display:none;background:rgba(255,255,255,.15);color:#fff;border-radius:10px;font-size:10px;font-weight:600;padding:2px 8px"></span>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <span class="chat-inbox-badge" id="inboxBadge" onclick="showInbox()">0 emails</span>
-      <button onclick="showInbox()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">📬 Inbox</button>
-      <button onclick="showIntegrationsPanel()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif" title="Intégrations">🔌</button>
-      <button onclick="clearChat()" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer">✕</button>
-    </div>
-  </div>
-
-  <div class="chat-messages" id="chatMessages">
-    <!-- Welcome message -->
-    <div class="chat-bubble system" id="chatWelcome">
-      <strong>Stafflo IA</strong> · <span id="chatWelcomeTime"></span><br>
-      Exemples : <em>"relance Celia"</em> · <em>"qui arrive demain ?"</em> · <em>"brief staff"</em><br>
-      Ou collez un email Airbnb directement ↓
-    </div>
-  </div>
-
-  <div class="chat-typing" id="chatTyping">
-    <span></span><span></span><span></span>
-  </div>
-
-  <div class="chat-input-area">
-    <textarea class="chat-input" id="chatInput"
-      placeholder="Message, commande ou email Airbnb..."
-      rows="1"
-      onkeydown="chatKeyDown(event)"
-      oninput="chatAutoResize(this)"></textarea>
-    <button class="chat-send-btn" id="chatSendBtn" onclick="chatSend()" disabled>↑</button>
-  </div>
-</div><!-- /chat-panel -->
-
-</div><!-- /today-col-side -->
 </div><!-- /today-cols -->
 </div><!-- /tab-today -->
 
@@ -1259,6 +1218,49 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 </div><!-- close padding --></div><!-- /settingsPanel --></div><!-- /settingsModal -->
 
 </main>
+
+<!-- ══ GLOBAL AI CHAT PANEL — available on ALL tabs ════════════ -->
+<div id="chatOverlay" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.5);z-index:600" onclick="if(event.target===this)toggleChatPanel()"></div>
+<div class="chat-panel" id="chatPanel" style="position:fixed;bottom:80px;right:16px;width:380px;max-width:calc(100vw - 32px);z-index:601;display:none;box-shadow:0 12px 48px rgba(0,0,0,.35);border-radius:16px">
+  <div class="chat-header" style="border-radius:16px 16px 0 0">
+    <div class="chat-header-left">
+      <div class="chat-online"></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="chat-title" data-fr="Assistant Stafflo" data-en="Stafflo Assistant">Assistant Stafflo</div>
+        <span id="chatClientIndicator" style="display:none;background:rgba(255,255,255,.15);color:#fff;border-radius:10px;font-size:10px;font-weight:600;padding:2px 8px"></span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="chat-inbox-badge" id="inboxBadge" onclick="showInbox()">0 emails</span>
+      <button onclick="showInbox()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">📬 Inbox</button>
+      <button onclick="showIntegrationsPanel()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif" title="Integrations">🔌</button>
+      <button onclick="toggleChatPanel()" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:16px;cursor:pointer;padding:4px">✕</button>
+    </div>
+  </div>
+
+  <div class="chat-messages" id="chatMessages">
+    <div class="chat-bubble system" id="chatWelcome">
+      <strong>Stafflo AI</strong> · <span id="chatWelcomeTime"></span><br>
+      <span data-fr='Exemples : "relance Celia" · "qui arrive demain ?" · "brief staff"' data-en='Examples: "follow up Celia" · "who arrives tomorrow?" · "staff brief"'>Exemples : "relance Celia" · "qui arrive demain ?" · "brief staff"</span><br>
+      <span data-fr="Ou collez un email Airbnb directement ↓" data-en="Or paste an Airbnb email directly ↓">Ou collez un email Airbnb directement ↓</span>
+    </div>
+  </div>
+
+  <div class="chat-typing" id="chatTyping">
+    <span></span><span></span><span></span>
+  </div>
+
+  <div class="chat-input-area">
+    <textarea class="chat-input" id="chatInput"
+      placeholder="Message, commande ou email Airbnb..."
+      data-placeholder-fr="Message, commande ou email Airbnb..."
+      data-placeholder-en="Message, command or Airbnb email..."
+      rows="1"
+      onkeydown="chatKeyDown(event)"
+      oninput="chatAutoResize(this)"></textarea>
+    <button class="chat-send-btn" id="chatSendBtn" onclick="chatSend()" disabled>↑</button>
+  </div>
+</div>
 
 <!-- ══ WA SEND POPUP ══════════════════════════════════════ -->
 <div id="waSendModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9997;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeWASend()">
@@ -3281,16 +3283,20 @@ function detectCommandIntent(text) {
   // Returns {type:'send', clientName:'...'} or null
   var t = text.toLowerCase().trim();
   var sendPatterns = [
+    // French patterns
     /(?:relance|relancer|recontacte|rappelle)\s+(\w+)/i,
-    /(?:envoie|envoi|send|envoyer)\s+(?:un\s+)?(?:message|msg|whatsapp|wa|sms)?\s*(?:à|a|to)?\s*(\w+)/i,
-    /(?:écris|ecris|write|message)\s+(?:à|a|to)\s+(\w+)/i,
-    /(?:regarde|check|look).+?(\w+).+?(?:relance|message|rappelle|recontacte)/i,
+    /(?:envoie|envoi|envoyer)\s+(?:un\s+)?(?:message|msg|whatsapp|wa|sms)?\s*(?:à|a)?\s*(\w+)/i,
+    /(?:écris|ecris)\s+(?:à|a)\s+(\w+)/i,
+    /(?:regarde|check|look).+?(\w+).+?(?:relance|message|rappelle|recontacte|follow)/i,
+    // English patterns
+    /(?:follow\s*up|reach\s*out|contact|ping|nudge|remind)\s+(?:with\s+)?(\w+)/i,
+    /(?:send|write|draft)\s+(?:a\s+)?(?:message|msg|whatsapp|wa|text|note)?\s*(?:to)?\s*(\w+)/i,
+    /(?:message|text|write\s+to)\s+(\w+)/i,
   ];
   for (var i = 0; i < sendPatterns.length; i++) {
     var m = t.match(sendPatterns[i]);
     if (m) {
       var name = m[1] || m[2] || '';
-      // Find client matching this name
       var cl = findClientByName(name);
       if (cl) return { type: 'send', client: cl };
     }
@@ -3321,19 +3327,20 @@ async function handleSendCommand(client, originalText) {
 
   var prompt = [
     'Client: ' + client.name + (client.nat ? ' ' + client.nat : ''),
-    client.arrival ? 'Arrivée: ' + client.arrival + (client.departure ? ' → ' + client.departure : '') : '',
+    client.arrival ? (fr?'Arrivée':'Arrival')+': ' + client.arrival + (client.departure ? ' → ' + client.departure : '') : '',
     client.notes ? 'Notes: ' + client.notes : '',
-    lastMsg ? 'Dernier message envoyé:\n' + lastMsg.slice(0, 400) : '',
+    lastMsg ? (fr?'Dernier message envoyé':'Last message sent')+':\n' + lastMsg.slice(0, 400) : '',
     '',
-    "Commande: \"" + originalText + "\"",  // what user typed
+    (fr?'Commande':'Command')+': "' + originalText + '"',
     '',
-    'Écris un message WhatsApp de relance/suivi en ' + (fr ? 'français' : 'English') + '.',
-    'Court, chaleureux, personnalisé. Max 5 lignes. Signe: ' + (getCfg().owner || 'Jérémie') + '.',
-    'Retourne UNIQUEMENT le message, sans explication.'
+    fr ? 'Écris un message WhatsApp de relance/suivi en français.' : 'Write a follow-up WhatsApp message in English.',
+    (fr?'Court, chaleureux, personnalisé. Max 5 lignes. Signe: ':'Short, warm, personalized. Max 5 lines. Sign: ') + (getCfg().owner || 'Jérémie') + '.',
+    fr ? 'Retourne UNIQUEMENT le message, sans explication.' : 'Return ONLY the message, no explanation.'
   ].filter(Boolean).join('\n');
 
   try {
-    var msg = await callBestAI('write_fr', '', prompt, 400);
+    var writeTask = fr ? 'write_fr' : 'write_en';
+    var msg = await callBestAI(writeTask, '', prompt, 400);
     btn.disabled = false;
     btn.classList.remove('loading');
     // Clear input
@@ -3461,8 +3468,8 @@ async function chatSend() {
       return;
     }
     
-    // Check if it's a question about clients/villa
-    var isQuestion = /qui|quand|combien|quel|comment|prochain|demain|aujourd|revenu|alerte|check/i.test(text);
+    // Check if it's a question about clients/villa (FR + EN)
+    var isQuestion = /qui|quand|combien|quel|comment|prochain|demain|aujourd|revenu|alerte|check|who|when|how|next|tomorrow|today|revenue|alert|arriving|guest/i.test(text);
     var isPastedEmail = text.length > 200 && (
       /airbnb|booking|check.?in|checkout|guest|réservation|confirmation/i.test(text) ||
       /\[\d{1,2}\/\d{1,2}\/\d{4}/.test(text) // WA timestamp
@@ -3495,15 +3502,23 @@ async function handleChatQuestion(text) {
   var dbHistory = await loadRecentChatContext(12);
   var historyBlock = dbHistory || buildChatHistoryBlock(8);
   
-  var systemPrompt = [
-    'Tu es l\'assistant personnel de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
-    'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
-    'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
-    'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
-    'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
-  ].join('\n');
+  var systemPrompt = fr
+    ? [
+      'Tu es l\'assistant personnel de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
+      'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
+      'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
+      'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
+      'Réponds en français — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
+    ].join('\n')
+    : [
+      'You are the personal assistant of ' + ownerName + ', owner of ' + villaName + ' in Marrakech.',
+      'You help ' + ownerName + ' manage guests, draft messages, and organize stays.',
+      'When ' + ownerName + ' says "use first person" or "say I" → write the message AS ' + ownerName + ' (I = ' + ownerName + ').',
+      'When drafting a WA message, write it ON BEHALF of ' + ownerName + ', signed "' + ownerName + '".',
+      'Reply in English — NEVER as the villa, always as ' + ownerName + '\'s assistant.'
+    ].join('\n');
   
-  // ── CRM snapshot riche — toutes les données utiles à l'IA ──
+  // ── CRM snapshot — all useful data for AI ──
   var today2 = new Date();
   var crmSnapshot = clients.slice(0,12).map(function(cl) {
     var n = (cl.arrival && cl.departure) ? Math.round((new Date(cl.departure)-new Date(cl.arrival))/864e5) : '';
@@ -3511,10 +3526,10 @@ async function handleChatQuestion(text) {
     var status = getStatus(cl);
     return [
       cl.name + (cl.nat?' '+cl.nat:''),
-      'arrivée:' + (cl.arrival||'?'),
-      'départ:' + (cl.departure||'?'),
-      n ? n+'nuits' : '',
-      cl.guests ? cl.guests+'pers' : '',
+      (fr?'arrivée':'arrival')+':' + (cl.arrival||'?'),
+      (fr?'départ':'departure')+':' + (cl.departure||'?'),
+      n ? n+(fr?'nuits':'nights') : '',
+      cl.guests ? cl.guests+(fr?'pers':'guests') : '',
       net ? net+'€net' : '',
       cl.source||'',
       cl.phone ? 'tel:'+cl.phone : '',
@@ -3524,27 +3539,34 @@ async function handleChatQuestion(text) {
   }).join('\n');
 
   var userCtx = [
-    'Aujourd\'hui: ' + today,
-    'Clients CRM (' + clients.length + '):',
-    crmSnapshot || '(aucun client)',
+    (fr ? 'Aujourd\'hui: ' : 'Today: ') + today,
+    (fr ? 'Clients CRM (' : 'CRM Guests (') + clients.length + '):',
+    crmSnapshot || (fr ? '(aucun client)' : '(no guests)'),
     '',
     historyBlock,
     '',
-    'Message de ' + ownerName + ': "' + text + '"',
+    (fr ? 'Message de ' : 'Message from ') + ownerName + ': "' + text + '"',
     '',
     'Instructions:',
-    '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}',
-    '- Si c\'est une question: réponds directement, max 2-3 phrases',
-    '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule'
+    fr
+      ? '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}'
+      : '- If it\'s a WA message request: reply with RESPONSE: [full message signed ' + ownerName + '] and ACTION: {"type":"send_wa","clientId":"id_or_name","msg":"..."}',
+    fr
+      ? '- Si c\'est une question: réponds directement, max 2-3 phrases'
+      : '- If it\'s a question: answer directly, max 2-3 sentences',
+    fr
+      ? '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule'
+      : '- If it\'s a correction ("no", "use first person", "that was a test"): take it into account and rephrase'
   ].join('\n');
   
-  var raw = await callBestAI('chat_fr', systemPrompt, userCtx, 500);
+  var chatTask = fr ? 'chat_fr' : 'chat_en';
+  var raw = await callBestAI(chatTask, systemPrompt, userCtx, 500);
   document.getElementById('chatTyping').style.display = 'none';
   
   // Parse response + action
   var response = raw || '...';
   var action = null;
-  var respMatch = raw.match(/R[ÉE]PONSE:\s*(.+?)(?=\nACTION:|$)/s);
+  var respMatch = raw.match(/R[ÉE]PONSE:\s*(.+?)(?=\nACTION:|$)/s) || raw.match(/RESPONSE:\s*(.+?)(?=\nACTION:|$)/s);
   var actionMatch = raw.match(/ACTION:\s*(\{.+?\})/s);
   
   if (respMatch) response = respMatch[1].trim();
@@ -3557,13 +3579,13 @@ async function handleChatQuestion(text) {
     var cl = clients.find(function(c){ return c.id === action.clientId; });
     if (cl) {
       buttons.push({
-        label: '💬 Envoyer à ' + (cl.name.split(' ')[0]),
+        label: (fr ? '💬 Envoyer à ' : '💬 Send to ') + (cl.name.split(' ')[0]),
         cls: 'wa',
         fn: 'openChatWA("' + (cl.id) + '","' + escapeAttr(action.msg||'') + '")'
       });
     }
   }
-  buttons.push({ label: lang==='fr'?'👍 OK':'👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' });
+  buttons.push({ label: '👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' });
   
   addChatBubble('ai', response, buttons);
 }
@@ -3578,25 +3600,26 @@ async function handleChatSendCommand(client, text) {
   
   var prompt = [
     'Client: ' + client.name + (client.nat ? ' ' + client.nat : ''),
-    client.arrival ? 'Arrivée: ' + client.arrival + (client.departure ? ' → ' + client.departure : '') : '',
+    client.arrival ? (fr?'Arrivée':'Arrival')+': ' + client.arrival + (client.departure ? ' → ' + client.departure : '') : '',
     client.notes ? 'Notes: ' + client.notes : '',
-    lastMsg ? 'Dernier message envoyé:\n' + lastMsg.slice(0,300) : '',
+    lastMsg ? (fr?'Dernier message envoyé':'Last message sent')+':\n' + lastMsg.slice(0,300) : '',
     '',
-    'Commande: "' + text + '"',
+    (fr?'Commande':'Command')+': "' + text + '"',
     '',
-    'Écris un message WhatsApp court et chaleureux en ' + (fr ? 'français' : 'English') + '.',
-    'Max 5 lignes. Signe avec: ' + (getCfg().owner || 'Jérémie') + '.',
-    'UNIQUEMENT le message, rien d\'autre.'
+    fr ? 'Écris un message WhatsApp court et chaleureux en français.' : 'Write a short, warm WhatsApp message in English.',
+    (fr?'Max 5 lignes. Signe avec: ':'Max 5 lines. Sign with: ') + (getCfg().owner || 'Jérémie') + '.',
+    fr ? 'UNIQUEMENT le message, rien d\'autre.' : 'ONLY the message, nothing else.'
   ].filter(Boolean).join('\n');
   
-  var msg = await callBestAI('write_fr', '', prompt, 400);
+  var writeTask = fr ? 'write_fr' : 'write_en';
+  var msg = await callBestAI(writeTask, '', prompt, 400);
   document.getElementById('chatTyping').style.display = 'none';
   
   var phone = (client.phone || '').replace(/[\s\-+()]/g,'');
   var _waKey = storePendingWA(client.id, msg.trim());
   var buttons = [
-    { label: '💬 Envoyer à ' + client.name.split(' ')[0], cls: 'wa', fn: 'sendPendingWA("'+_waKey+'")' },
-    { label: lang==='fr'?'✏️ Modifier':'✏️ Edit', cls: 'view', fn: 'editPendingWA("'+_waKey+'",this)' },
+    { label: (fr?'💬 Envoyer à ':'💬 Send to ') + client.name.split(' ')[0], cls: 'wa', fn: 'sendPendingWA("'+_waKey+'")' },
+    { label: fr?'✏️ Modifier':'✏️ Edit', cls: 'view', fn: 'editPendingWA("'+_waKey+'",this)' },
     { label: '✕', cls: 'no', fn: 'dismissChatAction(this)' }
   ];
   
@@ -6851,27 +6874,7 @@ async function fetchLiveFlights() {
   }
 }
 
-function renderMarketPriceBand() {
-  const comps = loadSavedCompetitors ? loadSavedCompetitors() : [];
-  const band = document.getElementById('marketBandContent');
-  if (!band) return;
-  if (!comps || !comps.length) {
-    band.innerHTML = '<span style="font-size:11px;color:rgba(253,246,236,.35)" data-fr="Ajoutez des concurrents pour voir les prix du marché" data-en="Add competitors to see market prices">Ajoutez des concurrents pour voir les prix du marché</span>';
-    return;
-  }
-  const avg = Math.round(comps.reduce((s,c)=>s+c.price,0)/comps.length);
-  const min = Math.min(...comps.map(c=>c.price));
-  const max = Math.max(...comps.map(c=>c.price));
-  const yourPrice = getPrice ? getPrice().pricePN : 0;
-  const diff = yourPrice - avg;
-  const diffColor = diff < -100 ? '#97C459' : diff > 100 ? '#F09595' : 'rgba(253,246,236,.6)';
-  band.innerHTML = comps.map(c => 
-    `<span style="font-size:11px;color:rgba(253,246,236,.6);white-space:nowrap">${c.name} <strong style="color:var(--gold)">${c.price}€</strong></span>`
-  ).join('<span style="color:rgba(253,246,236,.15);padding:0 4px">·</span>') +
-  `<span style="color:rgba(253,246,236,.3);padding:0 4px">·</span>` +
-  `<span style="font-size:11px;white-space:nowrap"><span style="color:rgba(253,246,236,.4)" data-fr="Moy marché" data-en="Avg market">Moy</span> <strong style="color:var(--cream)">${avg}€</strong></span>` +
-  (yourPrice ? `<span style="color:rgba(253,246,236,.3);padding:0 4px">·</span><span style="font-size:11px;white-space:nowrap"><span style="color:rgba(253,246,236,.4)">Vous</span> <strong style="color:${diffColor}">${yourPrice}€</strong></span>` : '');
-}
+var renderMarketPriceBand = renderMarketBand; // alias — avoid duplicate
 
 function loadHomeData() {
   updatePrice();
@@ -7513,7 +7516,7 @@ function initFAB() {
   var fab = document.createElement('button');
   fab.id = 'chatFAB';
   fab.innerHTML = '💬';
-  fab.title = 'Assistant IA';
+  fab.title = lang === 'fr' ? 'Assistant IA' : 'AI Assistant';
   fab.style.cssText = [
     'position:fixed',
     'bottom:24px',
@@ -7528,28 +7531,47 @@ function initFAB() {
     'cursor:pointer',
     'box-shadow:0 4px 20px rgba(27,67,50,.45)',
     'z-index:400',
-    'display:none',
+    'display:flex',
     'align-items:center',
     'justify-content:center',
     'transition:transform .15s,background .15s',
   ].join(';');
   fab.addEventListener('click', function() {
-    goTab('today');
-    setTimeout(function() {
-      var inp = document.getElementById('chatInput');
-      if (inp) inp.focus();
-    }, 200);
+    toggleChatPanel();
   });
   fab.addEventListener('mouseenter', function(){ fab.style.transform='scale(1.1)'; fab.style.background='var(--green2)'; });
   fab.addEventListener('mouseleave', function(){ fab.style.transform=''; fab.style.background='var(--green)'; });
   document.body.appendChild(fab);
 }
 
+function toggleChatPanel() {
+  var panel = document.getElementById('chatPanel');
+  var overlay = document.getElementById('chatOverlay');
+  var fab = document.getElementById('chatFAB');
+  if (!panel) return;
+  var isOpen = panel.style.display !== 'none';
+  if (isOpen) {
+    panel.style.display = 'none';
+    if (overlay) overlay.style.display = 'none';
+    if (fab) fab.style.display = 'flex';
+  } else {
+    panel.style.display = 'flex';
+    if (overlay) overlay.style.display = 'block';
+    if (fab) fab.style.display = 'none';
+    setTimeout(function() {
+      var inp = document.getElementById('chatInput');
+      if (inp) inp.focus();
+    }, 200);
+  }
+}
+
 function updateFABVisibility(tab) {
   var fab = document.getElementById('chatFAB');
+  var panel = document.getElementById('chatPanel');
   if (!fab) return;
-  // Show on Guests and Villa tabs (Today tab already has the chat panel)
-  fab.style.display = (tab === 'clients' || tab === 'home') ? 'flex' : 'none';
+  // Always show FAB unless chat panel is open
+  var chatOpen = panel && panel.style.display !== 'none';
+  fab.style.display = chatOpen ? 'none' : 'flex';
 }
 
 // Patch goTab to update FAB visibility
@@ -7933,10 +7955,13 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
   // ── Fallback: client API keys ────────────────────────
   const cfg = getCfg();
   const routes = {
-    extract:  ['groq',    'gemini',  'mistral', 'deepseek'],
-    brief:    ['gemini',  'deepseek','groq',    'mistral'],
-    write_fr: ['mistral', 'gemini',  'groq',    'deepseek'],
-    reason:   ['deepseek','gemini',  'mistral', 'groq'],
+    extract:   ['groq',    'gemini',  'mistral', 'deepseek'],
+    brief:     ['gemini',  'deepseek','groq',    'mistral'],
+    write_fr:  ['mistral', 'gemini',  'groq',    'deepseek'],
+    write_en:  ['groq',    'gemini',  'deepseek','mistral'],
+    chat_fr:   ['mistral', 'gemini',  'groq',    'deepseek'],
+    chat_en:   ['groq',    'gemini',  'deepseek','mistral'],
+    reason:    ['deepseek','gemini',  'mistral', 'groq'],
   };
   const order = routes[task] || routes.extract;
   for (const pid of order) {
