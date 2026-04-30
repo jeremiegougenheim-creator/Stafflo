@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -780,20 +781,11 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 #chatPanel{z-index:701!important}
 #chatOverlay{z-index:700!important}
 
-/* ── ARIA INPUT BOX ── */
-.aria-input-box{background:var(--card);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;border:1px solid rgba(201,150,58,.25)}
-.aria-input-header{background:var(--green3);padding:8px 14px;display:flex;align-items:center;justify-content:space-between}
-.aria-input-body{padding:10px 14px}
-.aria-quick-textarea{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.5;color:var(--ink);background:var(--paper);resize:none;outline:none;min-height:44px;max-height:120px;transition:border-color .15s;box-sizing:border-box}
-.aria-quick-textarea:focus{border-color:var(--gold);background:#fff}
-.aria-quick-textarea::placeholder{color:#C8BFB0;font-size:12px}
-.aria-quick-actions{display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:6px}
-.aria-tool-btn{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--paper);color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;padding:0}
-.aria-tool-btn:hover{border-color:var(--gold);color:var(--gold);background:var(--gold-light)}
-.aria-tool-btn.recording{background:var(--red);color:#fff;border-color:var(--red);animation:micPulse 1.2s infinite}
-.aria-send-btn{background:var(--green);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .15s;opacity:.4}
-.aria-send-btn:not(:disabled){opacity:1}
-.aria-send-btn:not(:disabled):hover{background:var(--green2)}
+/* ── ARIA SIDE INPUT (desktop rail) ── */
+.aria-side-input{background:var(--card);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;border:1px solid rgba(201,150,58,.25)}
+.aria-side-field{flex:1;min-width:0;border:1px solid var(--border);border-radius:8px;padding:7px 10px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--ink);background:var(--paper);outline:none;transition:border-color .15s;box-sizing:border-box}
+.aria-side-field:focus{border-color:var(--gold);background:#fff}
+.aria-side-field::placeholder{color:#C8BFB0;font-size:12px}
 </style>
 </head>
 <body>
@@ -921,9 +913,13 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     data-placeholder-en="Paste an email, ask a question…"
     autocomplete="off"
     onkeydown="if(event.key==='Enter'){event.preventDefault();ariaInlineSend()}"
-    oninput="document.getElementById('ariaInlineSendBtn').disabled=!this.value.trim()">
+    oninput="document.getElementById('ariaInlineSendBtn').disabled=!this.value.trim()&&!window._ariaInlineFile">
+  <button class="aria-ib" onclick="ariaInlinePaste()" title="Coller">📋</button>
+  <button class="aria-ib" onclick="document.getElementById('ariaInlineFile').click()" title="Fichier/Image">📎</button>
+  <input type="file" id="ariaInlineFile" accept="image/*,application/pdf,.txt,.md,.eml,.csv" style="display:none" onchange="ariaInlineFileSelected(event)">
   <button class="aria-inline-send" id="ariaInlineSendBtn" onclick="ariaInlineSend()" disabled>↑</button>
 </div>
+<div id="ariaInlineAttach" style="display:none;background:var(--green3);padding:3px 16px 6px;font-size:11px;color:var(--gold)"></div>
 
 <div class="app-shell">
 <main>
@@ -1386,35 +1382,23 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 <!-- ═══ GLOBAL SIDE RAIL — Aria + Inbox visible on ALL tabs (desktop) ══ -->
 <aside id="globalSideRail">
-  <!-- ARIA QUICK INPUT BOX -->
-  <div class="aria-input-box">
-    <div class="aria-input-header">
-      <div style="display:flex;align-items:center;gap:8px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#C9963A" stroke-width="1.5" fill="rgba(201,150,58,.15)"/><path d="M8 14c0 0 1.5 2 4 2s4-2 4-2" stroke="#C9963A" stroke-width="1.3" stroke-linecap="round"/><circle cx="9" cy="10" r="1.2" fill="#C9963A"/><circle cx="15" cy="10" r="1.2" fill="#C9963A"/></svg>
-        <span style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px">ARIA</span>
-      </div>
-      <span style="font-size:10px;color:rgba(255,255,255,.4)" data-fr="Assistant IA" data-en="AI Assistant">Assistant IA</span>
+  <!-- ARIA COMPACT INPUT -->
+  <div class="aria-side-input">
+    <div style="background:var(--green3);padding:8px 12px;display:flex;align-items:center;gap:6px;border-radius:12px 12px 0 0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#C9963A" stroke-width="1.5" fill="rgba(201,150,58,.15)"/><path d="M8 14c0 0 1.5 2 4 2s4-2 4-2" stroke="#C9963A" stroke-width="1.3" stroke-linecap="round"/><circle cx="9" cy="10" r="1.2" fill="#C9963A"/><circle cx="15" cy="10" r="1.2" fill="#C9963A"/></svg>
+      <span style="font-size:11px;font-weight:700;color:var(--gold);letter-spacing:1px">ARIA</span>
     </div>
-    <div class="aria-input-body">
-      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px" data-fr="Collez un email, posez une question, ou dictez. ARIA s'occupe du reste." data-en="Paste an email, ask a question, or dictate. ARIA handles the rest.">Collez un email, posez une question, ou dictez. ARIA s'occupe du reste.</div>
-      <textarea id="ariaQuickInput" class="aria-quick-textarea" rows="2"
-        placeholder="Tapez ou collez ici…"
-        data-placeholder-fr="Tapez ou collez ici…"
-        data-placeholder-en="Type or paste here…"
-        oninput="ariaQuickResize(this)"
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ariaQuickSend()}"></textarea>
-      <div class="aria-quick-actions">
-        <div style="display:flex;gap:4px">
-          <button class="aria-tool-btn" onclick="ariaQuickPaste()" title="Coller">📋</button>
-          <button class="aria-tool-btn" onclick="document.getElementById('ariaQuickFile').click()" title="Fichier">📎</button>
-          <button class="aria-tool-btn" id="ariaQuickMicBtn" onclick="ariaQuickVoice()" title="Vocal">🎤</button>
-          <input type="file" id="ariaQuickFile" accept="image/*,application/pdf,.txt,.md,.eml,.csv" style="display:none" onchange="ariaQuickFileSelected(event)">
-        </div>
-        <button class="aria-send-btn" id="ariaQuickSendBtn" onclick="ariaQuickSend()" disabled>
-          <span data-fr="Envoyer" data-en="Send">Envoyer</span> ↑
-        </button>
-      </div>
-      <div id="ariaQuickAttachPreview" style="display:none;margin-top:6px;font-size:11px;color:var(--gold)"></div>
+    <div style="padding:8px 10px;display:flex;gap:5px;align-items:center">
+      <input class="aria-side-field" id="ariaSideInput" type="text"
+        placeholder="Collez ou tapez…"
+        data-placeholder-fr="Collez ou tapez…"
+        data-placeholder-en="Paste or type…"
+        autocomplete="off"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();ariaSideSend()}"
+        oninput="document.getElementById('ariaSideSendBtn').disabled=!this.value.trim()">
+      <button class="aria-ib" style="border-color:var(--border);background:var(--paper);color:var(--muted)" onclick="ariaInlinePaste()" title="Coller">📋</button>
+      <button class="aria-ib" style="border-color:var(--border);background:var(--paper);color:var(--muted)" onclick="document.getElementById('ariaInlineFile').click()" title="Fichier">📎</button>
+      <button class="aria-inline-send" id="ariaSideSendBtn" onclick="ariaSideSend()" disabled>↑</button>
     </div>
   </div>
 
@@ -4906,6 +4890,16 @@ function openInboxEmail(row) {
   }).catch(function(){});
 
   loadInboxCount();
+
+  // ── Open chat panel so the analysis is visible ──
+  var panel = document.getElementById('chatPanel');
+  var overlay = document.getElementById('chatOverlay');
+  var fab = document.getElementById('chatFAB');
+  if (panel && panel.style.display === 'none') {
+    panel.style.display = 'flex';
+    if (overlay) overlay.style.display = 'block';
+    if (fab) fab.style.display = 'none';
+  }
 
   // Show email summary in chat
   var emailType = ex.email_type || 'email';
@@ -8660,106 +8654,86 @@ function renderFooterStats(tab) {
 }
 
 // ════════════════════════════════════════════════════════
-// ARIA QUICK INPUT BOX — fixed inline input with paste/file/voice
+// ARIA INLINE INPUT — compact bar send
 // ════════════════════════════════════════════════════════
-var _ariaQuickFile = null;
-
-function ariaQuickResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-  var btn = document.getElementById('ariaQuickSendBtn');
-  if (btn) btn.disabled = !el.value.trim() && !_ariaQuickFile;
-}
-
-function ariaQuickPaste() {
-  if (navigator.clipboard && navigator.clipboard.readText) {
-    navigator.clipboard.readText().then(function(text) {
-      if (!text) return;
-      var ta = document.getElementById('ariaQuickInput');
-      if (ta) { ta.value = text; ariaQuickResize(ta); ta.focus(); }
-    }).catch(function(){
-      var ta = document.getElementById('ariaQuickInput');
-      if (ta) ta.focus();
-      toast(lang==='fr'?'Utilisez Ctrl+V / Cmd+V':'Use Ctrl+V / Cmd+V');
-    });
-  }
-}
-
-function ariaQuickFileSelected(e) {
-  var f = e.target.files && e.target.files[0];
-  if (!f) return;
-  _ariaQuickFile = f;
-  var preview = document.getElementById('ariaQuickAttachPreview');
-  if (preview) {
-    preview.style.display = 'flex';
-    preview.innerHTML = '📎 ' + f.name + ' <button onclick="ariaQuickRemoveFile()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;margin-left:6px;padding:0">✕</button>';
-  }
-  var btn = document.getElementById('ariaQuickSendBtn');
-  if (btn) btn.disabled = false;
-}
-
-function ariaQuickRemoveFile() {
-  _ariaQuickFile = null;
-  var preview = document.getElementById('ariaQuickAttachPreview');
-  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
-  var inp = document.getElementById('ariaQuickFile');
-  if (inp) inp.value = '';
-  var btn = document.getElementById('ariaQuickSendBtn');
-  var ta = document.getElementById('ariaQuickInput');
-  if (btn) btn.disabled = !(ta && ta.value.trim());
-}
-
-function ariaQuickVoice() {
-  // Reuse the chat voice toggle
-  if (typeof toggleChatVoice === 'function') {
-    // Open chat panel first, then start voice
-    toggleChatPanel();
-    setTimeout(function(){ toggleChatVoice(); }, 300);
-  }
-}
-
-function ariaQuickSend() {
-  var ta = document.getElementById('ariaQuickInput');
-  var text = ta ? ta.value.trim() : '';
-  if (!text && !_ariaQuickFile) return;
-
-  // Open chat panel
+function ariaInlineSend() {
+  var inp = document.getElementById('ariaInlineInput');
+  var text = inp ? inp.value.trim() : '';
+  if (!text && !window._ariaInlineFile) return;
   var panel = document.getElementById('chatPanel');
   var overlay = document.getElementById('chatOverlay');
   var fab = document.getElementById('chatFAB');
   if (panel) panel.style.display = 'flex';
   if (overlay) overlay.style.display = 'block';
   if (fab) fab.style.display = 'none';
-
+  // If file attached, add it to chat attachments
+  if (window._ariaInlineFile) {
+    var chatFileInput = document.getElementById('chatFileInput');
+    if (chatFileInput && typeof onChatFileSelected === 'function') {
+      var dt = new DataTransfer();
+      dt.items.add(window._ariaInlineFile);
+      chatFileInput.files = dt.files;
+      onChatFileSelected({target:chatFileInput});
+    }
+    window._ariaInlineFile = null;
+    var att = document.getElementById('ariaInlineAttach');
+    if (att) { att.style.display='none'; att.innerHTML=''; }
+  }
   setTimeout(function() {
     var chatInput = document.getElementById('chatInput');
     if (chatInput && text) {
       chatInput.value = text;
       if (typeof chatAutoResize === 'function') chatAutoResize(chatInput);
-      // Enable send button
       var sb = document.getElementById('chatSendBtn');
       if (sb) sb.disabled = false;
     }
-    // Send after a beat
-    setTimeout(function() {
-      if (typeof chatSend === 'function') chatSend();
-    }, 150);
-    // Clear quick input
-    if (ta) { ta.value = ''; ta.style.height = 'auto'; }
-    var sendBtn = document.getElementById('ariaQuickSendBtn');
-    if (sendBtn) sendBtn.disabled = true;
-    ariaQuickRemoveFile();
+    setTimeout(function() { if (typeof chatSend === 'function') chatSend(); }, 150);
+    if (inp) inp.value = '';
+    var btn = document.getElementById('ariaInlineSendBtn');
+    if (btn) btn.disabled = true;
   }, 200);
 }
 
-// ════════════════════════════════════════════════════════
-// ARIA INLINE INPUT — compact bar send
-// ════════════════════════════════════════════════════════
-function ariaInlineSend() {
+function ariaInlinePaste() {
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    navigator.clipboard.readText().then(function(t) {
+      if (!t) return;
+      var inp = document.getElementById('ariaInlineInput');
+      if (inp) { inp.value = t; inp.focus(); document.getElementById('ariaInlineSendBtn').disabled = false; }
+    }).catch(function(){
+      var inp = document.getElementById('ariaInlineInput');
+      if (inp) inp.focus();
+      toast(lang==='fr'?'Ctrl+V / Cmd+V':'Use Ctrl+V / Cmd+V');
+    });
+  }
+}
+
+function ariaInlineFileSelected(e) {
+  var f = e.target.files && e.target.files[0];
+  if (!f) return;
+  window._ariaInlineFile = f;
+  var att = document.getElementById('ariaInlineAttach');
+  if (att) {
+    att.style.display = 'block';
+    att.innerHTML = '📎 ' + f.name + ' <button onclick="ariaInlineRemoveFile()" style="background:none;border:none;color:#F09595;cursor:pointer;font-size:12px;margin-left:4px;padding:0">✕</button>';
+  }
+  document.getElementById('ariaInlineSendBtn').disabled = false;
+}
+
+function ariaInlineRemoveFile() {
+  window._ariaInlineFile = null;
+  var att = document.getElementById('ariaInlineAttach');
+  if (att) { att.style.display='none'; att.innerHTML=''; }
   var inp = document.getElementById('ariaInlineInput');
+  document.getElementById('ariaInlineSendBtn').disabled = !(inp && inp.value.trim());
+  var fi = document.getElementById('ariaInlineFile');
+  if (fi) fi.value = '';
+}
+
+function ariaSideSend() {
+  var inp = document.getElementById('ariaSideInput');
   var text = inp ? inp.value.trim() : '';
   if (!text) return;
-  // Open chat panel
   var panel = document.getElementById('chatPanel');
   var overlay = document.getElementById('chatOverlay');
   var fab = document.getElementById('chatFAB');
@@ -8778,7 +8752,7 @@ function ariaInlineSend() {
       if (typeof chatSend === 'function') chatSend();
     }, 150);
     if (inp) inp.value = '';
-    var btn = document.getElementById('ariaInlineSendBtn');
+    var btn = document.getElementById('ariaSideSendBtn');
     if (btn) btn.disabled = true;
   }, 200);
 }
@@ -10333,6 +10307,8 @@ function analyzeText() {}
 }
 .aria-inline-send:disabled { opacity: .3; cursor: default; }
 .aria-inline-send:not(:disabled):hover { opacity: .85; }
+.aria-ib{width:30px;height:30px;border-radius:8px;border:1px solid rgba(201,150,58,.25);background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;padding:0;-webkit-tap-highlight-color:transparent}
+.aria-ib:hover{border-color:var(--gold);color:var(--gold);background:rgba(201,150,58,.1)}
 @media (min-width: 1024px) {
   .aria-inline { display: none; }
 }
