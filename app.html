@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -674,9 +675,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .section-label .dot{width:5px;height:5px;border-radius:50%;background:var(--gold)}
 
 /* ── QUICK ACTION STRIP ── */
-.quick-actions{display:flex;gap:8px;margin-bottom:14px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:2px 0}
+.quick-actions{display:flex;gap:8px;margin-bottom:14px;padding:2px 0}
 .quick-actions::-webkit-scrollbar{display:none}
-.qa-btn{flex-shrink:0;display:flex;align-items:center;gap:6px;padding:10px 14px;background:var(--card);border:1.5px solid var(--border);border-radius:12px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .15s;color:var(--ink);white-space:nowrap}
+.qa-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 14px;background:var(--card);border:1.5px solid var(--border);border-radius:12px;font-size:12px;font-weight:500;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .15s;color:var(--ink);white-space:nowrap}
 .qa-btn:hover{border-color:var(--gold);background:var(--gold-light)}
 .qa-btn:active{transform:scale(.97)}
 .qa-btn .qa-icon{font-size:16px}
@@ -954,6 +955,19 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   </div>
 </div>
 
+<!-- QUICK ACTIONS STRIP — above grid on all screens -->
+<div class="quick-actions" id="quickActionsStrip">
+  <button class="qa-btn primary" onclick="openForm()">
+    <span class="qa-icon">➕</span><span data-fr="Nouveau client" data-en="New guest">Nouveau client</span>
+  </button>
+  <button class="qa-btn" onclick="loadMorningBrief(true)">
+    <span class="qa-icon">☀</span><span data-fr="Brief" data-en="Brief">Brief</span>
+  </button>
+  <button class="qa-btn" onclick="goTab('home')">
+    <span class="qa-icon">📊</span><span data-fr="Prix" data-en="Pricing">Prix</span>
+  </button>
+</div>
+
 <!-- 3-COLUMN GRID -->
 <div class="today-grid">
 
@@ -984,20 +998,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <div id="todayQV"></div>
   </div>
 
-  <!-- COL 2: QUICK ACTIONS + AI RESULT CARD -->
+  <!-- COL 2: AI RESULT CARD -->
   <div class="tg-col tg-col-actions">
-    <!-- QUICK ACTIONS STRIP -->
-  <div class="quick-actions" id="quickActionsStrip">
-    <button class="qa-btn primary" onclick="openForm()">
-      <span class="qa-icon">➕</span><span data-fr="Nouveau client" data-en="New guest">Nouveau client</span>
-    </button>
-    <button class="qa-btn" onclick="loadMorningBrief(true)">
-      <span class="qa-icon">☀</span><span data-fr="Brief" data-en="Brief">Brief</span>
-    </button>
-    <button class="qa-btn" onclick="goTab('home')">
-      <span class="qa-icon">📊</span><span data-fr="Prix" data-en="Pricing">Prix</span>
-    </button>
-  </div>
     <!-- AI RESULT CARD — appears after analysis -->
   <div id="aiResult" class="guest-card" style="display:none">
     <div class="guest-card-header">
@@ -1133,7 +1135,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   </div>
 
   <!-- ALERTS — accordion, open by default -->
-  <div class="accord open" style="margin-bottom:12px">
+  <div class="accord open" id="accord-alerts" style="margin-bottom:12px">
     <div class="accord-hdr" onclick="toggleAccord(this)">
       <div class="accord-lbl" data-fr="💡 ALERTES INTELLIGENTES" data-en="💡 SMART ALERTS">💡 ALERTES INTELLIGENTES</div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -1222,7 +1224,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   </div>
 
   <!-- COMPETITORS — accordion, closed by default on mobile -->
-  <div class="accord" style="margin-bottom:12px">
+  <div class="accord" id="accord-competitors" style="margin-bottom:12px">
     <div class="accord-hdr" onclick="toggleAccord(this)">
       <div class="accord-lbl" data-fr="📊 CONCURRENTS" data-en="📊 COMPETITORS">📊 CONCURRENTS</div>
       <div style="display:flex;gap:5px;align-items:center">
@@ -1247,7 +1249,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   </div>
 
   <!-- WEATHER + FLIGHTS — accordion -->
-  <div class="accord" style="margin-bottom:12px">
+  <div class="accord" id="accord-weather" style="margin-bottom:12px">
     <div class="accord-hdr" onclick="toggleAccord(this)">
       <div class="accord-lbl">🌤 <span data-fr="MÉTÉO & VOLS" data-en="WEATHER & FLIGHTS">MÉTÉO & VOLS</span></div>
       <span class="accord-arrow">▾</span>
@@ -1286,7 +1288,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   </div>
 
   <!-- REVENUE SCENARIOS — accordion -->
-  <div class="accord" style="margin-bottom:12px">
+  <div class="accord" id="accord-revenue" style="margin-bottom:12px">
     <div class="accord-hdr" onclick="toggleAccord(this)">
       <div class="accord-lbl" data-fr="📈 SCÉNARIOS REVENUS" data-en="📈 REVENUE SCENARIOS">📈 SCÉNARIOS REVENUS</div>
       <span class="accord-arrow">▾</span>
@@ -3460,6 +3462,18 @@ function setWizardStep(step) {
 function toggleAccord(el) {
   var card = el.closest('.accord');
   if (card) card.classList.toggle('open');
+}
+
+// Navigate to a specific accordion section on Villa tab
+function goSection(sectionId) {
+  goTab('home');
+  setTimeout(function() {
+    var el = document.getElementById(sectionId);
+    if (el) {
+      if (!el.classList.contains('open')) el.classList.add('open');
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 150);
 }
 
 function toast(msg) {
@@ -7418,19 +7432,19 @@ async function generateAlerts(weatherTemp) {
   // ── 5. WEATHER — contextual ──
   if (weatherTemp !== null) {
     const hasPool = true; // DarJ has a pool
-    if (weatherTemp >= 40) alerts.push({type:'warn',
+    if (weatherTemp >= 40) alerts.push({type:'warn', section:'accord-weather',
       title:'🔥 ' + (fr?'Canicule':'Extreme heat') + ' ' + weatherTemp + '°C',
       sub: fr?'Activités indoor uniquement, piscine + boissons froides essentielles, ombrage.':'Indoor activities only, pool + cold drinks essential, shade required.'});
-    else if (weatherTemp >= 33) alerts.push({type:'info',
+    else if (weatherTemp >= 33) alerts.push({type:'info', section:'accord-weather',
       title:'☀️ ' + (fr?'Très chaud':'Very hot') + ' ' + weatherTemp + '°C',
       sub: fr?'Activités tôt le matin ou après 17h. Piscine = argument clé.':'Activities early morning or after 5pm. Pool = key selling point.'});
-    else if (weatherTemp >= 18 && weatherTemp <= 30) alerts.push({type:'good',
+    else if (weatherTemp >= 18 && weatherTemp <= 30) alerts.push({type:'good', section:'accord-weather',
       title:'🌤 ' + (fr?'Météo idéale':'Ideal weather') + ' ' + weatherTemp + '°C',
       sub: fr?'Jardin, terrasse et piscine — conditions parfaites pour les extérieurs.':'Garden, terrace and pool — perfect outdoor conditions.'});
-    else if (weatherTemp >= 12 && weatherTemp < 18) alerts.push({type:'info',
+    else if (weatherTemp >= 12 && weatherTemp < 18) alerts.push({type:'info', section:'accord-weather',
       title:'🌥 ' + (fr?'Frais':'Cool') + ' ' + weatherTemp + '°C',
       sub: fr?'Cheminée recommandée le soir. Prévoir plaids et boissons chaudes.':'Fireplace recommended in evenings. Offer blankets and hot drinks.'});
-    else if (weatherTemp < 12) alerts.push({type:'info',
+    else if (weatherTemp < 12) alerts.push({type:'info', section:'accord-weather',
       title:'🧥 ' + (fr?'Froid':'Cold') + ' ' + weatherTemp + '°C + ' + (fr?'Cheminée & Hammam':'Fireplace & Hammam'),
       sub: fr?'Activez la cheminée, proposez le hammam, adaptez les menus.':'Light the fireplace, offer hammam, adapt menus.'});
   }
@@ -7443,13 +7457,13 @@ async function generateAlerts(weatherTemp) {
       const avgMarket = Math.round(comps.reduce((s,c) => s + c.price, 0) / comps.length);
       if (yourPrice && avgMarket) {
         const pct = Math.round(((yourPrice - avgMarket) / avgMarket) * 100);
-        if (pct < -25) alerts.push({type:'warn',
+        if (pct < -25) alerts.push({type:'warn', section:'accord-competitors',
           title:'💰 ' + Math.abs(pct) + '% ' + (fr?'sous le marché — opportunité':'below market — opportunity'),
           sub: (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + (fr?'Marché: ':'Market: ') + avgMarket + '€ · ' + (fr?'Montez le prix ou activez l\'événement.':'Raise price or activate event modifier.')});
-        else if (pct > 25) alerts.push({type:'info',
+        else if (pct > 25) alerts.push({type:'info', section:'accord-competitors',
           title:'📈 ' + pct + '% ' + (fr?'au-dessus du marché':'above market'),
           sub: (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + (fr?'Marché: ':'Market: ') + avgMarket + '€ · ' + (fr?'Vérifiez votre taux de remplissage.':'Check your occupancy rate.')});
-        else alerts.push({type:'good',
+        else alerts.push({type:'good', section:'accord-competitors',
           title:'📊 ' + (fr?'Prix compétitif':'Competitive price') + ' — ' + yourPrice + '€ (' + (pct>=0?'+':'') + pct + '% ' + (fr?'vs marché':'vs market') + ')',
           sub: (fr?'Marché moyen: ':'Market average: ') + avgMarket + '€'});
       }
@@ -7516,9 +7530,10 @@ async function generateAlerts(weatherTemp) {
   const renderAlert = (a) => {
     const clickHandler = a.clientId 
       ? 'onclick="openDetail(\'' + a.clientId + '\')" style="cursor:pointer"'
+      : a.section ? 'onclick="goSection(\'' + a.section + '\')" style="cursor:pointer"'
       : a.tab ? 'onclick="goTab(\'' + a.tab + '\')" style="cursor:pointer"'
       : '';
-    const arrow = (a.clientId || a.tab) ? '<span style="margin-left:auto;font-size:10px;opacity:.5">→</span>' : '';
+    const arrow = (a.clientId || a.tab || a.section) ? '<span style="margin-left:auto;font-size:10px;opacity:.5">→</span>' : '';
     return '<div class="alert-hm ' + a.type + '" ' + clickHandler + '>' +
       '<span style="flex-shrink:0;font-size:14px">' + (a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡') + '</span>' +
       '<div style="flex:1"><div style="font-weight:600;font-size:12px;margin-bottom:2px">' + a.title + '</div>' +
@@ -9105,6 +9120,7 @@ async function loadMorningBrief(forceRefresh = false) {
     '',
     'Règles: urgency=10 client arrive NOW. Spécifique (vrais noms/temps/prix). ' + (fr ? 'En français.' : 'In English.'),
     '+staff prep card (action_type=whatsapp) si arrivée 0-3j.',
+    'action_type: météo/piscine/temp→open_weather, prix/tarif→open_pricing, concurrents→open_competitors, revenus→open_revenue.',
   ].join('\n');
 
   try {
@@ -9328,6 +9344,10 @@ function briefCardTap(idx) {
   if (!act) return;
   if (act.type === 'open_guests') goTab('clients');
   else if (act.type === 'open_home') goTab('home');
+  else if (act.type === 'open_weather') goSection('accord-weather');
+  else if (act.type === 'open_pricing') goSection('accord-alerts');
+  else if (act.type === 'open_competitors') goSection('accord-competitors');
+  else if (act.type === 'open_revenue') goSection('accord-revenue');
   else if (act.type === 'copy') navigator.clipboard.writeText(act.label).then(() => toast('📋 Copié'));
   else if (act.type === 'whatsapp') {
     const encoded = encodeURIComponent(act.label);
@@ -9483,8 +9503,8 @@ function renderBriefFallback(el, fr) {
   if (checkinTomorrow.length) cards.push({urgency:7, icon:'📅', title: fr?'Arrivée demain':'Arriving tomorrow', detail: checkinTomorrow.map(c=>c.name).join(', '), action: fr?'Confirmer transfert':'Confirm transfer'});
   
   const wTemp = parseInt(document.getElementById('factorWeather')?.textContent?.match(/\d+/)?.[0] || '20');
-  if (wTemp > 35) cards.push({urgency:6, icon:'🔥', title: fr?'Canicule aujourd\'hui':'Heatwave today', detail: wTemp+'°C — '+(fr?'Piscine essentielle':'Pool essential'), action: fr?'Préparer boissons':'Prepare cold drinks'});
-  else if (wTemp >= 18) cards.push({urgency:3, icon:'🌤', title: fr?'Météo idéale':'Perfect weather', detail: wTemp+'°C — '+(fr?'Conditions parfaites':'Perfect conditions'), action: fr?'Terrasse accessible':'Use terrace'});
+  if (wTemp > 35) cards.push({urgency:6, icon:'🔥', title: fr?'Canicule aujourd\'hui':'Heatwave today', detail: wTemp+'°C — '+(fr?'Piscine essentielle':'Pool essential'), action: fr?'Voir météo':'See weather', action_type:'open_weather'});
+  else if (wTemp >= 18) cards.push({urgency:3, icon:'🌤', title: fr?'Météo idéale':'Perfect weather', detail: wTemp+'°C — '+(fr?'Conditions parfaites':'Perfect conditions'), action: fr?'Voir météo':'See weather', action_type:'open_weather'});
   
   if (!cards.length) {
     const cfg = getCfg();
@@ -10191,7 +10211,7 @@ function analyzeText() {}
 /* ── TABLET+: 2 cols ── */
 @media (min-width: 700px) {
   .today-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    grid-template-columns: 1.4fr minmax(0, 1fr);
     gap: 16px;
     align-items: start;
   }
