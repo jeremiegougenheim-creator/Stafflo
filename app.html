@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -90,6 +91,8 @@ nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,
 main{max-width:760px;margin:0 auto;padding:16px}
 @media(min-width:600px){main{max-width:800px;padding:18px 20px}}
 @media(min-width:1024px){main{max-width:1200px;padding:20px 28px}}
+/* Inside app-shell on desktop, main is a flex grid item — let parent control width */
+@media(min-width:1024px){.app-shell main{max-width:none;width:100%;padding:16px 0}}
 
 .tab{display:none}.tab.on{display:block}
 
@@ -140,6 +143,8 @@ main{max-width:760px;margin:0 auto;padding:16px}
   main{padding-bottom:72px}
   header{position:fixed;top:0;left:0;right:0;z-index:400}
   .tab{padding-top:4px}
+  /* Aria banner stacks under sticky header+nav */
+  .aria-top-banner{margin-top:0}
 }
 @media(max-width:520px){
   .nav-btn{padding:14px 8px;font-size:13px;min-height:48px}
@@ -768,8 +773,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 /* Chat bottom sheet drag handle */
 .chat-drag-handle{width:40px;height:4px;background:rgba(255,255,255,.3);border-radius:2px;margin:8px auto 0;cursor:grab;display:none}
 @media(max-width:600px){.chat-drag-handle{display:block}}
-/* Chat panel z-index fix for Android */
-#chatPanel{z-index:500!important}
+/* Chat panel z-index fix — panel must be above overlay */
+#chatPanel{z-index:701!important}
+#chatOverlay{z-index:700!important}
 
 /* ── ARIA INPUT BOX ── */
 .aria-input-box{background:var(--card);border-radius:12px;box-shadow:var(--shadow);overflow:hidden;border:1px solid rgba(201,150,58,.25)}
@@ -785,8 +791,6 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .aria-send-btn{background:var(--green);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;transition:all .15s;opacity:.4}
 .aria-send-btn:not(:disabled){opacity:1}
 .aria-send-btn:not(:disabled):hover{background:var(--green2)}
-.aria-hdr-btn{animation:ariaGlow 3s ease-in-out infinite}
-@keyframes ariaGlow{0%,100%{border-color:rgba(201,150,58,.35)}50%{border-color:rgba(201,150,58,.7)}}
 </style>
 </head>
 <body>
@@ -873,10 +877,6 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       <div class="hstat-lbl" id="lCount">CLIENTS</div>
     </div>
     <button class="hdr-btn" id="langBtn" onclick="toggleLang()">🇬🇧 EN</button>
-    <button class="hdr-btn aria-hdr-btn" onclick="toggleChatPanel()" title="ARIA — Assistant IA" style="padding:3px 8px;display:flex;align-items:center;gap:5px;border-color:rgba(201,150,58,.5)">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#C9963A" stroke-width="1.5" fill="rgba(201,150,58,.12)"/><path d="M8 14c0 0 1.5 2 4 2s4-2 4-2" stroke="#C9963A" stroke-width="1.3" stroke-linecap="round"/><circle cx="9" cy="10" r="1.2" fill="#C9963A"/><circle cx="15" cy="10" r="1.2" fill="#C9963A"/><path d="M12 2v2M4.93 4.93l1.41 1.41M2 12h2M19.07 4.93l-1.41 1.41M22 12h-2" stroke="#C9963A" stroke-width="1" stroke-linecap="round" opacity=".4"/></svg>
-      <span style="font-size:9px;letter-spacing:1px;font-weight:700">ARIA</span>
-    </button>
     <button class="hdr-btn" onclick="openSettings()" style="padding:5px 9px;font-size:14px;position:relative;z-index:9999" title="Settings">⚙</button>
   </div>
 </header>
@@ -908,6 +908,36 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <button onclick="goToSignup()" style="background:var(--green3);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;letter-spacing:.3px" data-fr="Créer mon compte →" data-en="Sign up →">Créer mon compte →</button>
 </div>
 
+<!-- ═══ ARIA TOP BANNER — prominent on every tab ═══════════════════ -->
+<div class="aria-top-banner" onclick="toggleChatPanel()" style="cursor:pointer">
+  <svg class="aria-banner-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="ariaGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#C9963A" stop-opacity=".4"/>
+        <stop offset="100%" stop-color="#C9963A" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <circle cx="24" cy="24" r="22" fill="url(#ariaGlow)"/>
+    <circle cx="24" cy="24" r="18" stroke="#C9963A" stroke-width="1.8" fill="rgba(201,150,58,.18)"/>
+    <path d="M16 28c0 0 3 4 8 4s8-4 8-4" stroke="#C9963A" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="18" cy="20" r="2" fill="#C9963A"/>
+    <circle cx="30" cy="20" r="2" fill="#C9963A"/>
+    <path d="M24 4v3M40.5 7.5l-2 2M44 24h-3M40.5 40.5l-2-2M24 44v-3M7.5 40.5l2-2M4 24h3M7.5 7.5l2 2" stroke="#C9963A" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>
+  </svg>
+  <div class="aria-banner-text">
+    <div class="aria-banner-title">
+      <span class="aria-name">ARIA</span>
+      <span style="font-size:10px;background:rgba(201,150,58,.2);border:1px solid rgba(201,150,58,.4);color:var(--gold);padding:2px 7px;border-radius:6px;letter-spacing:1.5px;font-family:'DM Sans',sans-serif;font-weight:700">AI</span>
+    </div>
+    <div class="aria-banner-sub" data-fr="Votre assistant — collez, demandez, organisez votre villa en un clic" data-en="Your assistant — paste, ask, organize your villa in one click">Votre assistant — collez, demandez, organisez votre villa en un clic</div>
+  </div>
+  <button class="aria-banner-cta" onclick="event.stopPropagation();toggleChatPanel()">
+    <span data-fr="OUVRIR" data-en="OPEN">OUVRIR</span>
+    <span style="font-size:14px">→</span>
+  </button>
+</div>
+
+<div class="app-shell">
 <main>
 
 <!-- ═══ TODAY ═════════════════════════════════════════════ -->
@@ -1025,54 +1055,19 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <div class="guest-actions" id="resActions"></div>
   </div>
 
-  <!-- COL 3: ARIA + INBOX SIDEBAR -->
-  <div class="tg-col tg-col-right">
-    <!-- AI SIGNAL ZONE — paste + voice combined -->
-  <div id="aiZone" style="margin-bottom:14px">
-  <div class="aria-input-box">
-    <div class="aria-input-header">
-      <div style="display:flex;align-items:center;gap:8px">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#C9963A" stroke-width="1.5" fill="rgba(201,150,58,.15)"/><path d="M8 14c0 0 1.5 2 4 2s4-2 4-2" stroke="#C9963A" stroke-width="1.3" stroke-linecap="round"/><circle cx="9" cy="10" r="1.2" fill="#C9963A"/><circle cx="15" cy="10" r="1.2" fill="#C9963A"/></svg>
-        <span style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px">ARIA</span>
-      </div>
-      <span style="font-size:10px;color:rgba(255,255,255,.4)" data-fr="Assistant IA" data-en="AI Assistant">Assistant IA</span>
-    </div>
-    <div class="aria-input-body">
-      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px" data-fr="Collez un email Airbnb, message WhatsApp, ou posez une question. ARIA analyse et prépare tout." data-en="Paste an Airbnb email, WhatsApp message, or ask a question. ARIA analyses and prepares everything.">Collez un email Airbnb, message WhatsApp, ou posez une question. ARIA analyse et prépare tout.</div>
-      <textarea id="ariaQuickInput" class="aria-quick-textarea" rows="2"
-        placeholder="Collez ici ou tapez votre question…"
-        data-placeholder-fr="Collez ici ou tapez votre question…"
-        data-placeholder-en="Paste here or type your question…"
-        oninput="ariaQuickResize(this)"
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ariaQuickSend()}"></textarea>
-      <div class="aria-quick-actions">
-        <div style="display:flex;gap:4px">
-          <button class="aria-tool-btn" onclick="ariaQuickPaste()" title="Coller">📋</button>
-          <button class="aria-tool-btn" onclick="document.getElementById('ariaQuickFile').click()" title="Fichier">📎</button>
-          <button class="aria-tool-btn" id="ariaQuickMicBtn" onclick="ariaQuickVoice()" title="Vocal">🎤</button>
-          <input type="file" id="ariaQuickFile" accept="image/*,application/pdf,.txt,.md,.eml,.csv" style="display:none" onchange="ariaQuickFileSelected(event)">
-        </div>
-        <button class="aria-send-btn" id="ariaQuickSendBtn" onclick="ariaQuickSend()" disabled>
-          <span data-fr="Envoyer" data-en="Send">Envoyer</span> ↑
-        </button>
-      </div>
-      <div id="ariaQuickAttachPreview" style="display:none;margin-top:6px;font-size:11px;color:var(--gold)"></div>
-    </div>
-  </div>
-</div>
-    <div class="inbox-side-panel">
-      <div style="background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-radius:12px 12px 0 0">
-        <div style="font-size:13px;font-weight:700;color:var(--gold);letter-spacing:1px">📬 INBOX</div>
-        <span id="inboxSidebarBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:2px 7px;animation:pulse 1.5s infinite">0</span>
-      </div>
-      <div id="inboxSidebarList" style="padding:8px 12px;min-height:80px;max-height:380px;overflow-y:auto"></div>
-      <div style="padding:8px 12px;border-top:1px solid var(--border)">
-        <button onclick="showInbox()" style="width:100%;background:var(--paper);border:1.5px solid var(--border);border-radius:8px;padding:8px;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="Voir tous les emails →" data-en="See all emails →">Voir tous les emails →</button>
-      </div>
-    </div>
-  </div>
+  <!-- COL 3 removed — Aria + Inbox now live in the global side-rail (visible on all tabs) -->
 
 </div><!-- /today-grid -->
+
+<!-- ─── FOOTER STATS — quick overview ─── -->
+<div class="tab-footer-stats">
+  <div class="tfs-header">
+    <div class="tfs-title" data-fr="EN UN COUP D'ŒIL" data-en="AT A GLANCE">EN UN COUP D'ŒIL</div>
+    <button onclick="goTab('home')" style="background:none;border:none;color:var(--gold);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif" data-fr="Détails →" data-en="Details →">Détails →</button>
+  </div>
+  <div class="tfs-grid" id="todayFooterStats"></div>
+</div>
+
 </div><!-- /today-cols --><!-- /today-col-main -->
 
 </div><!-- /today-cols -->
@@ -1082,13 +1077,13 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 <div class="tab" id="tab-clients">
 
   <!-- TIMELINE CALENDRIER — vue séjours style Airbnb -->
-  <div id="staysTimeline" style="background:var(--card);border-radius:12px;padding:12px 14px;margin-bottom:12px;overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow)">
+  <div id="staysTimeline" style="background:var(--green3);border-radius:12px;padding:12px 14px;margin-bottom:12px;overflow:hidden;border:1px solid rgba(201,150,58,.15);box-shadow:var(--shadow)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div style="font-size:11px;letter-spacing:2px;color:var(--muted);font-weight:700">CALENDRIER</div>
+      <div style="font-size:11px;letter-spacing:2px;color:var(--gold);font-weight:700">📅 CALENDRIER</div>
       <div style="display:flex;gap:4px" id="timelineMonthNav">
-        <button onclick="timelineShift(-1)" style="background:var(--paper);border:1px solid var(--border);color:var(--ink);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:15px;font-weight:600">‹</button>
-        <span id="timelineMonthLabel" style="font-size:12px;color:var(--ink);font-weight:500;align-self:center;min-width:80px;text-align:center"></span>
-        <button onclick="timelineShift(1)" style="background:var(--paper);border:1px solid var(--border);color:var(--ink);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:15px;font-weight:600">›</button>
+        <button onclick="timelineShift(-1)" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:15px;font-weight:600">‹</button>
+        <span id="timelineMonthLabel" style="font-size:12px;color:#fff;font-weight:500;align-self:center;min-width:80px;text-align:center"></span>
+        <button onclick="timelineShift(1)" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:15px;font-weight:600">›</button>
       </div>
     </div>
     <div id="timelineGrid" style="overflow-x:auto;-webkit-overflow-scrolling:touch" onwheel="timelineWheel(event)"></div>
@@ -1115,7 +1110,13 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
   <div id="clientList"></div>
 
-
+  <!-- ─── FOOTER STATS — clients overview ─── -->
+  <div class="tab-footer-stats">
+    <div class="tfs-header">
+      <div class="tfs-title" data-fr="VOS CLIENTS EN CHIFFRES" data-en="YOUR GUESTS IN NUMBERS">VOS CLIENTS EN CHIFFRES</div>
+    </div>
+    <div class="tfs-grid" id="clientsFooterStats"></div>
+  </div>
 
 </div><!-- /clients -->
 
@@ -1300,11 +1301,13 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     </div>
   </div>
 
-  <!-- ARIA — AI Concierge (Villa tab) -->
-  <button class="tab-ai-ask" onclick="toggleChatPanel()" style="justify-content:center;padding:10px 16px;margin:12px 0;border-radius:10px;gap:10px">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#fff" stroke-width="1.5" fill="rgba(255,255,255,.15)"/><path d="M8 14c0 0 1.5 2 4 2s4-2 4-2" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/><circle cx="9" cy="10" r="1.2" fill="#fff"/><circle cx="15" cy="10" r="1.2" fill="#fff"/></svg>
-    <div class="ttl" data-fr="Demander à ARIA" data-en="Ask ARIA">Demander à ARIA</div>
-  </button>
+  <!-- ─── FOOTER STATS — villa performance ─── -->
+  <div class="tab-footer-stats">
+    <div class="tfs-header">
+      <div class="tfs-title" data-fr="PERFORMANCE VILLA" data-en="VILLA PERFORMANCE">PERFORMANCE VILLA</div>
+    </div>
+    <div class="tfs-grid" id="villaFooterStats"></div>
+  </div>
 
 </div><!-- /home -->
 
@@ -1399,9 +1402,57 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 </main>
 
+<!-- ═══ GLOBAL SIDE RAIL — Aria + Inbox visible on ALL tabs (desktop) ══ -->
+<aside id="globalSideRail">
+  <!-- ARIA QUICK INPUT BOX -->
+  <div class="aria-input-box">
+    <div class="aria-input-header">
+      <div style="display:flex;align-items:center;gap:8px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#C9963A" stroke-width="1.5" fill="rgba(201,150,58,.15)"/><path d="M8 14c0 0 1.5 2 4 2s4-2 4-2" stroke="#C9963A" stroke-width="1.3" stroke-linecap="round"/><circle cx="9" cy="10" r="1.2" fill="#C9963A"/><circle cx="15" cy="10" r="1.2" fill="#C9963A"/></svg>
+        <span style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px">ARIA</span>
+      </div>
+      <span style="font-size:10px;color:rgba(255,255,255,.4)" data-fr="Assistant IA" data-en="AI Assistant">Assistant IA</span>
+    </div>
+    <div class="aria-input-body">
+      <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px" data-fr="Collez un email, posez une question, ou dictez. ARIA s'occupe du reste." data-en="Paste an email, ask a question, or dictate. ARIA handles the rest.">Collez un email, posez une question, ou dictez. ARIA s'occupe du reste.</div>
+      <textarea id="ariaQuickInput" class="aria-quick-textarea" rows="2"
+        placeholder="Tapez ou collez ici…"
+        data-placeholder-fr="Tapez ou collez ici…"
+        data-placeholder-en="Type or paste here…"
+        oninput="ariaQuickResize(this)"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ariaQuickSend()}"></textarea>
+      <div class="aria-quick-actions">
+        <div style="display:flex;gap:4px">
+          <button class="aria-tool-btn" onclick="ariaQuickPaste()" title="Coller">📋</button>
+          <button class="aria-tool-btn" onclick="document.getElementById('ariaQuickFile').click()" title="Fichier">📎</button>
+          <button class="aria-tool-btn" id="ariaQuickMicBtn" onclick="ariaQuickVoice()" title="Vocal">🎤</button>
+          <input type="file" id="ariaQuickFile" accept="image/*,application/pdf,.txt,.md,.eml,.csv" style="display:none" onchange="ariaQuickFileSelected(event)">
+        </div>
+        <button class="aria-send-btn" id="ariaQuickSendBtn" onclick="ariaQuickSend()" disabled>
+          <span data-fr="Envoyer" data-en="Send">Envoyer</span> ↑
+        </button>
+      </div>
+      <div id="ariaQuickAttachPreview" style="display:none;margin-top:6px;font-size:11px;color:var(--gold)"></div>
+    </div>
+  </div>
+
+  <!-- INBOX -->
+  <div class="inbox-side-panel">
+    <div style="background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-radius:12px 12px 0 0">
+      <div style="font-size:13px;font-weight:700;color:var(--gold);letter-spacing:1px">📬 INBOX</div>
+      <span id="inboxSidebarBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:2px 7px;animation:pulse 1.5s infinite">0</span>
+    </div>
+    <div id="inboxSidebarList" style="padding:8px 12px;min-height:80px;max-height:340px;overflow-y:auto"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--border)">
+      <button onclick="showInbox()" style="width:100%;background:var(--paper);border:1.5px solid var(--border);border-radius:8px;padding:8px;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="Voir tous les emails →" data-en="See all emails →">Voir tous les emails →</button>
+    </div>
+  </div>
+</aside>
+</div><!-- /app-shell -->
+
 <!-- ══ GLOBAL AI CHAT PANEL — available on ALL tabs ════════════ -->
-<div id="chatOverlay" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.5);z-index:600" onclick="if(event.target===this)toggleChatPanel()"></div>
-<div class="chat-panel" id="chatPanel" style="position:fixed;bottom:80px;right:16px;width:380px;max-width:calc(100vw - 32px);z-index:601;display:none;box-shadow:0 12px 48px rgba(0,0,0,.35);border-radius:16px">
+<div id="chatOverlay" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.5);z-index:700" onclick="if(event.target===this)toggleChatPanel()"></div>
+<div class="chat-panel" id="chatPanel" style="position:fixed;bottom:80px;right:16px;width:380px;max-width:calc(100vw - 32px);z-index:701;display:none;box-shadow:0 12px 48px rgba(0,0,0,.35);border-radius:16px">
   <div class="chat-header" style="border-radius:16px 16px 0 0">
     <div class="chat-header-left" style="display:flex;align-items:center;gap:8px">
       <button onclick="showChatHistory()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);font-size:10px;padding:3px 8px;border-radius:10px;cursor:pointer;font-family:inherit;letter-spacing:.5px" title="Historique">🕐</button>
@@ -2622,6 +2673,14 @@ function renderAll() {
   renderStaysBar();
   renderClients();
   updateHeaderStats();
+  // Refresh footer stats for currently active tab
+  try {
+    var activeTab = document.querySelector('.tab.on');
+    if (activeTab) {
+      var id = activeTab.id.replace('tab-','');
+      renderFooterStats(id);
+    }
+  } catch(e) {}
 }
 
 function updateHeaderStats() {
@@ -3272,6 +3331,9 @@ function goTab(t) {
     }
     if (btn) btn.classList.toggle('on', id===t);
   });
+
+  // Render footer stats for the active tab
+  try { renderFooterStats(t); } catch(e) { console.error('renderFooterStats error:', e); }
 
   if (t === 'clients') { try { renderClients(); } catch(e) { console.error('renderClients error:', e); } }
   if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); } catch(e) { console.error('loadHomeData error:', e); } }
@@ -6658,6 +6720,7 @@ async function initAppAfterAuth() {
   await loadFromSupabase();
   renderAll();
   renderTodayQV();
+  try { renderFooterStats('today'); } catch(e) {}
 }
 
 function updateUserIndicator() {
@@ -8524,6 +8587,88 @@ async function extractFormAI() {
 }
 
 // ════════════════════════════════════════════════════════
+// FOOTER STATS — populates the bottom strip on each tab
+// ════════════════════════════════════════════════════════
+function renderFooterStats(tab) {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var fmt = function(n){ return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f'); };
+  var today = new Date().toISOString().slice(0,10);
+  var thisMonth = today.slice(0,7);
+
+  if (tab === 'today') {
+    var el = document.getElementById('todayFooterStats');
+    if (!el) return;
+    var monthClients = (clients||[]).filter(function(c){return c.arrival && c.arrival.slice(0,7)===thisMonth;});
+    var monthRev = monthClients.reduce(function(s,c){return s + (parseFloat(c.price)||0);}, 0);
+    var monthNights = monthClients.reduce(function(s,c){
+      if(!c.arrival||!c.departure) return s;
+      return s + Math.max(0,Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000));
+    }, 0);
+    var d = new Date();
+    var daysIn = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+    var occ = Math.round(monthNights/daysIn*100);
+    var in7 = (function(){var x=new Date();x.setDate(x.getDate()+7);return x.toISOString().slice(0,10);})();
+    var pipeline7 = (clients||[]).filter(function(c){return c.arrival && c.arrival > today && c.arrival <= in7;})
+      .reduce(function(s,c){return s + (parseFloat(c.price)||0);}, 0);
+    var arrivalsThisWeek = (clients||[]).filter(function(c){return c.arrival && c.arrival >= today && c.arrival <= in7;}).length;
+
+    el.innerHTML =
+      '<div class="tfs-cell"><div class="tfs-val gold">'+occ+'%</div><div class="tfs-lbl">'+(fr?'OCCUP. MOIS':'OCCUP. MO.')+'</div></div>' +
+      '<div class="tfs-cell"><div class="tfs-val green">'+(monthRev?fmt(monthRev/1000)+'k€':'—')+'</div><div class="tfs-lbl">'+(fr?'CE MOIS':'THIS MO.')+'</div></div>' +
+      '<div class="tfs-cell"><div class="tfs-val">'+arrivalsThisWeek+'</div><div class="tfs-lbl">'+(fr?'ARRIV. 7J':'ARR. 7D')+'</div></div>' +
+      '<div class="tfs-cell"><div class="tfs-val gold">'+(pipeline7?fmt(pipeline7/1000)+'k€':'—')+'</div><div class="tfs-lbl">'+(fr?'PIPELINE 7J':'PIPE 7D')+'</div></div>';
+  }
+  else if (tab === 'clients') {
+    var el2 = document.getElementById('clientsFooterStats');
+    if (!el2) return;
+    var total = (clients||[]).length;
+    var totalNet = (clients||[]).reduce(function(s,c){
+      var p = parseFloat(c.price)||0;
+      var comm = parseFloat(c.commission)||0;
+      return s + p*(1-comm/100);
+    }, 0);
+    var withDates = (clients||[]).filter(function(c){return c.arrival && c.departure;});
+    var totalNights = withDates.reduce(function(s,c){return s + Math.max(0,Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000));}, 0);
+    var avgNightly = totalNights ? totalNet/totalNights : 0;
+    var returning = (clients||[]).filter(function(c){return c.returning || (c.tags && (c.tags.indexOf('returning')>=0||c.tags.indexOf('vip')>=0));}).length;
+
+    el2.innerHTML =
+      '<div class="tfs-cell"><div class="tfs-val">'+total+'</div><div class="tfs-lbl">'+(fr?'CLIENTS':'GUESTS')+'</div></div>' +
+      '<div class="tfs-cell"><div class="tfs-val green">'+(totalNet?fmt(totalNet/1000)+'k€':'—')+'</div><div class="tfs-lbl">'+(fr?'NET TOTAL':'TOTAL NET')+'</div></div>' +
+      '<div class="tfs-cell"><div class="tfs-val gold">'+(avgNightly?fmt(avgNightly)+'€':'—')+'</div><div class="tfs-lbl">'+(fr?'MOY/NUIT':'AVG/NIGHT')+'</div></div>' +
+      '<div class="tfs-cell"><div class="tfs-val">'+returning+'</div><div class="tfs-lbl">'+(fr?'FIDÈLES':'RETURNING')+'</div></div>';
+  }
+  else if (tab === 'home') {
+    var el3 = document.getElementById('villaFooterStats');
+    if (!el3) return;
+    var monthClients2 = (clients||[]).filter(function(c){return c.arrival && c.arrival.slice(0,7)===thisMonth;});
+    var monthRev2 = monthClients2.reduce(function(s,c){return s + (parseFloat(c.price)||0);}, 0);
+    var monthNights2 = monthClients2.reduce(function(s,c){
+      if(!c.arrival||!c.departure) return s;
+      return s + Math.max(0,Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000));
+    }, 0);
+    var d2 = new Date();
+    var daysIn2 = new Date(d2.getFullYear(), d2.getMonth()+1, 0).getDate();
+    var occ2 = Math.round(monthNights2/daysIn2*100);
+    var avg = monthNights2 ? Math.round(monthRev2/monthNights2) : 0;
+    // YTD
+    var year = today.slice(0,4);
+    var ytdClients = (clients||[]).filter(function(c){return c.arrival && c.arrival.slice(0,4)===year;});
+    var ytdRev = ytdClients.reduce(function(s,c){return s + (parseFloat(c.price)||0);}, 0);
+    var ytdNights = ytdClients.reduce(function(s,c){
+      if(!c.arrival||!c.departure) return s;
+      return s + Math.max(0,Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000));
+    }, 0);
+
+    el3.innerHTML =
+      '<div class="tfs-cell"><div class="tfs-val gold">'+occ2+'%</div><div class="tfs-lbl">'+(fr?'OCCUP. MOIS':'OCCUP. MO.')+'</div></div>' +
+      '<div class="tfs-cell"><div class="tfs-val">'+(avg?fmt(avg)+'€':'—')+'</div><div class="tfs-lbl">'+(fr?'PRIX MOYEN':'AVG PRICE')+'</div></div>' +
+      '<div class="tfs-cell"><div class="tfs-val green">'+(monthRev2?fmt(monthRev2/1000)+'k€':'—')+'</div><div class="tfs-lbl">'+(fr?'CE MOIS':'THIS MO.')+'</div></div>' +
+      '<div class="tfs-cell"><div class="tfs-val gold">'+(ytdRev?fmt(ytdRev/1000)+'k€':'—')+'</div><div class="tfs-lbl">'+(fr?'CETTE ANNÉE':'YTD')+'</div></div>';
+  }
+}
+
+// ════════════════════════════════════════════════════════
 // ARIA QUICK INPUT BOX — fixed inline input with paste/file/voice
 // ════════════════════════════════════════════════════════
 var _ariaQuickFile = null;
@@ -8587,26 +8732,33 @@ function ariaQuickSend() {
   var text = ta ? ta.value.trim() : '';
   if (!text && !_ariaQuickFile) return;
 
-  // Transfer to chat panel and send
-  toggleChatPanel();
+  // Open chat panel
+  var panel = document.getElementById('chatPanel');
+  var overlay = document.getElementById('chatOverlay');
+  var fab = document.getElementById('chatFAB');
+  if (panel) panel.style.display = 'flex';
+  if (overlay) overlay.style.display = 'block';
+  if (fab) fab.style.display = 'none';
+
   setTimeout(function() {
     var chatInput = document.getElementById('chatInput');
     if (chatInput && text) {
       chatInput.value = text;
       if (typeof chatAutoResize === 'function') chatAutoResize(chatInput);
+      // Enable send button
+      var sb = document.getElementById('chatSendBtn');
+      if (sb) sb.disabled = false;
     }
-    // If file attached, transfer it
-    if (_ariaQuickFile && typeof window._chatPendingFiles !== 'undefined') {
-      // Use existing chat file handling
-    }
-    // Send
+    // Send after a beat
     setTimeout(function() {
       if (typeof chatSend === 'function') chatSend();
-    }, 100);
+    }, 150);
     // Clear quick input
-    if (ta) { ta.value = ''; ariaQuickResize(ta); }
+    if (ta) { ta.value = ''; ta.style.height = 'auto'; }
+    var sendBtn = document.getElementById('ariaQuickSendBtn');
+    if (sendBtn) sendBtn.disabled = true;
     ariaQuickRemoveFile();
-  }, 300);
+  }, 200);
 }
 
 // ════════════════════════════════════════════════════════
@@ -10019,7 +10171,7 @@ function analyzeText() {}
 @keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
 
 /* ══════════════════════════════════════════
-   TODAY 3-COLUMN GRID LAYOUT
+   TODAY 2-COLUMN GRID LAYOUT (right rail is now global)
    ══════════════════════════════════════════ */
 .stays-bar-wrap {
   grid-column: 1 / -1;
@@ -10027,7 +10179,6 @@ function analyzeText() {}
 }
 .today-cols {
   display: block;
-  max-width: 1200px;
   margin: 0 auto;
   padding: 0 4px;
 }
@@ -10038,38 +10189,12 @@ function analyzeText() {}
   align-items: start;
 }
 
-/* ── TABLET: 2 cols, right sidebar spans full width below ── */
-@media (min-width: 600px) and (max-width: 1023px) {
+/* ── TABLET+: 2 cols ── */
+@media (min-width: 700px) {
   .today-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-  }
-  .tg-col-right {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-  }
-}
-
-/* ── DESKTOP: 3 cols, proportional sizing with max constraint ── */
-@media (min-width: 1024px) {
-  .today-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 280px;
-    gap: 18px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 16px;
     align-items: start;
-  }
-  .tg-col-right {
-    position: sticky;
-    top: 72px;
-  }
-}
-
-/* ── LARGE DESKTOP: prevent over-stretch ── */
-@media (min-width: 1440px) {
-  .today-grid {
-    grid-template-columns: 320px minmax(0, 1fr) 280px;
-    gap: 20px;
   }
 }
 
@@ -10080,7 +10205,6 @@ function analyzeText() {}
   gap: 12px;
   min-width: 0;
 }
-/* Inbox side panel inside col-right */
 .inbox-side-panel {
   background: var(--card);
   border-radius: 12px;
@@ -10088,7 +10212,6 @@ function analyzeText() {}
   overflow: hidden;
   border: 1px solid var(--border);
 }
-/* Make brief + result cards full height in their column */
 #morningBrief {
   flex: 1;
   min-height: 0;
@@ -10097,13 +10220,201 @@ function analyzeText() {}
   border-radius: 14px;
   overflow: hidden;
 }
-/* On mobile, show ARIA first then brief then actions */
-@media (max-width: 599px) {
-  .tg-col-right {
-    order: -1;
+
+/* ══════════════════════════════════════════
+   APP SHELL — Global side rail (Aria + Inbox) on all tabs
+   ══════════════════════════════════════════ */
+.app-shell {
+  display: block;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.app-shell > main {
+  min-width: 0;
+}
+@media (min-width: 1024px) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 20px;
+    max-width: 1320px;
+    padding: 0 16px;
+    align-items: start;
   }
-  .tg-col-brief { order: 0; }
-  .tg-col-actions { order: 1; }
+  .app-shell > main {
+    padding: 16px 0;
+    max-width: none;
+  }
+  #globalSideRail {
+    position: sticky;
+    top: 130px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px 0;
+  }
+}
+@media (max-width: 1023px) {
+  #globalSideRail {
+    display: none;
+  }
+}
+
+/* ══════════════════════════════════════════
+   ARIA TOP BANNER — prominent, all tabs
+   ══════════════════════════════════════════ */
+.aria-top-banner {
+  background: linear-gradient(135deg, #0F2318 0%, #1B4332 50%, #2A5240 100%);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid rgba(201,150,58,.25);
+  position: relative;
+  overflow: hidden;
+}
+.aria-top-banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 15% 50%, rgba(201,150,58,.12) 0%, transparent 50%);
+  pointer-events: none;
+}
+.aria-banner-icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+.aria-banner-text {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+.aria-banner-title {
+  font-family: 'Fraunces', serif;
+  font-size: 18px;
+  color: #fff;
+  font-weight: 400;
+  letter-spacing: .5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.aria-banner-title .aria-name {
+  color: var(--gold);
+  font-weight: 600;
+  letter-spacing: 1.5px;
+}
+.aria-banner-sub {
+  font-size: 12px;
+  color: rgba(255,255,255,.6);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+.aria-banner-cta {
+  background: var(--gold);
+  color: var(--green3);
+  border: none;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  transition: all .15s;
+  box-shadow: 0 2px 12px rgba(201,150,58,.3);
+}
+.aria-banner-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 18px rgba(201,150,58,.5);
+}
+.aria-banner-cta:active {
+  transform: translateY(0);
+}
+@media (max-width: 600px) {
+  .aria-top-banner {
+    padding: 11px 16px;
+    gap: 11px;
+  }
+  .aria-banner-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .aria-banner-title {
+    font-size: 15px;
+  }
+  .aria-banner-sub {
+    font-size: 11px;
+  }
+  .aria-banner-cta {
+    padding: 7px 12px;
+    font-size: 11px;
+  }
+}
+
+/* ══════════════════════════════════════════
+   GLOBAL FOOTER STATS — bottom of every tab
+   ══════════════════════════════════════════ */
+.tab-footer-stats {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 14px 18px;
+  margin-top: 18px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+.tfs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.tfs-title {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.tfs-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+@media (max-width: 480px) {
+  .tfs-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.tfs-cell {
+  text-align: center;
+  padding: 8px 4px;
+  border-radius: 8px;
+  background: var(--paper);
+}
+.tfs-val {
+  font-family: 'Fraunces', serif;
+  font-size: 19px;
+  font-weight: 300;
+  color: var(--ink);
+  line-height: 1;
+}
+.tfs-val.gold { color: var(--gold); }
+.tfs-val.green { color: var(--green); }
+.tfs-lbl {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  margin-top: 4px;
 }
 
 </style>
