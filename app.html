@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1386,6 +1387,14 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <div class="field"><label data-fr="Ville" data-en="City">Ville</label><input id="cfgCity" placeholder="Marrakech"></div>
     <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
     <div class="field"><label>WhatsApp villa</label><input id="cfgWa" placeholder="+212 6..."></div>
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:6px">
+        <span style="background:#25D366;color:#fff;border-radius:4px;font-size:9px;padding:1px 6px;font-weight:700">META</span>
+        WhatsApp Access Token
+      </label>
+      <input id="cfgWaToken" placeholder="EAAxxxxxxx..." type="password" autocomplete="off">
+      <div style="font-size:10px;color:var(--muted);margin-top:3px">→ <a href="https://developers.facebook.com/apps/859360543932874/whatsapp-business/wa-dev-console/" target="_blank" style="color:#25D366">Meta Developer Console</a> — Temporary ou System User token</div>
+    </div>
     <div class="field">
       <label>GPS</label>
       <div style="display:flex;gap:6px;align-items:center">
@@ -3246,6 +3255,7 @@ function loadSettingsUI() {
   set('cfgWa',    cfg.wa);      set('cfgGps',   cfg.gps);
   set('cfgGmailEmail', cfg.gmailEmail);
   set('cfgSbUrl', cfg.sbUrl);   set('cfgSbKey', cfg.sbKey);
+  set('cfgWaToken', cfg.waToken);
   set('cfgGeminiKey',   cfg.geminiKey);   set('cfgGroqKey',    cfg.groqKey);
   set('cfgMistralKey',  cfg.mistralKey);  set('cfgDeepseekKey',cfg.deepseekKey);
   set('cfgAnthropicKey',cfg.anthropicKey);set('cfgOpenaiKey',  cfg.openaiKey);
@@ -3272,6 +3282,7 @@ async function saveSettings() {
     openaiKey: document.getElementById('cfgOpenaiKey').value.trim(),
     mistralKey: document.getElementById('cfgMistralKey').value.trim(),
     groqKey: document.getElementById('cfgGroqKey').value.trim(),
+    waToken: (document.getElementById('cfgWaToken')||{value:''}).value.trim(),
     publicSessionKey: (document.getElementById('cfgPublicSessionKey')?.value || '').trim(),
     clientMode: document.getElementById('cfgClientMode')?.value || 'public',
     aiProvider: document.getElementById('cfgAiProvider').value
@@ -5111,7 +5122,24 @@ function closeInbox() {
   document.body.style.overflow = '';
 }
 
-async function loadInboxEmails() {
+async 
+function getSourceBadge(source) {
+  if (!source || source === 'gmail' || source === 'email') {
+    return '<span style="background:#ea4335;color:#fff;border-radius:4px;font-size:9px;padding:1px 6px;margin-left:4px;font-weight:700;letter-spacing:.3px">✉ Email</span>';
+  }
+  if (source === 'whatsapp') {
+    return '<span style="background:#25D366;color:#fff;border-radius:4px;font-size:9px;padding:1px 6px;margin-left:4px;font-weight:700;letter-spacing:.3px">💬 WhatsApp</span>';
+  }
+  if (source === 'airbnb') {
+    return '<span style="background:#FF5A5F;color:#fff;border-radius:4px;font-size:9px;padding:1px 6px;margin-left:4px;font-weight:700;letter-spacing:.3px">🅰 Airbnb</span>';
+  }
+  if (source === 'booking') {
+    return '<span style="background:#003580;color:#fff;border-radius:4px;font-size:9px;padding:1px 6px;margin-left:4px;font-weight:700;letter-spacing:.3px">📘 Booking</span>';
+  }
+  return '<span style="background:var(--muted);color:#fff;border-radius:4px;font-size:9px;padding:1px 6px;margin-left:4px">'+source+'</span>';
+}
+
+function loadInboxEmails() {
   var el = document.getElementById('inboxList');
   if (!el) return;
   el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Chargement...</div>';
@@ -5124,7 +5152,8 @@ async function loadInboxEmails() {
       (_inboxFilter === 'new' ? '&status=eq.new' :
        _inboxFilter === 'processed' ? '&status=eq.processed' :
        _inboxFilter === 'inquiry' ? '&extracted->>email_type=eq.inquiry' :
-       _inboxFilter === 'confirmation' ? '&extracted->>email_type=eq.confirmation' : ''), {
+       _inboxFilter === 'confirmation' ? '&extracted->>email_type=eq.confirmation' :
+       _inboxFilter === 'whatsapp' ? '&source=eq.whatsapp' : ''), {
       headers: { apikey: key, Authorization: 'Bearer ' + authToken }
     });
     var rows = await r.json();
@@ -5144,6 +5173,7 @@ async function loadInboxEmails() {
       var ex = row.extracted || {};
       var badge = row.status === 'new' ? '<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">NEW</span>' : '';
       var typeBadge = ex.email_type ? '<span style="background:var(--gold-light);color:#7A5A1A;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">'+ex.email_type+'</span>' : '';
+      var srcBadge = getSourceBadge(row.source);
 
       // Detect Airbnb reservation link in body
       var body = row.body || '';
@@ -5153,7 +5183,7 @@ async function loadInboxEmails() {
       var linkIcon = airbnbMatch ? '🅰️' : (bookingMatch ? '📘' : '');
 
       var html = '<div class="inbox-card ' + (row.status==='new'?'new':'') + '" data-email-id="' + row.id + '">';
-      html += '<div class="ic-subject">' + (row.subject||'No subject') + badge + typeBadge + '</div>';
+      html += '<div class="ic-subject">' + (row.subject||'No subject') + badge + srcBadge + typeBadge + '</div>';
       html += '<div class="ic-meta">';
       html += '<span>' + (row.from_email||'—').replace(/<|>/g,'') + ' · ' + dateStr;
       if (ex.name) html += ' · <strong>'+ex.name+'</strong>';
@@ -5162,6 +5192,9 @@ async function loadInboxEmails() {
       // Action row — open button + external link
       html += '<div style="display:flex;gap:6px;margin-top:6px;align-items:center;justify-content:space-between">';
       html += '<button class="ic-open-btn" data-email-id="' + row.id + '" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-weight:600;font-family:DM Sans,sans-serif">📖 Analyser</button>';
+      if (row.source === 'whatsapp' && row.from_email) {
+        html += '<button onclick="event.stopPropagation();openWhatsAppReply(''+row.from_email.replace(/'/g,'')+'','')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-weight:600;font-family:DM Sans,sans-serif;white-space:nowrap">💬 Répondre WA</button>';
+      }
       if (externalLink) {
         html += '<a href="' + externalLink + '" target="_blank" onclick="event.stopPropagation()" style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:11px;color:var(--ink);text-decoration:none;white-space:nowrap" title="Ouvrir sur Airbnb/Booking">' + linkIcon + ' Ouvrir</a>';
       }
@@ -5188,7 +5221,7 @@ async function loadInboxEmails() {
         var ex = row.extracted || {};
         var isNew = row.status === 'new';
         return '<div class="inbox-card' + (isNew?' new':'') + '" style="cursor:pointer" data-email-id="' + row.id + '">' +
-          '<div class="ic-subject">' + (row.subject||'No subject') + (isNew?'<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">NEW</span>':'') + '</div>' +
+          '<div class="ic-subject">' + (row.subject||'No subject') + (isNew?'<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">NEW</span>':'') + getSourceBadge(row.source) + '</div>' +
           '<div class="ic-meta">' + (row.from_email||'—').replace(/<|>/g,'') + ' · ' + dateStr + (ex.name?' · <strong>'+ex.name+'</strong>':'') + '</div>' +
         '</div>';
       }).join('');
@@ -5261,7 +5294,9 @@ function openInboxEmail(row) {
   }
 
   // Show email summary in chat
-  addChatBubble('user', '📧 ' + (row.subject || 'Email') + ' — ' + (row.from_email || ''));
+  var srcIcon = (row.source === 'whatsapp') ? '💬' : (row.source === 'airbnb' ? '🅰' : (row.source === 'booking' ? '📘' : '📧'));
+  var srcLabel = (row.source === 'whatsapp') ? 'WhatsApp' : 'Email';
+  addChatBubble('user', srcIcon + ' ' + srcLabel + ' — ' + (row.subject || row.body || '').slice(0,80) + ' — ' + (row.from_email || ''));
 
   // Show typing indicator
   var typing = document.getElementById('chatTyping');
@@ -5290,26 +5325,40 @@ async function handleInboxEmailFull(row, ex) {
   var bodyText = (row.body || '').slice(0, 2000);
   var hasFr = /\b(bonjour|merci|nous|pour|séjour|réservation|adultes|disponible)\b/i.test(bodyText);
   var guestLang = hasFr ? 'French' : 'English';
-  var source = row.source || ex.source || 'Direct';
+  var source = row.source || ex.source || 'email';
 
-  // Detect email type context
-  var isAirbnb = source === 'Airbnb' || /airbnb/i.test(row.from_email||'');
-  var isBooking = source === 'Booking.com' || /booking\.com/i.test(row.from_email||'');
+  // Detect message type context
+  var isWhatsApp = source === 'whatsapp';
+  var isAirbnb = source === 'airbnb' || source === 'Airbnb' || /airbnb/i.test(row.from_email||'');
+  var isBooking = source === 'booking' || source === 'Booking.com' || /booking\.com/i.test(row.from_email||'');
   var isVRBO = source === 'VRBO' || /vrbo|homeaway/i.test(row.from_email||'');
 
-  var typeContext = isAirbnb ? 'Airbnb platform booking/inquiry' :
+  var typeContext = isWhatsApp ? 'WhatsApp message (reply should be short, warm, conversational — no formal salutation)' :
+                   isAirbnb ? 'Airbnb platform booking/inquiry' :
                    isBooking ? 'Booking.com reservation' :
                    isVRBO ? 'VRBO/HomeAway booking' : 'Direct email inquiry';
 
   var prompt = 'Email for '+villa+' ('+owner+', Marrakech). Source: '+typeContext+'.\n'+
     'From: '+(row.from_email||'')+'\nSubject: '+(row.subject||'')+'\n\n'+bodyText+
     '\n\n---\nExtract ALL data. Return ONLY JSON:\n'+
-    '{"email_type":"inquiry|confirmation|cancellation|message|review","summary":"1 sentence what guest wants","guest":{"name":"","nat":"flag+lang","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":15.5,"phone":"","notes":"diet|kids|occasion|transport|arrival_time"},"missing":["list of missing info"],"alerts":["urgent actions"],"responses":['+
-    '{"label":"'+(guestLang==='French'?'Confirmer disponibilité':'Confirm availability')+'","text":"Full ready-to-send reply in '+guestLang+', warm, signed '+owner+', address their question directly, mention pool 28°C, dates, check-in 14h checkout 12h, invite to book."},'+
-    '{"label":"'+(guestLang==='French'?'Demander infos manquantes':'Request missing info')+'","text":"Polite message asking for missing dates/group size/special requests, signed '+owner+'."},'+
-    '{"label":"'+(guestLang==='French'?'Message chaleureux':'Warm personal reply')+'","text":"Personal, warm reply using their name, highlight villa strengths for their specific group. Create excitement. Signed '+owner+'."}'+
+    '{"email_type":"inquiry|confirmation|cancellation|message|review","summary":"1 sentence what guest wants","guest":{"name":"","nat":"flag+lang","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":15.5,"phone":"","notes":"diet|kids|occasion|transport|arrival_time"},"missing":["list of missing info"],"alerts":["urgent actions"],"tone_selected":"warm","responses":['+
+    (isWhatsApp ?
+      '{"tone":"warm","label":"'+(guestLang==='French'?'💛 Chaleureux':'💛 Warm')+'",' +
+      '"text":"Short warm WhatsApp reply in '+guestLang+', 2-3 sentences max, use first name, 1-2 emojis, conversational, signed '+owner+'."},'+
+      '{"tone":"formal","label":"'+(guestLang==='French'?'👔 Professionnel':'👔 Professional')+'",' +
+      '"text":"Professional WhatsApp reply in '+guestLang+', concise, no emojis, signed '+owner+'."},'+
+      '{"tone":"short","label":"'+(guestLang==='French'?'⚡ Ultra court':'⚡ Very short')+'",' +
+      '"text":"1 sentence ultra-brief WhatsApp reply in '+guestLang+'. Essential info only."}'
+    :
+      '{"tone":"warm","label":"'+(guestLang==='French'?'💛 Chaleureux':'💛 Warm')+'",' +
+      '"text":"Warm personal email in '+guestLang+', use their name, mention pool 28°C, garden, invite to book, signed '+owner+'. Full ready-to-send."},'+
+      '{"tone":"formal","label":"'+(guestLang==='French'?'👔 Formel':'👔 Formal')+'",' +
+      '"text":"Professional formal email in '+guestLang+', structured, clear dates/pricing/check-in 14h checkout 12h, signed '+owner+'."},'+
+      '{"tone":"short","label":"'+(guestLang==='French'?'⚡ Direct':'⚡ Direct')+'",' +
+      '"text":"Short direct reply in '+guestLang+', answer their question immediately, invite next step, signed '+owner+'."}'
+    )+
     ']}\n'+
-    'Language for responses: '+guestLang+'. No placeholders like [X]. Fill everything. No markdown.';
+    'Language for responses: '+guestLang+'. No placeholders like [X]. Fill everything. No markdown.';';
 
   var raw = await callBestAI('reason', '', prompt, 1200);
   document.getElementById('chatTyping').style.display = 'none';
@@ -5363,23 +5412,36 @@ async function handleInboxEmailFull(row, ex) {
   }
   html += '</div>';
 
-  // ── Response options — tap to use ──
+  // ── Response options — 3 tones with rewrite ──
   var responses = parsed.responses || [];
+  var guestPhone = (g.phone || (existing&&existing.phone)||'').replace(/[\s\-+()]/g,'');
+  var guestPhoneClean = guestPhone.startsWith('+') ? guestPhone.replace('+','') : guestPhone;
   if (responses.length) {
-    html += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">'+(fr?'RÉPONSES PRÊTES À ENVOYER':'READY-TO-SEND RESPONSES')+'</div>';
+    html += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px">'+(fr?'3 RÉPONSES — CHOISISSEZ VOTRE TON':'3 RESPONSES — CHOOSE YOUR TONE')+'</div>';
+    // Tone legend pills
+    html += '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">';
+    html += '<span style="font-size:10px;background:rgba(201,150,58,.12);color:#7A5A1A;border-radius:12px;padding:3px 8px">💛 '+(fr?'Chaleureux = proche, émojis':'Warm = personal, emojis')+'</span>';
+    html += '<span style="font-size:10px;background:rgba(27,67,50,.08);color:var(--green3);border-radius:12px;padding:3px 8px">👔 '+(fr?'Formel = structuré':'Formal = structured')+'</span>';
+    html += '<span style="font-size:10px;background:rgba(37,211,102,.1);color:#1a8a4a;border-radius:12px;padding:3px 8px">⚡ '+(fr?'Court = essentiel':'Short = essential')+'</span>';
+    html += '</div>';
     responses.forEach(function(resp, i) {
       var respId = 'ir_'+Date.now()+'_'+i;
       window['_resp_'+respId] = resp.text;
-      html += '<div style="background:var(--card);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:6px">';
-      html += '<div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px;letter-spacing:.3px">'+resp.label+'</div>';
-      html += '<div id="rt_'+respId+'" style="font-size:13px;color:var(--ink);line-height:1.6;white-space:pre-wrap;margin-bottom:8px">'+escHtml(resp.text)+'</div>';
-      html += '<div style="display:flex;gap:6px">';
-      html += '<button onclick="navigator.clipboard.writeText(window[\'_resp_'+respId+'\']).then(()=>toast(\'📋 Copié\'))" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">📋 '+(fr?'Copier':'Copy')+'</button>';
-      if (g.phone || existing && existing.phone) {
-        var phone = (g.phone || (existing&&existing.phone)||'').replace(/[\s\-+()]/g,'');
-        html += '<a href="https://wa.me/'+phone+'?text='+encodeURIComponent(resp.text)+'" target="_blank" style="flex:1;background:#25D366;color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif;text-decoration:none;display:flex;align-items:center;justify-content:center">💬 WhatsApp</a>';
+      window['_respCtx_'+respId] = { row: row, ex: ex, guestLang: guestLang, owner: owner, villa: villa };
+      var toneColor = resp.tone==='warm' ? 'rgba(201,150,58,.15)' : resp.tone==='formal' ? 'rgba(27,67,50,.08)' : 'rgba(37,211,102,.08)';
+      var toneBorder = resp.tone==='warm' ? 'var(--gold)' : resp.tone==='formal' ? 'var(--green3)' : '#25D366';
+      html += '<div style="background:'+toneColor+';border:1.5px solid '+toneBorder+';border-radius:12px;padding:11px 13px;margin-bottom:8px">';
+      html += '<div style="font-size:11px;font-weight:700;color:'+toneBorder+';margin-bottom:7px;letter-spacing:.3px">'+resp.label+'</div>';
+      html += '<div id="rt_'+respId+'" style="font-size:13px;color:var(--ink);line-height:1.6;white-space:pre-wrap;margin-bottom:9px">'+escHtml(resp.text)+'</div>';
+      // Action row
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+      html += '<button onclick="navigator.clipboard.writeText(window[\'_resp_'+respId+'\']).then(()=>toast(\'📋 Copié\'))" style="flex:1;min-width:80px;background:var(--green3);color:#fff;border:none;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">📋 '+(fr?'Copier':'Copy')+'</button>';
+      // WhatsApp button — always shown, uses phone if available
+      if (guestPhoneClean) {
+        html += '<a href="https://wa.me/'+guestPhoneClean+'?text='+encodeURIComponent(resp.text)+'" target="_blank" onclick="event.stopPropagation()" style="flex:1;min-width:80px;background:#25D366;color:#fff;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:4px;font-family:\'DM Sans\',sans-serif">💬 WhatsApp</a>';
       }
-      html += '<button onclick="editInboxResponse(\'rt_'+respId+'\',\'_resp_'+respId+'\')" style="background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif">✏️</button>';
+      html += '<button onclick="rewriteInTone(\'rt_'+respId+'\',\'_resp_'+respId+'\',\'_respCtx_'+respId+'\')" style="background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif;white-space:nowrap">🔄 '+(fr?'Réécrire':'Rewrite')+'</button>';
+      html += '<button onclick="editInboxResponse(\'rt_'+respId+'\',\'_resp_'+respId+'\')" style="background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif">✏️</button>';
       html += '</div></div>';
     });
   }
@@ -5397,6 +5459,66 @@ async function handleInboxEmailFull(row, ex) {
   sysDiv.innerHTML = html;
   document.getElementById('chatMessages').appendChild(sysDiv);
   scrollChat();
+}
+
+
+async function rewriteInTone(rtId, respKey, ctxKey) {
+  var ctx = window[ctxKey];
+  if (!ctx) return;
+  var fr = lang === 'fr';
+  var currentText = window[respKey] || '';
+
+  // Show tone picker modal in chat
+  var toneChoice = await new Promise(function(resolve) {
+    var pickId = 'tonePick_' + Date.now();
+    var pickHtml = '<div id="'+pickId+'" style="background:var(--paper);border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:6px">';
+    pickHtml += '<div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;letter-spacing:1px">'+(fr?'RÉÉCRIRE DANS QUEL TON ?':'REWRITE IN WHICH TONE?')+'</div>';
+    pickHtml += '<div style="display:flex;flex-direction:column;gap:6px">';
+    [
+      {t:'warmer', icon:'🔥', fr:'Plus chaleureux (encore plus personnel, émoji)', en:'Warmer (more personal, emoji)'},
+      {t:'shorter', icon:'⚡', fr:'Plus court (essentiel seulement)', en:'Shorter (essentials only)'},
+      {t:'formal', icon:'👔', fr:'Plus formel (professionnel, structuré)', en:'More formal (professional)'},
+      {t:'friendly', icon:'😊', fr:'Amical & décontracté (comme un ami)', en:'Friendly & casual (like a friend)'},
+      {t:'luxury', icon:'✨', fr:'Prestige & luxe (villa haut de gamme)', en:'Luxury & prestige (high-end villa)'}
+    ].forEach(function(opt) {
+      pickHtml += '<button onclick="document.getElementById(\''+pickId+'\').remove();window[\'_toneCb_'+pickId+'\'](\'' +opt.t+ '\')" style="background:var(--card);border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;text-align:left;cursor:pointer;font-family:\'DM Sans\',sans-serif;color:var(--ink)">'+opt.icon+' '+(fr?opt.fr:opt.en)+'</button>';
+    });
+    pickHtml += '</div></div>';
+    addChatBubble('ai', pickHtml);
+    window['_toneCb_'+pickId] = resolve;
+  });
+
+  // Show typing
+  var rt = document.getElementById(rtId);
+  if (rt) rt.innerHTML = '<span style="color:var(--muted);font-style:italic">✍️ ' + (fr?'Réécriture en cours…':'Rewriting…') + '</span>';
+
+  var toneInstructions = {
+    warmer: fr ? 'Récris ce message en le rendant encore plus chaleureux et personnel. Ajoute des emojis pertinents. Utilise le prénom.' : 'Rewrite warmer and more personal. Add relevant emojis. Use first name.',
+    shorter: fr ? 'Réécris en version très courte (2-3 phrases max). Garde seulement l'essentiel.' : 'Rewrite very short (2-3 sentences max). Keep only the essential.',
+    formal: fr ? 'Réécris de manière professionnelle et formelle. Structure claire, pas d'emojis.' : 'Rewrite professionally and formally. Clear structure, no emojis.',
+    friendly: fr ? 'Réécris comme si tu écrivais à un ami. Ton décontracté, naturel, humain.' : 'Rewrite like texting a friend. Casual, natural, human tone.',
+    luxury: fr ? 'Réécris en mettant en valeur l'aspect luxe et prestige de la villa. Vocabulaire haut de gamme.' : 'Rewrite emphasizing luxury and prestige of the villa. Premium vocabulary.'
+  };
+
+  var prompt = 'Rewrite this message for Villa DarJ Marrakech ('+ctx.villa+', owned by '+ctx.owner+').
+
+Original:
+'+currentText+'
+
+Instruction: '+toneInstructions[toneChoice]+'
+
+Return ONLY the rewritten message text, no intro, no quotes, no markdown. Language: '+ctx.guestLang+'.';
+
+  try {
+    var newText = await callBestAI('fast', '', prompt, 400);
+    newText = newText.replace(/^["\`]+|["\`]+$/g,'').trim();
+    if (rt) rt.textContent = newText;
+    window[respKey] = newText;
+    toast(fr ? '✅ Réécrit !' : '✅ Rewritten!');
+  } catch(e) {
+    if (rt) rt.textContent = currentText;
+    toast('❌ ' + e.message);
+  }
 }
 
 function editInboxResponse(elId, storeKey) {
@@ -9197,6 +9319,80 @@ function initFAB() {
   });
 }
 
+
+// ════════════════════════════════════════════════════════
+// WHATSAPP SEND — via Meta Cloud API
+// ════════════════════════════════════════════════════════
+var WA_PHONE_NUMBER_ID = '859360543932874'; // Meta Phone Number ID
+
+async function sendWhatsAppMessage(toPhone, messageText) {
+  var cfg = getCfg();
+  var token = cfg.waToken || '';
+  if (!token) {
+    toast(lang==='fr' ? '⚠ Token WhatsApp manquant — configurez dans Paramètres' : '⚠ WhatsApp token missing — set in Settings');
+    return false;
+  }
+  // Clean phone number
+  var phone = toPhone.replace(/[^0-9]/g, '');
+  if (!phone.startsWith('+')) phone = '+' + phone;
+  try {
+    var resp = await fetch('https://graph.facebook.com/v19.0/' + WA_PHONE_NUMBER_ID + '/messages', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: phone,
+        type: 'text',
+        text: { body: messageText }
+      })
+    });
+    var data = await resp.json();
+    if (data.messages && data.messages[0]) {
+      toast('✅ ' + (lang==='fr' ? 'Message WhatsApp envoyé' : 'WhatsApp message sent'));
+      // Log sent message to Supabase
+      var key = cfg.sbKey || SB_ANON;
+      var authKey = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
+      fetch(SB_URL + '/rest/v1/email_inbox', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', apikey: SB_ANON, Authorization:'Bearer '+authKey, Prefer:'return=minimal' },
+        body: JSON.stringify({
+          subject: 'WA sent → ' + toPhone,
+          body: messageText,
+          from_email: toPhone,
+          source: 'whatsapp',
+          status: 'processed',
+          received_at: new Date().toISOString()
+        })
+      }).catch(function(){});
+      return true;
+    } else {
+      var errMsg = data.error ? data.error.message : JSON.stringify(data);
+      toast('❌ WhatsApp: ' + errMsg);
+      return false;
+    }
+  } catch(e) {
+    toast('❌ ' + e.message);
+    return false;
+  }
+}
+
+function openWhatsAppReply(phone, prefillText) {
+  var panel = document.getElementById('chatPanel');
+  if (panel) panel.style.display = 'flex';
+  var inp = document.getElementById('chatInput');
+  if (inp && prefillText) {
+    inp.value = prefillText;
+    inp.focus();
+  }
+  // Store pending WA phone for sending
+  window._waPendingPhone = phone;
+  addChatBubble('ai', (lang==='fr' ? '📲 Mode WhatsApp activé — répondez dans le chat, puis cliquez Envoyer WA' : '📲 WhatsApp mode — reply in chat then click Send WA') + '<br><small style="color:var(--muted)">→ ' + phone + '</small>');
+}
+
 function toggleChatPanel() {
   var panel = document.getElementById('chatPanel');
   var overlay = document.getElementById('chatOverlay');
@@ -10516,7 +10712,8 @@ function analyzeText() {}
     <div style="display:flex;gap:6px;padding:10px 16px 0;flex-shrink:0;overflow-x:auto;scrollbar-width:none;align-items:center">
       <button class="inbox-filter on" data-f="all" onclick="setInboxFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
       <button class="inbox-filter" data-f="new" onclick="setInboxFilter('new',this)" data-fr="🔴 Nouveaux" data-en="🔴 New">🔴 Nouveaux</button>
-      <button class="inbox-filter" data-f="inquiry" onclick="setInboxFilter('inquiry',this)" data-fr="💬 Demandes" data-en="💬 Inquiries">💬 Demandes</button>
+      <button class="inbox-filter" data-f="whatsapp" onclick="setInboxFilter('whatsapp',this)" data-fr="💬 WhatsApp" data-en="💬 WhatsApp">💬 WhatsApp</button>
+      <button class="inbox-filter" data-f="inquiry" onclick="setInboxFilter('inquiry',this)" data-fr="📩 Demandes" data-en="📩 Inquiries">📩 Demandes</button>
       <button class="inbox-filter" data-f="confirmation" onclick="setInboxFilter('confirmation',this)" data-fr="✅ Confirmés" data-en="✅ Confirmed">✅ Confirmés</button>
       <button class="inbox-filter" data-f="processed" onclick="setInboxFilter('processed',this)" data-fr="✔ Traités" data-en="✔ Processed">✔ Traités</button>
       <button onclick="refreshInbox()" title="Rafraîchir" style="margin-left:auto;background:var(--green-light);border:1px solid var(--green);color:var(--green);width:32px;height:32px;border-radius:50%;font-size:14px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700">↻</button>
