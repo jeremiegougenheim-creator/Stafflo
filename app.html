@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -91,7 +92,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
 @media(min-width:600px){main{max-width:800px;padding:18px 20px}}
 @media(min-width:1024px){main{max-width:1200px;padding:20px 28px}}
 /* Inside app-shell on desktop, main is a flex grid item — let parent control width */
-@media(min-width:1024px){.app-shell main{max-width:none;width:100%;padding:16px 0}}
+@media(min-width:1024px){.app-shell main{max-width:none;width:100%;padding:12px 0}}
 
 .tab{display:none}.tab.on{display:block}
 
@@ -141,6 +142,8 @@ main{max-width:760px;margin:0 auto;padding:16px}
   nav{position:fixed;bottom:0;left:0;right:0;top:auto;z-index:300;border-top:1px solid rgba(255,255,255,.15);padding:0;padding-bottom:env(safe-area-inset-bottom)}
   main{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
   header{position:fixed;top:0;left:0;right:0;z-index:400}
+  /* Push ALL content below fixed 54px header */
+  body{padding-top:54px}
   .tab{padding-top:4px}
   .aria-banner{margin-top:0}
   /* Ensure modals don't get hidden behind bottom nav */
@@ -977,7 +980,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 <!-- 3-COLUMN GRID -->
 <div class="today-grid">
 
-  <!-- COL 1: BRIEF + QV -->
+  <!-- COL 1: BRIEF only -->
   <div class="tg-col tg-col-brief">
     <!-- MORNING BRIEF — AI prioritized daily digest -->
   <div id="morningBrief">
@@ -1000,12 +1003,12 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       </div>
     </div>
   </div>
-    <!-- TODAY QUICK VIEW — injected by renderTodayQV() -->
-  <div id="todayQV"></div>
   </div>
 
-  <!-- COL 2: AI RESULT CARD -->
+  <!-- COL 2: TODAY QV + AI RESULT CARD -->
   <div class="tg-col tg-col-actions">
+    <!-- TODAY QUICK VIEW — who's here, what's next -->
+  <div id="todayQV"></div>
     <!-- AI RESULT CARD — appears after analysis -->
   <div id="aiResult" class="guest-card" style="display:none">
     <div class="guest-card-header">
@@ -1078,9 +1081,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <div class="tfs-grid collapsed" id="todayFooterStats"></div>
 </div>
 
-</div><!-- /today-cols --><!-- /today-col-main -->
-
 </div><!-- /today-cols -->
+
 </div><!-- /tab-today -->
 
 <!-- ═══ CLIENTS ════════════════════════════════════════════ -->
@@ -1414,8 +1416,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       <span style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px">ARIA</span>
       <span style="margin-left:auto;font-size:10px;color:rgba(255,255,255,.35)" data-fr="Assistant IA" data-en="AI Assistant">Assistant IA</span>
     </div>
-    <div style="padding:10px 12px">
-      <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-bottom:6px" data-fr="Briefs, messages, relances, check-in — collez ou demandez." data-en="Briefs, messages, follow-ups, check-in — paste or ask.">Briefs, messages, relances, check-in — collez ou demandez.</div>
+    <div style="padding:8px 12px">
+      <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-bottom:5px" data-fr="Briefs, messages, relances, check-in — collez ou demandez." data-en="Briefs, messages, follow-ups, check-in — paste or ask.">Briefs, messages, relances, check-in — collez ou demandez.</div>
       <textarea id="ariaSideInput" class="aria-side-ta" rows="2"
         placeholder="Tapez ou collez ici…"
         data-placeholder-fr="Tapez ou collez ici…"
@@ -1454,7 +1456,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       <div style="font-size:13px;font-weight:700;color:var(--gold);letter-spacing:1px">📬 INBOX</div>
       <span id="inboxSidebarBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:2px 7px;animation:pulse 1.5s infinite">0</span>
     </div>
-    <div id="inboxSidebarList" style="padding:8px 12px;min-height:80px;max-height:340px;overflow-y:auto"></div>
+    <div id="inboxSidebarList" style="padding:8px 12px;min-height:40px;max-height:340px;overflow-y:auto"></div>
     <div style="padding:8px 12px;border-top:1px solid var(--border)">
       <button onclick="showInbox()" style="width:100%;background:var(--paper);border:1.5px solid var(--border);border-radius:8px;padding:8px;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="Voir tous les emails →" data-en="See all emails →">Voir tous les emails →</button>
     </div>
@@ -2721,6 +2723,8 @@ function renderAll() {
       renderFooterStats(id);
     }
   } catch(e) {}
+  // Sync sidebar alignment with content
+  setTimeout(syncSidebarToContent, 100);
 }
 
 function updateHeaderStats() {
@@ -3361,6 +3365,23 @@ function applyLang() {
 // ════════════════════════════════════════════
 // TABS
 // ════════════════════════════════════════════
+/* Align sidebar top with the first content block of the active tab */
+function syncSidebarToContent() {
+  if (window.innerWidth < 1024) return;
+  var rail = document.getElementById('globalSideRail');
+  if (!rail) return;
+  // On Today tab, align with today-grid; on other tabs, start at top
+  var activeTab = document.querySelector('.tab.on') || document.querySelector('.tab[style*="block"]');
+  var anchor = document.querySelector('.today-grid') || document.querySelector('.tg-col-brief');
+  if (activeTab && activeTab.id === 'tab-today' && anchor) {
+    var railTop = rail.getBoundingClientRect().top + window.scrollY;
+    var anchorTop = anchor.getBoundingClientRect().top + window.scrollY;
+    var offset = Math.max(0, anchorTop - railTop);
+    rail.style.paddingTop = offset + 'px';
+  } else {
+    rail.style.paddingTop = '0px';
+  }
+}
 function goTab(t) {
   ['today','clients','home'].forEach(id => {
     const tab = document.getElementById('tab-'+id);
@@ -3371,7 +3392,8 @@ function goTab(t) {
     }
     if (btn) btn.classList.toggle('on', id===t);
   });
-
+  // Sync sidebar top with the active tab's content start
+  setTimeout(syncSidebarToContent, 80);
   // Render footer stats for the active tab
   try { renderFooterStats(t); } catch(e) { console.error('renderFooterStats error:', e); }
 
@@ -9201,6 +9223,9 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Sync sidebar alignment on resize
+window.addEventListener('resize', function() { syncSidebarToContent(); });
+
 // ── PWA INSTALL PROMPT ──
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -10457,23 +10482,23 @@ function analyzeText() {}
 @media (min-width: 1024px) {
   .app-shell {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 300px;
-    gap: 20px;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
     max-width: 1320px;
     padding: 0 16px;
     align-items: start;
   }
   .app-shell > main {
-    padding: 16px 0;
+    padding: 12px 0;
     max-width: none;
   }
   #globalSideRail {
     position: sticky;
-    top: 130px;
+    top: 140px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 16px 0;
+    gap: 12px;
+    padding: 0;
   }
 }
 @media (max-width: 1023px) {
@@ -10528,7 +10553,11 @@ function analyzeText() {}
 }
 .aria-banner-send:not(:disabled) { opacity: 1; }
 .aria-banner-send:not(:disabled):hover { opacity: .85; }
-@media (min-width: 1024px) { .aria-banner { display: none; } }
+/* On desktop: banner stays visible, 2 rows like mobile (no single-line) */
+@media (min-width: 1024px) {
+  .aria-banner { padding: 7px 20px 8px; position: sticky; top: 96px; z-index: 198; }
+  .aria-banner .aria-mobile-prompts { display: none; }
+}
 @media (max-width: 400px) {
   .aria-banner-sub { display: none; }
   .aria-banner-row1 { margin-bottom: 5px; }
@@ -10655,7 +10684,6 @@ header { height: 50px; padding: 0 16px; }
 /* ── ARIA SIDEBAR: bigger, hero status ── */
 @media (min-width: 1024px) {
   .app-shell {
-    grid-template-columns: minmax(0, 1fr) 320px !important;
     gap: 16px !important;
   }
 }
@@ -10721,7 +10749,7 @@ header { height: 50px; padding: 0 16px; }
 /* ── DENSITY: more breathing room ── */
 main { padding: 12px 14px !important; }
 @media (min-width: 600px) { main { padding: 14px 18px !important; } }
-@media (min-width: 1024px) { .app-shell main { padding: 14px 0 !important; } }
+@media (min-width: 1024px) { .app-shell main { padding: 12px 0 !important; } }
 
 /* ── COLOR NORMALIZATION ── */
 /* Green = nav, header, primary CTA only */
@@ -10755,21 +10783,7 @@ main { padding: 12px 14px !important; }
 .today-empty-cta:hover { background: var(--green2); }
 
 /* ── ARIA BANNER (mobile): add quick prompts ── */
-.aria-mobile-prompts {
-  display: flex; gap: 6px; padding: 4px 14px 6px;
-  overflow-x: auto; -webkit-overflow-scrolling: touch;
-}
-.aria-mobile-prompts::-webkit-scrollbar { display: none; }
-.aria-mobile-prompt {
-  flex-shrink: 0; padding: 5px 10px; border-radius: 16px;
-  background: rgba(255,255,255,.08); border: 1px solid rgba(201,150,58,.25);
-  font-size: 11px; color: rgba(255,255,255,.7); cursor: pointer;
-  font-family: 'DM Sans', sans-serif; white-space: nowrap;
-  transition: all .15s;
-}
-.aria-mobile-prompt:hover {
-  background: rgba(201,150,58,.15); border-color: var(--gold); color: #fff;
-}
+.aria-mobile-prompts { display: none; }
 @media (min-width: 1024px) { .aria-mobile-prompts { display: none; } }
 
 /* ── INBOX SIDEBAR: subtler ── */
