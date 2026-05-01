@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -4137,6 +4138,23 @@ async function chatSend() {
       return;
     }
     
+    // ── Detect WhatsApp bulk reservation schedule (e.g. Sophie list, planning)
+    var isBulkWASchedule = (
+      /(?:JANVIER|FÉVRIER|MARS|AVRIL|MAI|JUIN|JUILLET|AOÛT|SEPTEMBRE|OCTOBRE|NOVEMBRE|DÉCEMBRE|JANUARY|FEBRUARY|MARCH|APRIL|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\s+202\d/i.test(text) &&
+      /→\s*\d+\s*(nuits?|nights?)/i.test(text) &&
+      /\d+\s*(pers|adulte|person|guest)/i.test(text)
+    ) || (
+      // Multiple reservation blocks: "Name – N pers." + dates pattern
+      (text.match(/–\s*\d+\s*(pers|adultes|guests|adults)/gi) || []).length >= 2 &&
+      /(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(text)
+    );
+    
+    if (isBulkWASchedule) {
+      typing.style.display = 'none';
+      await handleBulkReservationImport(text);
+      return;
+    }
+
     var isPastedEmail = text.length > 150 && (
       /airbnb|booking|check.?in|checkout|check-out|guest|réservation|confirmation|nuits|nights|adultes|adults|enfants|children|arrivée|départ|arrival|departure/i.test(text) ||
       /bonjour.*réserver|hello.*book|wish.*stay/i.test(text) ||
@@ -4273,18 +4291,212 @@ async function handleChatSendCommand(client, text) {
   addChatBubble('ai', '✍ **' + client.name + '**\n\n' + msg.trim(), buttons);
 }
 
+// ── NEW: Bulk WhatsApp reservation import handler ──
+async function handleBulkReservationImport(text) {
+  var fr = lang === 'fr';
+  var today = new Date().toISOString().slice(0,10);
+  var yearStr = today.slice(0,4);
+
+  addChatBubble('system', fr
+    ? '📋 Planning de réservations détecté — extraction en cours...'
+    : '📋 Reservation schedule detected — extracting...');
+
+  var sysPrompt = [
+    'You are a reservation data extractor for a luxury villa.',
+    'The user pastes a WhatsApp message containing multiple upcoming reservations.',
+    'Return ONLY valid JSON, no markdown, no explanation.',
+    'Schema:',
+    '{',
+    '  "source_type": "whatsapp_schedule",',
+    '  "reservations": [',
+    '    {',
+    '      "guest_name": "First Last",',
+    '      "arrival_date": "YYYY-MM-DD",',
+    '      "departure_date": "YYYY-MM-DD",',
+    '      "nights": 0,',
+    '      "guests_count": 0,',
+    '      "guests_count_text": "raw value if ambiguous e.g. 2 ou 3",',
+    '      "needs_confirmation": false,',
+    '      "source": "Direct",',
+    '      "notes": "",',
+    '      "confidence": 0.95',
+    '    }',
+    '  ],',
+    '  "has_ambiguity": false,',
+    '  "ambiguity_notes": ""',
+    '}',
+    'Rules:',
+    '- Convert French day/month names to ISO dates. Year = ' + yearStr + ' unless stated otherwise.',
+    '- JEUDI 23 AVRIL = ' + yearStr + '-04-23',
+    '- LUNDI 27 AVRIL = ' + yearStr + '-04-27',
+    '- If guests_count is ambiguous (e.g. "2 ou 3 pers."), set needs_confirmation=true, guests_count=0, guests_count_text to raw value.',
+    '- Do not guess ambiguous values.',
+    '- Extract ALL reservations found in the text.'
+  ].join('\n');
+
+  try {
+    var raw = await callBestAI('extract', sysPrompt, text, 800);
+    document.getElementById('chatTyping').style.display = 'none';
+
+    var parsed = null;
+    try {
+      var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
+      if (m) parsed = JSON.parse(m[0]);
+    } catch(e) {}
+
+    if (!parsed || !parsed.reservations || !parsed.reservations.length) {
+      addChatBubble('ai', fr
+        ? '🤔 Je n\'ai pas pu extraire les réservations. Réessaie en collant uniquement le planning.'
+        : '🤔 Could not extract reservations. Try pasting just the schedule.');
+      return;
+    }
+
+    var reservations = parsed.reservations;
+    var hasAmbiguity = parsed.has_ambiguity || reservations.some(function(r) { return r.needs_confirmation; });
+
+    // Build summary card
+    var summaryLines = [fr ? '📋 **Réservations extraites**' : '📋 **Reservations extracted**', ''];
+    var monthGroups = {};
+    reservations.forEach(function(r) {
+      var mo = r.arrival_date ? r.arrival_date.slice(0,7) : 'unknown';
+      if (!monthGroups[mo]) monthGroups[mo] = [];
+      monthGroups[mo].push(r);
+    });
+
+    Object.keys(monthGroups).sort().forEach(function(mo) {
+      var label = mo !== 'unknown' ? new Date(mo + '-01').toLocaleDateString(fr ? 'fr-FR' : 'en-GB', {month:'long', year:'numeric'}).toUpperCase() : '?';
+      summaryLines.push('**' + label + '**');
+      monthGroups[mo].forEach(function(r) {
+        var arrFmt = r.arrival_date ? fmtDate(r.arrival_date, true) : '?';
+        var depFmt = r.departure_date ? fmtDate(r.departure_date, true) : '?';
+        var guestStr = r.needs_confirmation
+          ? '⚠️ ' + r.guests_count_text + (fr ? ' pers. (à confirmer)' : ' guests (confirm)')
+          : r.guests_count + (fr ? ' pers.' : ' guests');
+        var nights = r.nights || (r.arrival_date && r.departure_date ? Math.round((new Date(r.departure_date)-new Date(r.arrival_date))/864e5) : 0);
+        summaryLines.push('  • **' + r.guest_name + '** — ' + guestStr + ' — ' + arrFmt + ' → ' + depFmt + ' (' + nights + (fr ? ' nuits' : ' nights') + ')');
+      });
+      summaryLines.push('');
+    });
+
+    if (hasAmbiguity && parsed.ambiguity_notes) {
+      summaryLines.push('⚠️ ' + (fr ? 'Points à confirmer' : 'Needs confirmation') + ': ' + parsed.ambiguity_notes);
+    }
+
+    // Store for later use
+    window._pendingBulkImport = reservations;
+
+    var buttons = [];
+    buttons.push({
+      label: fr ? '💾 Tout créer / mettre à jour' : '💾 Create / update all',
+      cls: 'save',
+      fn: 'confirmBulkImport()'
+    });
+    if (hasAmbiguity) {
+      buttons.push({
+        label: fr ? '⚠️ Voir points à confirmer' : '⚠️ Review ambiguous',
+        cls: 'view',
+        fn: 'reviewBulkAmbiguity()'
+      });
+    }
+    buttons.push({ label: '✕', cls: 'no', fn: 'dismissChatAction(this)' });
+
+    addChatBubble('ai', summaryLines.join('\n'), buttons);
+
+  } catch(e) {
+    document.getElementById('chatTyping').style.display = 'none';
+    addChatBubble('ai', '⚠ ' + e.message);
+  }
+}
+
+// Confirm and execute bulk import
+function confirmBulkImport() {
+  var fr = lang === 'fr';
+  var reservations = window._pendingBulkImport;
+  if (!reservations || !reservations.length) {
+    toast(fr ? 'Rien à importer' : 'Nothing to import');
+    return;
+  }
+
+  var created = 0, updated = 0, skipped = 0;
+  reservations.forEach(function(r) {
+    if (!r.guest_name) { skipped++; return; }
+    var existing = clients.find(function(c) {
+      return c.name && c.name.toLowerCase().trim() === r.guest_name.toLowerCase().trim();
+    });
+
+    var nights = r.nights || (r.arrival_date && r.departure_date
+      ? Math.round((new Date(r.departure_date) - new Date(r.arrival_date)) / 864e5)
+      : 0);
+
+    if (existing) {
+      // Update arrival/departure if not set or different
+      if (r.arrival_date) existing.arrival = r.arrival_date;
+      if (r.departure_date) existing.departure = r.departure_date;
+      if (r.guests_count > 0) existing.guests = r.guests_count;
+      if (r.notes) existing.notes = (existing.notes ? existing.notes + ' | ' : '') + r.notes;
+      pushToSupabase(existing);
+      updated++;
+    } else {
+      var newClient = {
+        id: 'cli_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+        name: r.guest_name,
+        nat: r.nat || '',
+        arrival: r.arrival_date || '',
+        departure: r.departure_date || '',
+        guests: r.guests_count || 0,
+        price: 0,
+        commission: 3.6,
+        source: r.source || 'Direct',
+        phone: '',
+        notes: r.notes || '',
+        bookingStatus: 'confirmed',
+        messages: {}
+      };
+      clients.push(newClient);
+      pushToSupabase(newClient);
+      created++;
+    }
+  });
+
+  saveLocal();
+  renderAll();
+  window._pendingBulkImport = null;
+
+  var msg = fr
+    ? (created + ' client(s) créé(s), ' + updated + ' mis à jour' + (skipped ? ', ' + skipped + ' ignoré(s)' : '') + '.')
+    : (created + ' client(s) created, ' + updated + ' updated' + (skipped ? ', ' + skipped + ' skipped' : '') + '.');
+  addChatBubble('system', '✅ ' + msg);
+  toast(msg);
+}
+
+// Show ambiguous items for review
+function reviewBulkAmbiguity() {
+  var fr = lang === 'fr';
+  var reservations = window._pendingBulkImport;
+  if (!reservations) return;
+  var ambiguous = reservations.filter(function(r) { return r.needs_confirmation; });
+  if (!ambiguous.length) {
+    toast(fr ? 'Aucune ambiguïté' : 'No ambiguity');
+    return;
+  }
+  var lines = [fr ? '⚠️ **Points à confirmer avant import:**' : '⚠️ **Please confirm before import:**', ''];
+  ambiguous.forEach(function(r) {
+    lines.push('• **' + r.guest_name + '**: ' + r.guests_count_text + (fr ? ' personnes ?' : ' guests?'));
+  });
+  addChatBubble('system', lines.join('\n'));
+}
+
 async function handleChatEmailAnalysis(text) {
   document.getElementById('chatTyping').style.display = 'block';
 
   var fr = lang === 'fr';
   var today = new Date().toISOString().slice(0,10);
 
-  // ── Detect if this is a WhatsApp conversation (not an Airbnb email) ──
+  // ── Step 1: Classify input type ──
   var isWAConv = /\[\d{1,2}\/\d{1,2}\/\d{4},\s*\d{1,2}:\d{2}:\d{2}\]/.test(text) ||
                  /~\w+:/.test(text);
 
   if (isWAConv) {
-    // Extract client name from WA conversation and route to context handler
     var waClientName = extractClientFromWAConv(text);
     var waClient = waClientName ? findClientByName(waClientName) : null;
     if (waClient) {
@@ -4295,36 +4507,74 @@ async function handleChatEmailAnalysis(text) {
       await handleChatContextCommandWithText(waClient, text);
       return;
     }
-    // No client matched — try to extract + suggest
     document.getElementById('chatTyping').style.display = 'none';
     await handleWAConvUnknown(text);
     return;
   }
 
-  var hasFrench = /\b(bonjour|merci|nous|pour|séjour|réservation|adultes)\b/i.test(text);
-  var guestLang = hasFrench ? 'French' : 'English';
-  
-  var p1Prompt = [
-    'Extract from pasted message. Return ONLY valid JSON, no markdown.',
-    '{"guest":{"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"confirmed","notes":""},"alerts":[{"type":"info","text":""}],"price_advice":{"amount":750,"reason":""}}',
-    'Rules: bookingStatus="inquiry" if question, "confirmed" if booking.',
-    'price=Guest paid total.',
-    'Today: ' + today
+  // ── Step 2: Classify source type ──
+  var isAirbnb = /airbnb/i.test(text);
+  var isBooking = /booking\.com/i.test(text);
+  var sourceLabel = isAirbnb ? 'Airbnb' : (isBooking ? 'Booking.com' : 'Direct');
+
+  var hasFrench = /\b(bonjour|merci|nous|pour|séjour|réservation|adultes|nuits)\b/i.test(text);
+
+  // ── Step 3: Improved extraction prompt ──
+  var sysPrompt = [
+    'You are a reservation data extractor for a luxury villa.',
+    'Input: pasted ' + (isAirbnb ? 'Airbnb email' : isBooking ? 'Booking.com email' : 'message or email') + '.',
+    'Return ONLY valid JSON. No markdown. No explanation.',
+    '{',
+    '  "guest": {',
+    '    "name": "",',
+    '    "nat": "",',
+    '    "arrival": "YYYY-MM-DD",',
+    '    "departure": "YYYY-MM-DD",',
+    '    "nights": 0,',
+    '    "guests": 0,',
+    '    "price": 0,',
+    '    "commission": 15.5,',
+    '    "source": "' + sourceLabel + '",',
+    '    "phone": "",',
+    '    "bookingStatus": "confirmed",',
+    '    "notes": ""',
+    '  },',
+    '  "alerts": [],',
+    '  "input_type": "airbnb_email|booking_email|direct_message|inquiry|unknown"',
+    '}',
+    'Rules:',
+    '- name: full guest name only (no company, no email).',
+    '- nat: guess nationality from city/country/flag emoji.',
+    '- bookingStatus: "inquiry" if asking availability, "confirmed" if booking confirmed.',
+    '- price: use "Guest paid" total. DO NOT use host payout. If nightly × nights shown, multiply.',
+    '- commission: extract from email. Default: Airbnb=3.6, Booking=15, Direct=0.',
+    '- If no name found, set name="" and explain in notes why.',
+    '- Today: ' + today
   ].join('\n');
-  
+
   try {
-    var raw = await callBestAI('extract', p1Prompt, text, 600);
+    var raw = await callBestAI('extract', sysPrompt, text, 600);
     document.getElementById('chatTyping').style.display = 'none';
     
     var g = {};
+    var inputType = 'unknown';
     try {
       var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
-      if (m) { var parsed = JSON.parse(m[0]); g = parsed.guest || parsed; }
+      if (m) {
+        var parsedObj = JSON.parse(m[0]);
+        g = parsedObj.guest || parsedObj;
+        inputType = parsedObj.input_type || 'unknown';
+      }
     } catch(e) {}
     
     if (g.name) g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
+
+    // ── Step 4: If no name extracted, give helpful context-aware message ──
     if (!g.name) {
-      addChatBubble('ai', fr ? '🤔 Je n\'ai pas pu extraire d\'infos de ce message. C\'est bien un email Airbnb ?' : '🤔 Could not extract info. Is this an Airbnb email?');
+      var helpMsg = fr
+        ? '🤔 Pas de nom trouvé dans ce texte.\n\nEssaie de coller:\n• Un email Airbnb complet\n• Un message WhatsApp de réservation\n• Ou tape directement : "infos Sophie : 7 pers, 2 mai → 9 mai"'
+        : '🤔 No guest name found in this text.\n\nTry pasting:\n• A full Airbnb email\n• A WhatsApp booking message\n• Or type: "save Sophie: 7 guests, May 2 → May 9"';
+      addChatBubble('ai', helpMsg);
       return;
     }
     
