@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -979,7 +980,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 <!-- 3-COLUMN GRID -->
 <div class="today-grid">
 
-  <!-- COL 1: BRIEF only -->
+  <!-- COL 1: BRIEF + TODAY QV + AI RESULT -->
   <div class="tg-col tg-col-brief">
     <!-- MORNING BRIEF — AI prioritized daily digest -->
   <div id="morningBrief">
@@ -1002,10 +1003,6 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       </div>
     </div>
   </div>
-  </div>
-
-  <!-- COL 2: TODAY QV + AI RESULT CARD -->
-  <div class="tg-col tg-col-actions">
     <!-- TODAY QUICK VIEW — who's here, what's next -->
   <div id="todayQV"></div>
     <!-- AI RESULT CARD — appears after analysis -->
@@ -1062,9 +1059,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     </div>
     <!-- Save actions -->
     <div class="guest-actions" id="resActions"></div>
-  </div>
+  </div><!-- /aiResult -->
 
-  <!-- COL 3 removed — Aria + Inbox now live in the global side-rail (visible on all tabs) -->
+  </div><!-- /tg-col-brief -->
 
 </div><!-- /today-grid -->
 
@@ -3364,19 +3361,20 @@ function applyLang() {
 // ════════════════════════════════════════════
 // TABS
 // ════════════════════════════════════════════
-/* Align sidebar top with the first content block of the active tab */
+/* Align sidebar top with the stays-bar on Today tab */
 function syncSidebarToContent() {
   if (window.innerWidth < 1024) return;
   var rail = document.getElementById('globalSideRail');
   if (!rail) return;
-  // On Today tab, align with today-grid; on other tabs, start at top
   var activeTab = document.querySelector('.tab.on') || document.querySelector('.tab[style*="block"]');
-  var anchor = document.querySelector('.today-grid') || document.querySelector('.tg-col-brief');
-  if (activeTab && activeTab.id === 'tab-today' && anchor) {
-    var railTop = rail.getBoundingClientRect().top + window.scrollY;
-    var anchorTop = anchor.getBoundingClientRect().top + window.scrollY;
-    var offset = Math.max(0, anchorTop - railTop);
-    rail.style.paddingTop = offset + 'px';
+  if (activeTab && activeTab.id === 'tab-today') {
+    var staysBar = document.querySelector('.stays-bar-wrap');
+    if (staysBar) {
+      var railTop = rail.getBoundingClientRect().top + window.scrollY;
+      var staysTop = staysBar.getBoundingClientRect().top + window.scrollY;
+      var offset = Math.max(0, staysTop - railTop);
+      rail.style.paddingTop = offset + 'px';
+    }
   } else {
     rail.style.paddingTop = '0px';
   }
@@ -10435,12 +10433,11 @@ function analyzeText() {}
   align-items: start;
 }
 
-/* ── TABLET+: 2 cols ── */
+/* ── TABLET+: single column, full width ── */
 @media (min-width: 700px) {
   .today-grid {
-    grid-template-columns: 1.4fr minmax(0, 1fr);
-    gap: 16px;
-    align-items: start;
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
 }
 
@@ -10493,7 +10490,7 @@ function analyzeText() {}
   }
   #globalSideRail {
     position: sticky;
-    top: 140px;
+    top: 98px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -10552,10 +10549,9 @@ function analyzeText() {}
 }
 .aria-banner-send:not(:disabled) { opacity: 1; }
 .aria-banner-send:not(:disabled):hover { opacity: .85; }
-/* On desktop: banner stays visible, 2 rows like mobile (no single-line) */
+/* Desktop: banner hidden — sidebar handles ARIA */
 @media (min-width: 1024px) {
-  .aria-banner { padding: 7px 20px 8px; position: sticky; top: 96px; z-index: 198; }
-  .aria-banner .aria-mobile-prompts { display: none; }
+  .aria-banner { display: none; }
 }
 @media (max-width: 400px) {
   .aria-banner-sub { display: none; }
