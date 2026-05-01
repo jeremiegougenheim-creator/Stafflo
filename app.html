@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1416,6 +1417,18 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <button class="btn-save" onclick="saveSettings()" data-fr="Enregistrer & tester" data-en="Save & test">Enregistrer & tester</button>
     <div class="status-ok" id="settingsOk"></div>
     <div class="status-err" id="settingsErr"></div>
+  </div>
+
+  <div class="settings-section" style="border:1.5px solid rgba(201,150,58,.2);background:rgba(201,150,58,.03)">
+    <div class="settings-title" style="color:var(--gold)" data-fr="⚡ CACHE IA & LIVRET" data-en="⚡ AI CACHE & VILLA GUIDE">⚡ CACHE IA & LIVRET</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5" data-fr="Le cache mémorise les réponses IA pour les questions récurrentes. Le livret villa permet des réponses instantanées sans appel LLM." data-en="The cache stores AI answers for recurring questions. The villa guide enables instant answers without LLM calls.">Le cache mémorise les réponses IA pour les questions récurrentes. Le livret villa permet des réponses instantanées sans appel LLM.</div>
+    <button onclick="createAiCacheTables()" style="width:100%;padding:10px;background:var(--green);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:6px" data-fr="📦 Créer tables ai_cache + villa_context" data-en="📦 Create ai_cache + villa_context tables">📦 Créer tables ai_cache + villa_context</button>
+    <button onclick="seedVillaContext()" style="width:100%;padding:10px;background:none;border:1.5px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--muted);margin-bottom:6px" data-fr="🏠 Seed livret DarJ (sections clés)" data-en="🏠 Seed DarJ villa guide (key sections)">🏠 Seed livret DarJ (sections clés)</button>
+    <div style="display:flex;gap:6px">
+      <button onclick="showCacheStats()" style="flex:1;padding:8px;background:none;border:1.5px solid var(--border);border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit;color:var(--muted)" data-fr="📊 Stats cache" data-en="📊 Cache stats">📊 Stats cache</button>
+      <button onclick="clearAiCache()" style="flex:1;padding:8px;background:none;border:1.5px solid rgba(192,57,43,.3);border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit;color:var(--red)" data-fr="🗑 Vider cache" data-en="🗑 Clear cache">🗑 Vider cache</button>
+    </div>
+    <div id="cacheStatsBox" style="display:none;margin-top:8px;font-size:11px;color:var(--muted);background:var(--paper);border-radius:8px;padding:8px 12px"></div>
   </div>
 
   <div class="settings-section">
@@ -4218,7 +4231,32 @@ async function handleChatQuestion(text) {
   var cfg = getCfg();
   var owner = cfg.owner || 'Jérémie';
   var villa = cfg.villa || 'Villa DarJ';
-  
+
+  // ── LEVEL 1: Villa context keyword lookup (instant, no LLM) ──
+  var villaAnswer = villaContextLookup(text);
+  if (villaAnswer) {
+    document.getElementById('chatTyping').style.display = 'none';
+    addChatBubble('ai', villaAnswer, [
+      { label: '👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' }
+    ]);
+    saveChatMessage('user', text, null, null).catch(function(){});
+    saveChatMessage('assistant', villaAnswer, null, null).catch(function(){});
+    return;
+  }
+
+  // ── LEVEL 2: Supabase AI cache lookup (~100ms) ──
+  var cachedAnswer = await ariaCacheLookup(text);
+  if (cachedAnswer) {
+    document.getElementById('chatTyping').style.display = 'none';
+    addChatBubble('ai', cachedAnswer + '\n\n_⚡ cache_', [
+      { label: '👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' }
+    ]);
+    saveChatMessage('user', text, null, null).catch(function(){});
+    saveChatMessage('assistant', cachedAnswer, null, null).catch(function(){});
+    return;
+  }
+
+  // ── LEVEL 3: LLM call ──
   // Detect if question is about a specific client → load that client's chat history (token-efficient)
   var mentioned = null;
   var lcText = text.toLowerCase();
@@ -4289,6 +4327,9 @@ async function handleChatQuestion(text) {
   buttons.push({ label: '👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' });
   
   addChatBubble('ai', response, buttons);
+  
+  // Save to AI cache for next time (async, non-blocking)
+  ariaCacheSave(text, response).catch(function(){});
 }
 
 async function handleChatSendCommand(client, text) {
@@ -5138,7 +5179,7 @@ function getSourceBadge(source) {
   return '<span style="background:var(--muted);color:#fff;border-radius:4px;font-size:9px;padding:1px 6px;margin-left:4px">'+source+'</span>';
 }
 
-function loadInboxEmails() {
+async function loadInboxEmails() {
   var el = document.getElementById('inboxList');
   if (!el) return;
   el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Chargement...</div>';
@@ -5192,7 +5233,7 @@ function loadInboxEmails() {
       html += '<div style="display:flex;gap:6px;margin-top:6px;align-items:center;justify-content:space-between">';
       html += '<button class="ic-open-btn" data-email-id="' + row.id + '" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-weight:600;font-family:DM Sans,sans-serif">📖 Analyser</button>';
       if (row.source === 'whatsapp' && row.from_email) {
-        html += '<button onclick="event.stopPropagation();openWhatsAppReply(''+row.from_email.replace(/'/g,'')+'','')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-weight:600;font-family:DM Sans,sans-serif;white-space:nowrap">💬 Répondre WA</button>';
+        html += '<button class="ic-wa-reply-btn" data-phone="' + (row.from_email||'').replace(/"/g,'') + '" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-weight:600;font-family:DM Sans,sans-serif;white-space:nowrap">💬 Répondre WA</button>';
       }
       if (externalLink) {
         html += '<a href="' + externalLink + '" target="_blank" onclick="event.stopPropagation()" style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:11px;color:var(--ink);text-decoration:none;white-space:nowrap" title="Ouvrir sur Airbnb/Booking">' + linkIcon + ' Ouvrir</a>';
@@ -5250,6 +5291,14 @@ function loadInboxEmails() {
         var id = btn.getAttribute('data-email-id');
         var row = window._inboxEmails[id];
         if (row) openInboxEmail(row);
+      });
+    });
+    // WA reply buttons
+    el.querySelectorAll('.ic-wa-reply-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var phone = btn.getAttribute('data-phone');
+        if (phone && typeof openWhatsAppReply === 'function') openWhatsAppReply(phone, '');
       });
     });
     // Also let clicking the whole card open it (except links/buttons)
@@ -5357,7 +5406,7 @@ async function handleInboxEmailFull(row, ex) {
       '"text":"Short direct reply in '+guestLang+', answer their question immediately, invite next step, signed '+owner+'."}'
     )+
     ']}\n'+
-    'Language for responses: '+guestLang+'. No placeholders like [X]. Fill everything. No markdown.';';
+    'Language for responses: '+guestLang+'. No placeholders like [X]. Fill everything. No markdown.';
 
   var raw = await callBestAI('reason', '', prompt, 1200);
   document.getElementById('chatTyping').style.display = 'none';
@@ -5493,20 +5542,16 @@ async function rewriteInTone(rtId, respKey, ctxKey) {
 
   var toneInstructions = {
     warmer: fr ? 'Récris ce message en le rendant encore plus chaleureux et personnel. Ajoute des emojis pertinents. Utilise le prénom.' : 'Rewrite warmer and more personal. Add relevant emojis. Use first name.',
-    shorter: fr ? 'Réécris en version très courte (2-3 phrases max). Garde seulement l'essentiel.' : 'Rewrite very short (2-3 sentences max). Keep only the essential.',
-    formal: fr ? 'Réécris de manière professionnelle et formelle. Structure claire, pas d'emojis.' : 'Rewrite professionally and formally. Clear structure, no emojis.',
+    shorter: fr ? 'Réécris en version très courte (2-3 phrases max). Garde seulement l\'essentiel.' : 'Rewrite very short (2-3 sentences max). Keep only the essential.',
+    formal: fr ? 'Réécris de manière professionnelle et formelle. Structure claire, pas d\'emojis.' : 'Rewrite professionally and formally. Clear structure, no emojis.',
     friendly: fr ? 'Réécris comme si tu écrivais à un ami. Ton décontracté, naturel, humain.' : 'Rewrite like texting a friend. Casual, natural, human tone.',
-    luxury: fr ? 'Réécris en mettant en valeur l'aspect luxe et prestige de la villa. Vocabulaire haut de gamme.' : 'Rewrite emphasizing luxury and prestige of the villa. Premium vocabulary.'
+    luxury: fr ? 'Réécris en mettant en valeur l\'aspect luxe et prestige de la villa. Vocabulaire haut de gamme.' : 'Rewrite emphasizing luxury and prestige of the villa. Premium vocabulary.'
   };
 
-  var prompt = 'Rewrite this message for Villa DarJ Marrakech ('+ctx.villa+', owned by '+ctx.owner+').
-
-Original:
-'+currentText+'
-
-Instruction: '+toneInstructions[toneChoice]+'
-
-Return ONLY the rewritten message text, no intro, no quotes, no markdown. Language: '+ctx.guestLang+'.';
+  var prompt = 'Rewrite this message for Villa DarJ Marrakech ('+ctx.villa+', owned by '+ctx.owner+').\n\n' +
+    'Original:\n'+currentText+'\n\n' +
+    'Instruction: '+toneInstructions[toneChoice]+'\n\n' +
+    'Return ONLY the rewritten message text, no intro, no quotes, no markdown. Language: '+ctx.guestLang+'.';
 
   try {
     var newText = await callBestAI('fast', '', prompt, 400);
@@ -9756,6 +9801,212 @@ async function loadMorningBrief(forceRefresh = false) {
 //   'reason'   → DeepSeek (logical analysis, pricing)
 
 // ════════════════════════════════════════════════════════
+// AI CACHE — 3-level response system
+// Level 1: Villa context keywords (instant, no LLM)
+// Level 2: Supabase ai_cache (previously answered)
+// Level 3: LLM call (saves to cache after)
+// ════════════════════════════════════════════════════════
+
+// ── Villa context: keyword-based instant answers ──
+var VILLA_KEYWORDS = {
+  wifi: { fr: '📶 WiFi : réseau "Villa DarJ" — mot de passe : francoise\nConnexion fibre 100 Mbps dans toute la villa.', en: '📶 WiFi: network "Villa DarJ" — password: francoise\nFiber 100 Mbps throughout the villa.' },
+  password: { fr: '📶 WiFi : réseau "Villa DarJ" — mot de passe : francoise', en: '📶 WiFi: network "Villa DarJ" — password: francoise' },
+  piscine: { fr: '🏊 La piscine (12×5m) est chauffée à 28°C d\'octobre à avril. Serviettes piscine fournies. Douche extérieure disponible.', en: '🏊 The pool (12×5m) is heated to 28°C from October to April. Pool towels provided. Outdoor shower available.' },
+  pool: { fr: '🏊 La piscine (12×5m) est chauffée à 28°C d\'octobre à avril.', en: '🏊 The pool (12×5m) is heated to 28°C from October to April. Pool towels provided.' },
+  checkout: { fr: '🕐 Check-out à 12h00. Check-in à 15h00. Early check-in / late check-out possible selon disponibilité — demandez à Said.', en: '🕐 Check-out at 12:00 PM. Check-in at 3:00 PM. Early check-in / late check-out possible depending on availability — ask Said.' },
+  checkin: { fr: '🕐 Check-in à 15h00. Said vous accueille et fait le tour de la villa. Check-out à 12h00.', en: '🕐 Check-in at 3:00 PM. Said welcomes you and gives a villa tour. Check-out at 12:00 PM.' },
+  repas: { fr: '🍽 Faiza prépare les repas sur demande :\n• Petit-déjeuner : inclus (7h30-10h)\n• Déjeuner : 200 MAD/pers\n• Dîner : 300 MAD/pers\nPrévenir la veille avant 18h. Régimes spéciaux possibles.', en: '🍽 Faiza prepares meals on request:\n• Breakfast: included (7:30-10 AM)\n• Lunch: 200 MAD/person\n• Dinner: 300 MAD/person\nPlease order by 6 PM the day before. Special diets accommodated.' },
+  meal: { fr: '🍽 Repas préparés par Faiza. Petit-déjeuner inclus. Déjeuner 200 MAD/pers, dîner 300 MAD/pers.', en: '🍽 Meals by Faiza. Breakfast included. Lunch 200 MAD/person, dinner 300 MAD/person.' },
+  breakfast: { fr: '🥐 Petit-déjeuner inclus, servi entre 7h30 et 10h. Msemen, crêpes, fruits frais, jus d\'orange pressé, café/thé.', en: '🥐 Breakfast included, served 7:30-10 AM. Msemen, crepes, fresh fruit, fresh orange juice, coffee/tea.' },
+  staff: { fr: '👥 Votre équipe :\n• Said — Majordome (disponible 7h-22h) : +212 6XX\n• Faiza — Cuisinière\n• Bouchra — Ménage (quotidien 8h-14h)', en: '👥 Your team:\n• Said — Butler (available 7AM-10PM): +212 6XX\n• Faiza — Chef\n• Bouchra — Housekeeping (daily 8AM-2PM)' },
+  said: { fr: '👤 Said est votre majordome. Disponible de 7h à 22h. Il s\'occupe de tout : transferts, courses, recommandations, urgences.', en: '👤 Said is your butler. Available 7AM to 10PM. He handles everything: transfers, shopping, recommendations, emergencies.' },
+  transfert: { fr: '🚗 Said organise les transferts aéroport :\n• Aéroport → Villa : 200 MAD (30 min)\n• Villa → Aéroport : 200 MAD\nPrévenir au moins 2h à l\'avance.', en: '🚗 Said arranges airport transfers:\n• Airport → Villa: 200 MAD (30 min)\n• Villa → Airport: 200 MAD\nPlease notify at least 2 hours in advance.' },
+  airport: { fr: '✈ Transfert aéroport 200 MAD (30 min). Said organise tout — prévenez 2h à l\'avance.', en: '✈ Airport transfer 200 MAD (30 min). Said arranges everything — notify 2 hours ahead.' },
+  restaurant: { fr: '🍴 Nos recommandations :\n• Le Jardin : cuisine marocaine raffinée\n• Nomad : terrasse rooftop, moderne\n• Al Fassia : meilleur restaurant marocain traditionnel\n• La Mamounia : expérience palace\nSaid peut réserver pour vous.', en: '🍴 Our picks:\n• Le Jardin: refined Moroccan cuisine\n• Nomad: rooftop terrace, modern\n• Al Fassia: best traditional Moroccan\n• La Mamounia: palace experience\nSaid can book for you.' },
+  spa: { fr: '💆 Massages et soins au hammam sur place. Réservation via Said la veille. Tarifs : 300-500 MAD/soin.', en: '💆 Massages and hammam treatments on-site. Book through Said the day before. Rates: 300-500 MAD/treatment.' },
+  hammam: { fr: '🧖 Le hammam privé est disponible sur rendez-vous. Prévenez Said la veille. Gommage traditionnel au savon noir + ghassoul inclus.', en: '🧖 The private hammam is available by appointment. Tell Said the day before. Traditional black soap + ghassoul scrub included.' },
+};
+
+function villaContextLookup(question) {
+  var q = (question || '').toLowerCase().replace(/[?!.,;:'"]/g, '').trim();
+  var words = q.split(/\s+/);
+  var l = lang || 'fr';
+  for (var i = 0; i < words.length; i++) {
+    if (VILLA_KEYWORDS[words[i]]) {
+      return VILLA_KEYWORDS[words[i]][l] || VILLA_KEYWORDS[words[i]].fr;
+    }
+  }
+  // Multi-word match
+  var combined = words.join(' ');
+  var keys = Object.keys(VILLA_KEYWORDS);
+  for (var j = 0; j < keys.length; j++) {
+    if (combined.indexOf(keys[j]) !== -1) {
+      return VILLA_KEYWORDS[keys[j]][l] || VILLA_KEYWORDS[keys[j]].fr;
+    }
+  }
+  return null;
+}
+
+// ── Normalize question for cache key ──
+function normalizeQuestion(q) {
+  return (q || '').toLowerCase().replace(/[^a-z0-9àâäéèêëïîôùûüÿçœæ\s]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// ── Supabase AI cache lookup ──
+async function ariaCacheLookup(question) {
+  try {
+    var norm = normalizeQuestion(question);
+    if (!norm || norm.length < 5) return null;
+    var r = await fetch(SB_URL + '/rest/v1/ai_cache?question_normalized=eq.' + encodeURIComponent(norm) + '&limit=1', {
+      headers: { apikey: SB_ANON, Authorization: 'Bearer ' + ((_stafflo_session && _stafflo_session.access_token) || SB_ANON) }
+    });
+    if (!r.ok) return null;
+    var rows = await r.json();
+    if (rows && rows.length && rows[0].answer) {
+      // Increment hit count (fire and forget)
+      fetch(SB_URL + '/rest/v1/rpc/increment_cache_hit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SB_ANON, Authorization: 'Bearer ' + ((_stafflo_session && _stafflo_session.access_token) || SB_ANON) },
+        body: JSON.stringify({ cache_id: rows[0].id })
+      }).catch(function(){});
+      return rows[0].answer;
+    }
+  } catch(e) { /* cache miss — no problem */ }
+  return null;
+}
+
+// ── Save to AI cache ──
+async function ariaCacheSave(question, answer) {
+  try {
+    var norm = normalizeQuestion(question);
+    if (!norm || norm.length < 5 || !answer) return;
+    // Skip dynamic questions (dates, prices, availability)
+    if (/\b(dispo|available|price|prix|date|tarif|cost|combien|how much|quand|when)\b/i.test(question)) return;
+    await fetch(SB_URL + '/rest/v1/ai_cache', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SB_ANON,
+        Authorization: 'Bearer ' + ((_stafflo_session && _stafflo_session.access_token) || SB_ANON),
+        Prefer: 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({ question_normalized: norm, answer: answer, lang: lang || 'fr' })
+    });
+  } catch(e) { /* save failed — not critical */ }
+}
+
+// ── Settings: Create tables ──
+async function createAiCacheTables() {
+  var sql = "CREATE TABLE IF NOT EXISTS ai_cache (" +
+    "id uuid DEFAULT gen_random_uuid() PRIMARY KEY," +
+    "question_normalized text UNIQUE NOT NULL," +
+    "answer text NOT NULL," +
+    "lang text DEFAULT 'fr'," +
+    "hits integer DEFAULT 1," +
+    "created_at timestamptz DEFAULT now()," +
+    "last_hit timestamptz DEFAULT now()" +
+    ");" +
+    "CREATE TABLE IF NOT EXISTS villa_context (" +
+    "id uuid DEFAULT gen_random_uuid() PRIMARY KEY," +
+    "section text NOT NULL," +
+    "content_fr text," +
+    "content_en text," +
+    "priority integer DEFAULT 1," +
+    "updated_at timestamptz DEFAULT now()," +
+    "UNIQUE(section)" +
+    ");" +
+    "CREATE OR REPLACE FUNCTION increment_cache_hit(cache_id uuid) RETURNS void AS $$ " +
+    "UPDATE ai_cache SET hits = hits + 1, last_hit = now() WHERE id = cache_id; " +
+    "$$ LANGUAGE sql;";
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/rpc/exec_sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SB_ANON, Authorization: 'Bearer ' + ((_stafflo_session && _stafflo_session.access_token) || SB_ANON) },
+      body: JSON.stringify({ query: sql })
+    });
+    if (r.ok) {
+      toast('✅ Tables ai_cache + villa_context créées');
+    } else {
+      // Fallback: show SQL for manual execution
+      var box = document.getElementById('cacheStatsBox');
+      if (box) {
+        box.style.display = 'block';
+        box.innerHTML = '<div style="font-weight:600;margin-bottom:6px">⚠ Exécutez ce SQL dans Supabase SQL Editor :</div>' +
+          '<textarea style="width:100%;height:120px;font-size:10px;font-family:monospace;border:1px solid var(--border);border-radius:6px;padding:6px" readonly>' + sql + '</textarea>' +
+          '<button onclick="navigator.clipboard.writeText(this.previousElementSibling.value);toast(\'📋 SQL copié\')" style="margin-top:4px;font-size:11px;background:var(--green);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer">📋 Copier le SQL</button>';
+      }
+    }
+  } catch(e) {
+    toast('⚠ ' + (e.message || 'Erreur création tables').slice(0, 80));
+  }
+}
+
+// ── Seed villa context ──
+async function seedVillaContext() {
+  var sections = [
+    { section: 'wifi', content_fr: 'Réseau: Villa DarJ, Mot de passe: francoise, Fibre 100 Mbps', content_en: 'Network: Villa DarJ, Password: francoise, Fiber 100 Mbps' },
+    { section: 'checkin_checkout', content_fr: 'Check-in 15h, Check-out 12h. Early/late possible selon dispo — demander Said.', content_en: 'Check-in 3PM, Check-out 12PM. Early/late possible — ask Said.' },
+    { section: 'meals', content_fr: 'Faiza: petit-déj inclus (7h30-10h), déjeuner 200 MAD/pers, dîner 300 MAD/pers. Commander veille avant 18h.', content_en: 'Faiza: breakfast included (7:30-10AM), lunch 200 MAD/pp, dinner 300 MAD/pp. Order day before by 6PM.' },
+    { section: 'staff', content_fr: 'Said (majordome 7h-22h), Faiza (cuisinière), Bouchra (ménage quotidien 8h-14h)', content_en: 'Said (butler 7AM-10PM), Faiza (chef), Bouchra (daily housekeeping 8AM-2PM)' },
+    { section: 'pool', content_fr: 'Piscine 12×5m, chauffée 28°C oct-avril. Serviettes fournies, douche extérieure.', content_en: 'Pool 12×5m, heated 28°C Oct-Apr. Towels provided, outdoor shower.' },
+    { section: 'transfers', content_fr: 'Transfert aéroport 200 MAD (30 min). Said organise — prévenir 2h avant.', content_en: 'Airport transfer 200 MAD (30 min). Said arranges — 2h notice.' },
+    { section: 'restaurants', content_fr: 'Le Jardin, Nomad (rooftop), Al Fassia (traditionnel), La Mamounia (palace). Said réserve.', content_en: 'Le Jardin, Nomad (rooftop), Al Fassia (traditional), La Mamounia (palace). Said books.' },
+    { section: 'spa_hammam', content_fr: 'Hammam privé + massages sur RDV via Said. 300-500 MAD/soin. Savon noir + ghassoul.', content_en: 'Private hammam + massages by appointment via Said. 300-500 MAD/treatment.' },
+    { section: 'activities', content_fr: 'Jardin Majorelle, Médina, Atlas excursion, quad, golf Royal. Said organise tout.', content_en: 'Jardin Majorelle, Medina, Atlas trip, quad biking, Royal Golf. Said arranges all.' },
+    { section: 'house_rules', content_fr: 'Pas de chaussures à l\'intérieur. Pas de fête après 23h. Serviettes blanches = douche, colorées = piscine.', content_en: 'No shoes inside. No parties after 11PM. White towels = shower, colored = pool.' }
+  ];
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/villa_context', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SB_ANON,
+        Authorization: 'Bearer ' + ((_stafflo_session && _stafflo_session.access_token) || SB_ANON),
+        Prefer: 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify(sections)
+    });
+    toast(r.ok ? '✅ 10 sections du livret DarJ insérées' : '⚠ Erreur seed — vérifiez que la table villa_context existe');
+  } catch(e) { toast('⚠ ' + (e.message || 'Erreur').slice(0, 60)); }
+}
+
+// ── Cache stats ──
+async function showCacheStats() {
+  var box = document.getElementById('cacheStatsBox');
+  if (!box) return;
+  box.style.display = 'block';
+  box.innerHTML = '⏳ Chargement...';
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/ai_cache?select=question_normalized,hits,lang&order=hits.desc&limit=10', {
+      headers: { apikey: SB_ANON, Authorization: 'Bearer ' + ((_stafflo_session && _stafflo_session.access_token) || SB_ANON) }
+    });
+    if (!r.ok) { box.innerHTML = '⚠ Table ai_cache introuvable — créez-la d\'abord'; return; }
+    var rows = await r.json();
+    if (!rows.length) { box.innerHTML = '📭 Cache vide — les réponses seront stockées automatiquement'; return; }
+    var total = rows.reduce(function(s,r){ return s + (r.hits||0); }, 0);
+    var html = '<div style="font-weight:600;margin-bottom:6px">📊 ' + rows.length + ' questions en cache · ' + total + ' hits total</div>';
+    rows.slice(0,5).forEach(function(r) {
+      html += '<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border)">' +
+        '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.question_normalized||'').slice(0,40) + '</span>' +
+        '<span style="font-weight:600;margin-left:8px">' + r.hits + '×</span></div>';
+    });
+    box.innerHTML = html;
+  } catch(e) { box.innerHTML = '⚠ ' + (e.message||'Erreur'); }
+}
+
+// ── Clear cache ──
+async function clearAiCache() {
+  if (!confirm(lang==='fr' ? 'Vider tout le cache IA ?' : 'Clear all AI cache?')) return;
+  try {
+    await fetch(SB_URL + '/rest/v1/ai_cache?id=not.is.null', {
+      method: 'DELETE',
+      headers: { apikey: SB_ANON, Authorization: 'Bearer ' + ((_stafflo_session && _stafflo_session.access_token) || SB_ANON) }
+    });
+    toast('✅ Cache vidé');
+  } catch(e) { toast('⚠ ' + (e.message||'Erreur')); }
+}
+
+// ════════════════════════════════════════════════════════
 // AI PROVIDERS — routing, calling
 // ════════════════════════════════════════════════════════
 async function callBestAI(task, systemPrompt, userContent, maxTokens) {
@@ -10811,13 +11062,13 @@ function analyzeText() {}
 .app-shell > main {
   min-width: 0;
 }
-@media (min-width: 600px) {
+@media (min-width: 1024px) {
   .app-shell {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 16px;
-    max-width: 1320px;
-    padding: 0 12px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 20px;
+    max-width: 1360px;
+    padding: 0 16px;
     align-items: start;
   }
   .app-shell > main {
@@ -10835,7 +11086,7 @@ function analyzeText() {}
     overflow-y: auto;
   }
 }
-@media (max-width: 599px) {
+@media (max-width: 1023px) {
   #globalSideRail {
     display: none;
   }
@@ -10889,8 +11140,8 @@ function analyzeText() {}
 }
 .aria-banner-send:not(:disabled) { opacity: 1; }
 .aria-banner-send:not(:disabled):hover { background: var(--green2); }
-@media (min-width: 600px) { #ariaMobileWrap { display: none !important; } }
-@media (max-width: 599px) { #ariaMobileWrap { display: flex !important; flex-direction: column; gap: 10px; } }
+@media (min-width: 1024px) { #ariaMobileWrap { display: none !important; } }
+@media (max-width: 1023px) { #ariaMobileWrap { display: flex !important; flex-direction: column; gap: 10px; } }
 @media (max-width: 400px) {
   .aria-banner-sub { display: none; }
   .aria-banner-row1 { margin-bottom: 5px; }
