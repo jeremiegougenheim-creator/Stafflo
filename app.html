@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -4969,7 +4970,6 @@ async function loadInboxEmails() {
 }
 
 function openInboxEmail(row) {
-  closeInbox();
   var ex = row.extracted || {};
   var fr = lang === 'fr';
 
@@ -4983,29 +4983,162 @@ function openInboxEmail(row) {
 
   loadInboxCount();
 
-  // ── Open chat panel so the analysis is visible ──
-  var panel = document.getElementById('chatPanel');
-  var overlay = document.getElementById('chatOverlay');
-  var fab = document.getElementById('chatFAB');
-  if (panel && panel.style.display === 'none') {
-    panel.style.display = 'flex';
-    if (overlay) overlay.style.display = 'block';
-    if (fab) fab.style.display = 'none';
+  // ── Show detail panel INSIDE the inbox modal ──
+  var detailPane = document.getElementById('inboxEmailDetail');
+  var detailBody = document.getElementById('inboxEmailDetailBody');
+  var detailSubject = document.getElementById('detailSubjectLine');
+  var detailStatus = document.getElementById('detailStatusBadge');
+
+  if (detailSubject) detailSubject.textContent = row.subject || '(no subject)';
+  if (detailStatus) {
+    detailStatus.textContent = (row.status === 'new') ? (fr ? 'NOUVEAU' : 'NEW') : (fr ? 'TRAITÉ' : 'PROCESSED');
+    detailStatus.style.background = (row.status === 'new') ? 'var(--red)' : 'rgba(255,255,255,.15)';
+    detailStatus.style.color = '#fff';
   }
 
-  // Show email summary in chat
-  var emailType = ex.email_type || 'email';
-  addChatBubble('user', '📧 ' + (row.subject || 'Email') + ' — ' + (row.from_email || ''));
+  // Show loader while AI works
+  if (detailBody) {
+    detailBody.innerHTML =
+      '<div style="text-align:center;padding:40px 20px">' +
+        '<div style="font-size:28px;margin-bottom:12px">🔍</div>' +
+        '<div style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:6px">' + (fr ? 'Analyse en cours…' : 'Analysing…') + '</div>' +
+        '<div style="font-size:12px;color:var(--muted)">' + (fr ? 'Extraction des infos guest et rédaction des réponses' : 'Extracting guest info and drafting replies') + '</div>' +
+        '<div style="margin-top:20px;display:flex;justify-content:center;gap:6px">' +
+          '<span style="width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1s infinite"></span>' +
+          '<span style="width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1s .2s infinite"></span>' +
+          '<span style="width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1s .4s infinite"></span>' +
+        '</div>' +
+      '</div>';
+  }
 
-  // Show typing
-  document.getElementById('chatTyping').style.display = 'block';
-  scrollChat();
+  if (detailPane) detailPane.style.display = 'block';
 
-  // Generate analysis + 3 response options
-  handleInboxEmailFull(row, ex).catch(function(e) {
-    document.getElementById('chatTyping').style.display = 'none';
-    addChatBubble('ai', '⚠ ' + e.message);
+  // Run analysis and render into detail pane
+  handleInboxEmailDetail(row, ex, detailBody).catch(function(e) {
+    if (detailBody) detailBody.innerHTML = '<div style="padding:20px;color:var(--red);font-size:13px">⚠ ' + e.message + '</div>';
   });
+}
+
+async function handleInboxEmailDetail(row, ex, targetEl) {
+  var fr = lang === 'fr';
+  var cfg = getCfg();
+  var owner = cfg.owner || 'Jérémie';
+  var villa = cfg.villa || 'Villa DarJ';
+  var staffList = cfg.staff || 'Said, Faiza, Bouchra';
+
+  var bodyText = (row.body || '').slice(0, 2000);
+  var hasFr = /\b(bonjour|merci|nous|pour|séjour|réservation|adultes|disponible)\b/i.test(bodyText);
+  var guestLang = hasFr ? 'French' : 'English';
+  var source = row.source || ex.source || 'Direct';
+
+  var isAirbnb = source === 'Airbnb' || /airbnb/i.test(row.from_email||'');
+  var isBooking = source === 'Booking.com' || /booking\.com/i.test(row.from_email||'');
+  var isVRBO = source === 'VRBO' || /vrbo|homeaway/i.test(row.from_email||'');
+  var typeContext = isAirbnb ? 'Airbnb platform booking/inquiry' :
+                   isBooking ? 'Booking.com reservation' :
+                   isVRBO ? 'VRBO/HomeAway booking' : 'Direct email inquiry';
+
+  var prompt = 'Email for '+villa+' ('+owner+', Marrakech). Source: '+typeContext+'.\n'+
+    'From: '+(row.from_email||'')+'\nSubject: '+(row.subject||'')+'\n\n'+bodyText+
+    '\n\n---\nExtract ALL data. Return ONLY JSON:\n'+
+    '{"email_type":"inquiry|confirmation|cancellation|message|review","summary":"1 sentence what guest wants","guest":{"name":"","nat":"flag+lang","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":15.5,"phone":"","notes":"diet|kids|occasion|transport|arrival_time"},"missing":["list of missing info"],"alerts":["urgent actions"],"responses":['+
+    '{"label":"'+(guestLang==='French'?'Confirmer disponibilité':'Confirm availability')+'","text":"Full ready-to-send reply in '+guestLang+', warm, signed '+owner+', address their question directly, mention pool 28°C, dates, check-in 14h checkout 12h, invite to book."},'+
+    '{"label":"'+(guestLang==='French'?'Demander infos manquantes':'Request missing info')+'","text":"Polite message asking for missing dates/group size/special requests, signed '+owner+'."},'+
+    '{"label":"'+(guestLang==='French'?'Message chaleureux':'Warm personal reply')+'","text":"Personal, warm reply using their name, highlight villa strengths for their specific group. Create excitement. Signed '+owner+'."}'+
+    ']}\n'+
+    'Language for responses: '+guestLang+'. No placeholders like [X]. Fill everything. No markdown.';
+
+  var raw = await callBestAI('reason', '', prompt, 1200);
+  var parsed = parseAIJson(raw);
+
+  if (!targetEl) return;
+
+  if (!parsed) {
+    targetEl.innerHTML = '<div style="padding:20px;font-size:13px;color:var(--ink)">' + (raw || (fr?'Analyse impossible.':'Analysis failed.')) + '</div>';
+    return;
+  }
+
+  var g = parsed.guest || {};
+  var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
+  var net = g.price ? Math.round(g.price * (1-(parseFloat(g.commission)||15.5)/100)) : 0;
+  var existing = g.name ? clients.find(function(cl){
+    return (cl.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0].toLowerCase());
+  }) : null;
+
+  var typeEmoji = {inquiry:'💬',confirmation:'✅',cancellation:'❌',message:'📨',review:'⭐'}[parsed.email_type] || '📧';
+  var typeLabel = {inquiry:fr?'DEMANDE':'INQUIRY',confirmation:fr?'RÉSERVATION':'CONFIRMATION',cancellation:fr?'ANNULATION':'CANCELLATION',message:'MESSAGE',review:fr?'AVIS':'REVIEW'}[parsed.email_type] || 'EMAIL';
+
+  var html = '';
+
+  // ── Summary card ──
+  html += '<div style="background:var(--paper);border-radius:12px;padding:12px 14px;margin-bottom:12px;border:1px solid var(--border)">';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+  html += '<span style="font-size:20px">'+typeEmoji+'</span>';
+  html += '<div><div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">'+source+' · '+typeLabel+'</div>';
+  html += '<div style="font-size:13px;color:var(--ink);margin-top:2px;line-height:1.4">'+(parsed.summary||'')+'</div></div>';
+  html += '</div>';
+
+  // Guest info
+  if (g.name) {
+    html += '<div style="background:'+(existing?'rgba(201,150,58,.08)':'rgba(27,67,50,.06)')+';border-radius:8px;padding:10px 12px;border-left:3px solid var('+(existing?'--gold':'--green')+')">';
+    html += '<div style="font-size:10px;font-weight:700;letter-spacing:1px;color:var(--muted);margin-bottom:4px">'+(existing?'⚠ CLIENT EXISTANT — '+existing.name:'🆕 NOUVEAU CLIENT')+'</div>';
+    html += '<div style="font-size:15px;font-weight:600">'+g.name+(g.nat?' '+g.nat:'')+'</div>';
+    if (g.arrival) html += '<div style="font-size:12px;color:var(--muted);margin-top:4px">📅 '+g.arrival+(g.departure?' → '+g.departure.slice(5):'')+(nights?' · '+nights+'n':'')+(g.guests?' · '+g.guests+(fr?' pers':' guests'):'')+'</div>';
+    if (net) html += '<div style="font-size:13px;color:var(--green);font-weight:700;margin-top:4px">💰 ~'+net+'€ net</div>';
+    if (g.notes) html += '<div style="font-size:11px;color:var(--muted);margin-top:4px;font-style:italic">📝 '+g.notes+'</div>';
+    html += '</div>';
+  }
+
+  // Alerts
+  if (parsed.alerts && parsed.alerts.length) {
+    html += '<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">';
+    parsed.alerts.forEach(function(a){
+      html += '<div style="font-size:12px;color:#A32D2D;background:rgba(192,57,43,.06);border-radius:6px;padding:6px 8px">⚠️ '+a+'</div>';
+    });
+    html += '</div>';
+  }
+  if (parsed.missing && parsed.missing.length) {
+    html += '<div style="margin-top:6px;font-size:11px;color:var(--muted)">❓ '+(fr?'Manquant':'Missing')+': '+parsed.missing.join(' · ')+'</div>';
+  }
+  html += '</div>';
+
+  // ── Response options ──
+  var responses = parsed.responses || [];
+  if (responses.length) {
+    html += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px;font-weight:600">'+(fr?'RÉPONSES PRÊTES À ENVOYER':'READY-TO-SEND RESPONSES')+'</div>';
+    responses.forEach(function(resp, i) {
+      var respId = 'dr_'+Date.now()+'_'+i;
+      window['_resp_'+respId] = resp.text;
+      html += '<div style="background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px">';
+      html += '<div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:8px;letter-spacing:.3px">'+resp.label+'</div>';
+      html += '<div id="rt_'+respId+'" style="font-size:13px;color:var(--ink);line-height:1.7;white-space:pre-wrap;margin-bottom:10px">'+escHtml(resp.text)+'</div>';
+      html += '<div style="display:flex;gap:6px">';
+      html += '<button onclick="navigator.clipboard.writeText(window[\'_resp_'+respId+'\'])' +
+              '.then(function(){toast(\'📋 '+(fr?'Copié':'Copied')+'\');})" ' +
+              'style="flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">📋 '+(fr?'Copier':'Copy')+'</button>';
+      if (g.phone || (existing && existing.phone)) {
+        var phone = (g.phone || (existing&&existing.phone)||'').replace(/[\s\-+()]/g,'');
+        html += '<a href="https://wa.me/'+phone+'?text='+encodeURIComponent(resp.text)+'" target="_blank" ' +
+                'style="flex:1;background:#25D366;color:#fff;border-radius:8px;padding:9px 10px;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;justify-content:center">💬 WhatsApp</a>';
+      }
+      html += '<button onclick="editInboxResponse(\'rt_'+respId+'\',\'_resp_'+respId+'\')" ' +
+              'style="background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:8px;padding:9px 12px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif">✏️</button>';
+      html += '</div></div>';
+    });
+  }
+
+  // ── Save action ──
+  var gJsonSafe = JSON.stringify(g).replace(/'/g,'').replace(/"/g,'&quot;');
+  html += '<div style="display:flex;gap:8px;margin-top:4px;padding-bottom:16px">';
+  html += '<button onclick="saveInboxToClient(\''+gJsonSafe+'\');closeEmailDetail()" ' +
+          'style="flex:2;background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">' +
+          (existing?(fr?'🔄 Mettre à jour ':'🔄 Update ')+existing.name.split(' ')[0]:(fr?'💾 Enregistrer client':'💾 Save guest'))+'</button>';
+  html += '<button onclick="closeEmailDetail()" ' +
+          'style="flex:1;background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:10px;padding:12px;font-size:13px;cursor:pointer;font-family:\'DM Sans\',sans-serif">' +
+          (fr?'← Retour':'← Back')+'</button>';
+  html += '</div>';
+
+  targetEl.innerHTML = html;
 }
 
 async function handleInboxEmailFull(row, ex) {
@@ -7130,7 +7263,10 @@ document.addEventListener('DOMContentLoaded', function() {
   setTimeout(function() {
     checkGmailOAuthReturn();
     updateInboxBadge();
-    if (getGmailToken()) startInboxPolling();
+    if (getGmailToken()) {
+      startInboxPolling();
+      loadInboxEmails(); // populate sidebar on homepage without opening modal
+    }
   }, 600);
   // Old onboarding modal disabled — demo seed data is the new onboarding flow
   // setTimeout(function() { checkOnboarding(); }, 1500);
