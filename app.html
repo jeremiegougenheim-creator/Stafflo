@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -91,7 +92,7 @@ main{max-width:760px;margin:0 auto;padding:16px}
 @media(min-width:600px){main{max-width:800px;padding:18px 20px}}
 @media(min-width:1024px){main{max-width:1200px;padding:20px 28px}}
 /* Inside app-shell on desktop, main is a flex grid item — let parent control width */
-@media(min-width:1024px){.app-shell main{max-width:none;width:100%;padding:12px 0}}
+@media(min-width:1024px){.app-shell main{max-width:none;width:100%;padding:16px 0}}
 
 .tab{display:none}.tab.on{display:block}
 
@@ -141,8 +142,6 @@ main{max-width:760px;margin:0 auto;padding:16px}
   nav{position:fixed;bottom:0;left:0;right:0;top:auto;z-index:300;border-top:1px solid rgba(255,255,255,.15);padding:0;padding-bottom:env(safe-area-inset-bottom)}
   main{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
   header{position:fixed;top:0;left:0;right:0;z-index:400}
-  /* Push ALL content below fixed 54px header */
-  body{padding-top:54px}
   .tab{padding-top:4px}
   .aria-banner{margin-top:0}
   /* Ensure modals don't get hidden behind bottom nav */
@@ -920,7 +919,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     </svg>
     <span style="font-family:Fraunces,serif;font-size:15px;font-weight:600;color:var(--gold);letter-spacing:1px">ARIA</span>
     <span style="font-size:9px;background:rgba(201,150,58,.2);border:1px solid rgba(201,150,58,.4);color:var(--gold);padding:1px 5px;border-radius:4px;letter-spacing:1.5px;font-weight:700;line-height:1.6">AI</span>
-    <span class="aria-banner-sub" data-fr="Votre assistant villa" data-en="Your villa assistant">Votre assistant villa</span>
+    <span class="aria-banner-sub" data-fr="— Collez, demandez, organisez" data-en="— Paste, ask, organize">— Collez, demandez, organisez</span>
   </div>
   <!-- Ligne 2 : input + actions -->
   <div class="aria-banner-row2">
@@ -936,13 +935,6 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <button class="aria-banner-send" id="ariaInlineSendBtn" onclick="ariaInlineSend()" disabled>↑</button>
   </div>
   <div id="ariaInlineAttach" style="display:none;font-size:11px;color:var(--gold);padding:0 14px 5px"></div>
-  <!-- Mobile quick prompts -->
-  <div class="aria-mobile-prompts">
-    <button class="aria-mobile-prompt" onclick="ariaQuickPrompt('brief')" data-fr="☀ Brief staff" data-en="☀ Staff brief">☀ Brief staff</button>
-    <button class="aria-mobile-prompt" onclick="ariaQuickPrompt('checkin')" data-fr="🏠 Check-in" data-en="🏠 Check-in">🏠 Check-in</button>
-    <button class="aria-mobile-prompt" onclick="ariaQuickPrompt('followup')" data-fr="💬 Relance" data-en="💬 Follow up">💬 Relance</button>
-    <button class="aria-mobile-prompt" onclick="ariaQuickPrompt('price')" data-fr="💰 Prix" data-en="💰 Pricing">💰 Prix</button>
-  </div>
 </div>
 
 <div class="app-shell">
@@ -979,7 +971,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 <!-- 3-COLUMN GRID -->
 <div class="today-grid">
 
-  <!-- COL 1: BRIEF + TODAY QV + AI RESULT -->
+  <!-- COL 1: BRIEF + QV -->
   <div class="tg-col tg-col-brief">
     <!-- MORNING BRIEF — AI prioritized daily digest -->
   <div id="morningBrief">
@@ -1002,8 +994,12 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       </div>
     </div>
   </div>
-    <!-- TODAY QUICK VIEW — who's here, what's next -->
+    <!-- TODAY QUICK VIEW — injected by renderTodayQV() -->
   <div id="todayQV"></div>
+  </div>
+
+  <!-- COL 2: AI RESULT CARD -->
+  <div class="tg-col tg-col-actions">
     <!-- AI RESULT CARD — appears after analysis -->
   <div id="aiResult" class="guest-card" style="display:none">
     <div class="guest-card-header">
@@ -1058,26 +1054,24 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     </div>
     <!-- Save actions -->
     <div class="guest-actions" id="resActions"></div>
-  </div><!-- /aiResult -->
+  </div>
 
-  </div><!-- /tg-col-brief -->
+  <!-- COL 3 removed — Aria + Inbox now live in the global side-rail (visible on all tabs) -->
 
 </div><!-- /today-grid -->
 
-<!-- ─── FOOTER STATS — collapsible ─── -->
+<!-- ─── FOOTER STATS — quick overview ─── -->
 <div class="tab-footer-stats">
-  <div class="tfs-header tfs-toggle" onclick="this.classList.toggle('open');document.getElementById('todayFooterStats').classList.toggle('collapsed')">
+  <div class="tfs-header">
     <div class="tfs-title" data-fr="EN UN COUP D'ŒIL" data-en="AT A GLANCE">EN UN COUP D'ŒIL</div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <button onclick="event.stopPropagation();goTab('home')" style="background:none;border:none;color:var(--gold);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif" data-fr="Détails →" data-en="Details →">Détails →</button>
-      <span class="tfs-arrow">▾</span>
-    </div>
+    <button onclick="goTab('home')" style="background:none;border:none;color:var(--gold);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif" data-fr="Détails →" data-en="Details →">Détails →</button>
   </div>
-  <div class="tfs-grid collapsed" id="todayFooterStats"></div>
+  <div class="tfs-grid" id="todayFooterStats"></div>
 </div>
 
-</div><!-- /today-cols -->
+</div><!-- /today-cols --><!-- /today-col-main -->
 
+</div><!-- /today-cols -->
 </div><!-- /tab-today -->
 
 <!-- ═══ CLIENTS ════════════════════════════════════════════ -->
@@ -1411,8 +1405,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       <span style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px">ARIA</span>
       <span style="margin-left:auto;font-size:10px;color:rgba(255,255,255,.35)" data-fr="Assistant IA" data-en="AI Assistant">Assistant IA</span>
     </div>
-    <div style="padding:8px 12px">
-      <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-bottom:5px" data-fr="Briefs, messages, relances, check-in — collez ou demandez." data-en="Briefs, messages, follow-ups, check-in — paste or ask.">Briefs, messages, relances, check-in — collez ou demandez.</div>
+    <div style="padding:10px 12px">
+      <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-bottom:6px" data-fr="Collez un email, posez une question, ou dictez. ARIA s'occupe du reste." data-en="Paste an email, ask a question, or dictate. ARIA handles the rest.">Collez un email, posez une question, ou dictez. ARIA s'occupe du reste.</div>
       <textarea id="ariaSideInput" class="aria-side-ta" rows="2"
         placeholder="Tapez ou collez ici…"
         data-placeholder-fr="Tapez ou collez ici…"
@@ -1428,21 +1422,6 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         <button class="aria-side-send" id="ariaSideSendBtn" onclick="ariaSideSend()" disabled data-fr="Envoyer ↑" data-en="Send ↑">Envoyer ↑</button>
       </div>
     </div>
-    <!-- ARIA Quick Prompts — contextual suggestions -->
-    <div class="aria-quick-prompts" id="ariaQuickPrompts">
-      <button class="aria-quick-prompt" onclick="ariaQuickPrompt('brief')">
-        <span class="qp-icon">☀</span>
-        <span class="qp-text" data-fr="Brief staff du jour" data-en="Today's staff brief">Brief staff du jour</span>
-      </button>
-      <button class="aria-quick-prompt" onclick="ariaQuickPrompt('checkin')">
-        <span class="qp-icon">🏠</span>
-        <span class="qp-text" data-fr="Préparer le check-in" data-en="Prepare check-in">Préparer le check-in</span>
-      </button>
-      <button class="aria-quick-prompt" onclick="ariaQuickPrompt('followup')">
-        <span class="qp-icon">💬</span>
-        <span class="qp-text" data-fr="Relancer un client" data-en="Follow up with guest">Relancer un client</span>
-      </button>
-    </div>
   </div>
 
   <!-- INBOX -->
@@ -1451,7 +1430,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       <div style="font-size:13px;font-weight:700;color:var(--gold);letter-spacing:1px">📬 INBOX</div>
       <span id="inboxSidebarBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:2px 7px;animation:pulse 1.5s infinite">0</span>
     </div>
-    <div id="inboxSidebarList" style="padding:8px 12px;min-height:40px;max-height:340px;overflow-y:auto"></div>
+    <div id="inboxSidebarList" style="padding:8px 12px;min-height:80px;max-height:340px;overflow-y:auto"></div>
     <div style="padding:8px 12px;border-top:1px solid var(--border)">
       <button onclick="showInbox()" style="width:100%;background:var(--paper);border:1.5px solid var(--border);border-radius:8px;padding:8px;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="Voir tous les emails →" data-en="See all emails →">Voir tous les emails →</button>
     </div>
@@ -1750,57 +1729,31 @@ async function loadFromSupabase() {
   var cfg = getCfg();
   var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
   var key = cfg.sbKey || SB_ANON;
+  // Use JWT token if authenticated, otherwise anon key
+  var authToken = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
   if (!key) { loadLocal(); return; }
   setSyncDot('busy');
   try {
-    // When authenticated, filter by user_id (RLS-safe).
-    // When anon (no session), fetch all rows — RLS must allow anon reads, or we fall back to localStorage.
     var filter = '?select=*&order=created_at.desc';
     if (_stafflo_user && _stafflo_user.id) filter += '&user_id=eq.' + _stafflo_user.id;
-    // Use JWT when available, anon key otherwise
-    var authKey = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
     var r = await fetch(url + '/rest/v1/crm_clients' + filter, {
-      headers: { apikey: key, Authorization: 'Bearer ' + authKey }
+      headers: { apikey: key, Authorization: 'Bearer ' + authToken }
     });
     if (r.ok) {
       var rows = await r.json();
-      if (rows.length === 0 && !_stafflo_user) {
-        // RLS may be blocking anon reads — fall back to localStorage cache
-        var cached = [];
-        try { cached = JSON.parse(localStorage.getItem('stafflo_clients') || '[]'); } catch(e) {}
-        if (cached.length > 0) { clients = cached; setSyncDot('ok'); return; }
-        // Truly no data
-        setSyncDot('ok');
-        return;
-      }
-      clients = rows.map(function(row) { return {
-        id: row.id, name: row.name||'', nat: row.nat||'', email: row.email||'', phone: row.phone||'',
-        arrival: row.arrival||'', departure: row.departure||'',
-        guests: row.guests||0, price: row.price||0, commission: row.commission||0,
-        commMode: row.comm_mode||'percent', source: row.source||'Airbnb',
-        notes: row.notes||'', payStatus: row.pay_status||'',
-        bookingStatus: row.booking_status||'confirmed',
-        messages: row.messages ? (typeof row.messages==='string' ? JSON.parse(row.messages) : row.messages) : null,
-        createdAt: row.created_at||new Date().toISOString()
+      clients = rows.map(function(r) { return {
+        id: r.id, name: r.name||'', nat: r.nat||'', email: r.email||'', phone: r.phone||'',
+        arrival: r.arrival||'', departure: r.departure||'',
+        guests: r.guests||0, price: r.price||0, commission: r.commission||0,
+        commMode: r.comm_mode||'percent', source: r.source||'Airbnb',
+        notes: r.notes||'', payStatus: r.pay_status||'',
+        bookingStatus: r.booking_status||'confirmed',
+        messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
+        createdAt: r.created_at||new Date().toISOString()
       }; });
-      // Only saveLocal when NOT in demo mode (demo data must not pollute cache)
-      if (!isDemoMode()) { try { localStorage.setItem('stafflo_clients', JSON.stringify(clients)); } catch(e) {} }
-      renderAll();
-      setSyncDot('ok');
-    } else {
-      // Supabase error — try localStorage cache before giving up
-      var cached2 = [];
-      try { cached2 = JSON.parse(localStorage.getItem('stafflo_clients') || '[]'); } catch(e) {}
-      if (cached2.length > 0) clients = cached2;
-      setSyncDot('err');
-    }
-  } catch(e) {
-    // Network error — try localStorage cache
-    var cached3 = [];
-    try { cached3 = JSON.parse(localStorage.getItem('stafflo_clients') || '[]'); } catch(e2) {}
-    if (cached3.length > 0) clients = cached3;
-    setSyncDot('err');
-  }
+      saveLocal(); renderAll(); setSyncDot('ok');
+    } else { loadLocal(); setSyncDot('err'); }
+  } catch(e) { loadLocal(); setSyncDot('err'); }
 }
 
 async function pushToSupabase(client) {
@@ -2718,8 +2671,6 @@ function renderAll() {
       renderFooterStats(id);
     }
   } catch(e) {}
-  // Sync sidebar alignment with content
-  setTimeout(syncSidebarToContent, 100);
 }
 
 function updateHeaderStats() {
@@ -3360,24 +3311,6 @@ function applyLang() {
 // ════════════════════════════════════════════
 // TABS
 // ════════════════════════════════════════════
-/* Align sidebar top with the stays-bar on Today tab */
-function syncSidebarToContent() {
-  if (window.innerWidth < 1024) return;
-  var rail = document.getElementById('globalSideRail');
-  if (!rail) return;
-  var activeTab = document.querySelector('.tab.on') || document.querySelector('.tab[style*="block"]');
-  if (activeTab && activeTab.id === 'tab-today') {
-    var staysBar = document.querySelector('.stays-bar-wrap');
-    if (staysBar) {
-      var railTop = rail.getBoundingClientRect().top + window.scrollY;
-      var staysTop = staysBar.getBoundingClientRect().top + window.scrollY;
-      var offset = Math.max(0, staysTop - railTop);
-      rail.style.paddingTop = offset + 'px';
-    }
-  } else {
-    rail.style.paddingTop = '0px';
-  }
-}
 function goTab(t) {
   ['today','clients','home'].forEach(id => {
     const tab = document.getElementById('tab-'+id);
@@ -3388,8 +3321,7 @@ function goTab(t) {
     }
     if (btn) btn.classList.toggle('on', id===t);
   });
-  // Sync sidebar top with the active tab's content start
-  setTimeout(syncSidebarToContent, 80);
+
   // Render footer stats for the active tab
   try { renderFooterStats(t); } catch(e) { console.error('renderFooterStats error:', e); }
 
@@ -3871,7 +3803,7 @@ function chatInit() {
   if (inp) inp.addEventListener('input', function() {
     document.getElementById('chatSendBtn').disabled = !inp.value.trim();
   });
-  updateInboxBadge();
+  loadInboxCount();
   setTimeout(renderChatClientChips, 1500);
   // Restore last session messages from DB
   setTimeout(restoreChatSession, 800);
@@ -4612,7 +4544,7 @@ async function fetchGmailEmails() {
   if (!token) return [];
   
   // Search for booking-related emails from last 7 days
-  var q = encodeURIComponent('(from:airbnb.com OR from:booking.com OR from:vrbo.com OR from:homeaway.com OR from:holidaylettings.co.uk OR label:inbox) newer_than:7d');
+  var q = encodeURIComponent('from:(automated@airbnb.com OR noreply@booking.com OR no-reply@vrbo.com OR homes@airbnbmail.com OR reservations@holidaylettings.co.uk) newer_than:7d');
   var listUrl = 'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=' + q + '&maxResults=20';
   
   try {
@@ -4682,7 +4614,7 @@ async function saveEmailToSupabase(email) {
     headers: { apikey: key, Authorization: 'Bearer ' + key }
   });
   var existing = await r.json();
-  if (existing && existing.length > 0) { existing[0]._existed = true; return existing[0]; } // already saved
+  if (existing && existing.length > 0) return existing[0]; // already saved
   
   var r2 = await fetch(SB_URL + '/rest/v1/email_inbox', {
     method: 'POST',
@@ -4731,16 +4663,16 @@ function startInboxPolling() {
 async function pollInboxNow() {
   var token = getGmailToken();
   if (!token) return;
-
+  
   try {
     var gmailEmails = await fetchGmailEmails();
     var newCount = 0;
-
+    
     for (var i = 0; i < gmailEmails.length; i++) {
       var em = gmailEmails[i];
       var saved = await saveEmailToSupabase(em);
-      // Only count truly new (just inserted, not already existing)
-      if (saved && saved.status === 'new' && !saved._existed) {
+      if (saved && saved.status === 'new') {
+        // Auto-extract in background
         autoExtractEmail(saved).then(function(extracted) {
           if (extracted.extracted && extracted.extracted.name) {
             showNewEmailToast(extracted);
@@ -4749,19 +4681,13 @@ async function pollInboxNow() {
         newCount++;
       }
     }
-
-    // Always refresh badge + sidebar
-    updateInboxBadge();
-    loadInboxEmails(); // refresh list + sidebar regardless
-
-    // Browser notification for truly new emails
-    if (newCount > 0 && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification('Stafflo — ' + newCount + ' new email' + (newCount > 1 ? 's' : ''), {
-        body: gmailEmails[0] ? gmailEmails[0].subject : '',
-        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 26"><rect width="26" height="26" rx="6" fill="%23C9963A"/><text x="13" y="19" font-size="16" fill="%230F2318" text-anchor="middle">S</text></svg>'
-      });
+    
+    if (newCount > 0) {
+      updateInboxBadge();
+      if (document.getElementById('inboxModal').style.display !== 'none') {
+        loadInboxEmails(); // Refresh if open
+      }
     }
-
     _inboxLastCheck = new Date();
   } catch(e) { console.warn('Inbox poll error:', e); }
 }
@@ -4834,8 +4760,11 @@ function setInboxFilter(f, btn) {
 }
 
 async function refreshInbox() {
-  await pollInboxNow();
+  var el = document.getElementById('inboxList');
+  if (el) el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px;text-align:center">↻ ' + (lang==='fr'?'Actualisation...':'Refreshing...') + '</div>';
+  try { await pollInboxNow(); } catch(e) {}
   await loadInboxEmails();
+  toast(lang==='fr' ? '↻ Inbox actualisée' : '↻ Inbox refreshed');
 }
 
 function closeEmailDetail() {
@@ -4867,311 +4796,160 @@ function closeInbox() {
 async function loadInboxEmails() {
   var el = document.getElementById('inboxList');
   if (!el) return;
-  el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:20px;text-align:center">\u23F3 Chargement...</div>';
-
+  el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Chargement...</div>';
+  
   var cfg = getCfg();
   var key = cfg.sbKey || SB_ANON;
+  var authToken = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
   try {
-    var filterQ = '';
-    if (_inboxFilter === 'new') filterQ = '&status=eq.new';
-    else if (_inboxFilter === 'processed') filterQ = '&status=eq.processed';
-    else if (_inboxFilter === 'inquiry') filterQ = '&extracted->>email_type=eq.inquiry';
-    else if (_inboxFilter === 'confirmation') filterQ = '&extracted->>email_type=eq.confirmation';
-
-    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=30' + filterQ, {
-      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=20' +
+      (_inboxFilter === 'new' ? '&status=eq.new' :
+       _inboxFilter === 'processed' ? '&status=eq.processed' :
+       _inboxFilter === 'inquiry' ? '&extracted->>email_type=eq.inquiry' :
+       _inboxFilter === 'confirmation' ? '&extracted->>email_type=eq.confirmation' : ''), {
+      headers: { apikey: key, Authorization: 'Bearer ' + authToken }
     });
     var rows = await r.json();
-    if (!rows || !rows.length) {
-      var fr = lang === 'fr';
-      el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:30px 10px;text-align:center">' +
-        (fr ? '\uD83D\uDCED Aucun email' + (_inboxFilter !== 'all' ? ' dans ce filtre' : '') + '.<br><span style="font-size:12px;margin-top:6px;display:inline-block">Connectez Gmail ou transf\u00e9rez vos emails.</span>' : '\uD83D\uDCED No emails' + (_inboxFilter !== 'all' ? ' in this filter' : '') + '.<br><span style="font-size:12px;margin-top:6px;display:inline-block">Connect Gmail or forward your emails.</span>') +
+    if (!rows.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;text-align:center">'+
+        (lang==='fr' ? 'Aucun email reçu — configurez le transfert automatique ci-dessus' : 'No emails received yet — set up auto-forwarding above') +
         '</div>';
-      _updateInboxSidebar([]);
       return;
     }
-
-    // Store for click handlers
-    window._inboxEmails = window._inboxEmails || {};
+    // Store emails for click handler (avoid inline JSON stringify)
+    window._inboxEmails = {};
     rows.forEach(function(row) { window._inboxEmails[row.id] = row; });
 
-    var fr = lang === 'fr';
     el.innerHTML = rows.map(function(row) {
       var d = new Date(row.received_at);
-      var now = new Date();
-      var diffMs = now - d;
-      var diffH = Math.floor(diffMs / 3600000);
-      var dateStr;
-      if (diffH < 1) dateStr = fr ? 'il y a ' + Math.max(1, Math.floor(diffMs / 60000)) + ' min' : Math.max(1, Math.floor(diffMs / 60000)) + ' min ago';
-      else if (diffH < 24) dateStr = fr ? 'il y a ' + diffH + 'h' : diffH + 'h ago';
-      else dateStr = d.getDate() + '/' + (d.getMonth() + 1) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-
+      var dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
       var ex = row.extracted || {};
-      var isNew = row.status === 'new';
-      var sourceIcon = /airbnb/i.test(row.from_email || '') ? '\uD83C\uDD70\uFE0F' : /booking/i.test(row.from_email || '') ? '\uD83D\uDCD8' : /vrbo|homeaway/i.test(row.from_email || '') ? '\uD83C\uDFE0' : '\u2709\uFE0F';
-      var typeLabel = ex.email_type ? { inquiry: fr ? 'Demande' : 'Inquiry', confirmation: fr ? 'R\u00e9servation' : 'Booking', cancellation: fr ? 'Annulation' : 'Cancel', message: 'Message', review: fr ? 'Avis' : 'Review' }[ex.email_type] || ex.email_type : '';
+      var badge = row.status === 'new' ? '<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">NEW</span>' : '';
+      var typeBadge = ex.email_type ? '<span style="background:var(--gold-light);color:#7A5A1A;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">'+ex.email_type+'</span>' : '';
 
-      // Detect external links
+      // Detect Airbnb reservation link in body
       var body = row.body || '';
-      var airbnbLink = body.match(/https?:\/\/(?:www\.)?airbnb\.[a-z\.]+\/[^\s\)\]"<>]+/i);
-      var bookingLink = body.match(/https?:\/\/(?:admin\.)?booking\.com\/[^\s\)\]"<>]+/i);
-      var extLink = airbnbLink ? airbnbLink[0] : (bookingLink ? bookingLink[0] : null);
-      var extIcon = airbnbLink ? '\uD83C\uDD70\uFE0F' : (bookingLink ? '\uD83D\uDCD8' : '');
+      var airbnbMatch = body.match(/https?:\/\/(?:www\.)?airbnb\.[a-z\.]+\/[^\s\)\]"<>]+/i);
+      var bookingMatch = body.match(/https?:\/\/(?:admin\.)?booking\.com\/[^\s\)\]"<>]+/i);
+      var externalLink = airbnbMatch ? airbnbMatch[0] : (bookingMatch ? bookingMatch[0] : null);
+      var linkIcon = airbnbMatch ? '🅰️' : (bookingMatch ? '📘' : '');
 
-      var html = '<div class="inbox-card' + (isNew ? ' new' : '') + '" data-email-id="' + row.id + '" style="cursor:pointer">';
-      html += '<div style="display:flex;align-items:flex-start;gap:8px">';
-      html += '<span style="font-size:16px;flex-shrink:0;margin-top:1px">' + sourceIcon + '</span>';
-      html += '<div style="flex:1;min-width:0">';
-      html += '<div class="ic-subject" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">';
-      html += '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">' + (row.subject || '(sans objet)') + '</span>';
-      if (isNew) html += '<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:2px 6px;flex-shrink:0;font-weight:700">NEW</span>';
-      if (typeLabel) html += '<span style="background:var(--gold-light);color:#7A5A1A;border-radius:4px;font-size:9px;padding:2px 6px;flex-shrink:0">' + typeLabel + '</span>';
-      html += '</div>';
-      html += '<div class="ic-meta" style="margin-top:3px">';
-      html += (row.from_email || '\u2014').replace(/<|>/g, '').split('@')[0];
-      html += ' <span style="opacity:.6">\u00b7</span> ' + dateStr;
-      if (ex.name) html += ' <span style="opacity:.6">\u00b7</span> <strong style="color:var(--green)">' + ex.name + '</strong>';
-      html += '</div>';
-      if (ex.arrival || ex.guests || ex.price) {
-        html += '<div style="display:flex;gap:8px;margin-top:5px;font-size:11px;color:var(--muted);flex-wrap:wrap">';
-        if (ex.arrival) html += '<span>\uD83D\uDCC5 ' + ex.arrival + (ex.departure ? ' \u2192 ' + (ex.departure || '').slice(5) : '') + '</span>';
-        if (ex.guests) html += '<span>\uD83D\uDC65 ' + ex.guests + '</span>';
-        if (ex.price) html += '<span style="color:var(--green);font-weight:600">\uD83D\uDCB0 ' + ex.price + '\u20AC</span>';
-        html += '</div>';
+      var html = '<div class="inbox-card ' + (row.status==='new'?'new':'') + '" data-email-id="' + row.id + '">';
+      html += '<div class="ic-subject">' + (row.subject||'No subject') + badge + typeBadge + '</div>';
+      html += '<div class="ic-meta">';
+      html += '<span>' + (row.from_email||'—').replace(/<|>/g,'') + ' · ' + dateStr;
+      if (ex.name) html += ' · <strong>'+ex.name+'</strong>';
+      html += '</span></div>';
+
+      // Action row — open button + external link
+      html += '<div style="display:flex;gap:6px;margin-top:6px;align-items:center;justify-content:space-between">';
+      html += '<button class="ic-open-btn" data-email-id="' + row.id + '" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-weight:600;font-family:DM Sans,sans-serif">📖 Analyser</button>';
+      if (externalLink) {
+        html += '<a href="' + externalLink + '" target="_blank" onclick="event.stopPropagation()" style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:11px;color:var(--ink);text-decoration:none;white-space:nowrap" title="Ouvrir sur Airbnb/Booking">' + linkIcon + ' Ouvrir</a>';
       }
       html += '</div>';
-      html += '<span style="color:var(--muted);font-size:18px;flex-shrink:0;margin-top:2px;opacity:.35">\u203A</span>';
-      html += '</div>';
-      if (extLink) {
-        html += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">';
-        html += '<a href="' + extLink + '" target="_blank" onclick="event.stopPropagation()" style="font-size:11px;color:var(--gold);text-decoration:none;display:inline-flex;align-items:center;gap:4px">' + extIcon + ' ' + (fr ? 'Voir sur la plateforme' : 'View on platform') + ' \u2197</a>';
-        html += '</div>';
-      }
+
       html += '</div>';
       return html;
     }).join('');
 
-    // Sidebar mirror
-    _updateInboxSidebar(rows);
+    // ── Mirror top 6 emails to sidebar ──
+    (function() {
+      var sb = document.getElementById('inboxSidebarList');
+      if (!sb) return;
+      var badge = document.getElementById('inboxSidebarBadge');
+      var newCount = rows.filter(function(r){ return r.status === 'new'; }).length;
+      if (badge) { badge.textContent = newCount; badge.style.display = newCount ? 'inline-flex' : 'none'; }
+      if (!rows.length) {
+        sb.innerHTML = '<div style="padding:16px;text-align:center;font-size:12px;color:var(--muted)">📭 Inbox vide</div>';
+        return;
+      }
+      sb.innerHTML = rows.slice(0,6).map(function(row) {
+        var d = new Date(row.received_at);
+        var dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+        var ex = row.extracted || {};
+        var isNew = row.status === 'new';
+        return '<div class="inbox-card' + (isNew?' new':'') + '" style="cursor:pointer" data-email-id="' + row.id + '">' +
+          '<div class="ic-subject">' + (row.subject||'No subject') + (isNew?'<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">NEW</span>':'') + '</div>' +
+          '<div class="ic-meta">' + (row.from_email||'—').replace(/<|>/g,'') + ' · ' + dateStr + (ex.name?' · <strong>'+ex.name+'</strong>':'') + '</div>' +
+        '</div>';
+      }).join('');
+      // Attach click handlers
+      sb.querySelectorAll('.inbox-card').forEach(function(card) {
+        card.addEventListener('click', function() {
+          var id = card.getAttribute('data-email-id');
+          var row = window._inboxEmails[id];
+          if (row) openInboxEmail(row);
+        });
+      });
+    })();
 
-    // Single delegated click handler (works even after re-render)
-    el.onclick = function(e) {
-      if (e.target.closest('a')) return;
-      var card = e.target.closest('.inbox-card');
-      if (!card) return;
-      var id = card.getAttribute('data-email-id');
-      var row = window._inboxEmails[id];
-      if (row) openInboxEmail(row);
-    };
 
+    // Delegate click events instead of inline onclick (avoids JSON issues)
+    el.querySelectorAll('.ic-open-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var id = btn.getAttribute('data-email-id');
+        var row = window._inboxEmails[id];
+        if (row) openInboxEmail(row);
+      });
+    });
+    // Also let clicking the whole card open it (except links/buttons)
+    el.querySelectorAll('.inbox-card').forEach(function(card) {
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('a,button')) return;
+        var id = card.getAttribute('data-email-id');
+        var row = window._inboxEmails[id];
+        if (row) openInboxEmail(row);
+      });
+    });
   } catch(e) {
-    el.innerHTML = '<div style="color:var(--red);font-size:13px;padding:16px">\u26A0 Erreur: ' + e.message + '</div>';
+    el.innerHTML = '<div style="color:var(--red);font-size:12px">Erreur: '+e.message+'</div>';
   }
 }
-
-function _updateInboxSidebar(rows) {
-  var sb = document.getElementById('inboxSidebarList');
-  if (!sb) return;
-  var badge = document.getElementById('inboxSidebarBadge');
-  var newCount = rows.filter(function(r) { return r.status === 'new'; }).length;
-  if (badge) { badge.textContent = newCount; badge.style.display = newCount ? 'inline-flex' : 'none'; }
-  if (!rows.length) {
-    sb.innerHTML = '<div style="padding:16px;text-align:center;font-size:12px;color:var(--muted)">\uD83D\uDCED Inbox vide</div>';
-    return;
-  }
-  var fr = lang === 'fr';
-  sb.innerHTML = rows.slice(0, 6).map(function(row) {
-    var d = new Date(row.received_at);
-    var now = new Date();
-    var diffH = Math.floor((now - d) / 3600000);
-    var dateStr = diffH < 1 ? '<1h' : (diffH < 24 ? diffH + 'h' : d.getDate() + '/' + (d.getMonth() + 1));
-    var ex = row.extracted || {};
-    var isNew = row.status === 'new';
-    return '<div class="inbox-card' + (isNew ? ' new' : '') + '" style="cursor:pointer;padding:8px 10px" data-email-id="' + row.id + '">' +
-      '<div class="ic-subject" style="font-size:13px">' + (row.subject || '(sans objet)').slice(0, 40) + (isNew ? ' <span style="background:var(--red);color:#fff;border-radius:4px;font-size:8px;padding:1px 4px">NEW</span>' : '') + '</div>' +
-      '<div class="ic-meta" style="font-size:11px">' + dateStr + (ex.name ? ' \u00b7 <strong>' + ex.name + '</strong>' : '') + '</div>' +
-    '</div>';
-  }).join('');
-  sb.onclick = function(e) {
-    var card = e.target.closest('.inbox-card');
-    if (!card) return;
-    var id = card.getAttribute('data-email-id');
-    var row = window._inboxEmails[id];
-    if (row) { showInbox(); setTimeout(function() { openInboxEmail(row); }, 200); }
-  };
-}
-
 
 function openInboxEmail(row) {
+  closeInbox();
   var ex = row.extracted || {};
   var fr = lang === 'fr';
 
   // Mark as processed
   var cfg = getCfg();
+  var authKey = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : (cfg.sbKey||SB_ANON);
   fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + row.id, {
     method: 'PATCH',
-    headers: { 'Content-Type':'application/json', apikey: cfg.sbKey||SB_ANON, Authorization:'Bearer '+(cfg.sbKey||SB_ANON) },
+    headers: { 'Content-Type':'application/json', apikey: SB_ANON, Authorization:'Bearer '+authKey },
     body: JSON.stringify({ status: 'processed' })
   }).catch(function(){});
 
-  updateInboxBadge();
+  loadInboxCount();
 
-  // ── Show detail panel INSIDE the inbox modal ──
-  var detailPane = document.getElementById('inboxEmailDetail');
-  var detailBody = document.getElementById('inboxEmailDetailBody');
-  var detailSubject = document.getElementById('detailSubjectLine');
-  var detailStatus = document.getElementById('detailStatusBadge');
-
-  if (detailSubject) detailSubject.textContent = row.subject || '(no subject)';
-  if (detailStatus) {
-    detailStatus.textContent = (row.status === 'new') ? (fr ? 'NOUVEAU' : 'NEW') : (fr ? 'TRAITÉ' : 'PROCESSED');
-    detailStatus.style.background = (row.status === 'new') ? 'var(--red)' : 'rgba(255,255,255,.15)';
-    detailStatus.style.color = '#fff';
+  // ── Open chat panel so the analysis is visible ──
+  var panel = document.getElementById('chatPanel');
+  var overlay = document.getElementById('chatOverlay');
+  var fab = document.getElementById('chatFAB');
+  if (panel) {
+    panel.style.display = 'flex';
+    if (overlay) overlay.style.display = 'block';
+    if (fab) fab.style.display = 'none';
   }
 
-  // Show loader while AI works
-  if (detailBody) {
-    detailBody.innerHTML =
-      '<div style="text-align:center;padding:40px 20px">' +
-        '<div style="font-size:28px;margin-bottom:12px">🔍</div>' +
-        '<div style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:6px">' + (fr ? 'Analyse en cours…' : 'Analysing…') + '</div>' +
-        '<div style="font-size:12px;color:var(--muted)">' + (fr ? 'Extraction des infos guest et rédaction des réponses' : 'Extracting guest info and drafting replies') + '</div>' +
-        '<div style="margin-top:20px;display:flex;justify-content:center;gap:6px">' +
-          '<span style="width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1s infinite"></span>' +
-          '<span style="width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1s .2s infinite"></span>' +
-          '<span style="width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1s .4s infinite"></span>' +
-        '</div>' +
-      '</div>';
-  }
+  // Show email summary in chat
+  addChatBubble('user', '📧 ' + (row.subject || 'Email') + ' — ' + (row.from_email || ''));
 
-  if (detailPane) detailPane.style.display = 'block';
+  // Show typing indicator
+  var typing = document.getElementById('chatTyping');
+  if (typing) typing.style.display = 'block';
+  scrollChat();
 
-  // Run analysis and render into detail pane
-  handleInboxEmailDetail(row, ex, detailBody).catch(function(e) {
-    if (detailBody) detailBody.innerHTML = '<div style="padding:20px;color:var(--red);font-size:13px">⚠ ' + e.message + '</div>';
+  // Generate analysis + 3 response options
+  handleInboxEmailFull(row, ex).catch(function(e) {
+    if (typing) typing.style.display = 'none';
+    var errMsg = e.message === 'rate_limit'
+      ? (fr ? '⏳ Limite AI atteinte — réessayez dans quelques minutes' : '⏳ AI rate limit — try again shortly')
+      : (fr ? '⚠ Erreur d\'analyse: ' + e.message + '\n\nVérifiez la connexion réseau et réessayez.' : '⚠ Analysis error: ' + e.message + '\n\nCheck network and retry.');
+    addChatBubble('ai', errMsg);
   });
-}
-
-async function handleInboxEmailDetail(row, ex, targetEl) {
-  var fr = lang === 'fr';
-  var cfg = getCfg();
-  var owner = cfg.owner || 'Jérémie';
-  var villa = cfg.villa || 'Villa DarJ';
-  var staffList = cfg.staff || 'Said, Faiza, Bouchra';
-
-  var bodyText = (row.body || '').slice(0, 2000);
-  var hasFr = /\b(bonjour|merci|nous|pour|séjour|réservation|adultes|disponible)\b/i.test(bodyText);
-  var guestLang = hasFr ? 'French' : 'English';
-  var source = row.source || ex.source || 'Direct';
-
-  var isAirbnb = source === 'Airbnb' || /airbnb/i.test(row.from_email||'');
-  var isBooking = source === 'Booking.com' || /booking\.com/i.test(row.from_email||'');
-  var isVRBO = source === 'VRBO' || /vrbo|homeaway/i.test(row.from_email||'');
-  var typeContext = isAirbnb ? 'Airbnb platform booking/inquiry' :
-                   isBooking ? 'Booking.com reservation' :
-                   isVRBO ? 'VRBO/HomeAway booking' : 'Direct email inquiry';
-
-  var prompt = 'Email for '+villa+' ('+owner+', Marrakech). Source: '+typeContext+'.\n'+
-    'From: '+(row.from_email||'')+'\nSubject: '+(row.subject||'')+'\n\n'+bodyText+
-    '\n\n---\nExtract ALL data. Return ONLY JSON:\n'+
-    '{"email_type":"inquiry|confirmation|cancellation|message|review","summary":"1 sentence what guest wants","guest":{"name":"","nat":"flag+lang","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":15.5,"phone":"","notes":"diet|kids|occasion|transport|arrival_time"},"missing":["list of missing info"],"alerts":["urgent actions"],"responses":['+
-    '{"label":"'+(guestLang==='French'?'Confirmer disponibilité':'Confirm availability')+'","text":"Full ready-to-send reply in '+guestLang+', warm, signed '+owner+', address their question directly, mention pool 28°C, dates, check-in 14h checkout 12h, invite to book."},'+
-    '{"label":"'+(guestLang==='French'?'Demander infos manquantes':'Request missing info')+'","text":"Polite message asking for missing dates/group size/special requests, signed '+owner+'."},'+
-    '{"label":"'+(guestLang==='French'?'Message chaleureux':'Warm personal reply')+'","text":"Personal, warm reply using their name, highlight villa strengths for their specific group. Create excitement. Signed '+owner+'."}'+
-    ']}\n'+
-    'Language for responses: '+guestLang+'. No placeholders like [X]. Fill everything. No markdown.';
-
-  var raw = await callBestAI('reason', '', prompt, 1200);
-  var parsed = parseAIJson(raw);
-
-  if (!targetEl) return;
-
-  if (!parsed) {
-    targetEl.innerHTML = '<div style="padding:20px;font-size:13px;color:var(--ink)">' + (raw || (fr?'Analyse impossible.':'Analysis failed.')) + '</div>';
-    return;
-  }
-
-  var g = parsed.guest || {};
-  var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
-  var net = g.price ? Math.round(g.price * (1-(parseFloat(g.commission)||15.5)/100)) : 0;
-  var existing = g.name ? clients.find(function(cl){
-    return (cl.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0].toLowerCase());
-  }) : null;
-
-  var typeEmoji = {inquiry:'💬',confirmation:'✅',cancellation:'❌',message:'📨',review:'⭐'}[parsed.email_type] || '📧';
-  var typeLabel = {inquiry:fr?'DEMANDE':'INQUIRY',confirmation:fr?'RÉSERVATION':'CONFIRMATION',cancellation:fr?'ANNULATION':'CANCELLATION',message:'MESSAGE',review:fr?'AVIS':'REVIEW'}[parsed.email_type] || 'EMAIL';
-
-  var html = '';
-
-  // ── Summary card ──
-  html += '<div style="background:var(--paper);border-radius:12px;padding:12px 14px;margin-bottom:12px;border:1px solid var(--border)">';
-  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
-  html += '<span style="font-size:20px">'+typeEmoji+'</span>';
-  html += '<div><div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted)">'+source+' · '+typeLabel+'</div>';
-  html += '<div style="font-size:13px;color:var(--ink);margin-top:2px;line-height:1.4">'+(parsed.summary||'')+'</div></div>';
-  html += '</div>';
-
-  // Guest info
-  if (g.name) {
-    html += '<div style="background:'+(existing?'rgba(201,150,58,.08)':'rgba(27,67,50,.06)')+';border-radius:8px;padding:10px 12px;border-left:3px solid var('+(existing?'--gold':'--green')+')">';
-    html += '<div style="font-size:10px;font-weight:700;letter-spacing:1px;color:var(--muted);margin-bottom:4px">'+(existing?'⚠ CLIENT EXISTANT — '+existing.name:'🆕 NOUVEAU CLIENT')+'</div>';
-    html += '<div style="font-size:15px;font-weight:600">'+g.name+(g.nat?' '+g.nat:'')+'</div>';
-    if (g.arrival) html += '<div style="font-size:12px;color:var(--muted);margin-top:4px">📅 '+g.arrival+(g.departure?' → '+g.departure.slice(5):'')+(nights?' · '+nights+'n':'')+(g.guests?' · '+g.guests+(fr?' pers':' guests'):'')+'</div>';
-    if (net) html += '<div style="font-size:13px;color:var(--green);font-weight:700;margin-top:4px">💰 ~'+net+'€ net</div>';
-    if (g.notes) html += '<div style="font-size:11px;color:var(--muted);margin-top:4px;font-style:italic">📝 '+g.notes+'</div>';
-    html += '</div>';
-  }
-
-  // Alerts
-  if (parsed.alerts && parsed.alerts.length) {
-    html += '<div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">';
-    parsed.alerts.forEach(function(a){
-      html += '<div style="font-size:12px;color:#A32D2D;background:rgba(192,57,43,.06);border-radius:6px;padding:6px 8px">⚠️ '+a+'</div>';
-    });
-    html += '</div>';
-  }
-  if (parsed.missing && parsed.missing.length) {
-    html += '<div style="margin-top:6px;font-size:11px;color:var(--muted)">❓ '+(fr?'Manquant':'Missing')+': '+parsed.missing.join(' · ')+'</div>';
-  }
-  html += '</div>';
-
-  // ── Response options ──
-  var responses = parsed.responses || [];
-  if (responses.length) {
-    html += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:8px;font-weight:600">'+(fr?'RÉPONSES PRÊTES À ENVOYER':'READY-TO-SEND RESPONSES')+'</div>';
-    responses.forEach(function(resp, i) {
-      var respId = 'dr_'+Date.now()+'_'+i;
-      window['_resp_'+respId] = resp.text;
-      html += '<div style="background:var(--card);border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px">';
-      html += '<div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:8px;letter-spacing:.3px">'+resp.label+'</div>';
-      html += '<div id="rt_'+respId+'" style="font-size:13px;color:var(--ink);line-height:1.7;white-space:pre-wrap;margin-bottom:10px">'+escHtml(resp.text)+'</div>';
-      html += '<div style="display:flex;gap:6px">';
-      html += '<button onclick="navigator.clipboard.writeText(window[\'_resp_'+respId+'\'])' +
-              '.then(function(){toast(\'📋 '+(fr?'Copié':'Copied')+'\');})" ' +
-              'style="flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">📋 '+(fr?'Copier':'Copy')+'</button>';
-      if (g.phone || (existing && existing.phone)) {
-        var phone = (g.phone || (existing&&existing.phone)||'').replace(/[\s\-+()]/g,'');
-        html += '<a href="https://wa.me/'+phone+'?text='+encodeURIComponent(resp.text)+'" target="_blank" ' +
-                'style="flex:1;background:#25D366;color:#fff;border-radius:8px;padding:9px 10px;font-size:12px;font-weight:600;text-decoration:none;display:flex;align-items:center;justify-content:center">💬 WhatsApp</a>';
-      }
-      html += '<button onclick="editInboxResponse(\'rt_'+respId+'\',\'_resp_'+respId+'\')" ' +
-              'style="background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:8px;padding:9px 12px;font-size:12px;cursor:pointer;font-family:\'DM Sans\',sans-serif">✏️</button>';
-      html += '</div></div>';
-    });
-  }
-
-  // ── Save action ──
-  var gJsonSafe = JSON.stringify(g).replace(/'/g,'').replace(/"/g,'&quot;');
-  html += '<div style="display:flex;gap:8px;margin-top:4px;padding-bottom:16px">';
-  html += '<button onclick="saveInboxToClient(\''+gJsonSafe+'\');closeEmailDetail()" ' +
-          'style="flex:2;background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'DM Sans\',sans-serif">' +
-          (existing?(fr?'🔄 Mettre à jour ':'🔄 Update ')+existing.name.split(' ')[0]:(fr?'💾 Enregistrer client':'💾 Save guest'))+'</button>';
-  html += '<button onclick="closeEmailDetail()" ' +
-          'style="flex:1;background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:10px;padding:12px;font-size:13px;cursor:pointer;font-family:\'DM Sans\',sans-serif">' +
-          (fr?'← Retour':'← Back')+'</button>';
-  html += '</div>';
-
-  targetEl.innerHTML = html;
 }
 
 async function handleInboxEmailFull(row, ex) {
@@ -7026,111 +6804,6 @@ function withUserId(payload) {
   return Object.assign({ user_id: _stafflo_user.id }, payload);
 }
 
-
-
-// ═══════════════════════════════════════════════
-// ARIA QUICK PROMPTS — contextual suggestions
-// ═══════════════════════════════════════════════
-function ariaQuickPrompt(type) {
-  var prompts = {
-    brief: lang==='fr' ? 'Fais le brief staff du jour avec les tâches prioritaires' : 'Generate today\'s staff brief with priority tasks',
-    checkin: lang==='fr' ? 'Prépare le check-in du prochain client avec la checklist' : 'Prepare the next guest check-in with checklist',
-    followup: lang==='fr' ? 'Rédige une relance WhatsApp pour le prochain client' : 'Draft a WhatsApp follow-up for the next guest',
-    price: lang==='fr' ? 'Analyse les prix et recommande un tarif optimal' : 'Analyze pricing and recommend optimal rate'
-  };
-  var msg = prompts[type] || prompts.brief;
-  
-  // On desktop, use sidebar input; on mobile, open chat panel
-  if (window.innerWidth >= 1024) {
-    var ta = document.getElementById('ariaSideInput');
-    if (ta) { ta.value = msg; ta.dispatchEvent(new Event('input')); ariaSideSend(); }
-  } else {
-    toggleChatPanel();
-    setTimeout(function() {
-      var chatIn = document.getElementById('chatInput');
-      if (chatIn) { chatIn.value = msg; chatIn.dispatchEvent(new Event('input')); chatSend(); }
-    }, 300);
-  }
-}
-
-// Update ARIA quick prompts based on current context
-function updateAriaQuickPrompts() {
-  var nextClient = null;
-  var today = new Date().toISOString().slice(0,10);
-  
-  // Find next arriving client
-  (clients || []).forEach(function(c) {
-    if (c.arrival && c.arrival >= today && (!nextClient || c.arrival < nextClient.arrival)) {
-      nextClient = c;
-    }
-  });
-  
-  // Update desktop prompts
-  var container = document.getElementById('ariaQuickPrompts');
-  if (!container) return;
-  
-  if (nextClient) {
-    var firstName = nextClient.name.split(' ')[0];
-    var btns = container.querySelectorAll('.aria-quick-prompt');
-    if (btns[1]) {
-      btns[1].querySelector('.qp-text').textContent = (lang==='fr' ? 'Check-in ' : 'Check-in ') + firstName;
-      btns[1].onclick = function() {
-        ariaQuickPrompt('checkin');
-      };
-    }
-    if (btns[2]) {
-      btns[2].querySelector('.qp-text').textContent = (lang==='fr' ? 'Relancer ' : 'Follow up ') + firstName;
-    }
-  }
-}
-
-// ═══════════════════════════════════════════════
-// BRIEF LIMITING — show max 3, toggle "voir plus"
-// ═══════════════════════════════════════════════
-function addBriefExpandButton() {
-  var cards = document.getElementById('briefCards');
-  if (!cards) return;
-  
-  // Remove existing expand button
-  var existing = cards.parentNode.querySelector('.brief-expand-btn');
-  if (existing) existing.remove();
-  
-  // Count real brief cards (not skeleton, not checklist button)
-  var realCards = cards.querySelectorAll('.brief-card');
-  if (realCards.length <= 3) return; // No button needed
-  
-  // Hide cards beyond 3rd
-  for (var i = 0; i < realCards.length; i++) {
-    if (i >= 3) realCards[i].classList.add('brief-hidden');
-    else realCards[i].classList.remove('brief-hidden');
-  }
-  
-  var hiddenCount = realCards.length - 3;
-  var btn = document.createElement('button');
-  btn.className = 'brief-expand-btn';
-  btn.innerHTML = '<span data-fr="+ ' + hiddenCount + ' autres priorités" data-en="+ ' + hiddenCount + ' more priorities">+ ' + hiddenCount + (lang==='fr'?' autres priorités':' more priorities') + '</span> <span style="font-size:9px">▾</span>';
-  btn.onclick = function() {
-    var isExpanded = cards.classList.toggle('expanded');
-    for (var j = 3; j < realCards.length; j++) {
-      if (isExpanded) realCards[j].classList.remove('brief-hidden');
-      else realCards[j].classList.add('brief-hidden');
-    }
-    if (isExpanded) {
-      btn.innerHTML = '<span data-fr="Réduire" data-en="Show less">' + (lang==='fr'?'Réduire':'Show less') + '</span> <span style="font-size:9px">▴</span>';
-    } else {
-      btn.innerHTML = '<span data-fr="+ ' + hiddenCount + ' autres priorités" data-en="+ ' + hiddenCount + ' more priorities">+ ' + hiddenCount + (lang==='fr'?' autres priorités':' more priorities') + '</span> <span style="font-size:9px">▾</span>';
-    }
-  };
-  // Insert after briefCards but before checklist button
-  var checklistBtn = document.getElementById('briefChecklistBtn');
-  if (checklistBtn) {
-    cards.insertBefore(btn, checklistBtn);
-  } else {
-    cards.parentNode.insertBefore(btn, cards.nextSibling);
-  }
-}
-
-
 document.addEventListener('DOMContentLoaded', function() {
 
   // ── First visit onboarding ──
@@ -7203,34 +6876,29 @@ document.addEventListener('DOMContentLoaded', function() {
         loadInboxEmails();
       }).catch(function(){});
     } else {
-      // No JWT session — try loading real data from Supabase with anon key first.
-      // Only fall back to demo mode if Supabase returns nothing (true first-time visitor).
+      // No session — try loading Supabase with anon key first
+      // If real data exists, show it; otherwise fall back to demo mode
       applyLang();
       goTab('today');
       chatInit();
       loadFromSupabase().then(function() {
-        if (clients && clients.length > 0) {
-          // Real data found — stay out of demo mode
-          if (isDemoMode()) {
-            localStorage.removeItem('stafflo_demo_mode');
-            hideDemoBanner();
-          }
+        if (clients.length > 0) {
+          // Real data found — skip demo mode
+          hideDemoBanner();
           renderAll();
           renderTodayQV();
+          loadInboxEmails();
         } else {
-          // No data at all — genuine new visitor, enter demo
+          // No data — enter demo mode for visitors
           enterDemoMode();
           renderAll();
           renderTodayQV();
         }
       }).catch(function() {
-        // Supabase unreachable — check local cache before going to demo
+        // Supabase failed — check localStorage
         loadLocal();
-        if (clients && clients.length > 0) {
-          if (isDemoMode()) {
-            localStorage.removeItem('stafflo_demo_mode');
-            hideDemoBanner();
-          }
+        if (clients.length > 0) {
+          hideDemoBanner();
           renderAll();
           renderTodayQV();
         } else {
@@ -7241,13 +6909,13 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     }
   }).catch(function() {
-    // loadSession itself threw — same fallback logic: try Supabase, then local, then demo
+    // Auth check failed — same fallback: try Supabase, then demo
     applyLang();
     goTab('today');
     chatInit();
     loadFromSupabase().then(function() {
-      if (clients && clients.length > 0) {
-        if (isDemoMode()) { localStorage.removeItem('stafflo_demo_mode'); hideDemoBanner(); }
+      if (clients.length > 0) {
+        hideDemoBanner();
         renderAll();
         renderTodayQV();
       } else {
@@ -7256,16 +6924,9 @@ document.addEventListener('DOMContentLoaded', function() {
         renderTodayQV();
       }
     }).catch(function() {
-      loadLocal();
-      if (clients && clients.length > 0) {
-        if (isDemoMode()) { localStorage.removeItem('stafflo_demo_mode'); hideDemoBanner(); }
-        renderAll();
-        renderTodayQV();
-      } else {
-        enterDemoMode();
-        renderAll();
-        renderTodayQV();
-      }
+      enterDemoMode();
+      renderAll();
+      renderTodayQV();
     });
   });
 
@@ -7296,14 +6957,7 @@ document.addEventListener('DOMContentLoaded', function() {
   setTimeout(function() {
     checkGmailOAuthReturn();
     updateInboxBadge();
-    if (getGmailToken()) {
-      startInboxPolling();
-      loadInboxEmails(); // populate sidebar on homepage without opening modal
-      // Request browser notification permission
-      if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    }
+    if (getGmailToken()) startInboxPolling();
   }, 600);
   // Old onboarding modal disabled — demo seed data is the new onboarding flow
   // setTimeout(function() { checkOnboarding(); }, 1500);
@@ -8321,7 +7975,6 @@ function closeSettings() {
 }
 
 function renderTodayQV() {
-  try { updateAriaQuickPrompts(); } catch(e) {}
   const el = document.getElementById('todayQV');
   if (!el) return;
   try {
@@ -8520,38 +8173,33 @@ function renderTodayQV() {
   } catch(e) {}
 
   html += `
-  <div style="background:var(--card);border-radius:14px;box-shadow:0 1px 8px rgba(26,18,8,.06);overflow:hidden;margin-bottom:12px">
+  <div style="background:var(--card);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:12px">
 
-    <!-- Header row: weather + tonight price — clickable to expand -->
-    <div onclick="this.parentElement.querySelector('.villa-dash-body').classList.toggle('collapsed');this.querySelector('.vd-arrow').classList.toggle('open')" style="background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer">
+    <!-- Header row: weather + tonight price -->
+    <div style="background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div style="display:flex;align-items:center;gap:8px">
         ${wTempVal ? `<span style="font-size:18px">🌤</span><span style="color:#fff;font-size:14px;font-weight:500">${wTempVal}°C</span><span style="color:rgba(255,255,255,.4);padding:0 4px">·</span>` : ''}
         <span style="color:rgba(255,255,255,.6);font-size:12px">Marrakech</span>
       </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="text-align:right">
-          <div style="font-size:9px;color:rgba(255,255,255,.4);letter-spacing:2px;margin-bottom:1px">${fr?'PRIX CE SOIR':'TONIGHT'}</div>
-          <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:300;color:var(--gold);line-height:1">${tonightPrice}</div>
-        </div>
-        <span class="vd-arrow" style="color:rgba(255,255,255,.3);font-size:10px;transition:transform .2s">▾</span>
+      <div style="text-align:right">
+        <div style="font-size:9px;color:rgba(255,255,255,.4);letter-spacing:2px;margin-bottom:1px">${fr?'PRIX CE SOIR':'TONIGHT'}</div>
+        <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:300;color:var(--gold);line-height:1">${tonightPrice}</div>
       </div>
     </div>
 
-    <!-- Stats grid: collapsed by default -->
-    <div class="villa-dash-body collapsed" style="transition:max-height .3s ease">
-      <div style="display:grid;grid-template-columns:repeat(3,1fr)">
-        <div style="padding:12px 8px;text-align:center;border-right:1px solid var(--border)">
-          <div style="font-family:'Fraunces',serif;font-size:18px;color:var(--ink)">${occPct}%</div>
-          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'OCCUP.':'OCCUP.'}</div>
-        </div>
-        <div style="padding:12px 8px;text-align:center;border-right:1px solid var(--border)">
-          <div style="font-family:'Fraunces',serif;font-size:18px;color:var(--ink)">${monthRev ? Math.round(monthRev/1000)+'k€' : '—'}</div>
-          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'CE MOIS':'THIS MO.'}</div>
-        </div>
-        <div style="padding:12px 8px;text-align:center">
-          <div style="font-family:'Fraunces',serif;font-size:18px;color:${pipeline>0?'var(--green)':'var(--muted)'}">${pipeline ? Math.round(pipeline/1000)+'k€' : '—'}</div>
-          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'PIPELINE':'PIPELINE'}</div>
-        </div>
+    <!-- Stats grid: 3 essentials -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr)">
+      <div style="padding:12px 8px;text-align:center;border-right:1px solid var(--border)">
+        <div style="font-family:'Fraunces',serif;font-size:18px;color:var(--ink)">${occPct}%</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'OCCUP.':'OCCUP.'}</div>
+      </div>
+      <div style="padding:12px 8px;text-align:center;border-right:1px solid var(--border)">
+        <div style="font-family:'Fraunces',serif;font-size:18px;color:var(--ink)">${monthRev ? Math.round(monthRev/1000)+'k€' : '—'}</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'CE MOIS':'THIS MO.'}</div>
+      </div>
+      <div style="padding:12px 8px;text-align:center">
+        <div style="font-family:'Fraunces',serif;font-size:18px;color:${pipeline>0?'var(--green)':'var(--muted)'}">${pipeline ? Math.round(pipeline/1000)+'k€' : '—'}</div>
+        <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px">${fr?'PIPELINE':'PIPELINE'}</div>
       </div>
     </div>
   </div>`;
@@ -9392,9 +9040,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Sync sidebar alignment on resize
-window.addEventListener('resize', function() { syncSidebarToContent(); });
-
 // ── PWA INSTALL PROMPT ──
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -9796,15 +9441,14 @@ function renderBriefCards(el, cards) {
         '<div class="brief-card-sub">' + (card.detail||'') + '</div>' +
         actionBtn +
       '</div>' +
-      '<div style="display:flex;flex-direction:column;align-items:center;gap:2px">' +
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">' +
         '<div class="brief-score ' + sClass + '">' + u + '</div>' +
+        '<button onclick="showWhyModal(' + idx + ')" style="background:none;border:none;color:var(--muted);font-size:9px;cursor:pointer;padding:0;line-height:1;letter-spacing:.5px">WHY</button>' +
       '</div>' +
     '</div>';
   }).join('') + 
     '<button id="briefChecklistBtn" onclick="generateStaffChecklist()" style="width:100%;margin-top:10px;background:none;border:1.5px solid #E8E2D8;border-radius:10px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;color:#8A8070;font-family:DM Sans,sans-serif">' +
   (lang==='fr' ? '📋 Générer checklist staff' : '📋 Generate staff checklist') + '</button>';
-  // Add "voir plus" button if > 3 cards
-  setTimeout(addBriefExpandButton, 50);
 }
 
 function generateStaffChecklist() {
@@ -10507,7 +10151,7 @@ function analyzeText() {}
 
 <!-- ══ EMAIL INBOX MODAL ════════════════════════════════════ -->
 <div id="inboxModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9996;align-items:center;justify-content:center;padding:12px" onclick="if(event.target===this)closeInbox()">
-  <div style="background:var(--card);border-radius:20px;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.4);overflow:hidden;position:relative">
+  <div style="background:var(--card);border-radius:20px;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.4);overflow:hidden">
 
     <!-- Header -->
     <div style="background:var(--green3);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
@@ -10537,25 +10181,26 @@ function analyzeText() {}
     </div>
 
     <!-- Filters -->
-    <div id="inboxFiltersBar" style="display:flex;gap:6px;padding:10px 16px 0;flex-shrink:0;overflow-x:auto;scrollbar-width:none">
+    <div style="display:flex;gap:6px;padding:10px 16px 0;flex-shrink:0;overflow-x:auto;scrollbar-width:none;align-items:center">
       <button class="inbox-filter on" data-f="all" onclick="setInboxFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
       <button class="inbox-filter" data-f="new" onclick="setInboxFilter('new',this)" data-fr="🔴 Nouveaux" data-en="🔴 New">🔴 Nouveaux</button>
       <button class="inbox-filter" data-f="inquiry" onclick="setInboxFilter('inquiry',this)" data-fr="💬 Demandes" data-en="💬 Inquiries">💬 Demandes</button>
       <button class="inbox-filter" data-f="confirmation" onclick="setInboxFilter('confirmation',this)" data-fr="✅ Confirmés" data-en="✅ Confirmed">✅ Confirmés</button>
       <button class="inbox-filter" data-f="processed" onclick="setInboxFilter('processed',this)" data-fr="✔ Traités" data-en="✔ Processed">✔ Traités</button>
+      <button onclick="refreshInbox()" title="Rafraîchir" style="margin-left:auto;background:var(--green-light);border:1px solid var(--green);color:var(--green);width:32px;height:32px;border-radius:50%;font-size:14px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700">↻</button>
     </div>
 
     <!-- Email list -->
     <div id="inboxList" style="flex:1;overflow-y:auto;padding:10px 16px"></div>
 
-    <!-- Email detail pane — overlays the list inside the modal -->
-    <div id="inboxEmailDetail" style="display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:var(--card);border-radius:20px;overflow-y:auto;z-index:10">
-      <div style="background:var(--green3);padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:11">
-        <button onclick="closeEmailDetail()" style="background:rgba(255,255,255,.15);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">←</button>
-        <div style="flex:1;font-size:14px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="detailSubjectLine">—</div>
-        <span id="detailStatusBadge" style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:6px"></span>
+    <!-- Email detail pane (slides up) -->
+    <div id="inboxEmailDetail" style="display:none;position:absolute;inset:0;background:var(--card);border-radius:20px;overflow-y:auto;z-index:2">
+      <div style="background:var(--green3);padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:1">
+        <button onclick="closeEmailDetail()" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer">←</button>
+        <div style="flex:1;font-size:13px;font-weight:600;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="detailSubjectLine">—</div>
+        <span id="detailStatusBadge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px"></span>
       </div>
-      <div id="inboxEmailDetailBody" style="padding:16px 18px"></div>
+      <div id="inboxEmailDetailBody" style="padding:16px"></div>
     </div>
   </div>
 </div>
@@ -10605,11 +10250,12 @@ function analyzeText() {}
   align-items: start;
 }
 
-/* ── TABLET+: single column, full width ── */
+/* ── TABLET+: 2 cols ── */
 @media (min-width: 700px) {
   .today-grid {
-    grid-template-columns: 1fr;
-    gap: 14px;
+    grid-template-columns: 1.4fr minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
   }
 }
 
@@ -10650,23 +10296,23 @@ function analyzeText() {}
 @media (min-width: 1024px) {
   .app-shell {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
-    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 20px;
     max-width: 1320px;
     padding: 0 16px;
     align-items: start;
   }
   .app-shell > main {
-    padding: 12px 0;
+    padding: 16px 0;
     max-width: none;
   }
   #globalSideRail {
     position: sticky;
-    top: 98px;
+    top: 130px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 0;
+    gap: 14px;
+    padding: 16px 0;
   }
 }
 @media (max-width: 1023px) {
@@ -10721,10 +10367,7 @@ function analyzeText() {}
 }
 .aria-banner-send:not(:disabled) { opacity: 1; }
 .aria-banner-send:not(:disabled):hover { opacity: .85; }
-/* Desktop: banner hidden — sidebar handles ARIA */
-@media (min-width: 1024px) {
-  .aria-banner { display: none; }
-}
+@media (min-width: 1024px) { .aria-banner { display: none; } }
 @media (max-width: 400px) {
   .aria-banner-sub { display: none; }
   .aria-banner-row1 { margin-bottom: 5px; }
@@ -10784,182 +10427,6 @@ function analyzeText() {}
   color: var(--muted);
   margin-top: 4px;
 }
-
-
-/* ══════════════════════════════════════════════════
-   REFONTE UI/UX v2 — Command Center approach
-   ══════════════════════════════════════════════════ */
-
-/* ── HEADER: lighter, cleaner ── */
-header { height: 50px; padding: 0 16px; }
-.hstat { display: none; } /* stats removed from header — too dense */
-@media (min-width: 1024px) {
-  .hstat { display: block; } /* show on desktop only */
-}
-.logo { font-size: 18px; gap: 5px; }
-
-/* ── NAV: cleaner labels ── */
-.nav-btn { font-size: 13px; padding: 11px 8px; letter-spacing: .5px; }
-
-/* ── TODAY: command center ── */
-.today-cols { padding: 0 !important; }
-.quick-actions { display: none !important; } /* replaced by ARIA quick prompts */
-
-/* ── STAYS BAR: more compact, warm ── */
-.stays-bar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: var(--green3) !important; border-radius: 12px !important;
-  padding: 10px 14px !important; margin-bottom: 12px !important;
-  font-size: 13px;
-}
-.stays-bar .stay-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: rgba(255,255,255,.08); border-radius: 8px;
-  padding: 5px 10px; font-size: 12px; color: #fff;
-  cursor: pointer; transition: background .15s;
-}
-.stays-bar .stay-chip:hover { background: rgba(255,255,255,.15); }
-.stays-bar .stay-chip .countdown {
-  font-size: 10px; font-weight: 700; color: var(--gold);
-}
-
-/* ── MORNING BRIEF: max 3 visible ── */
-.brief-cards { max-height: none; }
-.brief-card { margin-bottom: 6px !important; border-radius: 10px !important; }
-.brief-card-inner { padding: 10px 12px; }
-.brief-card-title { font-size: 13px; }
-.brief-card-sub { font-size: 11px; }
-.brief-card-action { font-size: 10px; padding: 3px 8px; margin-top: 4px; }
-.brief-score { width: 22px; height: 22px; font-size: 10px; border-radius: 5px; }
-
-/* Hide brief cards beyond 3rd — managed by JS addBriefExpandButton() */
-.brief-card.brief-hidden { display: none !important; }
-.brief-cards.expanded .brief-card.brief-hidden { display: flex !important; }
-
-/* "Voir plus" button for brief */
-.brief-expand-btn {
-  display: flex; align-items: center; justify-content: center; gap: 4px;
-  width: 100%; padding: 8px; margin-top: 4px;
-  background: none; border: 1.5px dashed var(--border);
-  border-radius: 8px; font-size: 11px; font-weight: 500;
-  color: var(--muted); cursor: pointer; font-family: 'DM Sans', sans-serif;
-  transition: all .15s;
-}
-.brief-expand-btn:hover { border-color: var(--gold); color: var(--gold); }
-.brief-cards.expanded + .brief-expand-btn { display: none; }
-
-/* ── ARIA SIDEBAR: bigger, hero status ── */
-@media (min-width: 1024px) {
-  .app-shell {
-    gap: 16px !important;
-  }
-}
-.aria-side-input {
-  border: 1.5px solid rgba(201,150,58,.35) !important;
-  box-shadow: 0 4px 20px rgba(201,150,58,.08) !important;
-}
-
-/* ARIA Quick Prompts */
-.aria-quick-prompts {
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 8px 12px 4px; border-top: 1px solid var(--border);
-}
-.aria-quick-prompt {
-  display: flex; align-items: center; gap: 6px;
-  padding: 7px 10px; border-radius: 8px;
-  background: var(--paper); border: 1px solid var(--border);
-  font-size: 11px; color: var(--ink); cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-  transition: all .15s; text-align: left; width: 100%;
-}
-.aria-quick-prompt:hover {
-  background: var(--gold-light); border-color: var(--gold); color: var(--green3);
-}
-.aria-quick-prompt .qp-icon { font-size: 13px; flex-shrink: 0; }
-.aria-quick-prompt .qp-text { flex: 1; min-width: 0; line-height: 1.3; }
-
-/* ── TODAY SECTION LABELS ── */
-.today-section-label {
-  font-size: 10px; letter-spacing: 2px; color: var(--muted);
-  font-weight: 700; text-transform: uppercase; margin-bottom: 8px;
-  display: flex; align-items: center; gap: 6px;
-}
-.today-section-label::before {
-  content: ''; width: 4px; height: 4px; border-radius: 50%;
-  background: var(--gold); flex-shrink: 0;
-}
-
-/* ── TODAY QUICK VIEW: cleaner "who does what" ── */
-#todayQV { margin-top: 2px; }
-#todayQV .section-label { font-size: 10px; }
-
-/* ── FOOTER STATS: collapsible ── */
-.tab-footer-stats {
-  margin-top: 12px !important;
-}
-.tfs-toggle {
-  display: flex; align-items: center; justify-content: space-between;
-  cursor: pointer; padding: 0;
-}
-.tfs-toggle .tfs-arrow {
-  font-size: 12px; color: var(--muted); transition: transform .2s;
-}
-.tfs-toggle.open .tfs-arrow { transform: rotate(180deg); }
-.tfs-grid.collapsed { display: none; }
-
-/* ── CARD SHADOWS: unified single level ── */
-.guest-card, .aria-side-input, .inbox-side-panel,
-.brief-card, #morningBrief, .tab-footer-stats {
-  box-shadow: 0 1px 8px rgba(26,18,8,.06) !important;
-}
-
-/* ── DENSITY: more breathing room ── */
-main { padding: 12px 14px !important; }
-@media (min-width: 600px) { main { padding: 14px 18px !important; } }
-@media (min-width: 1024px) { .app-shell main { padding: 12px 0 !important; } }
-
-/* ── COLOR NORMALIZATION ── */
-/* Green = nav, header, primary CTA only */
-/* Gold = badges, priorities, accents */
-/* Cream = unified card + page backgrounds */
-.brief-card { border: 1px solid var(--border); }
-.brief-card:hover { box-shadow: 0 2px 12px rgba(26,18,8,.1) !important; }
-
-/* ── EMPTY STATE ── */
-.today-empty {
-  text-align: center; padding: 32px 20px;
-  background: var(--card); border-radius: 14px;
-  border: 1.5px dashed var(--border);
-}
-.today-empty-icon { font-size: 36px; margin-bottom: 10px; }
-.today-empty-title {
-  font-family: 'Fraunces', serif; font-size: 18px;
-  font-weight: 400; color: var(--ink); margin-bottom: 6px;
-}
-.today-empty-sub {
-  font-size: 13px; color: var(--muted); line-height: 1.5;
-  margin-bottom: 14px; max-width: 320px; margin-left: auto; margin-right: auto;
-}
-.today-empty-cta {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: var(--green); color: #fff; border: none;
-  border-radius: 10px; padding: 10px 18px;
-  font-size: 13px; font-weight: 600; cursor: pointer;
-  font-family: 'DM Sans', sans-serif; transition: all .15s;
-}
-.today-empty-cta:hover { background: var(--green2); }
-
-/* ── ARIA BANNER (mobile): add quick prompts ── */
-.aria-mobile-prompts { display: none; }
-@media (min-width: 1024px) { .aria-mobile-prompts { display: none; } }
-
-/* ── INBOX SIDEBAR: subtler ── */
-.inbox-side-panel { border: 1px solid var(--border); }
-
-/* ── COLLAPSIBLE sections ── */
-.villa-dash-body.collapsed { display: none; }
-.vd-arrow.open { transform: rotate(180deg); }
-.tfs-grid.collapsed { display: none; }
 
 </style>
 
