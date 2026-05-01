@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -139,9 +140,9 @@ main{max-width:760px;margin:0 auto;padding:16px}
 /* ── MOBILE TOUCH TARGETS ── */
 @media(max-width:600px){
   nav{position:fixed;bottom:0;left:0;right:0;top:auto;z-index:300;border-top:1px solid rgba(255,255,255,.15);padding:0;padding-bottom:env(safe-area-inset-bottom)}
-  main{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+  main{padding-top:58px;padding-bottom:calc(72px + env(safe-area-inset-bottom))}
   header{position:fixed;top:0;left:0;right:0;z-index:400}
-  .tab{padding-top:4px}
+  .tab{padding-top:0}
   /* Ensure modals don't get hidden behind bottom nav */
   .detail-modal,.why-modal{padding-bottom:env(safe-area-inset-bottom)}
 }
@@ -2156,7 +2157,9 @@ function cleanJsonStr(s) {
     .trim();
 }
 async function analyze() {
-  const text = document.getElementById('pasteInput').value.trim();
+  // pasteInput may not exist (removed in refactor) — fall back to emptyPasteInput
+  const taEl = document.getElementById('pasteInput') || document.getElementById('emptyPasteInput');
+  const text = taEl ? taEl.value.trim() : '';
   if (!text) return;
 
   // ── Performance tracking ──
@@ -2175,7 +2178,7 @@ async function analyze() {
   perfEnd('parse_detect');
 
 
-  const btn = document.getElementById('analyzeBtn');
+  const btn = document.getElementById('analyzeBtn') || document.getElementById('emptyAnalyzeBtn') || { disabled: false, classList: { add: function(){}, remove: function(){} } };
   btn.disabled = true;
   btn.classList.add('loading');
 
@@ -2257,10 +2260,13 @@ async function analyze() {
     ).join('');
     if (msgBody) msgBody.innerHTML = '<div class="skel-card" style="height:80px;border-radius:8px;margin:8px 0"></div><div class="skel-card" style="height:36px;border-radius:8px;width:60%"></div>';
 
-    // Clear paste zone
-    document.getElementById('pasteInput').value = '';
-    document.getElementById('pasteInput').classList.remove('has-text');
-    document.getElementById('analyzeBtn').disabled = true;
+    // Clear paste zone (both possible inputs)
+    var _pi = document.getElementById('pasteInput');
+    var _ei = document.getElementById('emptyPasteInput');
+    if (_pi) { _pi.value = ''; _pi.classList.remove('has-text'); }
+    if (_ei) { _ei.value = ''; }
+    if (document.getElementById('analyzeBtn')) document.getElementById('analyzeBtn').disabled = true;
+    if (document.getElementById('emptyAnalyzeBtn')) { document.getElementById('emptyAnalyzeBtn').disabled = true; document.getElementById('emptyAnalyzeBtn').style.opacity = '.4'; }
     btn.classList.remove('loading');
 
     // ── PASS 2: Message generation — complete villa context ──
@@ -8463,7 +8469,7 @@ function openSettings() {
 }
 function closeSettings() {
   const panel = document.getElementById('settingsPanel');
-  panel.style.transform = 'translateX(100%)';
+  if (panel) panel.style.transform = 'translateX(100%)';
   setTimeout(() => {
     document.getElementById('settingsModal').style.display = 'none';
     document.body.style.overflow = '';
