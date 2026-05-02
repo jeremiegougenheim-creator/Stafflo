@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -4327,10 +4328,23 @@ async function handleChatQuestion(text) {
     if (first && first.length > 2 && lcText.indexOf(first) >= 0) { mentioned = clients[i]; break; }
   }
   
-  // Compact system prompt — ~30 tokens vs old ~120
-  var sys = fr
-    ? 'Assistant de '+owner+' ('+villa+', Marrakech). Réponds en FR, max 3 phrases. Signe les WA "'+owner+'".'
-    : 'Assistant for '+owner+' ('+villa+', Marrakech). Reply in EN, max 3 sentences. Sign WA "'+owner+'".';
+  // Structured system prompt — clear roles, action types, guard-rails
+  var _sysLines = fr ? [
+    'Tu es ARIA, assistante de ' + owner + ' pour ' + villa + ' (Marrakech).',
+    'Role: comprendre les messages libres, extraire les infos, proposer laction la plus sure.',
+    'Regles: Reponds en francais, max 3 phrases. Ne suppose jamais quun texte est un email Airbnb si ce nest pas explicite.',
+    'Pour toute action CRM, affiche dabord un resume structure de ce qui sera cree/modifie.',
+    'Signe les WA: ' + owner + '.',
+    'Si demande de message WA: REPONSE: [msg]' + '\n' + 'ACTION: {"type":"send_wa","clientId":"X","msg":"..."}'
+  ] : [
+    'You are ARIA, assistant for ' + owner + ' at ' + villa + ' (Marrakech).',
+    'Role: understand free-form messages, extract useful info, propose safest action.',
+    'Rules: Reply in English, max 3 sentences. Never assume text is Airbnb email unless explicit.',
+    'For any CRM action, first show a summary of what will be created/updated.',
+    'Sign WA messages: ' + owner + '.',
+    'If WA message requested: RESPONSE: [msg]' + '\n' + 'ACTION: {"type":"send_wa","clientId":"X","msg":"..."}'
+  ];
+  var sys = _sysLines.join('\n');
   
   // Compact CRM — only active/upcoming clients (max 8), abbreviated
   var nowDate = today;
@@ -4553,6 +4567,23 @@ function confirmBulkImport() {
   var reservations = window._pendingBulkImport;
   if (!reservations || !reservations.length) {
     toast(fr ? 'Rien à importer' : 'Nothing to import');
+    return;
+  }
+
+  // ── Validation guard: never write ambiguous data to CRM ──
+  var issues = [];
+  reservations.forEach(function(r) {
+    if (!r.guest_name) issues.push({ type: 'missing_name', r: r });
+    if (!r.arrival_date || !r.departure_date) issues.push({ type: 'missing_dates', guest: r.guest_name || '?', r: r });
+    if (r.needs_confirmation) issues.push({ type: 'ambiguous', guest: r.guest_name, field: r.guests_count_text });
+  });
+
+  var blocking = issues.filter(function(i) { return i.type === 'missing_name' || i.type === 'missing_dates'; });
+  if (blocking.length) {
+    var msg = fr
+      ? '⚠️ ' + blocking.length + ' réservation(s) bloquée(s) — données manquantes. Vérifiez avant d\'importer.'
+      : '⚠️ ' + blocking.length + ' reservation(s) blocked — missing data. Review before importing.';
+    addChatBubble('system', msg);
     return;
   }
 
@@ -6456,49 +6487,82 @@ function extractClientFromWAConv(text) {
 // ── Handle WA conversation where client is not in CRM ──
 async function handleWAConvUnknown(text) {
   var fr = lang === 'fr';
+  var cfg = getCfg();
+  var owner = cfg.owner || 'Jérémie';
   var prompt = [
-    'Analyse cette conversation WhatsApp. Extrait:',
-    '1. Le nom du client (pas Jérémie)',
-    '2. Les infos clés (dates, repas, transports, demandes)',
-    '3. Le dernier message du client et ce qu\'il attend',
-    '4. La meilleure réponse à envoyer',
-    '',
-    'Réponds en JSON:',
-    '{"client_name":"","summary":"","key_info":[],"pending_request":"","suggested_response":""}',
+    'Analyse cette conversation WhatsApp pour ' + owner + '.',
+    'Retourne UNIQUEMENT du JSON valide, sans markdown, sans explication.',
+    '{',
+    '  "client_name": "",',
+    '  "summary": "",',
+    '  "key_info": [{"label":"","value":""}],',
+    '  "pending_request": "",',
+    '  "suggested_response": "",',
+    '  "input_type": "whatsapp_conv"',
+    '}',
+    'Regles:',
+    '- client_name: le nom de linterlocuteur (pas ' + owner + ')',
+    '- key_info: max 5 infos cles (dates, repas, transport, demandes speciales)',
+    '- suggested_response: message WA complet, chaleureux, max 4 lignes, signe par ' + owner,
+    '- Ne mets aucun [placeholder] dans suggested_response — ecris le message final directement.',
     '',
     'Conversation:',
     text.slice(0, 3000)
   ].join('\n');
 
-  var raw = await callBestAI('reason', '', prompt, 600);
+  var raw = await callBestAI('reason', '', prompt, 700);
   document.getElementById('chatTyping').style.display = 'none';
 
   var parsed = parseAIJson(raw);
 
   if (!parsed) {
-    // Don't show raw JSON — show a helpful message instead
-    addChatBubble('ai', lang==='fr' ? '🤔 Je n\'ai pas pu analyser la réponse. Réessaie.' : '🤔 Could not parse response. Try again.');
-    console.warn('[AI] raw response:', raw.slice(0,200));
+    addChatBubble('ai', fr ? '🤔 Je n\'ai pas pu analyser la conversation. Réessaie.' : '🤔 Could not parse response. Try again.');
+    console.warn('[ARIA] handleWAConvUnknown raw:', raw.slice(0, 300));
     return;
   }
 
   var name = parsed.client_name || '?';
-  addChatBubble('system', '💬 Conversation avec <strong>' + name + '</strong>' +
-    (parsed.summary ? '<br>' + parsed.summary : ''));
+
+  // Build header bubble with key_info badges
+  var headerHtml = '<strong>💬 ' + name + '</strong>';
+  if (parsed.summary) headerHtml += '<br><span style="color:var(--muted);font-size:13px">' + parsed.summary + '</span>';
+  if (parsed.key_info && parsed.key_info.length) {
+    headerHtml += '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px">';
+    parsed.key_info.forEach(function(ki) {
+      if (ki && ki.label && ki.value) {
+        headerHtml += '<span style="background:var(--gold-light);border:1px solid rgba(201,150,58,.3);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--ink)">'
+          + '<strong>' + ki.label + ':</strong> ' + ki.value + '</span>';
+      }
+    });
+    headerHtml += '</div>';
+  }
+  addChatBubble('system', headerHtml);
 
   if (parsed.suggested_response) {
     var waKey = storePendingWA(null, parsed.suggested_response);
     if (parsed.client_name) _pendingWA[waKey].clientName = parsed.client_name;
     addChatBubble('ai', parsed.suggested_response, [
-      { label: '💬 Envoyer à ' + name.split(' ')[0], cls: 'wa', fn: 'sendPendingWA("'+waKey+'")' },
-      { label: '✏️', cls: 'view', fn: 'editPendingWA("'+waKey+'",this)' },
+      { label: '💬 ' + (fr ? 'Envoyer à ' : 'Send to ') + name.split(' ')[0], cls: 'wa', fn: 'sendPendingWA("' + waKey + '")' },
+      { label: '✏️', cls: 'view', fn: 'editPendingWA("' + waKey + '",this)' },
       { label: '✕', cls: 'no', fn: 'dismissChatAction(this)' }
     ]);
   }
 
-  // Suggest adding to CRM
-  addChatBubble('system', '👤 ' + name + ' n\'est pas dans le CRM — ' +
-    '<button onclick="openForm()" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">+ Créer client</button>');
+  // Check if client might already be in CRM (fuzzy first-name match)
+  var firstName = name.split(' ')[0].toLowerCase();
+  var existingMatch = clients.find(function(c) {
+    return c.name && c.name.toLowerCase().indexOf(firstName) >= 0;
+  });
+
+  if (existingMatch) {
+    addChatBubble('system', (fr ? '👤 Fiche existante: ' : '👤 Existing record: ') +
+      '<button onclick="openClientCard(\'' + existingMatch.id + '\')" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">' +
+      (fr ? '📋 Voir ' : '📋 View ') + existingMatch.name + '</button>');
+  } else {
+    addChatBubble('system', '👤 ' + name + (fr ? ' n\'est pas dans le CRM — ' : ' not in CRM — ') +
+      '<button onclick="openForm()" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">+ ' +
+      (fr ? 'Créer client' : 'Create client') + '</button>');
+  }
 }
 
 // ── Context command called with full text (for WA conv) ──
@@ -10991,10 +11055,8 @@ function toggleRdy(el) {
 }
 
 // ── Compatibility stubs for removed Signal zone ──
-function onPaste() {}
-function setInputMode(m) {}
-function toggleVoiceInput() {}
-function analyzeText() {}
+// NOTE: onPaste, setInputMode, toggleVoiceInput are real functions defined above — do NOT redeclare
+function analyzeText() {} // stub only — analyzeText was removed with old Signal zone
 // Safe no-op for any remaining Signal DOM refs
 (function() {
   var _noop = { disabled: false, style: {}, value: '', classList: { add:function(){}, remove:function(){}, toggle:function(){} } };
