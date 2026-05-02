@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1401,10 +1402,23 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         <button onclick="var g=document.getElementById('cfgGps').value;if(g)window.open('https://www.google.com/maps?q='+encodeURIComponent(g),'_blank');else toast('Entrez les coordonnées GPS')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;white-space:nowrap">📍 Map</button>
       </div>
     </div>
-    <div class="field">
-      <label data-fr="Email réception (Gmail)" data-en="Reception email (Gmail)">Email réception (Gmail)</label>
-      <input id="cfgGmailEmail" placeholder="marrakech.darj@gmail.com">
-      <div style="font-size:10px;color:var(--muted);margin-top:3px" data-fr="L'email Gmail connecté pour recevoir les réservations" data-en="The Gmail account connected for booking emails">L'email Gmail connecté pour recevoir les réservations</div>
+  </div>
+
+  <!-- ── INBOX EMAIL — dedicated section ── -->
+  <div class="settings-section" style="border:1.5px solid rgba(201,150,58,.25);background:rgba(201,150,58,.03)">
+    <div class="settings-title" style="color:var(--gold)" data-fr="📬 EMAIL DE RÉCEPTION" data-en="📬 RECEPTION EMAIL">📬 EMAIL DE RÉCEPTION</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5" data-fr="L'adresse email qui reçoit les réservations (Airbnb, Booking, clients directs). ARIA surveille cette boite." data-en="The email address that receives bookings (Airbnb, Booking, direct clients). ARIA monitors this inbox.">L'adresse email qui reçoit les réservations (Airbnb, Booking, clients directs). ARIA surveille cette boite.</div>
+    <div class="field" style="margin-bottom:6px">
+      <label data-fr="Adresse email" data-en="Email address">Adresse email</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="cfgGmailEmail" placeholder="villa@gmail.com" type="email" autocomplete="email" style="flex:1">
+        <button onclick="saveInboxEmail()" style="background:var(--gold);color:var(--green3);border:none;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="Enregistrer" data-en="Save">Enregistrer</button>
+      </div>
+      <div id="inboxEmailStatus" style="display:none;margin-top:6px;font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px"></div>
+    </div>
+    <div style="font-size:10px;color:var(--muted);line-height:1.6;border-top:1px solid var(--border);padding-top:8px">
+      <span data-fr="Email actuel enregistré : " data-en="Currently saved: ">Email actuel enregistré : </span>
+      <strong id="inboxEmailCurrent" style="color:var(--ink)">—</strong>
     </div>
   </div>
 
@@ -8600,12 +8614,61 @@ function renderMarketBand() {
 function openSettings() {
   try { loadSettingsUI(); } catch(e) {}
   try { updateSessionBadge(); } catch(e) {}
+  try { updateInboxEmailDisplay(); } catch(e) {}
   var modal = document.getElementById('settingsModal');
   var panel = document.getElementById('settingsPanel');
   if (!modal) return;
   modal.style.cssText = 'display:flex!important;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9998;align-items:flex-start;justify-content:flex-end';
   document.body.style.overflow = 'hidden';
   if (panel) requestAnimationFrame(function() { panel.style.transform = 'translateX(0)'; });
+}
+
+function updateInboxEmailDisplay() {
+  var cfg = getCfg();
+  var el = document.getElementById('inboxEmailCurrent');
+  var inp = document.getElementById('cfgGmailEmail');
+  if (el) el.textContent = cfg.gmailEmail || (lang === 'fr' ? '(non défini)' : '(not set)');
+  if (inp) inp.value = cfg.gmailEmail || '';
+}
+
+function saveInboxEmail() {
+  var fr = lang === 'fr';
+  var inp = document.getElementById('cfgGmailEmail');
+  var statusEl = document.getElementById('inboxEmailStatus');
+  var currentEl = document.getElementById('inboxEmailCurrent');
+
+  if (!inp) return;
+  var email = inp.value.trim().toLowerCase();
+
+  // Basic email validation
+  var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email) {
+    statusEl.textContent = fr ? '⚠️ Entrez une adresse email.' : '⚠️ Please enter an email address.';
+    statusEl.style.cssText = 'display:block;background:rgba(192,57,43,.1);color:var(--red);margin-top:6px;font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px';
+    return;
+  }
+  if (!emailRegex.test(email)) {
+    statusEl.textContent = fr ? '⚠️ Format invalide — ex: villa@gmail.com' : '⚠️ Invalid format — e.g. villa@gmail.com';
+    statusEl.style.cssText = 'display:block;background:rgba(192,57,43,.1);color:var(--red);margin-top:6px;font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px';
+    return;
+  }
+
+  // Save
+  var cfg = getCfg();
+  cfg.gmailEmail = email;
+  setCfg(cfg);
+
+  // Update display
+  if (currentEl) currentEl.textContent = email;
+  inp.value = email;
+
+  statusEl.textContent = fr ? '✓ Email enregistré : ' + email : '✓ Email saved: ' + email;
+  statusEl.style.cssText = 'display:block;background:rgba(59,109,17,.12);color:#3B6D11;margin-top:6px;font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px';
+
+  // Auto-hide after 3s
+  setTimeout(function() { if (statusEl) statusEl.style.display = 'none'; }, 3500);
+
+  toast(fr ? '📬 Email mis à jour' : '📬 Email updated');
 }
 function closeSettings() {
   const panel = document.getElementById('settingsPanel');
