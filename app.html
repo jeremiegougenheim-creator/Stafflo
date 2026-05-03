@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1532,10 +1533,13 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       </div>
       <button onclick="refreshInbox()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s" title="Refresh">↻</button>
     </div>
-    <div id="inboxSidebarList" style="padding:8px 12px;min-height:80px;max-height:340px;overflow-y:auto"></div>
-    <div style="padding:8px 12px;border-top:1px solid var(--border)">
-      <button onclick="showInbox()" style="width:100%;background:var(--paper);border:1.5px solid var(--border);border-radius:8px;padding:8px;font-size:12px;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="Voir tous les emails →" data-en="See all emails →">Voir tous les emails →</button>
+    <div style="padding:6px 12px 4px">
+      <button onclick="showInbox()" style="width:100%;background:var(--green);border:none;border-radius:8px;padding:9px 12px;font-size:12px;color:#fff;cursor:pointer;font-family:inherit;font-weight:600;display:flex;align-items:center;justify-content:space-between" data-fr="Voir tous les emails →" data-en="See all emails →">
+        <span data-fr="Voir tous les emails" data-en="See all emails">Voir tous les emails</span>
+        <span>→</span>
+      </button>
     </div>
+    <div id="inboxSidebarList" style="padding:8px 12px;min-height:60px;max-height:calc(100vh - 300px);overflow-y:auto"></div>
   </div>
 </aside>
 </div><!-- /app-shell -->
@@ -5052,9 +5056,13 @@ async function saveEmailToSupabase(email) {
   var existing = await r.json();
   if (existing && existing.length > 0) return existing[0]; // already saved
   
+  if (_stafflo_user && _stafflo_user.id && !email.user_id) {
+    email = Object.assign({}, email, { user_id: _stafflo_user.id });
+  }
+  var _saveAuthKey = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
   var r2 = await fetch(SB_URL + '/rest/v1/email_inbox', {
     method: 'POST',
-    headers: { 'Content-Type':'application/json', apikey: key, Authorization:'Bearer '+key, Prefer:'return=representation' },
+    headers: { 'Content-Type':'application/json', apikey: key, Authorization:'Bearer '+_saveAuthKey, Prefer:'return=representation' },
     body: JSON.stringify(email)
   });
   var saved = await r2.json();
@@ -5281,7 +5289,8 @@ async function loadInboxEmails() {
   var key = cfg.sbKey || SB_ANON;
   var authToken = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
   try {
-    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=20' +
+    var _uidF = (_stafflo_user && _stafflo_user.id) ? '&user_id=eq.' + _stafflo_user.id : '';
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=50' + _uidF +
       (_inboxFilter === 'new' ? '&status=eq.new' :
        _inboxFilter === 'processed' ? '&status=eq.processed' :
        _inboxFilter === 'inquiry' ? '&extracted->>email_type=eq.inquiry' :
@@ -5348,7 +5357,7 @@ async function loadInboxEmails() {
         sb.innerHTML = '<div style="padding:16px;text-align:center;font-size:12px;color:var(--muted)">📭 Inbox vide</div>';
         return;
       }
-      var cardHtml = rows.slice(0,6).map(function(row) {
+      var cardHtml = rows.slice(0,10).map(function(row) {
         var d = new Date(row.received_at);
         var dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
         var ex = row.extracted || {};
@@ -5412,47 +5421,248 @@ function openInboxEmail(row) {
   closeInbox();
   var ex = row.extracted || {};
   var fr = lang === 'fr';
-
-  // Mark as processed
   var cfg = getCfg();
   var authKey = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : (cfg.sbKey||SB_ANON);
+
+  // Mark as read
   fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + row.id, {
     method: 'PATCH',
     headers: { 'Content-Type':'application/json', apikey: SB_ANON, Authorization:'Bearer '+authKey },
     body: JSON.stringify({ status: 'processed' })
   }).catch(function(){});
-
   updateInboxBadge();
 
-  // ── Open chat panel so the analysis is visible ──
+  // ── Open dedicated Email Analysis Modal ──
+  var modal = document.getElementById('emailAnalysisModal');
+  if (!modal) { _openInboxInChat(row, ex, fr); return; }
+
+  // Fill header
+  var d = new Date(row.received_at);
+  var dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  document.getElementById('eaSubject').textContent = row.subject || (fr ? 'Sans objet' : 'No subject');
+  document.getElementById('eaMeta').textContent = (row.from_email||'—').replace(/<[^>]+>/g,'') + ' · ' + dateStr;
+  document.getElementById('eaSourceBadge').innerHTML = getSourceBadge(row.source||'email');
+
+  // Fill original body
+  var cleanBody = (row.body||'').replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'').trim();
+  document.getElementById('eaBodyText').textContent = cleanBody;
+
+  // Reset state
+  document.getElementById('eaLoading').style.display = 'block';
+  document.getElementById('eaResult').style.display = 'none';
+  document.getElementById('eaResult').innerHTML = '';
+
+  // Show modal
+  modal.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  modal.scrollTop = 0;
+
+  // Run AI → render in modal
+  handleInboxEmailModal(row, ex, fr).catch(function(e) {
+    document.getElementById('eaLoading').style.display = 'none';
+    var res = document.getElementById('eaResult');
+    res.style.display = 'block';
+    res.innerHTML = '<div style="color:#A32D2D;background:rgba(192,57,43,.06);border-radius:10px;padding:14px;font-size:13px">⚠️ '+(e.message||'Analyse échouée — vérifiez votre connexion et réessayez.')+'</div>';
+  });
+}
+
+function closeEmailAnalysis() {
+  var m = document.getElementById('emailAnalysisModal');
+  if (m) m.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function _openInboxInChat(row, ex, fr) {
   var panel = document.getElementById('chatPanel');
   var overlay = document.getElementById('chatOverlay');
   var fab = document.getElementById('chatFAB');
-  if (panel) {
-    panel.style.display = 'flex';
-    if (overlay) overlay.style.display = 'block';
-    if (fab) fab.style.display = 'none';
-  }
-
-  // Show email summary in chat
-  var srcIcon = (row.source === 'whatsapp') ? '💬' : (row.source === 'airbnb' ? '🅰' : (row.source === 'booking' ? '📘' : '📧'));
-  var srcLabel = (row.source === 'whatsapp') ? 'WhatsApp' : 'Email';
-  addChatBubble('user', srcIcon + ' ' + srcLabel + ' — ' + (row.subject || row.body || '').slice(0,80) + ' — ' + (row.from_email || ''));
-
-  // Show typing indicator
+  if (panel) { panel.style.display='flex'; if(overlay) overlay.style.display='block'; if(fab) fab.style.display='none'; }
+  var srcIcon = row.source==='whatsapp'?'💬':row.source==='airbnb'?'🅰':'📧';
+  addChatBubble('user', srcIcon+' '+(row.subject||row.body||'').slice(0,80));
   var typing = document.getElementById('chatTyping');
   if (typing) typing.style.display = 'block';
   scrollChat();
-
-  // Generate analysis + 3 response options
-  handleInboxEmailFull(row, ex).catch(function(e) {
-    if (typing) typing.style.display = 'none';
-    var errMsg = e.message === 'rate_limit'
-      ? (fr ? '⏳ Limite AI atteinte — réessayez dans quelques minutes' : '⏳ AI rate limit — try again shortly')
-      : (fr ? '⚠ Erreur d\'analyse: ' + e.message + '\n\nVérifiez la connexion réseau et réessayez.' : '⚠ Analysis error: ' + e.message + '\n\nCheck network and retry.');
-    addChatBubble('ai', errMsg);
-  });
+  handleInboxEmailFull(row, ex).catch(function(e){ if(typing) typing.style.display='none'; addChatBubble('ai','⚠ '+(e.message||'Error')); });
 }
+
+
+
+// ══ handleInboxEmailModal — AI analysis rendered in dedicated modal (not ARIA chat) ══
+async function handleInboxEmailModal(row, ex, fr) {
+  fr = fr !== undefined ? fr : lang==='fr';
+  var cfg = getCfg();
+  var owner = cfg.owner || 'Jérémie';
+  var villa = cfg.villa || 'Villa DarJ';
+
+  var bodyText = (row.body||'').replace(/<[^>]+>/g,' ').slice(0,2000);
+  var hasFr = /\b(bonjour|merci|nous|pour|séjour|réservation|adultes|disponible)\b/i.test(bodyText);
+  var guestLang = hasFr ? 'French' : 'English';
+  var source = row.source || ex.source || 'email';
+  var isWA = source==='whatsapp';
+  var isAirbnb = source==='airbnb'||/airbnb/i.test(row.from_email||'');
+  var isBooking = source==='booking'||/booking\.com/i.test(row.from_email||'');
+  var typeCtx = isWA?'WhatsApp message':isAirbnb?'Airbnb booking/inquiry':isBooking?'Booking.com reservation':'Direct email';
+
+  var prompt = 'Email for '+villa+' ('+owner+', Marrakech luxury villa). Source: '+typeCtx+'.\n'+
+    'From: '+(row.from_email||'')+'\nSubject: '+(row.subject||'')+'\n\n'+bodyText+
+    '\n\n---\nReturn ONLY valid JSON (no markdown, no comments):\n'+
+    '{"email_type":"inquiry|confirmation|cancellation|message|review","summary":"1 sentence what guest wants",'+
+    '"guest":{"name":"","nat":"flag+country","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":15.5,"phone":"","notes":"diet/kids/occasion/transport/arrival_time"},'+
+    '"missing":["list of missing info"],"alerts":["urgent actions needed"],'+
+    '"responses":['+(isWA?
+      '{"tone":"warm","label":"💛 '+(guestLang==='French'?'Chaleureux':'Warm')+'","text":"Short warm WhatsApp reply in '+guestLang+', 2-3 sentences, use first name, 1-2 emojis, signed '+owner+'."},'+
+      '{"tone":"formal","label":"👔 '+(guestLang==='French'?'Professionnel':'Professional')+'","text":"Professional WhatsApp reply in '+guestLang+', concise, no emojis, signed '+owner+'."},'+
+      '{"tone":"short","label":"⚡ Ultra court","text":"1 sentence essential reply in '+guestLang+'."}'
+      :
+      '{"tone":"warm","label":"💛 '+(guestLang==='French'?'Chaleureux':'Warm')+'","text":"Warm personal email in '+guestLang+', use their name, mention heated pool 28°C and lush garden, invite to book direct, signed '+owner+'. Full ready-to-send email."},'+
+      '{"tone":"formal","label":"👔 '+(guestLang==='French'?'Formel':'Formal')+'","text":"Professional email in '+guestLang+', include check-in 14h checkout 12h, dates, pricing, signed '+owner+'. Ready-to-send."},'+
+      '{"tone":"short","label":"⚡ '+(guestLang==='French'?'Direct':'Direct')+'","text":"Short direct reply in '+guestLang+', answer their main question, invite next step, signed '+owner+'."}'
+    )+
+    ']}';
+
+  var raw = await callBestAI('reason','',prompt,1400);
+  document.getElementById('eaLoading').style.display = 'none';
+
+  var parsed = parseAIJson(raw);
+  if (!parsed) {
+    var res = document.getElementById('eaResult');
+    res.style.display = 'block';
+    res.innerHTML = '<div style="background:var(--paper);border-radius:10px;padding:14px;font-size:13px;white-space:pre-wrap;border:1px solid var(--border)">'+escHtml(raw||'Analyse impossible.')+'</div>';
+    return;
+  }
+
+  var g = parsed.guest || {};
+  var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
+  var comm = parseFloat(g.commission)||15.5;
+  var net = g.price ? Math.round(g.price*(1-comm/100)) : 0;
+  var existing = g.name ? clients.find(function(cl){
+    return (cl.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0].toLowerCase());
+  }) : null;
+
+  var typeEmoji = {inquiry:'💬',confirmation:'✅',cancellation:'❌',message:'📨',review:'⭐'}[parsed.email_type]||'📧';
+  var typeLabel = {
+    inquiry: fr?'DEMANDE':'INQUIRY', confirmation: fr?'RÉSERVATION':'CONFIRMATION',
+    cancellation: fr?'ANNULATION':'CANCELLATION', message:'MESSAGE', review:fr?'AVIS':'REVIEW'
+  }[parsed.email_type]||'EMAIL';
+
+  var h = '';
+
+  // Summary banner
+  h += '<div style="display:flex;align-items:center;gap:10px;background:var(--paper);border-radius:12px;padding:14px;margin-bottom:16px;border:1px solid var(--border)">';
+  h += '<span style="font-size:26px">'+typeEmoji+'</span>';
+  h += '<div><div style="font-size:10px;font-weight:700;letter-spacing:2px;color:var(--muted)">'+source.toUpperCase()+' · '+typeLabel+'</div>';
+  h += '<div style="font-size:15px;color:var(--ink);font-weight:500;margin-top:3px">'+(parsed.summary||'')+'</div></div>';
+  h += '</div>';
+
+  // Alerts
+  if (parsed.alerts && parsed.alerts.length) {
+    parsed.alerts.forEach(function(a){
+      h += '<div style="font-size:13px;color:#A32D2D;background:rgba(192,57,43,.07);border-radius:8px;padding:10px 13px;margin-bottom:8px;border-left:3px solid #A32D2D">⚠️ '+escHtml(a)+'</div>';
+    });
+  }
+  if (parsed.missing && parsed.missing.length) {
+    h += '<div style="font-size:12px;color:var(--muted);background:var(--paper);border-radius:8px;padding:9px 13px;margin-bottom:16px">❓ '+(fr?'Info manquante':'Missing info')+': '+parsed.missing.map(escHtml).join(' · ')+'</div>';
+  }
+
+  // Editable guest fields
+  if (g.name || parsed.email_type==='inquiry' || parsed.email_type==='confirmation') {
+    var gcol = existing?'rgba(201,150,58,.06)':'rgba(27,67,50,.05)';
+    var gbd = existing?'var(--gold)':'var(--green)';
+    h += '<div style="background:'+gcol+';border-radius:12px;padding:16px;border-left:4px solid '+gbd+';margin-bottom:18px">';
+    h += '<div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px">'+(existing?'⚠️ CLIENT EXISTANT — VÉRIFIER LES INFOS':'🆕 NOUVEAU CLIENT — MODIFIER SI BESOIN')+'</div>';
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    var fldStyle = 'width:100%;box-sizing:border-box;padding:9px 11px;border:1.5px solid var(--border);border-radius:9px;font-size:13px;font-family:inherit;outline:none;background:var(--card);color:var(--ink)';
+    var lblStyle = 'font-size:10px;letter-spacing:1px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px';
+    h += '<div><label style="'+lblStyle+'">'+(fr?'NOM':'NAME')+'</label><input id="eaName" value="'+escHtml(g.name||'')+'" style="'+fldStyle+'"></div>';
+    h += '<div><label style="'+lblStyle+'">NATIONALITÉ</label><input id="eaNat" value="'+escHtml(g.nat||'')+'" style="'+fldStyle+'"></div>';
+    h += '<div><label style="'+lblStyle+'">ARRIVÉE</label><input type="date" id="eaArrival" value="'+(g.arrival||'')+'" style="'+fldStyle+'"></div>';
+    h += '<div><label style="'+lblStyle+'">DÉPART</label><input type="date" id="eaDeparture" value="'+(g.departure||'')+'" style="'+fldStyle+'"></div>';
+    h += '<div><label style="'+lblStyle+'">PERSONNES</label><input type="number" id="eaGuests" value="'+(g.guests||'')+'" min="1" max="30" style="'+fldStyle+'"></div>';
+    h += '<div><label style="'+lblStyle+'">WHATSAPP</label><input id="eaPhone" value="'+escHtml(g.phone||'')+'" placeholder="+33..." style="'+fldStyle+'"></div>';
+    h += '<div><label style="'+lblStyle+'">PRIX BRUT (€)</label><input type="number" id="eaPrice" value="'+(g.price||'')+'" style="'+fldStyle+'"></div>';
+    h += '<div><label style="'+lblStyle+'">COMMISSION %</label><input type="number" id="eaComm" value="'+comm+'" step="0.1" style="'+fldStyle+'"></div>';
+    h += '</div>';
+    h += '<div style="margin-top:10px"><label style="'+lblStyle+'">NOTES (régime, occasion, transport...)</label>';
+    h += '<textarea id="eaNotes" rows="2" style="'+fldStyle+';resize:none;width:100%">'+escHtml(g.notes||'')+'</textarea></div>';
+    if (net) h += '<div style="background:rgba(27,67,50,.08);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--green);font-weight:600;margin-top:10px">💰 Net estimé : ~'+net+'€ ('+nights+' nuits × '+Math.round(net/Math.max(nights,1))+'€/nuit)</div>';
+    h += '</div>';
+  }
+
+  // 3 response options — editable textareas
+  var responses = parsed.responses || [];
+  var gPhone = ((g.phone||(existing&&existing.phone)||'')).replace(/[\s\-+().]/g,'');
+  if (gPhone.startsWith('00')) gPhone = gPhone.slice(2);
+
+  if (responses.length) {
+    h += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:700;margin-bottom:12px">'+(fr?'3 RÉPONSES PRÊTES — MODIFIABLE DIRECTEMENT':'3 READY RESPONSES — EDITABLE')+'</div>';
+    responses.forEach(function(resp, i) {
+      var rid = 'ea_r'+Date.now()+'_'+i;
+      window['_ear_'+rid] = resp.text;
+      var tC = resp.tone==='warm'?'rgba(201,150,58,.08)':resp.tone==='formal'?'rgba(27,67,50,.06)':'rgba(37,211,102,.06)';
+      var tB = resp.tone==='warm'?'var(--gold)':resp.tone==='formal'?'var(--green3)':'#25D366';
+      h += '<div style="background:'+tC+';border:1.5px solid '+tB+';border-radius:12px;padding:14px;margin-bottom:12px">';
+      h += '<div style="font-size:11px;font-weight:700;color:'+tB+';margin-bottom:10px;letter-spacing:.5px">'+escHtml(resp.label)+'</div>';
+      h += '<textarea id="'+rid+'" rows="6" style="width:100%;box-sizing:border-box;padding:11px;border:1.5px solid rgba(0,0,0,.09);border-radius:9px;font-family:\'DM Sans\',sans-serif;font-size:13px;line-height:1.65;color:var(--ink);background:rgba(255,255,255,.75);resize:vertical;outline:none">'+escHtml(resp.text)+'</textarea>';
+      h += '<div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap">';
+      h += '<button onclick="(function(){var t=document.getElementById(\''+rid+'\');navigator.clipboard.writeText(t?t.value:window[\'_ear_'+rid+'\']).then(function(){toast(\'📋 Copié!\')});})()" style="flex:1;min-width:90px;background:var(--green3);color:#fff;border:none;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">📋 '+(fr?'Copier':'Copy')+'</button>';
+      if (gPhone) {
+        h += '<button onclick="(function(){var t=document.getElementById(\''+rid+'\');var txt=t?t.value:window[\'_ear_'+rid+'\'];window.open(\'https://wa.me/'+gPhone+'?text=\'+encodeURIComponent(txt),\'_blank\');})()" style="flex:1;min-width:90px;background:#25D366;color:#fff;border:none;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">💬 WhatsApp</button>';
+      }
+      h += '<button onclick="(function(){var t=document.getElementById(\''+rid+'\');if(t){t.focus();t.select();}})()" style="background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:9px;padding:9px 12px;font-size:12px;cursor:pointer;font-family:inherit">✏️ '+(fr?'Modifier':'Edit')+'</button>';
+      h += '</div></div>';
+    });
+  }
+
+  // Accept / Save button
+  var existId = existing ? existing.id : null;
+  var saveLabel = existing ? (fr?'🔄 Mettre à jour '+existing.name.split(' ')[0]:'🔄 Update '+existing.name.split(' ')[0]) : (fr?'✅ Enregistrer ce client':'✅ Save guest');
+  h += '<div style="display:flex;gap:10px;margin-top:8px;padding-top:18px;border-top:1.5px solid var(--border)">';
+  h += '<button onclick="saveEAClient(\''+existId+'\')" style="flex:3;background:var(--green);color:#fff;border:none;border-radius:12px;padding:14px 20px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.2px">'+saveLabel+'</button>';
+  h += '<button onclick="closeEmailAnalysis()" style="flex:1;background:none;border:1.5px solid var(--border);color:var(--muted);border-radius:12px;padding:14px;font-size:14px;cursor:pointer;font-family:inherit">✕</button>';
+  h += '</div>';
+
+  var el = document.getElementById('eaResult');
+  el.innerHTML = h;
+  el.style.display = 'block';
+}
+
+function saveEAClient(existingId) {
+  var fr = lang === 'fr';
+  var nameEl = document.getElementById('eaName');
+  var name = nameEl ? nameEl.value.trim() : '';
+  if (!name) { toast(fr?'⚠ Nom requis':'⚠ Name required'); return; }
+  var getV = function(id){ var el=document.getElementById(id); return el?el.value:''; };
+  var prevClient = existingId ? clients.find(function(c){return c.id===existingId;}) : null;
+  var client = {
+    id: existingId || ('ea_'+Date.now()),
+    name: name,
+    nat: getV('eaNat'),
+    arrival: getV('eaArrival'),
+    departure: getV('eaDeparture'),
+    guests: parseInt(getV('eaGuests'))||0,
+    price: parseFloat(getV('eaPrice'))||0,
+    commission: parseFloat(getV('eaComm'))||15.5,
+    commMode: 'percent',
+    phone: getV('eaPhone'),
+    notes: getV('eaNotes'),
+    source: (prevClient&&prevClient.source)||'Airbnb',
+    bookingStatus: (prevClient&&prevClient.bookingStatus)||'confirmed',
+    payStatus: (prevClient&&prevClient.payStatus)||'',
+    createdAt: (prevClient&&prevClient.createdAt)||new Date().toISOString()
+  };
+  if (existingId) {
+    var idx2 = clients.findIndex(function(c){return c.id===existingId;});
+    if (idx2>=0) clients[idx2] = client; else clients.unshift(client);
+  } else {
+    clients.unshift(client);
+  }
+  saveLocal();
+  if (typeof pushToSupabase==='function') pushToSupabase(client);
+  if (typeof renderAll==='function') renderAll();
+  closeEmailAnalysis();
+  toast(fr?'✅ Client enregistré !':'✅ Guest saved!');
+}
+
 
 async function handleInboxEmailFull(row, ex) {
   var fr = lang === 'fr';
@@ -11060,7 +11270,7 @@ function analyzeText() {}
 
 <!-- ══ EMAIL INBOX MODAL ════════════════════════════════════ -->
 <div id="inboxModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9996;align-items:center;justify-content:center;padding:12px" onclick="if(event.target===this)closeInbox()">
-  <div style="background:var(--card);border-radius:20px;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.4);overflow:hidden">
+  <div style="background:var(--card);border-radius:20px;width:100%;max-width:680px;max-height:90vh;height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.4);overflow:hidden;position:relative">
 
     <!-- Header -->
     <div style="background:var(--green3);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
@@ -11335,5 +11545,36 @@ function analyzeText() {}
 
 </style>
 
+
+<!-- ══ EMAIL ANALYSIS MODAL ══════════════════════════════════════ -->
+<div id="emailAnalysisModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.85);z-index:9998;overflow-y:auto;padding:16px" onclick="if(event.target===this)closeEmailAnalysis()">
+  <div style="background:var(--card);border-radius:20px;width:100%;max-width:700px;margin:0 auto;box-shadow:0 24px 64px rgba(0,0,0,.5);overflow:hidden;position:relative">
+    <!-- Sticky header -->
+    <div id="eaHeader" style="background:var(--green3);padding:14px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:2">
+      <button onclick="closeEmailAnalysis()" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:34px;height:34px;border-radius:50%;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">←</button>
+      <div style="flex:1;min-width:0">
+        <div id="eaSubject" style="font-size:14px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+        <div id="eaMeta" style="font-size:11px;color:rgba(255,255,255,.5);margin-top:1px">—</div>
+      </div>
+      <span id="eaSourceBadge"></span>
+    </div>
+    <!-- Body -->
+    <div style="padding:18px 20px 24px">
+      <!-- Original email (collapsible) -->
+      <details style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+        <summary style="font-size:11px;letter-spacing:1.5px;color:var(--muted);font-weight:700;cursor:pointer;padding:10px 14px;background:var(--paper);display:flex;align-items:center;gap:6px;list-style:none">
+          📧 EMAIL ORIGINAL <span style="margin-left:auto;font-size:10px;opacity:.5">▼ voir</span>
+        </summary>
+        <div id="eaBodyText" style="padding:14px;font-size:13px;line-height:1.7;color:var(--ink);white-space:pre-wrap;max-height:280px;overflow-y:auto;background:var(--card)"></div>
+      </details>
+      <!-- AI analysis injected here -->
+      <div id="eaLoading" style="text-align:center;padding:48px 20px">
+        <div style="width:40px;height:40px;border:3px solid var(--green-light);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px"></div>
+        <div style="font-size:13px;color:var(--muted);font-weight:500">Analyse IA en cours...</div>
+      </div>
+      <div id="eaResult" style="display:none"></div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
