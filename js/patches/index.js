@@ -5,27 +5,26 @@
  *
  * HOW TO ADD A NEW PATCH:
  *   1. Create  js/patches/your-feature.js
- *   2. Add a   <script src="js/patches/your-feature.js"></script>  below
- *   3. That's it — no changes needed in app.html or anywhere else.
+ *   2. Add it to the PATCHES array below
+ *   3. Done — no changes needed in app.html
  *
  * LOAD ORDER matters: patches that depend on each other go lower.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-// ── Patch registry ────────────────────────────────────────────────────────────
-// Each entry = one <script> tag injected dynamically so load is non-blocking.
-
 const PATCHES = [
-  'js/patches/chat-fix.js',    // Chat panel fixes
-  'js/patches/whatsapp.js',    // WhatsApp number sync (Supabase + localStorage)
+  'js/patches/chat-fix.js',   // Chat panel fixes (docs only for now)
+  'js/patches/whatsapp.js',   // WhatsApp number — Supabase sync + localStorage
+  // 'js/patches/notifications.js',  // ← future: push notifications
+  // 'js/patches/analytics.js',      // ← future: event tracking
 ];
 
 (function loadPatches() {
   PATCHES.forEach(function (src) {
-    const s  = document.createElement('script');
-    s.src    = src;
-    s.async  = false; // preserve order
-    s.onerror = function () { console.warn('[patches] failed to load:', src); };
+    const s   = document.createElement('script');
+    s.src     = src;
+    s.async   = false; // preserve declaration order
+    s.onerror = function () { console.warn('[Stafflo patches] failed to load:', src); };
     document.body.appendChild(s);
   });
 })();
