@@ -13,8 +13,9 @@
  */
 
 const PATCHES = [
-  'js/patches/chat-fix.js',   // Chat panel fixes (docs only for now)
-  'js/patches/whatsapp.js',   // WhatsApp number — Supabase sync + localStorage
+  'js/patches/chat-fix.js',    // Chat panel fixes
+  'js/patches/whatsapp.js',    // WhatsApp number — Supabase sync + localStorage
+  'js/patches/layout-fix.js',  // 70/30 layout, save buttons, full-bleed boxes
   // 'js/patches/notifications.js',  // ← future: push notifications
   // 'js/patches/analytics.js',      // ← future: event tracking
 ];
