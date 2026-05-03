@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -797,13 +798,12 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
   /* Wrapper for Dashboard */
   .dashboard-wrapper { 
-    display: grid; 
-    grid-template-columns: 1fr 350px; 
-    gap: 20px; 
+    display: flex;
+    flex-direction: column;
     flex: 1; 
     overflow: hidden; 
     padding: 70px 20px 20px 20px; 
-    max-width: 1400px; 
+    max-width: 760px; 
     margin: 0 auto; 
     width: 100%; 
     box-sizing: border-box;
@@ -819,7 +819,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     .side-panel { display: none; }
   }
 
-/* ── TODAY SINGLE COLUMN LAYOUT (v5.0.2) ── */
+/* ── TODAY SINGLE COLUMN LAYOUT (v5.0.3) ── */
 .today-single-col {
   display: flex;
   flex-direction: column;
@@ -830,6 +830,57 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .msg-actions-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
 .msg-actions-row .wa-1tap { flex: 2 !important; justify-content: center !important; padding: 12px 16px !important; font-size: 14px !important; border-radius: 10px !important; font-weight: 700 !important; }
 .msg-actions-row .btn-copy { flex: 1 !important; justify-content: center !important; padding: 12px 10px !important; border-radius: 10px !important; }
+
+/* ══ v5.0.3 FIXES ══ */
+
+/* Hide global side rail — ARIA accessible via FAB */
+#globalSideRail { display: none !important; }
+.side-panel { display: none !important; }
+
+/* Brief du jour: limit to 3 cards, rest collapsed */
+#briefCards .brief-card:nth-child(n+4) { display: none; }
+#briefCards.expanded .brief-card { display: flex !important; }
+
+/* Section labels: bigger, gold accent */
+.brief-title {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: 2px !important;
+  color: var(--gold) !important;
+  text-transform: uppercase !important;
+}
+.section-label {
+  font-size: 11px !important;
+  letter-spacing: 2px !important;
+  color: var(--gold) !important;
+  font-weight: 700 !important;
+}
+.msg-section-title {
+  font-size: 10px !important;
+  letter-spacing: 2.5px !important;
+  color: var(--gold) !important;
+  font-weight: 700 !important;
+  margin-bottom: 10px !important;
+}
+/* Brief card titles: more readable */
+.brief-card-title {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: var(--ink) !important;
+}
+.brief-card-sub {
+  font-size: 12px !important;
+  color: var(--muted) !important;
+}
+
+/* msg-section inside aiResult: clean full-width */
+#aiResult .msg-section {
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 14px 14px;
+  padding: 16px;
+}
+/* Remove the floating empty msg box on desktop */
+.tg-col-actions { display: none !important; }
 </style>
 </head>
 <body>
@@ -1020,6 +1071,11 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         <div class="skel-card"></div>
         <div class="skel-card"></div>
       </div>
+    </div>
+    <div id="briefShowMore" style="display:none;margin-top:8px">
+      <button onclick="toggleBriefExpand()" id="briefToggleBtn" style="width:100%;background:none;border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+        <span id="briefToggleLabel">▾ Voir tout</span>
+      </button>
     </div>
   </div>
 
@@ -1513,7 +1569,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <div class="settings-title" style="color:var(--red)">MISE À JOUR / UPDATE</div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
       <span style="font-size:12px;color:var(--muted)" data-fr="Version actuelle :" data-en="Current version:">Version actuelle :</span>
-      <span id="settingsVersionBadge" style="font-size:12px;font-weight:700;color:var(--green);background:rgba(27,67,50,.1);padding:3px 10px;border-radius:6px;letter-spacing:.5px">v5.0.1</span>
+      <span id="settingsVersionBadge" style="font-size:12px;font-weight:700;color:var(--green);background:rgba(27,67,50,.1);padding:3px 10px;border-radius:6px;letter-spacing:.5px">v5.0.3</span>
     </div>
     <button onclick="forceUpdate()" style="width:100%;padding:12px;background:none;border:1.5px solid rgba(192,57,43,.3);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;color:var(--red);transition:all .15s" data-fr="🔄 Forcer la mise à jour" data-en="🔄 Force update">🔄 Forcer la mise à jour</button>
     <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5" data-fr="Vide le cache et recharge la page avec la dernière version." data-en="Clears cache and reloads with the latest version.">Vide le cache et recharge la page avec la dernière version.</div>
@@ -1523,52 +1579,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 </main></div><div class="side-panel"></div></div>
 
-<!-- ═══ GLOBAL SIDE RAIL — Aria + Inbox visible on ALL tabs (desktop) ══ -->
-<aside id="globalSideRail">
-  <!-- ARIA BOX — desktop side rail -->
-  <div class="aria-side-input">
-    <div style="background:var(--green3);padding:8px 12px;display:flex;align-items:center;gap:6px;border-radius:12px 12px 0 0">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#C9963A" stroke-width="1.5" fill="rgba(201,150,58,.15)"/><path d="M8 14c0 0 1.5 2 4 2s4-2 4-2" stroke="#C9963A" stroke-width="1.3" stroke-linecap="round"/><circle cx="9" cy="10" r="1.2" fill="#C9963A"/><circle cx="15" cy="10" r="1.2" fill="#C9963A"/></svg>
-      <span style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px">ARIA</span>
-      <span style="margin-left:auto;font-size:10px;color:rgba(255,255,255,.35)" data-fr="Assistant IA" data-en="AI Assistant">Assistant IA</span>
-    </div>
-    <div style="padding:10px 12px">
-      <div style="font-size:11px;color:var(--muted);line-height:1.4;margin-bottom:6px" data-fr="Collez un email, posez une question, ou dictez. ARIA s'occupe du reste." data-en="Paste an email, ask a question, or dictate. ARIA handles the rest.">Collez un email, posez une question, ou dictez. ARIA s'occupe du reste.</div>
-      <textarea id="ariaSideInput" class="aria-side-ta" rows="2"
-        placeholder="Tapez ou collez ici…"
-        data-placeholder-fr="Tapez ou collez ici…"
-        data-placeholder-en="Type or paste here…"
-        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px';document.getElementById('ariaSideSendBtn').disabled=!this.value.trim()"
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ariaSideSend()}"></textarea>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-        <div style="display:flex;gap:4px">
-          <button class="aria-side-tb" onclick="ariaInlinePaste()" title="Coller">📋</button>
-          <button class="aria-side-tb" onclick="document.getElementById('ariaInlineFile').click()" title="Fichier">📎</button>
-          <button class="aria-side-tb" onclick="toggleChatPanel();setTimeout(function(){if(typeof toggleChatVoice==='function')toggleChatVoice()},300)" title="Vocal">🎤</button>
-        </div>
-        <button class="aria-side-send" id="ariaSideSendBtn" onclick="ariaSideSend()" disabled data-fr="Envoyer ↑" data-en="Send ↑">Envoyer ↑</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- INBOX -->
-  <div class="inbox-side-panel">
-    <div style="background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-radius:12px 12px 0 0">
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="font-size:13px;font-weight:700;color:var(--gold);letter-spacing:1px">📬 INBOX</div>
-        <span id="inboxSidebarBadge" style="display:none;background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:2px 7px;animation:pulse 1.5s infinite;min-width:18px;text-align:center">0</span>
-      </div>
-      <button onclick="refreshInbox()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s" title="Refresh">↻</button>
-    </div>
-    <div style="padding:6px 12px 4px">
-      <button onclick="showInbox()" style="width:100%;background:var(--green);border:none;border-radius:8px;padding:9px 12px;font-size:12px;color:#fff;cursor:pointer;font-family:inherit;font-weight:600;display:flex;align-items:center;justify-content:space-between" data-fr="Voir tous les emails →" data-en="See all emails →">
-        <span data-fr="Voir tous les emails" data-en="See all emails">Voir tous les emails</span>
-        <span>→</span>
-      </button>
-    </div>
-    <div id="inboxSidebarList" style="padding:8px 12px;min-height:60px;max-height:calc(100vh - 300px);overflow-y:auto"></div>
-  </div>
-</aside>
+<!-- globalSideRail removed — ARIA+Inbox accessible via chat FAB -->
 </div><!-- /app-shell -->
 
 <!-- ══ GLOBAL AI CHAT PANEL — available on ALL tabs ════════════ -->
@@ -11611,6 +11622,30 @@ window.addEventListener('load', () => {
   const inbox = document.querySelector('#inbox-section') || document.querySelector('.msg-section');
   if (sidebar && ai) sidebar.appendChild(ai);
   if (sidebar && inbox) sidebar.appendChild(inbox);
+});
+</script>
+
+<script>
+/* ── v5.0.3: Brief collapse/expand ── */
+function toggleBriefExpand() {
+  const cardsEl = document.getElementById('briefCards');
+  const btn = document.getElementById('briefToggleLabel');
+  const fr = document.documentElement.lang !== 'en';
+  const expanded = cardsEl.classList.toggle('expanded');
+  if (btn) btn.textContent = expanded 
+    ? (fr ? '▴ Réduire' : '▴ Show less') 
+    : (fr ? '▾ Voir tout' : '▾ See all');
+}
+
+/* Auto-show "Voir tout" button when brief has >3 cards */
+const _briefObserver = new MutationObserver(() => {
+  const cards = document.querySelectorAll('#briefCards .brief-card');
+  const showMore = document.getElementById('briefShowMore');
+  if (showMore) showMore.style.display = cards.length > 3 ? 'block' : 'none';
+});
+document.addEventListener('DOMContentLoaded', () => {
+  const briefCards = document.getElementById('briefCards');
+  if (briefCards) _briefObserver.observe(briefCards, { childList: true, subtree: true });
 });
 </script>
 </body>
