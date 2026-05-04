@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -9420,35 +9421,18 @@ async function extractFormAI() {
 
   const today = new Date().toISOString().slice(0,10);
 
-  // Richer system prompt — explicit field mapping with examples
+  // Compressed extraction prompt — ~180 tokens vs ~600 before
+  const yr = today.slice(0,4);
   const systemPrompt = [
-    'You are a booking data extractor for a luxury villa in Marrakech.',
-    'Read ANY text (Airbnb email, WhatsApp, booking summary) and extract guest info.',
-    'Return ONLY a valid JSON object. No markdown. No explanation. No extra text.',
-    'Today is ' + today + '.',
-    '',
-    'CRITICAL FIELD RULES:',
-    '- name: guest first + last name. Example: "Celia Magne"',
-    '- nat: guess nationality from city/country mentioned + flag emoji. Example: "🇫🇷 Français" for Saint-Maur-des-Fossés France',
-    '- arrival: check-in date → YYYY-MM-DD. "Thu 23 Apr" with year ' + today.slice(0,4) + ' → "' + today.slice(0,4) + '-04-23"',
-    '- departure: check-out date → YYYY-MM-DD. "Mon 27 Apr" → "' + today.slice(0,4) + '-04-27"',
-    '- nights: count nights between arrival and departure',
-    '- guests: number of adults + children + infants total',
-    '- price: use "Guest paid" total OR nightly rate × nights. Example: "€650.00 x 4 nights" → price=2600',
-    '  DO NOT use "You earn" or "Host payout" — that is the net after fees.',
-    '  DO NOT use the nightly price alone — multiply by nights.',
-    '- commission: calculate from email. "Host service fee (15.5%)" → commission=15.5.',
-    '  If "Host service fee" not shown, use 3.6 for Airbnb, 15 for Booking, 0 for Direct.',
-    '- source: "Airbnb" if from airbnb.com, "Booking" if booking.com, "Direct" otherwise',
-    '- phone: phone number if present',
-    '- notes: meal requests, special occasions, message from guest, children ages',
-    '',
-    'EXAMPLE — from this email:',
-    '"Celia Magne · Saint-Maur-des-Fossés, France · Check-in Thu 23 Apr · Checkout Mon 27 Apr · 3 adults · €650 x 4 nights · Host service fee 15.5%"',
-    'Return: {"name":"Celia Magne","nat":"🇫🇷 Français","arrival":"' + today.slice(0,4) + '-04-23","departure":"' + today.slice(0,4) + '-04-27","nights":4,"guests":3,"price":2600,"commission":15.5,"source":"Airbnb","phone":"","notes":""}',
-    '',
-    'If a field is not found: "" for strings, 0 for numbers.',
-    'NEVER invent data.',
+    'Extract booking data from text (Airbnb/Booking/WhatsApp/email). Return ONLY valid JSON, no prose, no markdown.',
+    'Today: ' + today + '. Default year if missing: ' + yr + '.',
+    'Fields:',
+    'name: full name | nat: "🇫🇷 Français" style (flag+nationality from city/country) | arrival,departure: YYYY-MM-DD | nights: int | guests: total adults+children+infants',
+    'price: GUEST PAID total. "€650 x 4 nights"→2600. NEVER "You earn"/"Host payout" (net after fees).',
+    'commission: % from text ("Host service fee 15.5%"→15.5). Else: Airbnb=3.6, Booking=15, Direct=0.',
+    'source: Airbnb | Booking | Direct (from URL/sender).',
+    'phone, notes: meal/occasions/kids ages, "" if absent.',
+    'Missing→ "" strings, 0 numbers. Never invent.'
   ].join('\n');
 
   const userPrompt = 'Extract from this message:\n\n' + text.slice(0, 3000);
@@ -10158,36 +10142,29 @@ async function loadMorningBrief(forceRefresh = false) {
     return new Date(e.date_start) <= in7 && new Date(e.date_end) >= new Date(today);
   });
 
-  // Build prompt
+  // Trimmed contextData — only fields the AI actually uses for prioritization
   const contextData = {
     date: today,
     villa: cfg.villa || 'Villa DarJ',
-    owner: cfg.owner || 'Jérémie',
     city: cfg.city || 'Marrakech',
-    inHouse: inHouse ? {name:inHouse.name, departure:inHouse.departure, guests:inHouse.guests} : null,
-    checkoutToday: checkoutToday.map(c=>c.name),
-    checkinToday: checkinToday.map(c=>({name:c.name, guests:c.guests})),
-    checkinTomorrow: checkinTomorrow.map(c=>({name:c.name, guests:c.guests})),
-    upcoming7days: upcoming7.map(c=>({name:c.name, arrival:c.arrival, guests:c.guests, price:c.price})),
-    totalClients: clients.length,
-    totalRevenue: Math.round(totalRevenue),
-    weather: wTemp ? wTemp + 'C ' + wDesc : 'unknown',
-    yourPriceTonight: yourPrice,
-    marketAvg: avgMarket,
-    activeEvents: activeEvents.map(e=>({name:e.name||e.name_fr, impact:e.impact})),
+    inHouse: inHouse ? {name:inHouse.name, dep:inHouse.departure, g:inHouse.guests} : null,
+    out_today: checkoutToday.map(c=>c.name),
+    in_today: checkinToday.map(c=>({n:c.name, g:c.guests})),
+    in_tomorrow: checkinTomorrow.map(c=>({n:c.name, g:c.guests})),
+    next7d: upcoming7.map(c=>({n:c.name, d:c.arrival, g:c.guests})),
+    weather: wTemp ? wTemp + 'C ' + wDesc : '',
+    price: yourPrice,
+    market: avgMarket,
+    events: activeEvents.map(e=>e.name||e.name_fr),
   };
 
   const prompt = [
-    'Villa ' + (cfg.villa||'Villa DarJ') + ' (' + (cfg.city||'Marrakech') + '), ' + (cfg.owner||'Jérémie') + '.',
-    'Donne 4-5 actions prioritaires AUJOURD\'HUI. Combine signaux (météo+arrivée=piscine, event+prix=hausse).',
+    'Villa ' + (cfg.villa||'Villa DarJ') + ' (' + (cfg.city||'Marrakech') + '). 4-5 actions prioritaires AUJOURD\'HUI.',
+    'Combine signaux: météo+arrivée→piscine, event+prix→hausse, arrivée 0-3j→carte staff prep (action_type=whatsapp).',
     'CTX: ' + JSON.stringify(contextData),
-    '',
-    'JSON array uniquement, pas markdown:',
-    '[{"urgency":1-10,"icon":"emoji","title":"max 7 mots","detail":"pourquoi+conséquence","why":"data points (15 mots)","action":"max 5 mots","action_type":"whatsapp|open_guests|open_home|copy|none"}]',
-    '',
-    'Règles: urgency=10 client arrive NOW. Spécifique (vrais noms/temps/prix). ' + (fr ? 'En français.' : 'In English.'),
-    '+staff prep card (action_type=whatsapp) si arrivée 0-3j.',
-    'action_type: météo/piscine/temp→open_weather, prix/tarif→open_pricing, concurrents→open_competitors, revenus→open_revenue.',
+    'Renvoie JSON array uniquement (pas markdown):',
+    '[{urgency:1-10, icon, title (≤7 mots), detail (pourquoi+conséquence), why (data, ≤15 mots), action (≤5 mots), action_type:"whatsapp|open_guests|open_home|open_weather|open_pricing|open_competitors|copy|none"}]',
+    'urgency=10 si arrivée NOW. Spécifique: vrais noms, heures, €. ' + (fr ? 'FR.' : 'EN.'),
   ].join('\n');
 
   try {
