@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -61,12 +62,12 @@ nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,
 .today-col-main{padding-top:0} /* Remove top whitespace */
 .today-col-side{margin-top:0;position:relative;z-index:1}
 @media(min-width:1024px){
-  .today-cols{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:20px;align-items:start}
+  .today-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
   .today-col-main{min-width:0;padding-top:0}
   .today-col-side{margin-top:0;position:sticky;top:72px;z-index:1}
 }
 main{max-width:760px;margin:0 auto;padding:12px 16px}
-@media(min-width:1024px){main{max-width:1160px;padding:16px 24px}}
+@media(min-width:1024px){main{max-width:1400px;padding:16px 24px}}
 
 .tab{display:none}.tab.on{display:block}
 
@@ -511,7 +512,17 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 
 /* ── AI CHAT PANEL ── */
-.chat-panel{display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid var(--border);height:520px;max-height:75vh}
+/* Side panels: ARIA + INBOX side by side on desktop, stacked on mobile */
+.side-panels-grid{display:flex;flex-direction:column;gap:12px}
+@media(min-width:1024px){
+  .side-panels-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+}
+
+.chat-panel{display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid var(--border);height:420px;max-height:65vh}
+/* Inbox panel: matches ARIA style */
+.inbox-panel{display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid var(--border);height:420px;max-height:65vh}
+.inbox-panel-header{background:var(--green3);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.inbox-panel-list{flex:1;overflow-y:auto;padding:8px}
 .chat-header{background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .chat-header-left{display:flex;align-items:center;gap:8px}
 .chat-title{font-family:'Fraunces',serif;font-size:16px;color:#fff;font-weight:300}
@@ -582,7 +593,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 /* Chat panel fills side column cleanly on desktop */
 @media(min-width:1024px){
-  .chat-panel { height: calc(100vh - 120px) !important; max-height: none !important; }
+  .chat-panel, .inbox-panel { height: 480px !important; max-height: calc(100vh - 140px) !important; }
 }
 
 /* Inbox cards in chat — better spacing and cleaner bottom */
@@ -763,19 +774,21 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   </div>
 <div class="today-col-side">
 
-<!-- ══ AI CHAT PANEL ════════════════════════════════════ -->
+<!-- ══ ARIA + INBOX SIDE PANELS ════════════════════════════ -->
+<div class="side-panels-grid">
+
+<!-- ARIA PANEL -->
 <div class="chat-panel" id="chatPanel">
   <div class="chat-header">
     <div class="chat-header-left">
       <div class="chat-online"></div>
       <div style="display:flex;align-items:center;gap:8px">
-        <div class="chat-title">Assistant Stafflo</div>
+        <div class="chat-title">ARIA</div>
+        <span class="ai-badge" style="font-size:8px;padding:2px 6px">Assistant IA</span>
         <span id="chatClientIndicator" style="display:none;background:rgba(255,255,255,.15);color:#fff;border-radius:10px;font-size:10px;font-weight:600;padding:2px 8px"></span>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <span class="chat-inbox-badge" id="inboxBadge" onclick="showInbox()">0 emails</span>
-      <button onclick="showInbox()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">📬 Inbox</button>
       <button onclick="showIntegrationsPanel()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif" title="Intégrations">🔌</button>
       <button onclick="clearChat()" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer">✕</button>
     </div>
@@ -784,9 +797,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   <div class="chat-messages" id="chatMessages">
     <!-- Welcome message -->
     <div class="chat-bubble system" id="chatWelcome">
-      <strong>Stafflo IA</strong> · <span id="chatWelcomeTime"></span><br>
-      Exemples : <em>"relance Celia"</em> · <em>"qui arrive demain ?"</em> · <em>"brief staff"</em><br>
-      Ou collez un email Airbnb directement ↓
+      <strong>ARIA</strong> · <span id="chatWelcomeTime"></span><br>
+      <span data-fr="Collez un email, posez une question, ou dictez. ARIA s'occupe du reste." data-en="Paste an email, ask a question, or dictate. ARIA handles the rest.">Collez un email, posez une question, ou dictez. ARIA s'occupe du reste.</span>
     </div>
   </div>
 
@@ -796,13 +808,51 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
   <div class="chat-input-area">
     <textarea class="chat-input" id="chatInput"
-      placeholder="Message, commande ou email Airbnb..."
+      placeholder="Tapez ou collez ici..."
+      data-placeholder-fr="Tapez ou collez ici..."
+      data-placeholder-en="Type or paste here..."
       rows="1"
       onkeydown="chatKeyDown(event)"
       oninput="chatAutoResize(this)"></textarea>
     <button class="chat-send-btn" id="chatSendBtn" onclick="chatSend()" disabled>↑</button>
   </div>
-</div><!-- /chat-panel -->
+</div><!-- /chat-panel ARIA -->
+
+<!-- INBOX PANEL -->
+<div class="inbox-panel" id="inboxPanel">
+  <div class="inbox-panel-header">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:14px">📬</span>
+      <div>
+        <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:1px">INBOX</div>
+        <div style="font-family:'Fraunces',serif;font-size:15px;color:#fff;font-weight:300">Emails entrants</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="chat-inbox-badge" id="inboxBadge" style="display:none">0</span>
+      <button onclick="showInboxSetup()" style="background:rgba(201,150,58,.25);border:1px solid rgba(201,150,58,.4);color:var(--gold);border-radius:6px;padding:4px 10px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600;letter-spacing:.5px" id="connectGmailBtn">📬 Connecter Gmail</button>
+      <button onclick="loadInboxInline()" style="background:none;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);width:26px;height:26px;border-radius:50%;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center" title="Rafraîchir">↻</button>
+    </div>
+  </div>
+
+  <!-- Setup CTA -->
+  <div id="inboxSetupCTA" style="padding:10px 14px;background:var(--gold-light);border-bottom:1px solid rgba(201,150,58,.2);display:none">
+    <div style="font-size:12px;color:var(--ink);margin-bottom:8px">
+      <strong>📬 Connectez votre boîte email</strong> pour recevoir automatiquement les réservations Airbnb, Booking.com, VRBO et emails directs.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="startGmailOAuth()" style="background:var(--green3);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif">📬 Gmail OAuth</button>
+      <button onclick="showForwardingInstructions()" style="background:none;border:1.5px solid var(--gold);color:var(--ink);border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">✉️ Autre email → transfert</button>
+    </div>
+  </div>
+
+  <!-- Email list -->
+  <div class="inbox-panel-list" id="inboxInlineList">
+    <div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">Chargement...</div>
+  </div>
+</div><!-- /inbox-panel -->
+
+</div><!-- /side-panels-grid -->
 
 </div><!-- /today-col-side -->
 </div><!-- /today-cols -->
@@ -3091,6 +3141,7 @@ function chatInit() {
     document.getElementById('chatSendBtn').disabled = !inp.value.trim();
   });
   loadInboxCount();
+  loadInboxInline();
   setTimeout(renderChatClientChips, 1500);
   // Restore last session messages from DB
   setTimeout(restoreChatSession, 800);
@@ -3514,16 +3565,17 @@ async function loadInboxCount() {
     var badge = document.getElementById('inboxBadge');
     if (badge) {
       if (count > 0) {
-        badge.textContent = count + (lang==='fr' ? ' email' : ' email') + (count > 1 ? 's' : '');
-        badge.classList.add('show');
+        badge.textContent = count;
+        badge.style.display = 'inline-block';
       } else {
-        badge.classList.remove('show');
+        badge.style.display = 'none';
       }
     }
   } catch(e) {}
 }
 
 function showInbox() {
+  // For the modal (still available as fallback on mobile detail view)
   document.getElementById('inboxModal').style.display = 'flex';
   document.body.style.overflow = 'hidden';
   loadInboxEmails();
@@ -3532,6 +3584,111 @@ function showInbox() {
 function closeInbox() {
   document.getElementById('inboxModal').style.display = 'none';
   document.body.style.overflow = '';
+}
+
+// Inline inbox panel loader (for the side panel)
+async function loadInboxInline() {
+  var el = document.getElementById('inboxInlineList');
+  if (!el) return;
+  el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">Chargement...</div>';
+  
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=10', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    var rows = await r.json();
+    if (!rows.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">' +
+        (lang==='fr' ? 'Aucun email reçu.<br>Connectez Gmail ou transférez vos emails.' : 'No emails received yet.<br>Connect Gmail or set up forwarding.') +
+        '</div>';
+      // Show setup CTA
+      var cta = document.getElementById('inboxSetupCTA');
+      if (cta) cta.style.display = 'block';
+      return;
+    }
+    // Hide setup CTA if we have emails
+    var cta2 = document.getElementById('inboxSetupCTA');
+    if (cta2) cta2.style.display = 'none';
+    // Also hide the connect button
+    var cb = document.getElementById('connectGmailBtn');
+    if (cb) cb.style.display = 'none';
+
+    window._inboxEmails = window._inboxEmails || {};
+    rows.forEach(function(row) { window._inboxEmails[row.id] = row; });
+
+    el.innerHTML = rows.map(function(row) {
+      var d = new Date(row.received_at);
+      var dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      var ex = row.extracted || {};
+      var badge = row.status === 'new' ? '<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">NEW</span>' : '';
+      var typeBadge = ex.email_type ? '<span style="background:var(--gold-light);color:#7A5A1A;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">'+ex.email_type+'</span>' : '';
+
+      var body = row.body || '';
+      var airbnbMatch = body.match(/https?:\/\/(?:www\.)?airbnb\.[a-z\.]+\/[^\s\)\]"<>]+/i);
+      var bookingMatch = body.match(/https?:\/\/(?:admin\.)?booking\.com\/[^\s\)\]"<>]+/i);
+      var externalLink = airbnbMatch ? airbnbMatch[0] : (bookingMatch ? bookingMatch[0] : null);
+      var linkIcon = airbnbMatch ? '🅰️' : (bookingMatch ? '📘' : '');
+
+      var html = '<div class="inbox-card ' + (row.status==='new'?'new':'') + '" data-email-id="' + row.id + '">';
+      html += '<div class="ic-subject">' + (row.subject||'No subject') + badge + typeBadge + '</div>';
+      html += '<div class="ic-meta">';
+      html += '<span>' + (row.from_email||'—').replace(/<|>/g,'') + ' · ' + dateStr;
+      if (ex.name) html += ' · <strong>'+ex.name+'</strong>';
+      html += '</span></div>';
+
+      html += '<div style="display:flex;gap:4px;margin-top:5px;align-items:center">';
+      html += '<button class="ic-open-btn" data-email-id="' + row.id + '" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:6px;padding:4px 8px;font-size:10px;cursor:pointer;font-weight:600;font-family:DM Sans,sans-serif">📖 Analyser</button>';
+      if (externalLink) {
+        html += '<a href="' + externalLink + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:10px;color:var(--ink);text-decoration:none;white-space:nowrap">' + linkIcon + ' Ouvrir</a>';
+      }
+      html += '</div>';
+      html += '</div>';
+      return html;
+    }).join('');
+
+    // Delegate click events
+    el.querySelectorAll('.ic-open-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var id = btn.getAttribute('data-email-id');
+        var row = window._inboxEmails[id];
+        if (row) openInboxEmail(row);
+      });
+    });
+    el.querySelectorAll('.inbox-card').forEach(function(card) {
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('a,button')) return;
+        var id = card.getAttribute('data-email-id');
+        var row = window._inboxEmails[id];
+        if (row) openInboxEmail(row);
+      });
+    });
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--red);font-size:12px;padding:8px">Erreur: '+e.message+'</div>';
+    // Show setup CTA on error too
+    var cta3 = document.getElementById('inboxSetupCTA');
+    if (cta3) cta3.style.display = 'block';
+  }
+}
+
+function showInboxSetup() {
+  var cta = document.getElementById('inboxSetupCTA');
+  if (cta) cta.style.display = cta.style.display === 'none' ? 'block' : 'none';
+}
+
+function startGmailOAuth() {
+  // Gmail OAuth placeholder — opens integrations panel for now
+  showIntegrationsPanel();
+}
+
+function showForwardingInstructions() {
+  var addr = 'stafflo-inbox@' + (getCfg().villaSlug || 'yourvilla') + '.stafflo.app';
+  alert(lang==='fr'
+    ? 'Transfert automatique :\n\n1. Dans Gmail → Paramètres → Transfert\n2. Ajoutez : ' + addr + '\n3. Les emails Airbnb/Booking arrivent ici automatiquement.'
+    : 'Auto-forwarding :\n\n1. In Gmail → Settings → Forwarding\n2. Add: ' + addr + '\n3. Airbnb/Booking emails arrive here automatically.'
+  );
 }
 
 async function loadInboxEmails() {
@@ -3616,6 +3773,12 @@ function openInboxEmail(row) {
   closeInbox();
   var ex = row.extracted || {};
   var fr = lang === 'fr';
+
+  // Scroll ARIA into view on mobile
+  var chatEl = document.getElementById('chatPanel');
+  if (chatEl && window.innerWidth < 1024) {
+    chatEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 
   // Mark as processed
   var cfg = getCfg();
