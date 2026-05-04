@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -818,7 +819,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         <span id="sideInboxChevron" style="color:rgba(255,255,255,.4);font-size:12px;transition:transform .2s">▼</span>
       </div>
     </div>
-    <div id="sideInboxBody" style="max-height:400px;overflow-y:auto">
+    <div id="sideInboxBody" style="max-height:260px;overflow-y:auto">
       <div id="sideInboxList" style="padding:8px 10px;font-size:12px;color:var(--muted)">Chargement...</div>
     </div>
   </div>
@@ -1117,8 +1118,11 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
         <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700">EMAILS REÇUS</div>
         <button onclick="loadSettingsInbox()" style="background:none;border:none;color:var(--gold);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">↻ Rafraîchir</button>
       </div>
-      <div id="settingsInboxList" style="max-height:200px;overflow-y:auto;font-size:12px;color:var(--muted)">Cliquez sur Rafraîchir</div>
-      <button onclick="clearAllInboxEmails()" style="width:100%;margin-top:8px;background:none;border:1.5px solid rgba(192,57,43,.3);border-radius:8px;padding:8px;font-size:11px;color:var(--red);cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Supprimer tous les emails de l'inbox</button>
+      <div id="settingsInboxList" style="max-height:150px;overflow-y:auto;font-size:12px;color:var(--muted)">Cliquez sur Rafraîchir</div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button onclick="insertTestEmail()" style="flex:1;background:var(--gold);color:var(--green3);border:none;border-radius:8px;padding:8px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">📧 Test email</button>
+        <button onclick="clearAllInboxEmails()" style="flex:1;background:none;border:1.5px solid rgba(192,57,43,.3);border-radius:8px;padding:8px;font-size:11px;color:var(--red);cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Supprimer tous</button>
+      </div>
     </div>
   </div>
 
@@ -3511,6 +3515,7 @@ async function loadInboxCount() {
     var r = await fetch(SB_URL + '/rest/v1/email_inbox?status=eq.new&select=id', {
       headers: { apikey: key, Authorization: 'Bearer ' + key, 'Prefer': 'count=exact' }
     });
+    if (!r.ok) return; // table doesn't exist yet — silent
     var count = parseInt(r.headers.get('content-range')?.split('/')[1] || '0');
     var badge = document.getElementById('inboxBadge');
     if (badge) {
@@ -3555,9 +3560,14 @@ async function loadSideInbox() {
     var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=15', {
       headers: { apikey: key, Authorization: 'Bearer ' + key }
     });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (!r.ok) {
+      el.innerHTML = '<div style="text-align:center;padding:12px 8px;color:var(--muted);font-size:11px;line-height:1.5">' +
+        '📭 Inbox non configuré<br><a href="#" onclick="event.preventDefault();openSettings();setTimeout(function(){var e=document.getElementById(\'cfgSourceEmail\');if(e)e.scrollIntoView({behavior:\'smooth\'})},400)" style="color:var(--gold);font-size:11px">⚙ Configurer</a>' +
+        '</div>';
+      return;
+    }
     var rows = await r.json();
-    if (!rows || !rows.length) {
+    if (!Array.isArray(rows) || !rows.length) {
       el.innerHTML = '<div style="text-align:center;padding:16px 8px;color:var(--muted);font-size:11px;line-height:1.5">' +
         (lang==='fr' ? '📭 Aucun email reçu<br>Configurez le transfert dans ⚙ Réglages' : '📭 No emails yet<br>Set up forwarding in ⚙ Settings') +
         '</div>';
@@ -3749,6 +3759,45 @@ async function loadSettingsInbox() {
   }
 }
 
+// ── TEST EMAIL ──
+async function insertTestEmail() {
+  var cfg = getCfg();
+  var fr = lang === 'fr';
+  var key = cfg.sbKey || SB_ANON;
+  
+  var testEmail = {
+    from_email: 'test@airbnb.com',
+    to_email: cfg.sourceEmail || 'inbox@stafflo.app',
+    subject: fr ? 'Réservation test — 4 invités, 15-20 juin' : 'Test booking — 4 guests, June 15-20',
+    body: fr ? 
+      'Bonjour,\nJ\'aimerais réserver votre villa pour 4 personnes. Arrivée 15 juin à 14h, départ 20 juin à 12h.\nVous offrez un transfert aéroport ?\nCordialement,\nJohn Smith' :
+      'Hello,\nI\'d like to book your villa for 4 guests. Arrival June 15 at 2pm, departure June 20 at noon.\nDo you offer airport transfer?\nBest regards,\nJohn Smith',
+    html: null,
+    extracted: { email_type: 'inquiry' },
+    source: 'airbnb',
+    status: 'new',
+    received_at: new Date().toISOString()
+  };
+
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: key, Authorization: 'Bearer ' + key },
+      body: JSON.stringify(testEmail)
+    });
+    if (r.ok) {
+      toast(fr ? '✓ Email test inséré' : '✓ Test email inserted');
+      loadSettingsInbox();
+      loadSideInbox();
+      loadInboxCount();
+    } else {
+      toast('Erreur: ' + r.status);
+    }
+  } catch(e) {
+    toast('Erreur: ' + e.message);
+  }
+}
+
 function showInbox() {
   document.getElementById('inboxModal').style.display = 'flex';
   document.body.style.overflow = 'hidden';
@@ -3771,8 +3820,15 @@ async function loadInboxEmails() {
     var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=20', {
       headers: { apikey: key, Authorization: 'Bearer ' + key }
     });
+    if (!r.ok) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px 8px;text-align:center;line-height:1.6">' +
+        '📭 Table email_inbox introuvable<br>' +
+        '<span style="font-size:11px">Lancez le SQL de setup dans Supabase ou utilisez le bouton Test dans ⚙ Réglages</span>' +
+        '</div>';
+      return;
+    }
     var rows = await r.json();
-    if (!rows.length) {
+    if (!Array.isArray(rows) || !rows.length) {
       el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;text-align:center">'+
         (lang==='fr' ? 'Aucun email reçu — configurez le transfert automatique ci-dessus' : 'No emails received yet — set up auto-forwarding above') +
         '</div>';
@@ -3839,11 +3895,10 @@ async function loadInboxEmails() {
 }
 
 function openInboxEmail(row) {
-  closeInbox();
   var ex = row.extracted || {};
   var fr = lang === 'fr';
 
-  // Mark as processed
+  // Mark as processed in background
   var cfg = getCfg();
   fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + row.id, {
     method: 'PATCH',
@@ -3852,20 +3907,30 @@ function openInboxEmail(row) {
   }).catch(function(){});
 
   loadInboxCount();
+  loadSideInbox();
 
-  // Show email summary in chat
-  var emailType = ex.email_type || 'email';
+  // Switch to Today tab
+  goTab('today');
+
+  // Inject email body into paste zone and run full analyze()
+  var pasteInput = document.getElementById('pasteInput');
+  if (pasteInput) {
+    pasteInput.value = (row.body || row.html || '').slice(0, 3000);
+    pasteInput.classList.add('has-text');
+    var analyzeBtn = document.getElementById('analyzeBtn');
+    if (analyzeBtn) {
+      analyzeBtn.disabled = false;
+    }
+  }
+
+  // Show context in chat
   addChatBubble('user', '📧 ' + (row.subject || 'Email') + ' — ' + (row.from_email || ''));
+  addChatBubble('system', fr ? '📝 Email injecté dans la zone de pâte. En cours d\'analyse...' : '📝 Email injected into paste zone. Analyzing...');
 
-  // Show typing
-  document.getElementById('chatTyping').style.display = 'block';
-  scrollChat();
-
-  // Generate analysis + 3 response options
-  handleInboxEmailFull(row, ex).catch(function(e) {
-    document.getElementById('chatTyping').style.display = 'none';
-    addChatBubble('ai', '⚠ ' + e.message);
-  });
+  // Trigger the full analyze() flow (2-pass extraction)
+  setTimeout(function() {
+    analyze();
+  }, 500);
 }
 
 async function handleInboxEmailFull(row, ex) {
@@ -5349,17 +5414,15 @@ var STAFFLO_INTEGRATIONS = {
 };
 
 function showGmailSetup() {
-  closeInbox();
+  // Close any open modal
+  var intModal = document.getElementById('integrationsModal');
+  if (intModal) intModal.remove();
+  // Open settings panel and scroll to inbox section
+  openSettings();
   setTimeout(function() {
-    var modal = document.getElementById('inboxModal');
-    if (modal) modal.style.display = 'flex';
-    var setup = document.getElementById('inboxSetupBlock');
-    if (setup) setup.style.display = 'block';
-    // Scroll to it
-    setTimeout(function() {
-      if (setup) setup.scrollIntoView({ behavior:'smooth', block:'start' });
-    }, 100);
-  }, 100);
+    var el = document.getElementById('cfgSourceEmail');
+    if (el) el.scrollIntoView({ behavior:'smooth', block:'center' });
+  }, 400);
 }
 
 // ── Integrations settings panel ──
