@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -804,6 +805,26 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   </div>
 </div><!-- /chat-panel -->
 
+<!-- ══ INLINE INBOX — below Aria ════════════════════════ -->
+<div id="sideInbox" style="margin-top:12px">
+  <div style="background:var(--card);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--border)">
+    <div style="background:var(--green3);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="toggleSideInbox()">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:14px">📬</span>
+        <span style="font-family:'Fraunces',serif;font-size:14px;color:#fff;font-weight:300">Inbox</span>
+        <span id="sideInboxBadge" style="display:none;background:var(--red);color:#fff;border-radius:8px;font-size:9px;font-weight:700;padding:1px 6px">0</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button onclick="event.stopPropagation();loadSideInbox()" style="background:none;border:none;color:rgba(255,255,255,.4);font-size:12px;cursor:pointer" title="Rafraîchir">↻</button>
+        <span id="sideInboxChevron" style="color:rgba(255,255,255,.4);font-size:12px;transition:transform .2s">▼</span>
+      </div>
+    </div>
+    <div id="sideInboxBody" style="max-height:400px;overflow-y:auto">
+      <div id="sideInboxList" style="padding:8px 10px;font-size:12px;color:var(--muted)">Chargement...</div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /today-col-side -->
 </div><!-- /today-cols -->
 </div><!-- /tab-today -->
@@ -1055,9 +1076,51 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <div class="field"><label data-fr="Nom de la villa" data-en="Villa name">Nom de la villa</label><input id="cfgVilla" placeholder="Villa DarJ"></div>
     <div class="field"><label data-fr="Votre prénom" data-en="Your first name">Votre prénom</label><input id="cfgOwner" placeholder="Jérémie"></div>
     <div class="field"><label data-fr="Ville" data-en="City">Ville</label><input id="cfgCity" placeholder="Marrakech"></div>
-    <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
-    <div class="field"><label>WhatsApp villa</label><input id="cfgWa" placeholder="+212 6..."></div>
+    <div class="field"><label data-fr="Staff (un par ligne: Nom (rôle))" data-en="Staff (one per line: Name (role))">Staff (un par ligne: Nom (rôle))</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
+    <div class="field"><label>WhatsApp villa (propriétaire)</label><input id="cfgWa" placeholder="+212 6..."></div>
     <div class="field"><label>GPS</label><input id="cfgGps" placeholder="31.6295, -7.9811"></div>
+  </div>
+
+  <!-- STAFF PHONES -->
+  <div class="settings-section">
+    <div class="settings-title">📱 WHATSAPP STAFF</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5">Numéros WhatsApp du staff pour les envoyer directement depuis les actions du brief.</div>
+    <div class="field"><label>🏡 Majordome / Butler (Said)</label><input id="cfgPhoneButler" placeholder="+212 6XX XXX XXX"></div>
+    <div class="field"><label>🍽 Chef / Cuisinière (Faiza)</label><input id="cfgPhoneChef" placeholder="+212 6XX XXX XXX"></div>
+    <div class="field"><label>🧹 Ménage / Housekeeping (Bouchra)</label><input id="cfgPhoneHousekeeper" placeholder="+212 6XX XXX XXX"></div>
+    <div class="field"><label>🚗 Chauffeur / Driver</label><input id="cfgPhoneDriver" placeholder="+212 6XX XXX XXX"></div>
+    <button class="btn-save" onclick="saveStaffPhones()" style="margin-top:4px">Enregistrer les numéros</button>
+    <div id="staffPhonesSaved" style="display:none;text-align:center;color:#3B6D11;font-size:12px;font-weight:500;margin-top:6px">✓ Numéros enregistrés</div>
+  </div>
+
+  <!-- EMAIL FORWARDING / INBOX -->
+  <div class="settings-section" style="border:1.5px solid rgba(201,150,58,.3);background:rgba(201,150,58,.04)">
+    <div class="settings-title" style="color:var(--gold)">📧 INBOX — EMAILS AIRBNB</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5">
+      Transférez vos emails Airbnb automatiquement vers votre inbox Stafflo.<br>
+      <strong>Étape 1:</strong> Dans Gmail, allez dans Paramètres → Transfert → ajoutez cette adresse :<br>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+      <input id="cfgForwardEmail" readonly value="inbox@stafflo.app" style="flex:1;padding:9px 12px;border:1.5px solid var(--gold);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--gold-light);color:var(--ink);font-weight:500">
+      <button onclick="navigator.clipboard.writeText(document.getElementById('cfgForwardEmail').value);toast('📋 Copié!')" style="background:var(--gold);color:var(--green3);border:none;border-radius:8px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap">📋 Copier</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:10px">
+      <strong>Étape 2:</strong> Email source (Gmail qui reçoit les emails Airbnb):
+    </div>
+    <div class="field"><label>Email source Airbnb</label><input id="cfgSourceEmail" placeholder="marrakech.villadarj@gmail.com"></div>
+    <button class="btn-save" onclick="saveEmailSettings()" style="margin-top:4px">Enregistrer & tester l'inbox</button>
+    <div id="emailSettingsOk" style="display:none;text-align:center;color:#3B6D11;font-size:12px;font-weight:500;margin-top:6px"></div>
+    <div id="emailSettingsErr" style="display:none;text-align:center;color:var(--red);font-size:12px;font-weight:500;margin-top:6px"></div>
+
+    <!-- Inbox management -->
+    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700">EMAILS REÇUS</div>
+        <button onclick="loadSettingsInbox()" style="background:none;border:none;color:var(--gold);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">↻ Rafraîchir</button>
+      </div>
+      <div id="settingsInboxList" style="max-height:200px;overflow-y:auto;font-size:12px;color:var(--muted)">Cliquez sur Rafraîchir</div>
+      <button onclick="clearAllInboxEmails()" style="width:100%;margin-top:8px;background:none;border:1.5px solid rgba(192,57,43,.3);border-radius:8px;padding:8px;font-size:11px;color:var(--red);cursor:pointer;font-family:'DM Sans',sans-serif">🗑 Supprimer tous les emails de l'inbox</button>
+    </div>
   </div>
 
 
@@ -2519,6 +2582,9 @@ function loadSettingsUI() {
   set('cfgMistralKey',  cfg.mistralKey);  set('cfgDeepseekKey',cfg.deepseekKey);
   set('cfgAnthropicKey',cfg.anthropicKey);set('cfgOpenaiKey',  cfg.openaiKey);
   set('cfgPerplexityKey',cfg.perplexityKey);
+  set('cfgPhoneButler', cfg.phoneButler); set('cfgPhoneChef', cfg.phoneChef);
+  set('cfgPhoneHousekeeper', cfg.phoneHousekeeper); set('cfgPhoneDriver', cfg.phoneDriver);
+  set('cfgSourceEmail', cfg.sourceEmail);
   var ps = document.getElementById('cfgPublicSessionKey'); if (ps) ps.value = cfg.publicSessionKey || '';
   var cm = document.getElementById('cfgClientMode'); if (cm) cm.value = cfg.clientMode || 'public';
 }
@@ -3026,6 +3092,7 @@ function chatInit() {
     document.getElementById('chatSendBtn').disabled = !inp.value.trim();
   });
   loadInboxCount();
+  setTimeout(loadSideInbox, 1200);
   setTimeout(renderChatClientChips, 1500);
   // Restore last session messages from DB
   setTimeout(restoreChatSession, 800);
@@ -3455,7 +3522,232 @@ async function loadInboxCount() {
         badge.classList.remove('show');
       }
     }
+    // Also update side inbox badge
+    var sideBadge = document.getElementById('sideInboxBadge');
+    if (sideBadge) {
+      if (count > 0) {
+        sideBadge.textContent = count;
+        sideBadge.style.display = 'inline-block';
+      } else {
+        sideBadge.style.display = 'none';
+      }
+    }
   } catch(e) {}
+}
+
+// ── SIDE INBOX (inline below Aria) ──
+var _sideInboxOpen = true;
+function toggleSideInbox() {
+  _sideInboxOpen = !_sideInboxOpen;
+  var body = document.getElementById('sideInboxBody');
+  var chev = document.getElementById('sideInboxChevron');
+  if (body) body.style.display = _sideInboxOpen ? 'block' : 'none';
+  if (chev) chev.style.transform = _sideInboxOpen ? 'rotate(0)' : 'rotate(-90deg)';
+  if (_sideInboxOpen) loadSideInbox();
+}
+
+async function loadSideInbox() {
+  var el = document.getElementById('sideInboxList');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:8px;color:var(--muted);font-size:11px">Chargement...</div>';
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=15', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var rows = await r.json();
+    if (!rows || !rows.length) {
+      el.innerHTML = '<div style="text-align:center;padding:16px 8px;color:var(--muted);font-size:11px;line-height:1.5">' +
+        (lang==='fr' ? '📭 Aucun email reçu<br>Configurez le transfert dans ⚙ Réglages' : '📭 No emails yet<br>Set up forwarding in ⚙ Settings') +
+        '</div>';
+      return;
+    }
+    // Store for click handlers
+    window._sideInboxEmails = {};
+    rows.forEach(function(row) { window._sideInboxEmails[row.id] = row; });
+
+    el.innerHTML = rows.map(function(row) {
+      var d = new Date(row.received_at);
+      var dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      var ex = row.extracted || {};
+      var isNew = row.status === 'new';
+
+      // Detect external links
+      var body = row.body || '';
+      var airbnbMatch = body.match(/https?:\/\/(?:www\.)?airbnb\.[a-z\.]+\/[^\s\)\]"<>]+/i);
+      var bookingMatch = body.match(/https?:\/\/(?:admin\.)?booking\.com\/[^\s\)\]"<>]+/i);
+      var externalLink = airbnbMatch ? airbnbMatch[0] : (bookingMatch ? bookingMatch[0] : null);
+      var linkIcon = airbnbMatch ? '🅰️' : (bookingMatch ? '📘' : '');
+
+      var html = '<div class="inbox-card ' + (isNew?'new':'') + '" style="padding:8px 10px;margin-bottom:4px" data-side-email-id="' + row.id + '">';
+      html += '<div class="ic-subject" style="font-size:12px">' + (row.subject||'Sans objet').slice(0,60);
+      if (isNew) html += ' <span style="background:var(--red);color:#fff;border-radius:3px;font-size:8px;padding:1px 4px;font-weight:700">NEW</span>';
+      if (ex.email_type) html += ' <span style="background:var(--gold-light);color:#7A5A1A;border-radius:3px;font-size:8px;padding:1px 4px">' + ex.email_type + '</span>';
+      html += '</div>';
+      html += '<div class="ic-meta" style="font-size:10px">' + (row.from_email||'—').replace(/<|>/g,'').slice(0,40) + ' · ' + dateStr;
+      if (ex.name) html += ' · <strong>'+ex.name+'</strong>';
+      html += '</div>';
+
+      // Action row
+      html += '<div style="display:flex;gap:4px;margin-top:4px">';
+      html += '<button class="side-inbox-open" data-side-email-id="' + row.id + '" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:5px;padding:4px 8px;font-size:10px;cursor:pointer;font-weight:600;font-family:DM Sans,sans-serif">📖 Analyser</button>';
+      if (externalLink) {
+        html += '<a href="' + externalLink + '" target="_blank" onclick="event.stopPropagation()" style="background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:10px;color:var(--ink);text-decoration:none;white-space:nowrap">' + linkIcon + ' Ouvrir</a>';
+      }
+      html += '<button onclick="event.stopPropagation();deleteSingleEmail(\'' + row.id + '\')" style="background:none;border:1px solid rgba(192,57,43,.3);border-radius:5px;padding:4px 6px;font-size:10px;color:var(--red);cursor:pointer" title="Supprimer">🗑</button>';
+      html += '</div>';
+      html += '</div>';
+      return html;
+    }).join('');
+
+    // Wire click handlers
+    el.querySelectorAll('.side-inbox-open').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var id = btn.getAttribute('data-side-email-id');
+        var row = window._sideInboxEmails[id];
+        if (row) openInboxEmail(row);
+      });
+    });
+    el.querySelectorAll('.inbox-card').forEach(function(card) {
+      card.addEventListener('click', function(e) {
+        if (e.target.closest('a,button')) return;
+        var id = card.getAttribute('data-side-email-id');
+        var row = window._sideInboxEmails[id];
+        if (row) openInboxEmail(row);
+      });
+    });
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--red);font-size:11px;padding:8px">Erreur: '+e.message+'</div>';
+  }
+}
+
+// ── DELETE INBOX EMAILS ──
+async function deleteSingleEmail(emailId) {
+  if (!confirm(lang==='fr' ? 'Supprimer cet email ?' : 'Delete this email?')) return;
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    await fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + emailId, {
+      method: 'DELETE',
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    toast(lang==='fr' ? '✓ Email supprimé' : '✓ Email deleted');
+    loadSideInbox();
+    loadInboxCount();
+    loadInboxEmails(); // refresh modal too
+  } catch(e) {
+    toast('Erreur: ' + e.message);
+  }
+}
+
+async function clearAllInboxEmails() {
+  if (!confirm(lang==='fr' ? 'Supprimer TOUS les emails de l\'inbox ? Cette action est irréversible.' : 'Delete ALL inbox emails? This cannot be undone.')) return;
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    // Delete all
+    await fetch(SB_URL + '/rest/v1/email_inbox?id=not.is.null', {
+      method: 'DELETE',
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    toast(lang==='fr' ? '✓ Inbox vidée' : '✓ Inbox cleared');
+    loadSideInbox();
+    loadInboxCount();
+    loadSettingsInbox();
+  } catch(e) {
+    toast('Erreur: ' + e.message);
+  }
+}
+
+// ── STAFF PHONES ──
+function saveStaffPhones() {
+  var cfg = getCfg();
+  cfg.phoneButler = (document.getElementById('cfgPhoneButler').value || '').trim();
+  cfg.phoneChef = (document.getElementById('cfgPhoneChef').value || '').trim();
+  cfg.phoneHousekeeper = (document.getElementById('cfgPhoneHousekeeper').value || '').trim();
+  cfg.phoneDriver = (document.getElementById('cfgPhoneDriver').value || '').trim();
+  // Also set staff_phone as primary (butler/villa owner)
+  cfg.staff_phone = cfg.phoneButler || cfg.wa || '';
+  setCfg(cfg);
+  var saved = document.getElementById('staffPhonesSaved');
+  if (saved) { saved.style.display = 'block'; setTimeout(function(){saved.style.display='none';}, 3000); }
+  toast(lang==='fr' ? '✓ Numéros staff enregistrés' : '✓ Staff numbers saved');
+}
+
+function loadStaffPhonesUI() {
+  var cfg = getCfg();
+  var set = function(id, val) { var e = document.getElementById(id); if (e) e.value = val || ''; };
+  set('cfgPhoneButler', cfg.phoneButler);
+  set('cfgPhoneChef', cfg.phoneChef);
+  set('cfgPhoneHousekeeper', cfg.phoneHousekeeper);
+  set('cfgPhoneDriver', cfg.phoneDriver);
+  set('cfgSourceEmail', cfg.sourceEmail);
+}
+
+// ── EMAIL SETTINGS ──
+async function saveEmailSettings() {
+  var cfg = getCfg();
+  cfg.sourceEmail = (document.getElementById('cfgSourceEmail').value || '').trim();
+  setCfg(cfg);
+  var ok = document.getElementById('emailSettingsOk');
+  var err = document.getElementById('emailSettingsErr');
+  ok.style.display = 'none'; err.style.display = 'none';
+
+  // Test inbox connection
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?select=id&limit=1', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    if (r.ok) {
+      ok.textContent = '✓ Connexion inbox OK — ' + (lang==='fr' ? 'Les emails transférés apparaîtront ici' : 'Forwarded emails will appear here');
+      ok.style.display = 'block';
+      loadSettingsInbox();
+      loadSideInbox();
+      loadInboxCount();
+    } else {
+      err.textContent = '✗ Erreur table email_inbox: ' + r.status + ' — vérifiez que la table existe dans Supabase';
+      err.style.display = 'block';
+    }
+  } catch(e) {
+    err.textContent = '✗ ' + e.message;
+    err.style.display = 'block';
+  }
+}
+
+async function loadSettingsInbox() {
+  var el = document.getElementById('settingsInboxList');
+  if (!el) return;
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?select=id,subject,from_email,received_at,status&order=received_at.desc&limit=10', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var rows = await r.json();
+    if (!rows.length) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px">' +
+        (lang==='fr' ? 'Aucun email reçu' : 'No emails received') + '</div>';
+      return;
+    }
+    el.innerHTML = rows.map(function(row) {
+      var d = new Date(row.received_at);
+      var dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      var isNew = row.status === 'new';
+      return '<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid rgba(44,31,20,.06);font-size:11px">' +
+        '<span style="width:6px;height:6px;border-radius:50%;background:' + (isNew?'var(--red)':'var(--green)') + ';flex-shrink:0"></span>' +
+        '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)">' + (row.subject||'—').slice(0,40) + '</span>' +
+        '<span style="color:var(--muted);flex-shrink:0">' + dateStr + '</span>' +
+        '<button onclick="deleteSingleEmail(\'' + row.id + '\')" style="background:none;border:none;color:var(--red);font-size:10px;cursor:pointer;padding:2px;flex-shrink:0">✕</button>' +
+      '</div>';
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--red)">Erreur: '+e.message+'</div>';
+  }
 }
 
 function showInbox() {
@@ -7609,7 +7901,7 @@ function generateStaffChecklist() {
   ].join('\n');
   
   // Show modal with checklist + send options
-  const phone = (cfg.staff_phone || '').replace(/[\s\-+()]/g,'');
+  const phone = (cfg.staff_phone || cfg.phoneButler || cfg.wa || '').replace(/[\s\-+()]/g,'');
   const encoded = encodeURIComponent(briefText);
   const waUrl = phone ? 'https://wa.me/' + phone + '?text=' + encoded : 'https://wa.me/?text=' + encoded;
   
@@ -7878,7 +8170,7 @@ function sendStaffBriefAll() {
   const fr = lang === 'fr';
   const tasks = window._currentTasks || [];
   const cfg = getCfg();
-  const staffPhone = (cfg.staff_phone || '').replace(/[\s\-+()]/g, '');
+  const staffPhone = (cfg.staff_phone || cfg.phoneButler || cfg.wa || '').replace(/[\s\-+()]/g, '');
   
   const todo = tasks.filter(t => t.status !== 'done');
   const lines = todo.map(t => '• [' + t.label + '] ' + t.text);
@@ -8294,19 +8586,14 @@ function execBriefAction(cardIdx, actionIdx) {
   if (!action) return;
   var fr = lang === 'fr';
   var cfg = getCfg();
-  var staffPhones = {};
-  // Parse staff phones from config
-  (cfg.staff || '').split('\n').forEach(function(line) {
-    var match = line.match(/\(([^)]+)\)/);
-    var phone = match ? match[1].replace(/[\s\-+()]/g,'') : '';
-    var name = line.replace(/\([^)]*\)/,'').trim().toLowerCase();
-    if (phone) {
-      if (/said|major|butler/i.test(name)) staffPhones.butler = phone;
-      if (/faiza|chef|cuisin/i.test(name)) staffPhones.chef = phone;
-      if (/bouchra|ménage|house|clean/i.test(name)) staffPhones.housekeeping = phone;
-      if (/driver|chauffeur|transfer/i.test(name)) staffPhones.driver = phone;
-    }
-  });
+  // Use dedicated config phone fields
+  var staffPhones = {
+    butler: (cfg.phoneButler || '').replace(/[\s\-+()]/g,''),
+    chef: (cfg.phoneChef || '').replace(/[\s\-+()]/g,''),
+    housekeeping: (cfg.phoneHousekeeper || '').replace(/[\s\-+()]/g,''),
+    driver: (cfg.phoneDriver || '').replace(/[\s\-+()]/g,'')
+  };
+  var fallbackPhone = staffPhones.butler || (cfg.wa || '').replace(/[\s\-+()]/g,'');
 
   closeActionModal();
 
@@ -8325,11 +8612,14 @@ function execBriefAction(cardIdx, actionIdx) {
       break;
     case 'wa_staff':
       var role = action.role || 'butler';
-      var staffPhone = staffPhones[role] || staffPhones.butler || (cfg.staff_phone||'').replace(/[\s\-+()]/g,'');
+      var staffPhone = staffPhones[role] || fallbackPhone;
       var card = window._briefCards ? window._briefCards[cardIdx] : {};
       var msg = encodeURIComponent((fr?'📋 Stafflo — ':'📋 Stafflo — ') + (card.title||'') + '\n' + (card.detail||''));
       if (staffPhone) window.open('https://wa.me/'+staffPhone+'?text='+msg, '_blank');
-      else window.open('https://wa.me/?text='+msg, '_blank');
+      else {
+        toast(fr?'⚙ Ajoutez le numéro dans Réglages → WhatsApp Staff':'⚙ Add number in Settings → WhatsApp Staff');
+        window.open('https://wa.me/?text='+msg, '_blank');
+      }
       break;
     case 'email':
       var subject = encodeURIComponent('Stafflo — ' + (action.content || '').slice(0,80));
