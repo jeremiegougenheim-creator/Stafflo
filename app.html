@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -57,15 +58,30 @@ nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,
 .nav-badge{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;animation:pulse 1.5s infinite}
 
 /* ── MAIN ── */
-/* TODAY — single column with Aria search on top, 3 boxes below */
+main{max-width:900px;margin:0 auto;padding:16px}
+@media(min-width:1024px){main{max-width:1200px;padding:20px 24px}}
 .today-col-side{display:none}
-.today-cols{display:block;max-width:100%}
+.today-cols{display:block}
 .today-col-main{max-width:100%}
-main{max-width:760px;margin:0 auto;padding:16px}
-@media(min-width:1024px){main{max-width:1100px;padding:20px 24px}}
 
-/* ── ARIA SEARCH BAR (Google-style) ── */
-.aria-panel{background:linear-gradient(145deg,var(--green3) 0%,var(--green2) 100%);border-radius:20px;box-shadow:var(--shadow-lg);overflow:hidden;margin-bottom:16px;border:1px solid rgba(201,150,58,.15)}
+/* ── UNIFIED GRID: everything 1/3 1/3 1/3 on desktop ── */
+.grid-all{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:768px){.grid-all{grid-template-columns:1fr 1fr 1fr;gap:16px}}
+
+/* Aria spans 1 col on desktop, full on mobile */
+.grid-aria{grid-column:1}
+/* Inbox spans 1 col */
+.grid-inbox{grid-column:1}
+
+/* Boxes */
+.today-box{background:var(--card);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+.today-box-hdr{background:var(--green3);padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+.today-box-lbl{font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.45);font-weight:700}
+.today-box-lbl strong{display:block;font-size:14px;letter-spacing:0;color:#fff;font-family:'Fraunces',serif;font-weight:300;margin-top:2px}
+.today-box-body{flex:1;overflow-y:auto;max-height:300px}
+.today-box-inbox{transition:all .15s;cursor:pointer}
+.today-box-inbox:hover{border-color:var(--gold);box-shadow:var(--shadow-lg);transform:translateY(-1px)}
+.aria-panel{background:linear-gradient(145deg,var(--green3) 0%,var(--green2) 100%);border-radius:20px;box-shadow:var(--shadow-lg);overflow:hidden;border:1px solid rgba(201,150,58,.15)}
 .aria-panel-hdr{padding:16px 20px 0;display:flex;align-items:center;justify-content:space-between}
 .aria-panel-logo{display:flex;align-items:center;gap:8px}
 .aria-panel-logo-icon{font-size:20px}
@@ -87,15 +103,8 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .aria-chips{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;padding:0 20px 16px}
 .aria-chip{background:rgba(201,150,58,.1);border:1px solid rgba(201,150,58,.25);border-radius:20px;padding:7px 14px;font-size:12px;font-weight:500;color:var(--gold);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;white-space:nowrap}
 .aria-chip:hover{background:rgba(201,150,58,.2);border-color:var(--gold)}
-
-/* ── 3-COL BOXES ── */
-.today-boxes{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:16px}
-@media(min-width:768px){.today-boxes{grid-template-columns:1fr 1fr 1fr;gap:16px}}
-.today-box{background:var(--card);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
-.today-box-hdr{background:var(--green3);padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
-.today-box-lbl{font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.45);font-weight:700}
-.today-box-lbl strong{display:block;font-size:14px;letter-spacing:0;color:#fff;font-family:'Fraunces',serif;font-weight:300;margin-top:2px}
-.today-box-body{flex:1;overflow-y:auto;max-height:280px}
+.today-box-inbox{transition:all .15s}
+.today-box-inbox:hover{border-color:var(--gold);box-shadow:var(--shadow-lg);transform:translateY(-1px)}
 
 /* ── CHAT OVERLAY (Aria popup) ── */
 .chat-overlay{display:none;position:fixed;inset:0;background:rgba(10,25,15,.65);z-index:700;align-items:center;justify-content:center;padding:16px}
@@ -700,7 +709,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       <div class="hstat-lbl" id="lCount">CLIENTS</div>
     </div>
     <button class="hdr-btn" id="langBtn" onclick="toggleLang()">🇬🇧 EN</button>
-    <button class="hdr-btn"  style="padding:5px 9px;font-size:14px;position:relative;z-index:9999" title="Settings">⚙</button>
+    <button class="hdr-btn" onclick="openSettings()" style="padding:5px 9px;font-size:14px;position:relative;z-index:9999" title="Settings">⚙</button>
   </div>
 </header>
 
@@ -733,18 +742,29 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 <main>
 
-<!-- ═══ TODAY ═════════════════════════════════════════════ -->
-<div class="tab on" id="tab-today">
+<!-- STAYS BAR — always visible, full width -->
+<div class="stays-bar" id="staysBar">
+  <span style="font-size:11px;color:rgba(255,255,255,.35);font-style:italic">
+    <span data-fr="Aucune arrivée prévue — ajoutez un séjour ↓" data-en="No upcoming stays — add one below ↓">Aucune arrivée prévue — ajoutez un séjour ↓</span>
+  </span>
+  <button class="btn-new-chip" onclick="openForm()" style="margin-left:auto" aria-label="Add new guest">+ <span data-fr="Nouveau" data-en="New">Nouveau</span></button>
+</div>
 
-  <!-- ARIA PANEL — full-width command center -->
-  <div class="aria-panel" id="ariaPanel">
+<!-- ═══ UNIFIED GRID — Aria + Inbox + all boxes, visible on ALL tabs ═══ -->
+<div class="grid-all" id="gridAll">
+
+  <!-- COL 1: ARIA PANEL -->
+  <div class="aria-panel grid-aria" id="ariaPanel">
     <div class="aria-panel-hdr">
       <div class="aria-panel-logo">
         <span class="aria-panel-logo-icon">☺</span>
         <span class="aria-panel-logo-name">ARIA</span>
         <span class="aria-panel-logo-badge">AI</span>
       </div>
-      <div class="aria-panel-sub" data-fr="Assistant villa" data-en="Villa assistant">Assistant villa</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="aria-panel-sub" data-fr="Assistant villa" data-en="Villa assistant">Assistant villa</div>
+        <button onclick="openSettings()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.45);width:28px;height:28px;border-radius:8px;font-size:14px;cursor:pointer;transition:all .15s" title="Settings">⚙</button>
+      </div>
     </div>
     <div class="aria-panel-body">
       <div class="aria-panel-hint" data-fr="Collez un email, posez une question, ou dictez." data-en="Paste an email, ask a question, or dictate.">Collez un email, posez une question, ou dictez.</div>
@@ -773,82 +793,68 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     </div>
   </div>
 
-  <!-- NEXT STAYS BAR -->
-  <div class="stays-bar" id="staysBar">
-    <span style="font-size:11px;color:rgba(255,255,255,.35);font-style:italic">
-      <span data-fr="Aucune arrivée prévue — ajoutez un séjour ↓" data-en="No upcoming stays — add one below ↓">Aucune arrivée prévue — ajoutez un séjour ↓</span>
-    </span>
-    <button class="btn-new-chip" onclick="openForm()" style="margin-left:auto" aria-label="Add new guest">+ <span data-fr="Nouveau" data-en="New">Nouveau</span></button>
-  </div>
-
-  <!-- MORNING BRIEF — full width, same style as before -->
-  <div id="morningBrief">
-    <div class="brief-header">
-      <div>
-        <div class="brief-title" data-fr="☀ BRIEF DU JOUR" data-en="☀ MORNING BRIEF">☀ BRIEF DU JOUR</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px" data-fr="Ce qui compte aujourd'hui" data-en="What matters today">Ce qui compte aujourd'hui</div>
-        <div class="brief-time" id="briefTime"></div>
+  <!-- COL 2: INBOX — clickable, opens full inbox -->
+  <div class="today-box today-box-inbox grid-inbox" onclick="showInbox()">
+    <div class="today-box-hdr">
+      <div class="today-box-lbl">INBOX<strong>📬 Emails</strong></div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="inbox-side-badge" id="inboxSideBadge" style="display:none">0</span>
+        <span style="color:rgba(255,255,255,.4);font-size:12px">→</span>
       </div>
-      <button class="brief-refresh" onclick="loadMorningBrief(true)" title="Rafraîchir">↻</button>
     </div>
-    <div id="briefNoKey" style="display:none;font-size:12px;color:var(--muted);background:rgba(201,150,58,.08);border:1px solid rgba(201,150,58,.2);border-radius:8px;padding:8px 12px;margin-bottom:8px">
-      ⚙️ <span data-fr="Brief IA désactivé — " data-en="AI Brief off — ">Brief IA désactivé — </span><button onclick="document.getElementById('settingsPanel').classList.add('open')" style="background:none;border:none;color:var(--gold);font-size:12px;cursor:pointer;font-family:inherit;padding:0;font-weight:600" data-fr="Configurer Gemini gratuit →" data-en="Set up free Gemini →">Configurer Gemini gratuit →</button>
-    </div>
-    <div class="brief-cards" id="briefCards">
-      <div class="brief-skeleton" id="briefSkeleton">
-        <div class="skel-card"></div>
-        <div class="skel-card"></div>
-        <div class="skel-card"></div>
-      </div>
+    <div class="today-box-body" id="inboxSideList" style="padding:8px">
+      <div style="text-align:center;padding:16px;font-size:12px;color:var(--muted)" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
     </div>
   </div>
 
-  <!-- 3 BOXES — Villa / Actions / Inbox -->
-  <div class="today-boxes" id="todayBoxes">
-
-    <!-- BOX 1: Guest & Villa status -->
-    <div class="today-box">
-      <div class="today-box-hdr">
-        <div class="today-box-lbl">SÉJOUR<strong data-fr="🏠 Villa" data-en="🏠 Villa">🏠 Villa</strong></div>
-      </div>
-      <div class="today-box-body" id="boxVilla" style="padding:10px">
-        <div style="text-align:center;padding:16px;font-size:12px;color:var(--muted)" data-fr="Aucun séjour en cours" data-en="No active stay">Aucun séjour en cours</div>
-      </div>
+  <!-- COL 3: MORNING BRIEF -->
+  <div class="today-box">
+    <div class="today-box-hdr">
+      <div class="today-box-lbl">BRIEF<strong data-fr="☀ Brief du jour" data-en="☀ Morning Brief">☀ Brief du jour</strong></div>
+      <button onclick="loadMorningBrief(true)" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:12px;cursor:pointer" title="Rafraîchir">↻</button>
     </div>
-
-    <!-- BOX 2: Action Board / Tasks -->
-    <div class="today-box">
-      <div class="today-box-hdr">
-        <div class="today-box-lbl">ACTIONS<strong data-fr="⚡ Qui fait quoi" data-en="⚡ Who does what">⚡ Qui fait quoi</strong></div>
+    <div class="today-box-body" id="boxBrief" style="padding:8px">
+      <div id="briefNoKey" style="display:none;font-size:11px;color:var(--muted);background:rgba(201,150,58,.08);border:1px solid rgba(201,150,58,.2);border-radius:6px;padding:6px 10px;margin-bottom:6px">
+        ⚙️ <span data-fr="Brief IA désactivé — " data-en="AI Brief off — ">Brief IA désactivé — </span><button onclick="openSettings()" style="background:none;border:none;color:var(--gold);font-size:11px;cursor:pointer;font-family:inherit;padding:0;font-weight:600" data-fr="Configurer →" data-en="Configure →">Configurer →</button>
       </div>
-      <div class="today-box-body" id="boxActions" style="padding:10px">
-        <div style="text-align:center;padding:16px;font-size:12px;color:var(--muted)" data-fr="Aucune tâche en cours" data-en="No active tasks">Aucune tâche en cours</div>
-      </div>
-    </div>
-
-    <!-- BOX 3: Inbox -->
-    <div class="today-box">
-      <div class="today-box-hdr">
-        <div class="today-box-lbl">INBOX<strong>📬 Emails</strong></div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <span class="inbox-side-badge" id="inboxSideBadge" style="display:none">0</span>
-          <button onclick="loadInboxSide()" style="background:rgba(255,255,255,.15);border:none;color:rgba(255,255,255,.6);width:28px;height:28px;border-radius:8px;font-size:12px;cursor:pointer">↻</button>
+      <div id="morningBrief">
+        <div class="brief-cards" id="briefCards">
+          <div class="brief-skeleton" id="briefSkeleton">
+            <div class="skel-card"></div>
+            <div class="skel-card"></div>
+            <div class="skel-card"></div>
+          </div>
         </div>
       </div>
-      <div style="padding:6px 10px;border-bottom:1px solid var(--border)">
-        <button onclick="showInbox()" style="width:100%;background:var(--green);color:#fff;border:none;border-radius:8px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:background .15s" data-fr="Voir tous les emails →" data-en="View all emails →">
-          <span data-fr="Voir tous les emails" data-en="View all emails">Voir tous les emails</span><span>→</span>
-        </button>
-      </div>
-      <div class="today-box-body" id="inboxSideList" style="padding:8px">
-        <div style="text-align:center;padding:16px;font-size:12px;color:var(--muted)" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
-      </div>
     </div>
   </div>
 
-  <!-- TODAY QUICK VIEW — in-house guest details, readiness, etc. -->
-  <div id="todayQV"></div>
+  <!-- ROW 2: Villa status + Actions + todayQV placeholder -->
+  <div class="today-box" id="boxVillaWrap">
+    <div class="today-box-hdr">
+      <div class="today-box-lbl">SÉJOUR<strong data-fr="🏠 Villa" data-en="🏠 Villa">🏠 Villa</strong></div>
+    </div>
+    <div class="today-box-body" id="boxVilla" style="padding:10px">
+      <div style="text-align:center;padding:16px;font-size:12px;color:var(--muted)" data-fr="Aucun séjour en cours" data-en="No active stay">Aucun séjour en cours</div>
+    </div>
+  </div>
 
+  <div class="today-box" id="boxActionsWrap">
+    <div class="today-box-hdr">
+      <div class="today-box-lbl">ACTIONS<strong data-fr="⚡ Qui fait quoi" data-en="⚡ Who does what">⚡ Qui fait quoi</strong></div>
+    </div>
+    <div class="today-box-body" id="boxActions" style="padding:10px">
+      <div style="text-align:center;padding:16px;font-size:12px;color:var(--muted)" data-fr="Aucune tâche en cours" data-en="No active tasks">Aucune tâche en cours</div>
+    </div>
+  </div>
+
+</div><!-- /grid-all -->
+
+<!-- ═══ TAB-SPECIFIC CONTENT (below the grid) ═══════════════ -->
+
+<!-- TODAY -->
+<div class="tab on" id="tab-today">
+  <div id="todayQV" style="margin-top:16px"></div>
 </div><!-- /tab-today -->
 
 <!-- ═══ ARIA CHAT OVERLAY (popup on all pages) ═══════════════ -->
