@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1245,8 +1246,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 // ════════════════════════════════════════════
 // STAFFLO PROXY — set URL to remove API key requirement
 // ════════════════════════════════════════════
-const STAFFLO_PROXY = 'https://stafflo-proxy.jeremiegougenheim.workers.dev';
-// ── Hardcoded Supabase constants (never broken by bad localStorage) ──
+const STAFFLO_PROXY = 'https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/ai-proxy';
+const STAFFLO_PROXY_CF = 'https://stafflo-proxy.jeremiegougenheim.workers.dev'; // CF Worker backup
 const SB_URL  = 'https://rcjhgilpmojohmrqzokx.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
 
@@ -7680,57 +7681,61 @@ async function loadMorningBrief(forceRefresh = false) {
 // AI PROVIDERS — routing, calling
 // ════════════════════════════════════════════════════════
 async function callBestAI(task, systemPrompt, userContent, maxTokens) {
-  // ── Try proxy first (no client key needed) ──────────
+  const _proxyPayload = {
+    task: task,
+    system: systemPrompt || '',
+    user: userContent,
+    max_tokens: maxTokens || 1000,
+    session_key: getSessionKeyFromUrl() || getCfg().publicSessionKey || '',
+    client_mode: getCfg().clientMode || 'public',
+  };
+
+  // ── 1. Supabase Edge Function (primary — always deployed) ──
   if (STAFFLO_PROXY) {
     try {
-      // Primary proxy: Cloudflare Worker
-      var resolvedTask = task;
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          task: resolvedTask,
-          system: systemPrompt || '',
-          user: userContent,
-          max_tokens: maxTokens || 1000,
-          session_key: getSessionKeyFromUrl() || getCfg().publicSessionKey || '',
-          client_mode: getCfg().clientMode || 'public',
-        })
+        body: JSON.stringify(_proxyPayload)
       });
+      if (r.status === 429) {
+        toast(lang==='fr' ? '⏳ Limite atteinte — réessayez' : '⏳ Rate limit — retry');
+        throw new Error('rate_limit');
+      }
       if (r.ok) {
         const d = await r.json();
-        if (d.text) {
-          return d.text;
-        }
-      } else if (r.status === 429) {
-        toast(lang==='fr'
-          ? '⏳ Limite atteinte — réessayez dans une heure'
-          : '⏳ Rate limit — try again in an hour');
-        throw new Error('rate_limit');
+        // Handle multiple proxy response formats
+        const txt = d.text || d.content || d.result ||
+          d.choices?.[0]?.message?.content ||
+          d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (txt) return txt;
+        if (d.error) console.warn('[Proxy SB] server error:', d.error);
+      } else {
+        console.warn('[Proxy SB] HTTP', r.status);
       }
     } catch(e) {
       if (e.message === 'rate_limit') throw e;
-      // Cloudflare Worker failed — try Supabase Edge Function as backup
-      try {
-        const r2 = await fetch(SB_URL + '/functions/v1/ai-proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            task: task,
-            system: systemPrompt || '',
-            user: userContent,
-            max_tokens: maxTokens || 1000,
-            session_key: getSessionKeyFromUrl() || getCfg().publicSessionKey || '',
-            client_mode: getCfg().clientMode || 'public',
-          })
-        });
-        if (r2.ok) {
-          const d2 = await r2.json();
-          if (d2.text) return d2.text;
-        }
-      } catch(e2) {
-        // Both proxies failed, fall through to client keys
+      console.warn('[Proxy SB] unreachable:', e.message);
+    }
+  }
+
+  // ── 2. Cloudflare Worker (secondary — if deployed) ──
+  if (typeof STAFFLO_PROXY_CF !== 'undefined' && STAFFLO_PROXY_CF) {
+    try {
+      const r2 = await fetch(STAFFLO_PROXY_CF, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(_proxyPayload)
+      });
+      if (r2.ok) {
+        const d2 = await r2.json();
+        const txt2 = d2.text || d2.content || d2.result ||
+          d2.choices?.[0]?.message?.content ||
+          d2.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (txt2) return txt2;
       }
+    } catch(e2) {
+      console.warn('[Proxy CF] unreachable:', e2.message);
     }
   }
 
@@ -7755,12 +7760,36 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
         if (!window._lastUsedAI) window._lastUsedAI = {};
         if (window._lastUsedAI[task] !== pid) {
           window._lastUsedAI[task] = pid;
-          const names = {groq:'Groq ⚡', gemini:'Gemini ✦', mistral:'Mistral 🌟', deepseek:'DeepSeek 🔍'};
-          
         }
         return result;
       }
     } catch(e) { continue; }
+  }
+
+  // ── 4. Emergency direct Groq call — always works, no config needed ──
+  // This ensures Aria responds even if all proxies are down and no keys configured
+  try {
+    const _DEMO_KEY = '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';
+    const _msgs = systemPrompt && systemPrompt.trim()
+      ? [{role:'system',content:systemPrompt},{role:'user',content:userContent}]
+      : [{role:'user',content:userContent}];
+    const _r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Authorization':'Bearer '+_DEMO_KEY},
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: Math.min(maxTokens || 1000, 1000),
+        temperature: 0.3,
+        messages: _msgs
+      })
+    });
+    if (_r.ok) {
+      const _d = await _r.json();
+      const _txt = _d.choices?.[0]?.message?.content || '';
+      if (_txt) { console.info('[AI] used demo Groq key'); return _txt; }
+    }
+  } catch(e_demo) {
+    console.warn('[AI] demo key failed:', e_demo.message);
   }
 
   throw new Error(lang==='fr'
