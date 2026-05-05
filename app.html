@@ -553,6 +553,18 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .inbox-card .ic-subject{font-weight:600;color:var(--ink);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inbox-card .ic-meta{color:var(--muted);font-size:11px}
 
+/* ── INLINE INBOX PANEL (below Aria on desktop) ── */
+.inbox-side{background:var(--card);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--border);margin-top:12px}
+.inbox-side-hdr{background:var(--green3);padding:10px 12px;display:flex;align-items:center;justify-content:space-between}
+.inbox-side-title{font-size:9px;letter-spacing:2.5px;color:rgba(255,255,255,.4)}
+.inbox-side-title strong{color:var(--gold);font-size:13px;letter-spacing:0;font-family:'Fraunces',serif;font-weight:300;display:block;margin-top:1px}
+.inbox-side-badge{background:var(--red);color:#fff;border-radius:8px;font-size:9px;font-weight:700;padding:2px 7px;display:none}
+.inbox-side-badge.show{display:inline-block}
+.inbox-side-body{max-height:320px;overflow-y:auto;padding:8px}
+.inbox-side-empty{text-align:center;padding:20px 12px;font-size:12px;color:var(--muted)}
+/* On mobile: hide inline inbox, keep modal */
+@media(max-width:767px){.inbox-side{display:none}}
+
 
 /* Section nav chips */
 .today-section-nav::-webkit-scrollbar { display: none; }
@@ -751,8 +763,6 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <span class="chat-inbox-badge" id="inboxBadge" onclick="showInbox()">0 emails</span>
-      <button onclick="showInbox()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif">📬 Inbox</button>
       <button onclick="showIntegrationsPanel()" style="background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif" title="Intégrations">🔌</button>
       <button onclick="clearChat()" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer">✕</button>
     </div>
@@ -780,6 +790,20 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <button class="chat-send-btn" id="chatSendBtn" onclick="chatSend()" disabled>↑</button>
   </div>
 </div><!-- /chat-panel -->
+
+<!-- ══ INLINE INBOX (below Aria) ════════════════════════ -->
+<div class="inbox-side" id="inboxSide">
+  <div class="inbox-side-hdr">
+    <div class="inbox-side-title">INBOX<strong>📬 Emails Airbnb</strong></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="inbox-side-badge" id="inboxSideBadge">0</span>
+      <button onclick="loadInboxSide()" style="background:none;border:none;color:var(--gold);font-size:12px;cursor:pointer">↻</button>
+    </div>
+  </div>
+  <div class="inbox-side-body" id="inboxSideList">
+    <div class="inbox-side-empty" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
+  </div>
+</div>
 
 </div><!-- /today-col-side -->
 </div><!-- /today-cols -->
@@ -3003,6 +3027,7 @@ function chatInit() {
     document.getElementById('chatSendBtn').disabled = !inp.value.trim();
   });
   loadInboxCount();
+  if (window.innerWidth >= 768) setTimeout(loadInboxSide, 1200);
   setTimeout(renderChatClientChips, 1500);
   // Restore last session messages from DB
   setTimeout(restoreChatSession, 800);
@@ -3423,27 +3448,83 @@ async function loadInboxCount() {
       headers: { apikey: key, Authorization: 'Bearer ' + key, 'Prefer': 'count=exact' }
     });
     var count = parseInt(r.headers.get('content-range')?.split('/')[1] || '0');
-    var badge = document.getElementById('inboxBadge');
-    if (badge) {
+    // Update side badge (inline panel)
+    var sideBadge = document.getElementById('inboxSideBadge');
+    if (sideBadge) {
       if (count > 0) {
-        badge.textContent = count + (lang==='fr' ? ' email' : ' email') + (count > 1 ? 's' : '');
-        badge.classList.add('show');
+        sideBadge.textContent = count;
+        sideBadge.classList.add('show');
       } else {
-        badge.classList.remove('show');
+        sideBadge.classList.remove('show');
       }
     }
   } catch(e) {}
 }
 
 function showInbox() {
-  document.getElementById('inboxModal').style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-  loadInboxEmails();
+  // On mobile: use modal; on desktop: scroll to inline panel
+  if (window.innerWidth < 768) {
+    document.getElementById('inboxModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+    loadInboxEmails();
+  } else {
+    var side = document.getElementById('inboxSide');
+    if (side) side.scrollIntoView({behavior:'smooth', block:'start'});
+    loadInboxSide();
+  }
 }
 
 function closeInbox() {
   document.getElementById('inboxModal').style.display = 'none';
   document.body.style.overflow = '';
+}
+
+async function loadInboxSide() {
+  var el = document.getElementById('inboxSideList');
+  if (!el) return;
+  el.innerHTML = '<div class="inbox-side-empty">' + (lang==='fr' ? 'Chargement...' : 'Loading...') + '</div>';
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=10', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    var rows = await r.json();
+    if (!rows.length) {
+      el.innerHTML = '<div class="inbox-side-empty">' +
+        (lang==='fr' ? 'Aucun email reçu' : 'No emails received') + '</div>';
+      return;
+    }
+    window._inboxEmails = window._inboxEmails || {};
+    rows.forEach(function(row) { window._inboxEmails[row.id] = row; });
+
+    el.innerHTML = rows.map(function(row) {
+      var d = new Date(row.received_at);
+      var dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      var ex = row.extracted || {};
+      var badge = row.status === 'new' ? ' new' : '';
+      var typeBadge = ex.email_type ? '<span style="background:var(--gold-light);color:#7A5A1A;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">'+ex.email_type+'</span>' : '';
+
+      var html = '<div class="inbox-card' + badge + '" data-email-id="' + row.id + '">';
+      html += '<div class="ic-subject">' + (row.subject||'No subject');
+      if (row.status==='new') html += '<span style="background:var(--red);color:#fff;border-radius:4px;font-size:9px;padding:1px 5px;margin-left:4px">NEW</span>';
+      html += typeBadge + '</div>';
+      html += '<div class="ic-meta">' + (ex.name || (row.from_email||'—').replace(/<|>/g,'')) + ' · ' + dateStr + '</div>';
+      html += '</div>';
+      return html;
+    }).join('');
+
+    // Click handler
+    el.querySelectorAll('.inbox-card').forEach(function(card) {
+      card.addEventListener('click', function(e) {
+        var id = card.getAttribute('data-email-id');
+        var row = window._inboxEmails[id];
+        if (row) openInboxEmail(row);
+      });
+    });
+  } catch(e) {
+    el.innerHTML = '<div class="inbox-side-empty" style="color:var(--red)">Erreur: '+e.message+'</div>';
+  }
 }
 
 async function loadInboxEmails() {
@@ -3538,6 +3619,7 @@ function openInboxEmail(row) {
   }).catch(function(){});
 
   loadInboxCount();
+  if (window.innerWidth >= 768) loadInboxSide();
 
   // Show email summary in chat
   var emailType = ex.email_type || 'email';
