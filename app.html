@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -603,6 +604,17 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   .aria-fab{right:14px;bottom:14px;width:52px;height:52px;font-size:22px}
 }
 
+/* ARIA slim search bar (new — replaces big inline box) */
+.aria-searchbar{display:flex;align-items:center;gap:10px;background:var(--green3);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow-lg);border:1px solid rgba(201,150,58,.25);cursor:text;transition:border-color .15s,box-shadow .15s}
+.aria-searchbar:hover{border-color:rgba(201,150,58,.5);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.aria-searchbar:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,150,58,.18)}
+.aria-searchbar-left{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.aria-searchbar-input{flex:1;min-width:0;background:transparent;border:none;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;padding:4px 0}
+.aria-searchbar-input::placeholder{color:rgba(255,255,255,.4)}
+.aria-searchbar-go{background:var(--gold);color:var(--green3);border:none;border-radius:8px;width:32px;height:32px;font-weight:700;font-size:14px;cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0;transition:filter .15s,transform .1s;display:inline-flex;align-items:center;justify-content:center}
+.aria-searchbar-go:hover{filter:brightness(1.1)}
+.aria-searchbar-go:active{transform:scale(.94)}
+
 /* ARIA centered modal (opens from typing or floating bubble) */
 .aria-modal-bg{display:none;position:fixed;inset:0;background:rgba(10,25,15,.65);z-index:9995;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px)}
 .aria-modal-bg.open{display:flex}
@@ -667,10 +679,9 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 }
 
 /* Hide old today-cols 70/30 split (v2 uses unified row layout) */
-body.v2-active .today-cols{display:block !important}
+body.v2-active .today-cols{display:none !important}
 body.v2-active .today-col-side{display:none !important}
 body.v2-active #chatPanel{display:none !important}
-body.v2-active #morningBrief{margin-top:0}
 
 
 /* Section nav chips */
@@ -820,63 +831,33 @@ body.v2-active #morningBrief{margin-top:0}
 <div class="tab on" id="tab-today">
 
 <!-- ══ V2 UNIFIED LAYOUT — Today ════════════════════════════ -->
-<!-- Row 1: ARIA search/input — 100% -->
+<!-- Row 1: ARIA slim search bar — 100%, opens modal on focus/click -->
 <div class="row row-100">
-  <div class="aria-inline" id="ariaInlineToday">
-    <div class="aria-inline-hd">
-      <div class="aria-inline-hd-left">
-        <span class="aria-online-dot"></span>
-        <span class="aria-logo">😊</span>
-        <span class="aria-name">ARIA</span>
-        <span class="aria-badge">AI</span>
-      </div>
-      <button class="v2-icon-btn" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.7)" onclick="openAriaModal()" title="Plein écran" aria-label="Open Aria full">⛶</button>
+  <div class="aria-searchbar" onclick="openAriaModalFromSearch(this)">
+    <div class="aria-searchbar-left">
+      <span class="aria-online-dot"></span>
+      <span class="aria-logo">😊</span>
+      <span class="aria-name" style="color:#fff">ARIA</span>
+      <span class="aria-badge">AI</span>
     </div>
-    <div class="aria-inline-sub" data-fr="Collez un email, posez une question, ou dictez. ARIA s'occupe du reste." data-en="Paste an email, ask a question, or dictate. ARIA handles the rest.">Collez un email, posez une question, ou dictez. ARIA s'occupe du reste.</div>
-    <div class="aria-inline-body">
-      <textarea class="aria-inline-input" id="ariaInlineInput" rows="2" placeholder="Tapez ou collez ici..."
-        onfocus="onAriaInlineFocus()" oninput="onAriaInlineInput(this)"></textarea>
-      <div class="aria-inline-actions">
-        <button class="aria-quick-btn" onclick="ariaQuickAction('brief')" title="Brief staff">📋 Brief staff</button>
-        <button class="aria-quick-btn" onclick="ariaQuickAction('arrivals')" title="Arrivées">🛬 Arrivées</button>
-        <button class="aria-quick-btn" onclick="ariaQuickAction('relance')" title="Relance">✉️ Relance</button>
-        <button class="aria-send-btn" id="ariaInlineSendBtn" onclick="sendAriaInline()" disabled>Envoyer ↑</button>
-      </div>
-    </div>
+    <input class="aria-searchbar-input" type="text"
+      placeholder="Tapez ou collez ici — email, question, commande..."
+      data-placeholder-fr="Tapez ou collez ici — email, question, commande..."
+      data-placeholder-en="Type or paste here — email, question, command..."
+      onfocus="openAriaModalFromSearch(this)"
+      onclick="event.stopPropagation();openAriaModalFromSearch(this)">
+    <button class="aria-searchbar-go" onclick="event.stopPropagation();openAriaModalFromSearch(this.previousElementSibling)" aria-label="Open ARIA">↑</button>
   </div>
 </div>
 
-<!-- Row 2: Inbox — 100%, collapsible, unread badge in title -->
-<div class="row row-100">
-  <div class="inbox-row" id="inboxRowToday">
-    <div class="inbox-row-hd" onclick="toggleInboxRow('inboxRowToday', event)">
-      <div class="inbox-row-hd-left">
-        <span>📬</span>
-        <span data-fr="INBOX" data-en="INBOX">INBOX</span>
-        <span class="inbox-unread-badge" id="inboxUnreadBadgeToday">0</span>
-      </div>
-      <div class="inbox-actions" onclick="event.stopPropagation()">
-        <button class="inbox-refresh-btn" id="inboxRefreshBtnToday" onclick="refreshInboxRow(this)" title="Rafraîchir" aria-label="Refresh inbox">↻</button>
-        <button class="inbox-settings-btn" onclick="openInboxSettings()" title="Réglages inbox" aria-label="Inbox settings">⚙</button>
-        <span class="inbox-chevron" style="color:rgba(255,255,255,.6);font-size:12px;margin-left:4px">▾</span>
-      </div>
-    </div>
-    <div class="inbox-row-body">
-      <div id="inboxRowListToday" style="font-size:13px;color:var(--muted)">
-        <div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Aucun message — collez un email dans ARIA ↑" data-en="No messages — paste an email in ARIA ↑">Aucun message — collez un email dans ARIA ↑</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Row 3: Hero 50/50 — Action Board + Smart Alerts -->
+<!-- Row 2: Morning brief 50% + Smart alerts 50% -->
 <div class="row row-50">
-  <div class="v2-card" id="heroActionBoardToday">
+  <div class="v2-card" id="card50MorningBrief">
     <div class="v2-card-hd">
-      <div class="v2-card-title">⚡ <span data-fr="Actions" data-en="Actions">Actions</span></div>
-      <span style="font-size:11px;color:var(--muted)" id="heroActionsCount">—</span>
+      <div class="v2-card-title">☀ <span data-fr="Brief du jour" data-en="Morning brief">Brief du jour</span></div>
+      <button class="v2-icon-btn" onclick="loadMorningBrief(true)" title="Refresh" aria-label="Refresh brief">↻</button>
     </div>
-    <div class="v2-card-body" id="heroActionsBody">
+    <div class="v2-card-body" id="card50MorningBriefBody">
       <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
     </div>
   </div>
@@ -891,17 +872,42 @@ body.v2-active #morningBrief{margin-top:0}
   </div>
 </div>
 
-<!-- Row 4: Smaller 1/3 + 1/3 + 1/3 — Morning brief / Current guest / Villa snapshot -->
-<div class="row row-33">
-  <div class="v2-card" id="card33MorningBrief">
-    <div class="v2-card-hd">
-      <div class="v2-card-title">☀ <span data-fr="Brief du jour" data-en="Morning brief">Brief du jour</span></div>
-      <button class="v2-icon-btn" onclick="loadMorningBrief(true)" title="Refresh" aria-label="Refresh brief">↻</button>
+<!-- Row 3: Inbox 50% + Actions 50% -->
+<div class="row row-50">
+  <div class="v2-card" id="inboxCardToday" style="padding:0;overflow:hidden">
+    <div class="inbox-row" id="inboxRowToday" style="box-shadow:none;border:none;border-radius:0;height:100%;display:flex;flex-direction:column">
+      <div class="inbox-row-hd" onclick="toggleInboxRow('inboxRowToday', event)">
+        <div class="inbox-row-hd-left">
+          <span>📬</span>
+          <span>INBOX</span>
+          <span class="inbox-unread-badge" id="inboxUnreadBadgeToday">0</span>
+        </div>
+        <div class="inbox-actions" onclick="event.stopPropagation()">
+          <button class="inbox-refresh-btn" id="inboxRefreshBtnToday" onclick="refreshInboxRow(this)" title="Rafraîchir" aria-label="Refresh inbox">↻</button>
+          <button class="inbox-settings-btn" onclick="openInboxSettings()" title="Réglages inbox" aria-label="Inbox settings">⚙</button>
+          <span class="inbox-chevron" style="color:rgba(255,255,255,.6);font-size:12px;margin-left:4px">▾</span>
+        </div>
+      </div>
+      <div class="inbox-row-body" style="flex:1">
+        <div id="inboxRowListToday" style="font-size:13px;color:var(--muted)">
+          <div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Aucun message — collez un email dans ARIA ↑" data-en="No messages — paste an email in ARIA ↑">Aucun message — collez un email dans ARIA ↑</div>
+        </div>
+      </div>
     </div>
-    <div class="v2-card-body" id="card33MorningBriefBody">
+  </div>
+  <div class="v2-card" id="heroActionBoardToday">
+    <div class="v2-card-hd">
+      <div class="v2-card-title">⚡ <span data-fr="Actions" data-en="Actions">Actions</span></div>
+      <span style="font-size:11px;color:var(--muted)" id="heroActionsCount">—</span>
+    </div>
+    <div class="v2-card-body" id="heroActionsBody">
       <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
     </div>
   </div>
+</div>
+
+<!-- Row 4: 1/3 × 3 — Current guest · Villa snap · Pipeline -->
+<div class="row row-33">
   <div class="v2-card" id="card33CurrentGuest">
     <div class="v2-card-hd">
       <div class="v2-card-title">👤 <span data-fr="Client en cours" data-en="Current guest">Client en cours</span></div>
@@ -916,6 +922,14 @@ body.v2-active #morningBrief{margin-top:0}
     </div>
     <div class="v2-card-body" id="card33VillaBody">
       <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
+    </div>
+  </div>
+  <div class="v2-card" id="card33Pipeline">
+    <div class="v2-card-hd">
+      <div class="v2-card-title">📈 <span data-fr="Pipeline" data-en="Pipeline">Pipeline</span></div>
+    </div>
+    <div class="v2-card-body" id="card33PipelineBody">
+      <div style="color:var(--muted);font-style:italic" data-fr="Aucune demande en attente" data-en="No pending inquiries">Aucune demande en attente</div>
     </div>
   </div>
 </div>
@@ -1013,50 +1027,26 @@ body.v2-active #morningBrief{margin-top:0}
 <div class="tab" id="tab-clients">
 
 <!-- ══ V2 UNIFIED LAYOUT — Guests ════════════════════════════ -->
-<!-- Row 1: ARIA -->
+<!-- Row 1: ARIA slim search bar -->
 <div class="row row-100">
-  <div class="aria-inline">
-    <div class="aria-inline-hd">
-      <div class="aria-inline-hd-left">
-        <span class="aria-online-dot"></span>
-        <span class="aria-logo">😊</span>
-        <span class="aria-name">ARIA</span>
-        <span class="aria-badge">AI</span>
-      </div>
-      <button class="v2-icon-btn" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.7)" onclick="openAriaModal()" title="Plein écran" aria-label="Open Aria full">⛶</button>
+  <div class="aria-searchbar" onclick="openAriaModalFromSearch(this)">
+    <div class="aria-searchbar-left">
+      <span class="aria-online-dot"></span>
+      <span class="aria-logo">😊</span>
+      <span class="aria-name" style="color:#fff">ARIA</span>
+      <span class="aria-badge">AI</span>
     </div>
-    <div class="aria-inline-sub" data-fr="Recherche, relance, ou collez un message" data-en="Search, follow-up, or paste a message">Recherche, relance, ou collez un message</div>
-    <div class="aria-inline-body">
-      <textarea class="aria-inline-input" rows="2" placeholder="Tapez ou collez ici..."
-        onfocus="onAriaInlineFocus()" oninput="onAriaInlineInput(this)"></textarea>
-    </div>
+    <input class="aria-searchbar-input" type="text"
+      placeholder="Recherche, relance, ou collez un message"
+      data-placeholder-fr="Recherche, relance, ou collez un message"
+      data-placeholder-en="Search, follow-up, or paste a message"
+      onfocus="openAriaModalFromSearch(this)"
+      onclick="event.stopPropagation();openAriaModalFromSearch(this)">
+    <button class="aria-searchbar-go" onclick="event.stopPropagation();openAriaModalFromSearch(this.previousElementSibling)" aria-label="Open ARIA">↑</button>
   </div>
 </div>
 
-<!-- Row 2: Inbox -->
-<div class="row row-100">
-  <div class="inbox-row" id="inboxRowGuests">
-    <div class="inbox-row-hd" onclick="toggleInboxRow('inboxRowGuests', event)">
-      <div class="inbox-row-hd-left">
-        <span>📬</span>
-        <span>INBOX</span>
-        <span class="inbox-unread-badge" id="inboxUnreadBadgeGuests">0</span>
-      </div>
-      <div class="inbox-actions" onclick="event.stopPropagation()">
-        <button class="inbox-refresh-btn" onclick="refreshInboxRow(this)" title="Rafraîchir" aria-label="Refresh inbox">↻</button>
-        <button class="inbox-settings-btn" onclick="openInboxSettings()" title="Réglages inbox" aria-label="Inbox settings">⚙</button>
-        <span class="inbox-chevron" style="color:rgba(255,255,255,.6);font-size:12px;margin-left:4px">▾</span>
-      </div>
-    </div>
-    <div class="inbox-row-body">
-      <div id="inboxRowListGuests" style="font-size:13px;color:var(--muted)">
-        <div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Aucun message" data-en="No messages">Aucun message</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Row 3: Hero 50/50 — Current guest + Upcoming arrivals -->
+<!-- Row 2: Current guest 50% + Upcoming arrivals 50% -->
 <div class="row row-50">
   <div class="v2-card">
     <div class="v2-card-hd">
@@ -1076,15 +1066,45 @@ body.v2-active #morningBrief{margin-top:0}
   </div>
 </div>
 
-  <div class="crm-header">
-    <div class="crm-stats">
-      <div class="crm-stat"><label data-fr="CLIENTS" data-en="GUESTS">CLIENTS</label><span id="crmCount">0</span></div>
-      <div class="crm-stat"><label data-fr="NET TOTAL" data-en="TOTAL NET">NET TOTAL</label><span id="crmNet">0€</span></div>
-      <div class="crm-stat"><label data-fr="MOY/NUIT" data-en="AVG/NIGHT">MOY/NUIT</label><span id="crmAvg">—</span></div>
+<!-- Row 3: Inbox 50% + Stats 50% -->
+<div class="row row-50">
+  <div class="v2-card" style="padding:0;overflow:hidden">
+    <div class="inbox-row" id="inboxRowGuests" style="box-shadow:none;border:none;border-radius:0;height:100%;display:flex;flex-direction:column">
+      <div class="inbox-row-hd" onclick="toggleInboxRow('inboxRowGuests', event)">
+        <div class="inbox-row-hd-left">
+          <span>📬</span>
+          <span>INBOX</span>
+          <span class="inbox-unread-badge" id="inboxUnreadBadgeGuests">0</span>
+        </div>
+        <div class="inbox-actions" onclick="event.stopPropagation()">
+          <button class="inbox-refresh-btn" onclick="refreshInboxRow(this)" title="Rafraîchir" aria-label="Refresh inbox">↻</button>
+          <button class="inbox-settings-btn" onclick="openInboxSettings()" title="Réglages inbox" aria-label="Inbox settings">⚙</button>
+          <span class="inbox-chevron" style="color:rgba(255,255,255,.6);font-size:12px;margin-left:4px">▾</span>
+        </div>
+      </div>
+      <div class="inbox-row-body" style="flex:1">
+        <div id="inboxRowListGuests" style="font-size:13px;color:var(--muted)">
+          <div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Aucun message" data-en="No messages">Aucun message</div>
+        </div>
+      </div>
     </div>
-    <button class="btn-new-chip" onclick="openForm()">+ <span data-fr="Nouveau" data-en="New">Nouveau</span></button>
   </div>
+  <div class="v2-card">
+    <div class="v2-card-hd">
+      <div class="v2-card-title">📊 <span data-fr="Stats clients" data-en="Guest stats">Stats clients</span></div>
+      <button class="v2-icon-btn" onclick="openForm()" title="Nouveau" aria-label="New guest">+</button>
+    </div>
+    <div class="v2-card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div style="text-align:center"><div style="font-family:'Fraunces',serif;font-size:22px;font-weight:500;color:var(--ink)" id="crmCount">0</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted)" data-fr="CLIENTS" data-en="GUESTS">CLIENTS</div></div>
+        <div style="text-align:center"><div style="font-family:'Fraunces',serif;font-size:22px;font-weight:500;color:var(--gold)" id="crmNet">0€</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted)" data-fr="NET TOTAL" data-en="TOTAL NET">NET TOTAL</div></div>
+        <div style="text-align:center"><div style="font-family:'Fraunces',serif;font-size:22px;font-weight:500;color:var(--ink)" id="crmAvg">—</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted)" data-fr="MOY/NUIT" data-en="AVG/NIGHT">MOY/NUIT</div></div>
+      </div>
+    </div>
+  </div>
+</div>
 
+  <!-- Search + filters (kept inline, not in v2-card) -->
   <input class="crm-search" id="crmSearch" oninput="renderClients()" placeholder="🔍 Rechercher..." data-placeholder-fr="🔍 Rechercher..." data-placeholder-en="🔍 Search...">
 
   <div class="crm-filters">
@@ -1104,50 +1124,26 @@ body.v2-active #morningBrief{margin-top:0}
 <div class="tab" id="tab-home">
 
 <!-- ══ V2 UNIFIED LAYOUT — Villa ════════════════════════════ -->
-<!-- Row 1: ARIA -->
+<!-- Row 1: ARIA slim search bar -->
 <div class="row row-100">
-  <div class="aria-inline">
-    <div class="aria-inline-hd">
-      <div class="aria-inline-hd-left">
-        <span class="aria-online-dot"></span>
-        <span class="aria-logo">😊</span>
-        <span class="aria-name">ARIA</span>
-        <span class="aria-badge">AI</span>
-      </div>
-      <button class="v2-icon-btn" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.7)" onclick="openAriaModal()" title="Plein écran" aria-label="Open Aria full">⛶</button>
+  <div class="aria-searchbar" onclick="openAriaModalFromSearch(this)">
+    <div class="aria-searchbar-left">
+      <span class="aria-online-dot"></span>
+      <span class="aria-logo">😊</span>
+      <span class="aria-name" style="color:#fff">ARIA</span>
+      <span class="aria-badge">AI</span>
     </div>
-    <div class="aria-inline-sub" data-fr="Demandez un prix, une analyse, ou collez un message" data-en="Ask for a price, an analysis, or paste a message">Demandez un prix, une analyse, ou collez un message</div>
-    <div class="aria-inline-body">
-      <textarea class="aria-inline-input" rows="2" placeholder="Tapez ou collez ici..."
-        onfocus="onAriaInlineFocus()" oninput="onAriaInlineInput(this)"></textarea>
-    </div>
+    <input class="aria-searchbar-input" type="text"
+      placeholder="Demandez un prix, une analyse, ou collez un message"
+      data-placeholder-fr="Demandez un prix, une analyse, ou collez un message"
+      data-placeholder-en="Ask for a price, analysis, or paste a message"
+      onfocus="openAriaModalFromSearch(this)"
+      onclick="event.stopPropagation();openAriaModalFromSearch(this)">
+    <button class="aria-searchbar-go" onclick="event.stopPropagation();openAriaModalFromSearch(this.previousElementSibling)" aria-label="Open ARIA">↑</button>
   </div>
 </div>
 
-<!-- Row 2: Inbox -->
-<div class="row row-100">
-  <div class="inbox-row" id="inboxRowVilla">
-    <div class="inbox-row-hd" onclick="toggleInboxRow('inboxRowVilla', event)">
-      <div class="inbox-row-hd-left">
-        <span>📬</span>
-        <span>INBOX</span>
-        <span class="inbox-unread-badge" id="inboxUnreadBadgeVilla">0</span>
-      </div>
-      <div class="inbox-actions" onclick="event.stopPropagation()">
-        <button class="inbox-refresh-btn" onclick="refreshInboxRow(this)" title="Rafraîchir" aria-label="Refresh inbox">↻</button>
-        <button class="inbox-settings-btn" onclick="openInboxSettings()" title="Réglages inbox" aria-label="Inbox settings">⚙</button>
-        <span class="inbox-chevron" style="color:rgba(255,255,255,.6);font-size:12px;margin-left:4px">▾</span>
-      </div>
-    </div>
-    <div class="inbox-row-body">
-      <div id="inboxRowListVilla" style="font-size:13px;color:var(--muted)">
-        <div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Aucun message" data-en="No messages">Aucun message</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Row 3: Hero 50/50 — Tonight stats + Smart Alerts -->
+<!-- Row 2: Tonight price 50% + Smart Alerts 50% -->
 <div class="row row-50">
   <div class="v2-card">
     <div class="v2-card-hd">
@@ -1169,17 +1165,53 @@ body.v2-active #morningBrief{margin-top:0}
   </div>
 </div>
 
-  <!-- MARKET PRICE BAND -->
-  <div class="hm-band" id="marketPriceBand">
+<!-- Row 3: Inbox 50% + Market band 50% -->
+<div class="row row-50">
+  <div class="v2-card" style="padding:0;overflow:hidden">
+    <div class="inbox-row" id="inboxRowVilla" style="box-shadow:none;border:none;border-radius:0;height:100%;display:flex;flex-direction:column">
+      <div class="inbox-row-hd" onclick="toggleInboxRow('inboxRowVilla', event)">
+        <div class="inbox-row-hd-left">
+          <span>📬</span>
+          <span>INBOX</span>
+          <span class="inbox-unread-badge" id="inboxUnreadBadgeVilla">0</span>
+        </div>
+        <div class="inbox-actions" onclick="event.stopPropagation()">
+          <button class="inbox-refresh-btn" onclick="refreshInboxRow(this)" title="Rafraîchir" aria-label="Refresh inbox">↻</button>
+          <button class="inbox-settings-btn" onclick="openInboxSettings()" title="Réglages inbox" aria-label="Inbox settings">⚙</button>
+          <span class="inbox-chevron" style="color:rgba(255,255,255,.6);font-size:12px;margin-left:4px">▾</span>
+        </div>
+      </div>
+      <div class="inbox-row-body" style="flex:1">
+        <div id="inboxRowListVilla" style="font-size:13px;color:var(--muted)">
+          <div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Aucun message" data-en="No messages">Aucun message</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="v2-card">
+    <div class="v2-card-hd">
+      <div class="v2-card-title">📊 <span data-fr="Marché" data-en="Market">Marché</span></div>
+      <button class="v2-icon-btn" onclick="renderMarketBand()" title="Refresh" aria-label="Refresh market">↻</button>
+    </div>
+    <div class="v2-card-body" id="heroVillaMarketBody">
+      <div id="marketBandContent" style="display:flex;gap:6px;flex-wrap:wrap;font-size:12px">
+        <span style="color:var(--muted);font-style:italic" data-fr="Ajoutez des concurrents ↓" data-en="Add competitors below ↓">Ajoutez des concurrents ↓</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <!-- MARKET PRICE BAND (legacy — hidden, data flows to v2 via marketBandContent) -->
+  <div class="hm-band" id="marketPriceBand" style="display:none">
     <div style="font-size:9px;letter-spacing:3px;color:rgba(253,246,236,.35);flex-shrink:0" data-fr="MARCHÉ" data-en="MARKET">MARCHÉ</div>
-    <div id="marketBandContent" style="display:flex;gap:8px;flex-wrap:wrap;flex:1;align-items:center">
+    <div id="marketBandContent_legacy" style="display:flex;gap:8px;flex-wrap:wrap;flex:1;align-items:center">
       <span style="font-size:11px;color:rgba(253,246,236,.3);font-style:italic">Ajoutez des concurrents → les prix s'affichent ici</span>
     </div>
     <button class="hm-refresh" onclick="renderMarketBand()">↻</button>
   </div>
 
-  <!-- ALERTS — full width top -->
-  <div class="hm-card" style="margin-bottom:12px">
+  <!-- ALERTS — legacy block, hidden (data flows to v2 card via #alertsContent) -->
+  <div class="hm-card" style="margin-bottom:12px;display:none">
     <div class="hm-hdr">
       <div class="hm-hdr-lbl" data-fr="💡 ALERTES INTELLIGENTES" data-en="💡 SMART ALERTS">💡 ALERTES INTELLIGENTES</div>
       <button class="hm-refresh" onclick="loadHomeData()" aria-label="Refresh data">↻</button>
@@ -7890,6 +7922,11 @@ function renderBriefCards(el, cards) {
   }).join('') + 
     '<button id="briefChecklistBtn" onclick="generateStaffChecklist()" style="width:100%;margin-top:10px;background:none;border:1.5px solid #E8E2D8;border-radius:10px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;color:#8A8070;font-family:DM Sans,sans-serif">' +
   (lang==='fr' ? '📋 Générer checklist staff' : '📋 Generate staff checklist') + '</button>';
+  // v2: mirror to 50/50 morning brief card
+  try {
+    var v2Brief = document.getElementById('card50MorningBriefBody');
+    if (v2Brief) v2Brief.innerHTML = el.innerHTML;
+  } catch(e){}
 }
 
 function generateStaffChecklist() {
@@ -8499,6 +8536,23 @@ function openAriaModal(prefill) {
   }
   // Clear any inline input so it doesn't double-fire on send
 }
+
+// Open modal from any slim search bar — migrates typed text and clears the bar
+function openAriaModalFromSearch(el) {
+  var inputEl = el;
+  if (el && el.classList && el.classList.contains('aria-searchbar')) {
+    inputEl = el.querySelector('.aria-searchbar-input');
+  }
+  if (el && el.tagName === 'BUTTON') {
+    inputEl = el.parentElement.querySelector('.aria-searchbar-input');
+  }
+  var text = (inputEl && inputEl.value) ? inputEl.value : '';
+  // Mirror typed text into ALL search bars so they appear consistent (then clear after open)
+  if (inputEl) inputEl.value = '';
+  // Clear all other search bars too
+  document.querySelectorAll('.aria-searchbar-input').forEach(function(x){ if (x !== inputEl) x.value = ''; });
+  openAriaModal(text);
+}
 function closeAriaModal() {
   var modal = document.getElementById('ariaModal');
   if (modal) modal.classList.remove('open');
@@ -8614,24 +8668,39 @@ function populateInboxRow(rowId) {
   if (!listId) return;
   var list = document.getElementById(listId);
   if (!list) return;
-  // Mirror the existing inbox loader if it exists
-  if (typeof loadInboxEmails === 'function') {
-    // Hijack the existing list temporarily
-    var origList = document.getElementById('inboxList');
-    var tmp = document.createElement('div');
-    tmp.id = 'inboxList';
-    if (origList) origList.id = 'inboxList_legacy_hidden';
-    document.body.appendChild(tmp); // give it a home so the loader can populate
-    list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted)">⏳ <span data-fr="Chargement..." data-en="Loading...">Chargement...</span></div>';
-    Promise.resolve(loadInboxEmails()).then(function(){
-      list.innerHTML = tmp.innerHTML || '<div style="text-align:center;padding:14px;color:var(--muted);font-style:italic">Aucun message</div>';
-      tmp.remove();
-      if (origList) origList.id = 'inboxList';
-    }).catch(function(){
-      tmp.remove();
-      if (origList) origList.id = 'inboxList';
+
+  list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted)">⏳ <span data-fr="Chargement..." data-en="Loading...">Chargement...</span></div>';
+
+  // Trigger the existing loader to populate window._inboxEmails
+  var loadPromise = (typeof loadInboxEmails === 'function') ? Promise.resolve(loadInboxEmails()) : Promise.resolve();
+  loadPromise.then(function() {
+    var emails = window._inboxEmails ? Object.values(window._inboxEmails) : [];
+    if (!emails.length) {
+      list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Aucun message" data-en="No messages">Aucun message</div>';
+      return;
+    }
+    // Sort by received_at desc
+    emails.sort(function(a,b){
+      var da = new Date(a.received_at || 0), db = new Date(b.received_at || 0);
+      return db - da;
     });
-  }
+    list.innerHTML = emails.slice(0, 20).map(function(row){
+      var subj = (row.subject || '(no subject)').replace(/[<>]/g,'');
+      var from = (row.from_name || row.from_email || '').replace(/[<>]/g,'');
+      var when = '';
+      try {
+        var d = new Date(row.received_at);
+        when = (d.getDate()+'/'+(d.getMonth()+1)) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      } catch(e){}
+      return '<div class="inbox-card '+(row.status==='new'?'new':'')+'" data-email-id="'+row.id+'" onclick="(function(){var r=window._inboxEmails[\''+row.id+'\'];if(r&&typeof openInboxEmail===\'function\')openInboxEmail(r);})()">' +
+             '<div class="ic-subject">'+subj+'</div>' +
+             '<div class="ic-meta">'+from+' · '+when+'</div>' +
+             '</div>';
+    }).join('');
+  }).catch(function(e){
+    console.warn('inbox row load:', e);
+    list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Erreur de chargement" data-en="Load error">Erreur de chargement</div>';
+  });
 }
 function refreshInboxRow(btn) {
   if (btn) btn.classList.add('spin');
@@ -8861,8 +8930,8 @@ function v2RenderHero() {
     if (alertsBodyVilla) alertsBodyVilla.innerHTML = alertsSrc.innerHTML;
   }
 
-  // Today: morning brief mirror
-  var briefBody = document.getElementById('card33MorningBriefBody');
+  // Today: morning brief mirror (now in 50/50 row)
+  var briefBody = document.getElementById('card50MorningBriefBody');
   var briefSrc = document.getElementById('briefCards');
   if (briefBody && briefSrc) {
     briefBody.innerHTML = briefSrc.children.length > 0 && !briefSrc.querySelector('.brief-skeleton')
@@ -8882,6 +8951,22 @@ function v2RenderHero() {
   // Villa hero tonight price
   var villaTonight = document.getElementById('heroVillaTonightPrice');
   if (villaTonight && heroPrice) villaTonight.textContent = heroPrice.textContent;
+
+  // Today: pipeline (pending inquiries / future bookings count)
+  var pipeBody = document.getElementById('card33PipelineBody');
+  if (pipeBody && Array.isArray(clients)) {
+    var pending = clients.filter(function(c){ return !c.arrival || (c.arrival && new Date(c.arrival) > today); });
+    var inquiries = clients.filter(function(c){ return !c.arrival; });
+    if (pending.length === 0) {
+      pipeBody.innerHTML = '<div style="color:var(--muted);font-style:italic" data-fr="Aucune demande en attente" data-en="No pending inquiries">Aucune demande en attente</div>';
+    } else {
+      var totalNet = pending.reduce(function(s,c){ return s + (parseFloat(c.net) || 0); }, 0);
+      pipeBody.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--muted)">Demandes</span><span style="font-family:\'Fraunces\',serif;font-size:18px;color:var(--ink)">'+ inquiries.length +'</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--muted)">À venir</span><span style="font-family:\'Fraunces\',serif;font-size:18px;color:var(--ink)">'+ (pending.length - inquiries.length) +'</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:11px;color:var(--muted)">Net potentiel</span><span style="font-family:\'Fraunces\',serif;font-size:16px;color:var(--gold);font-weight:500">'+ Math.round(totalNet) +'€</span></div>';
+    }
+  }
 }
 
 // Re-render v2 hero whenever clients change
