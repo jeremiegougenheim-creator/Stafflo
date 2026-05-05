@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -57,10 +58,10 @@ nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,
 .nav-badge{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;animation:pulse 1.5s infinite}
 
 /* ── MAIN ── */
-/* TODAY 35/65 */
+/* TODAY 65/35 */
 .today-col-side{margin-top:8px;position:relative;z-index:1}
 @media(min-width:1024px){
-  .today-cols{display:grid;grid-template-columns:35% 65%;gap:20px;align-items:start}
+  .today-cols{display:grid;grid-template-columns:65% 35%;gap:20px;align-items:start}
   .today-col-main{min-width:0}
   .today-col-side{margin-top:0;position:sticky;top:72px;z-index:1}
 }
@@ -547,6 +548,29 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .inbox-card .ic-subject{font-weight:600;color:var(--ink);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inbox-card .ic-meta{color:var(--muted);font-size:11px}
 
+/* ── INLINE INBOX FEED ── */
+.inbox-feed{background:var(--card);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;border:1px solid var(--border);margin-top:12px}
+.inbox-feed-header{background:var(--green3);padding:10px 16px;display:flex;align-items:center;justify-content:space-between}
+.inbox-feed-title{font-family:'Fraunces',serif;font-size:14px;font-weight:400;color:#fff;display:flex;align-items:center;gap:8px}
+.inbox-feed-count{background:var(--red);color:#fff;border-radius:8px;font-size:9px;font-weight:700;padding:1px 6px;font-family:'DM Sans',sans-serif;display:none}
+.inbox-feed-count.show{display:inline-block}
+.inbox-feed-btn{background:none;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);border-radius:6px;padding:3px 10px;font-size:10px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s}
+.inbox-feed-btn:hover{background:rgba(255,255,255,.1);color:#fff}
+.inbox-feed-body{padding:6px 10px}
+.feed-item{display:flex;gap:10px;align-items:flex-start;padding:8px;border-radius:10px;cursor:pointer;transition:background .15s;border-bottom:1px solid var(--border)}
+.feed-item:last-child{border-bottom:none}
+.feed-item:hover{background:var(--paper)}
+.feed-src{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.feed-src.whatsapp{background:#DCF8C6;color:#25D366}
+.feed-src.email{background:#E8EAF6;color:#5C6BC0}
+.feed-src.airbnb{background:#FFE0E6;color:#FF5A5F}
+.feed-src.booking{background:#D6EEFF;color:#003580}
+.feed-body{min-width:0;flex:1}
+.feed-from{font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.feed-preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.feed-date{font-size:10px;color:var(--muted);white-space:nowrap;flex-shrink:0;text-align:right}
+.feed-new{width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:4px}
+
 
 /* Section nav chips */
 .today-section-nav::-webkit-scrollbar { display: none; }
@@ -774,6 +798,17 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
     <button class="chat-send-btn" id="chatSendBtn" onclick="chatSend()" disabled>↑</button>
   </div>
 </div><!-- /chat-panel -->
+
+<!-- ══ INBOX FEED — 3 derniers messages ════════════════ -->
+<div class="inbox-feed" id="inboxFeed">
+  <div class="inbox-feed-header">
+    <div class="inbox-feed-title">📬 Inbox <span class="inbox-feed-count" id="feedCount">0</span></div>
+    <button class="inbox-feed-btn" onclick="showInbox()">Tout voir →</button>
+  </div>
+  <div class="inbox-feed-body" id="inboxFeedList">
+    <div style="color:var(--muted);font-size:11px;padding:10px 4px;text-align:center">Chargement…</div>
+  </div>
+</div>
 
 </div><!-- /today-col-side -->
 </div><!-- /today-cols -->
@@ -3426,7 +3461,97 @@ async function loadInboxCount() {
         badge.classList.remove('show');
       }
     }
+    // Also update feed count badge
+    var fc = document.getElementById('feedCount');
+    if (fc) {
+      if (count > 0) { fc.textContent = count; fc.classList.add('show'); }
+      else { fc.classList.remove('show'); }
+    }
   } catch(e) {}
+  // Load the visible feed
+  loadInboxFeed();
+}
+
+// ── INLINE INBOX FEED (3 derniers messages) ──
+async function loadInboxFeed() {
+  var el = document.getElementById('inboxFeedList');
+  if (!el) return;
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=3', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    var rows = await r.json();
+    if (!rows || !rows.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:12px 4px;text-align:center">' +
+        (lang==='fr' ? 'Aucun message reçu' : 'No messages yet') + '</div>';
+      return;
+    }
+    // Store for click
+    if (!window._inboxEmails) window._inboxEmails = {};
+    rows.forEach(function(row) { window._inboxEmails[row.id] = row; });
+
+    el.innerHTML = rows.map(function(row) {
+      var d = new Date(row.received_at);
+      var now = new Date();
+      var dateStr = '';
+      // Same day = time, otherwise dd/mm
+      if (d.toDateString() === now.toDateString()) {
+        dateStr = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+      } else {
+        dateStr = d.getDate() + '/' + (d.getMonth()+1) + '/' + String(d.getFullYear()).slice(2);
+      }
+
+      // Detect source
+      var from = (row.from_email || '').toLowerCase();
+      var subject = (row.subject || '').toLowerCase();
+      var body = (row.body || '').toLowerCase();
+      var srcClass = 'email';
+      var srcIcon = '✉️';
+      if (from.indexOf('airbnb') > -1 || subject.indexOf('airbnb') > -1) {
+        srcClass = 'airbnb'; srcIcon = '🅰️';
+      } else if (from.indexOf('booking') > -1 || subject.indexOf('booking') > -1) {
+        srcClass = 'booking'; srcIcon = '📘';
+      } else if (from.indexOf('whatsapp') > -1 || body.indexOf('whatsapp') > -1) {
+        srcClass = 'whatsapp'; srcIcon = '💬';
+      }
+
+      // Extract sender name
+      var ex = row.extracted || {};
+      var senderName = ex.name || (row.from_email || '—').replace(/<.*>/g,'').trim();
+      if (senderName.length > 25) senderName = senderName.slice(0,24) + '…';
+
+      // Preview = subject truncated
+      var preview = row.subject || 'Sans objet';
+      if (preview.length > 40) preview = preview.slice(0,39) + '…';
+
+      var isNew = row.status === 'new';
+
+      var html = '<div class="feed-item" data-feed-id="' + row.id + '">';
+      if (isNew) html += '<div class="feed-new"></div>';
+      html += '<div class="feed-src ' + srcClass + '">' + srcIcon + '</div>';
+      html += '<div class="feed-body">';
+      html += '<div class="feed-from">' + senderName + '</div>';
+      html += '<div class="feed-preview">' + preview + '</div>';
+      html += '</div>';
+      html += '<div class="feed-date">' + dateStr + '</div>';
+      html += '</div>';
+      return html;
+    }).join('');
+
+    // Click handlers
+    el.querySelectorAll('.feed-item').forEach(function(item) {
+      item.addEventListener('click', function() {
+        var id = item.getAttribute('data-feed-id');
+        var row = window._inboxEmails[id];
+        if (row) openInboxEmail(row);
+      });
+    });
+  } catch(e) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:10px 4px;text-align:center">' +
+      (lang==='fr' ? 'Connexion requise' : 'Connection required') + '</div>';
+  }
 }
 
 function showInbox() {
