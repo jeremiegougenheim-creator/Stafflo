@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1459,6 +1460,16 @@ body.v2-active #chatPanel{display:none !important}
     <div class="field"><label>GPS</label><input id="cfgGps" placeholder="31.6295, -7.9811"></div>
   </div>
 
+  <div class="settings-section">
+    <div class="settings-title" data-fr="CONNEXION EMAIL" data-en="EMAIL CONNECTION">CONNEXION EMAIL</div>
+    <div class="field"><label>Google OAuth Client ID</label><input id="cfgGoogleClientId" placeholder="xxxxx.apps.googleusercontent.com" value="143101936715-uj14sgt7vf4mva19g9iq6i92balcj0l5.apps.googleusercontent.com"></div>
+    <div id="settingsEmailStatus" style="font-size:12px;color:var(--muted);margin-bottom:10px;padding:10px;background:var(--paper);border-radius:8px;border:1px solid var(--border)">
+      <div data-fr="Aucun email connecté" data-en="No email connected">Aucun email connecté</div>
+    </div>
+    <button onclick="showEmailConnectModal()" class="btn-save" style="background:var(--green3)" data-fr="📧 Gérer la connexion" data-en="📧 Manage connection">📧 Gérer la connexion</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5" data-fr="Gmail OAuth, Yahoo, IMAP custom, ou transfert auto." data-en="Gmail OAuth, Yahoo, custom IMAP, or auto-forward.">Gmail OAuth, Yahoo, IMAP custom, ou transfert auto.</div>
+  </div>
+
 
   <div class="settings-section">
     <div class="settings-title">SUPABASE</div>
@@ -1721,6 +1732,22 @@ function getSessionKeyFromUrl() {
 }
 
 function setCfg(c) { localStorage.setItem('stafflo_cfg', JSON.stringify(c)); }
+
+// ── OAuth popup callback (runs immediately if this load IS the callback) ──
+(function handleOAuthCallback(){
+  try {
+    var params = new URLSearchParams(location.search);
+    if (params.get('oauth_callback') !== '1') return;
+    var hash = (location.hash||'').slice(1);
+    var hp = new URLSearchParams(hash);
+    var token = hp.get('access_token');
+    if (token && window.opener && !window.opener.closed) {
+      try { window.opener.postMessage({ type: 'stafflo_oauth_token', access_token: token, expires_in: hp.get('expires_in'), state: hp.get('state') }, location.origin); } catch(e){}
+      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:DM Sans,sans-serif"><h2>✅ Connecté</h2><p>Cette fenêtre va se fermer...</p></div>';
+      setTimeout(function(){ window.close(); }, 800);
+    }
+  } catch(e){}
+})();
 
 // ════════════════════════════════════════════
 // SUPABASE
@@ -2922,6 +2949,7 @@ function loadSettingsUI() {
   set('cfgVilla', cfg.villa);   set('cfgOwner', cfg.owner);
   set('cfgCity',  cfg.city);    set('cfgStaff', cfg.staff);
   set('cfgWa',    cfg.wa);      set('cfgGps',   cfg.gps);
+  set('cfgGoogleClientId', cfg.googleClientId || '143101936715-uj14sgt7vf4mva19g9iq6i92balcj0l5.apps.googleusercontent.com');
   set('cfgSbUrl', cfg.sbUrl);   set('cfgSbKey', cfg.sbKey);
   set('cfgGeminiKey',   cfg.geminiKey);   set('cfgGroqKey',    cfg.groqKey);
   set('cfgMistralKey',  cfg.mistralKey);  set('cfgDeepseekKey',cfg.deepseekKey);
@@ -2929,6 +2957,21 @@ function loadSettingsUI() {
   set('cfgPerplexityKey',cfg.perplexityKey);
   var ps = document.getElementById('cfgPublicSessionKey'); if (ps) ps.value = cfg.publicSessionKey || '';
   var cm = document.getElementById('cfgClientMode'); if (cm) cm.value = cfg.clientMode || 'public';
+  // Email connection status
+  var es = document.getElementById('settingsEmailStatus');
+  if (es) {
+    var conn = cfg.email_connection;
+    var fr = lang === 'fr';
+    if (conn && conn.provider) {
+      es.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><span style="color:var(--green);font-size:14px">●</span><div style="flex:1"><div style="font-weight:600;color:var(--ink);font-size:13px">' + conn.provider + '</div><div style="font-size:11px;color:var(--muted)">' + (conn.email || '—') + '</div></div></div>';
+      es.style.background = 'rgba(45,159,82,.06)';
+      es.style.borderColor = 'rgba(45,159,82,.3)';
+    } else {
+      es.innerHTML = (fr?'Aucun email connecté':'No email connected');
+      es.style.background = 'var(--paper)';
+      es.style.borderColor = 'var(--border)';
+    }
+  }
 }
 
 async function saveSettings() {
@@ -2939,6 +2982,7 @@ async function saveSettings() {
     staff: document.getElementById('cfgStaff').value.trim(),
     wa: document.getElementById('cfgWa').value.trim(),
     gps: document.getElementById('cfgGps').value.trim(),
+    googleClientId: (document.getElementById('cfgGoogleClientId')?.value || '').trim(),
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
     sbKey: document.getElementById('cfgSbKey').value.trim(),
     geminiKey: document.getElementById('cfgGeminiKey').value.trim(),
@@ -5533,18 +5577,266 @@ var STAFFLO_INTEGRATIONS = {
 function showGmailSetup() {
   var integ = document.getElementById('integrationsModal');
   if (integ) integ.remove();
-  closeInbox();
-  setTimeout(function() {
-    var modal = document.getElementById('inboxModal');
-    if (modal) {
-      modal.style.display = 'flex';
-      document.body.style.overflow = 'hidden';
-      loadInboxEmails();
+  var existing = document.getElementById('emailConnectModal');
+  if (existing) existing.remove();
+  showEmailConnectModal();
+}
+
+// ── Email connection modal — OAuth Google + Yahoo + IMAP custom + Forward fallback ──
+function showEmailConnectModal() {
+  var fr = lang === 'fr';
+  var cfg = getCfg();
+  var conn = (cfg.email_connection || {});
+  var villaId = (cfg.villa || 'villa').toLowerCase().replace(/[^a-z0-9]/g, '');
+  var forwardAddr = 'inbound+' + villaId + '@stafflo.app';
+
+  var modal = document.createElement('div');
+  modal.id = 'emailConnectModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px)';
+  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+
+  var html = '<div style="background:var(--card);border-radius:20px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.5)" onclick="event.stopPropagation()">';
+  html += '<div style="background:var(--green3);padding:16px 22px;display:flex;align-items:center;justify-content:space-between;border-radius:20px 20px 0 0">';
+  html += '<div><div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">'+ (fr?'CONNEXION EMAIL':'EMAIL CONNECTION') +'</div>';
+  html += '<div style="font-family:Fraunces,serif;font-size:18px;color:#fff;font-weight:300">'+ (fr?'Recevoir vos emails Airbnb / Booking':'Receive your Airbnb / Booking emails') +'</div></div>';
+  html += '<button onclick="document.getElementById(\'emailConnectModal\').remove()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>';
+  html += '</div>';
+
+  html += '<div style="padding:18px 22px">';
+
+  // Current state
+  if (conn.provider) {
+    html += '<div style="background:rgba(45,159,82,.08);border:1px solid rgba(45,159,82,.3);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">';
+    html += '<span style="font-size:18px">✅</span>';
+    html += '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--green)">'+ (fr?'Connecté':'Connected') +'</div>';
+    html += '<div style="font-size:11px;color:var(--muted)">'+ (conn.provider||'—') + (conn.email ? ' · '+conn.email : '') +'</div></div>';
+    html += '<button onclick="disconnectEmail()" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit">'+ (fr?'Déconnecter':'Disconnect') +'</button>';
+    html += '</div>';
+  }
+
+  // Provider buttons
+  html += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:700;margin-bottom:10px">'+ (fr?'CHOISISSEZ UNE MÉTHODE':'CHOOSE A METHOD') +'</div>';
+
+  // Google OAuth
+  html += '<button onclick="connectEmailProvider(\'google\')" class="ec-provider-btn" style="width:100%;background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;display:flex;align-items:center;gap:14px;cursor:pointer;font-family:inherit;text-align:left;margin-bottom:8px;transition:all .15s">';
+  html += '<div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#4285F4,#EA4335);display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;font-weight:700">G</div>';
+  html += '<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--ink)">Gmail / Google Workspace</div>';
+  html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+ (fr?'Connexion sécurisée OAuth — recommandé':'Secure OAuth connection — recommended') +'</div></div>';
+  html += '<span style="font-size:18px;color:var(--muted)">→</span></button>';
+
+  // Yahoo OAuth
+  html += '<button onclick="connectEmailProvider(\'yahoo\')" class="ec-provider-btn" style="width:100%;background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;display:flex;align-items:center;gap:14px;cursor:pointer;font-family:inherit;text-align:left;margin-bottom:8px;transition:all .15s">';
+  html += '<div style="width:40px;height:40px;border-radius:10px;background:#6001D2;display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;font-weight:700">Y!</div>';
+  html += '<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--ink)">Yahoo Mail</div>';
+  html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+ (fr?'Connexion via OAuth Yahoo':'Yahoo OAuth connection') +'</div></div>';
+  html += '<span style="font-size:18px;color:var(--muted)">→</span></button>';
+
+  // Custom IMAP
+  html += '<button onclick="connectEmailProvider(\'imap\')" class="ec-provider-btn" style="width:100%;background:#fff;border:1.5px solid var(--border);border-radius:12px;padding:14px;display:flex;align-items:center;gap:14px;cursor:pointer;font-family:inherit;text-align:left;margin-bottom:8px;transition:all .15s">';
+  html += '<div style="width:40px;height:40px;border-radius:10px;background:var(--green3);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">🏢</div>';
+  html += '<div style="flex:1"><div style="font-size:14px;font-weight:600;color:var(--ink)">'+ (fr?'Email pro / IMAP':'Company / IMAP') +'</div>';
+  html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+ (fr?'Outlook, Office 365, hébergeur custom...':'Outlook, Office 365, custom host...') +'</div></div>';
+  html += '<span style="font-size:18px;color:var(--muted)">→</span></button>';
+
+  // Forward fallback
+  html += '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">';
+  html += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:700;margin-bottom:8px">'+ (fr?'OU TRANSFERT MANUEL':'OR MANUAL FORWARD') +'</div>';
+  html += '<div style="background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;color:var(--ink);line-height:1.6">';
+  html += '<div style="margin-bottom:6px">'+ (fr?'Configurez un transfert auto vers cette adresse :':'Set up auto-forwarding to this address:') +'</div>';
+  html += '<div style="display:flex;gap:6px;align-items:center">';
+  html += '<code style="flex:1;background:#fff;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:12px;color:var(--green3);overflow-x:auto;white-space:nowrap">'+ forwardAddr +'</code>';
+  html += '<button onclick="navigator.clipboard.writeText(\''+forwardAddr+'\');this.textContent=\'✓\';setTimeout(()=>{this.textContent=\'📋\'},1200)" style="background:var(--gold);color:var(--green3);border:none;border-radius:6px;width:34px;height:34px;cursor:pointer;font-size:14px;flex-shrink:0">📋</button>';
+  html += '</div></div></div>';
+
+  // Test button if connected
+  if (conn.provider) {
+    html += '<button onclick="testEmailConnection()" style="width:100%;margin-top:14px;background:var(--green);color:#fff;border:none;border-radius:10px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">'+ (fr?'🧪 Tester la connexion':'🧪 Test connection') +'</button>';
+  }
+
+  html += '</div></div>';
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+}
+
+async function connectEmailProvider(kind) {
+  var fr = lang === 'fr';
+  if (kind === 'google') {
+    var cfg = getCfg();
+    var clientId = cfg.googleClientId || cfg.google_client_id;
+    if (!clientId) {
+      alert(fr ? 'Client ID Google manquant. Allez dans Réglages → Google Cloud pour le configurer.' : 'Missing Google Client ID. Go to Settings → Google Cloud to configure.');
+      return;
     }
-    toast(lang==='fr'
-      ? '📧 Configurez le transfert auto vers votre adresse Stafflo'
-      : '📧 Set up auto-forwarding to your Stafflo address');
-  }, 200);
+    var redirectUri = location.origin + location.pathname + '?oauth_callback=1';
+    var scope = encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly email profile');
+    var oauthUrl = 'https://accounts.google.com/o/oauth2/v2/auth' +
+      '?client_id=' + encodeURIComponent(clientId) +
+      '&redirect_uri=' + encodeURIComponent(redirectUri) +
+      '&response_type=token' +
+      '&scope=' + scope +
+      '&prompt=consent' +
+      '&state=email_connect';
+    var popup = window.open(oauthUrl, 'stafflo_oauth', 'width=520,height=640');
+    if (!popup) { alert(fr?'Popup bloquée — autorisez les popups':'Popup blocked — allow popups'); return; }
+
+    // Listen for postMessage from callback page
+    var handler = async function(event) {
+      if (!event.data || event.data.type !== 'stafflo_oauth_token') return;
+      window.removeEventListener('message', handler);
+      var token = event.data.access_token;
+      try {
+        var pr = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: 'Bearer ' + token } });
+        var prof = await pr.json();
+        await saveEmailConnection({ provider: 'Google', email: prof.email, access_token: token, connected_at: new Date().toISOString() });
+        toast(fr ? '✅ Gmail connecté : ' + prof.email : '✅ Gmail connected: ' + prof.email);
+        var m = document.getElementById('emailConnectModal'); if (m) m.remove();
+        showEmailConnectModal();
+      } catch(e) {
+        toast(fr?'❌ Erreur OAuth':'❌ OAuth error');
+      }
+    };
+    window.addEventListener('message', handler);
+    setTimeout(function(){ window.removeEventListener('message', handler); }, 180000);
+  } else if (kind === 'yahoo') {
+    var cfg = getCfg();
+    var ycid = cfg.yahooClientId;
+    if (!ycid) {
+      alert(fr?'Yahoo Client ID manquant — Réglages → Email avancé':'Missing Yahoo Client ID — Settings → Advanced Email');
+      return;
+    }
+    var redirectUri = location.origin + location.pathname + '?oauth_callback=1';
+    var oauthUrl = 'https://api.login.yahoo.com/oauth2/request_auth' +
+      '?client_id=' + encodeURIComponent(ycid) +
+      '&redirect_uri=' + encodeURIComponent(redirectUri) +
+      '&response_type=token' +
+      '&scope=mail-r&state=email_connect_yahoo';
+    var popup = window.open(oauthUrl, 'stafflo_yahoo', 'width=520,height=640');
+    var handler = async function(event) {
+      if (!event.data || event.data.type !== 'stafflo_oauth_token') return;
+      window.removeEventListener('message', handler);
+      var token = event.data.access_token;
+      await saveEmailConnection({ provider: 'Yahoo', email: '(yahoo)', access_token: token, connected_at: new Date().toISOString() });
+      toast(fr?'✅ Yahoo connecté':'✅ Yahoo connected');
+      var m = document.getElementById('emailConnectModal'); if (m) m.remove();
+      showEmailConnectModal();
+    };
+    window.addEventListener('message', handler);
+  } else if (kind === 'imap') {
+    showImapForm();
+  }
+}
+
+function showImapForm() {
+  var fr = lang === 'fr';
+  var modal = document.getElementById('emailConnectModal');
+  if (!modal) return;
+  var inner = modal.querySelector('div');
+  if (!inner) return;
+  var existing = document.getElementById('imapForm');
+  if (existing) existing.remove();
+  var form = document.createElement('div');
+  form.id = 'imapForm';
+  form.style.cssText = 'padding:18px 22px;border-top:1px solid var(--border);background:var(--paper)';
+  form.innerHTML =
+    '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:700;margin-bottom:10px">'+ (fr?'CONFIGURATION IMAP':'IMAP CONFIG') +'</div>' +
+    '<div style="display:grid;gap:8px">' +
+      '<input id="imapEmail" type="email" placeholder="'+(fr?'Adresse email':'Email address')+'" style="border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:13px;outline:none">' +
+      '<input id="imapHost" type="text" placeholder="'+(fr?'Serveur IMAP (ex: imap.office365.com)':'IMAP host (e.g. imap.office365.com)')+'" style="border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:13px;outline:none">' +
+      '<div style="display:flex;gap:8px">' +
+        '<input id="imapPort" type="number" placeholder="993" value="993" style="width:100px;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:13px;outline:none">' +
+        '<input id="imapPass" type="password" placeholder="'+(fr?'Mot de passe app':'App password')+'" style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-family:inherit;font-size:13px;outline:none">' +
+      '</div>' +
+      '<button onclick="saveImapConnection()" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:4px">'+ (fr?'Connecter & tester':'Connect & test') +'</button>' +
+    '</div>';
+  inner.appendChild(form);
+  setTimeout(function(){ document.getElementById('imapEmail').focus(); }, 50);
+}
+
+async function saveImapConnection() {
+  var fr = lang === 'fr';
+  var email = document.getElementById('imapEmail').value.trim();
+  var host = document.getElementById('imapHost').value.trim();
+  var port = document.getElementById('imapPort').value.trim() || '993';
+  var pass = document.getElementById('imapPass').value;
+  if (!email || !host || !pass) { alert(fr?'Tous les champs sont requis':'All fields required'); return; }
+  await saveEmailConnection({ provider: 'IMAP', email: email, imap_host: host, imap_port: port, imap_pass_encrypted: btoa(pass), connected_at: new Date().toISOString() });
+  toast(fr ? '✅ IMAP enregistré pour ' + email : '✅ IMAP saved for ' + email);
+  var m = document.getElementById('emailConnectModal'); if (m) m.remove();
+  showEmailConnectModal();
+}
+
+async function saveEmailConnection(conn) {
+  // Save to localStorage
+  var cfg = getCfg();
+  cfg.email_connection = conn;
+  setCfg(cfg);
+  // Save to Supabase villa_settings (upsert by villa key)
+  try {
+    var key = cfg.sbKey || SB_ANON;
+    var villaKey = (cfg.villa || 'villa').toLowerCase().replace(/[^a-z0-9]/g, '');
+    await fetch(SB_URL + '/rest/v1/villa_settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: key,
+        Authorization: 'Bearer ' + key,
+        Prefer: 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify({
+        villa_key: villaKey,
+        email_connection: conn,
+        updated_at: new Date().toISOString()
+      })
+    });
+  } catch(e) { console.warn('villa_settings save:', e); }
+}
+
+async function disconnectEmail() {
+  var fr = lang === 'fr';
+  if (!confirm(fr?'Déconnecter cet email ?':'Disconnect this email?')) return;
+  var cfg = getCfg();
+  cfg.email_connection = null;
+  setCfg(cfg);
+  try {
+    var key = cfg.sbKey || SB_ANON;
+    var villaKey = (cfg.villa || 'villa').toLowerCase().replace(/[^a-z0-9]/g, '');
+    await fetch(SB_URL + '/rest/v1/villa_settings?villa_key=eq.' + villaKey, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' },
+      body: JSON.stringify({ email_connection: null, updated_at: new Date().toISOString() })
+    });
+  } catch(e){}
+  toast(fr?'Email déconnecté':'Email disconnected');
+  var m = document.getElementById('emailConnectModal'); if (m) m.remove();
+  showEmailConnectModal();
+}
+
+async function testEmailConnection() {
+  var fr = lang === 'fr';
+  var btn = event.currentTarget;
+  btn.disabled = true;
+  btn.textContent = fr ? '🧪 Test en cours...' : '🧪 Testing...';
+  // Test by fetching latest email_inbox row count
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?select=id&order=received_at.desc&limit=1', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    var rows = await r.json();
+    var conn = (cfg.email_connection || {});
+    if (rows && rows.length) {
+      btn.textContent = fr ? '✅ Connexion OK — emails reçus' : '✅ Connection OK — emails received';
+      btn.style.background = 'var(--green)';
+    } else {
+      btn.textContent = fr ? '⚠ Connexion OK mais aucun email encore' : '⚠ Connected but no emails yet';
+      btn.style.background = '#BA7517';
+    }
+  } catch(e) {
+    btn.textContent = fr ? '❌ Échec : ' + e.message : '❌ Failed: ' + e.message;
+    btn.style.background = 'var(--red)';
+  }
+  setTimeout(function(){ btn.disabled = false; btn.textContent = fr?'🧪 Tester la connexion':'🧪 Test connection'; btn.style.background='var(--green)'; }, 4000);
 }
 
 // ── Integrations settings panel ──
@@ -6146,25 +6438,275 @@ const WEATHER_KEY = ''; // Moved to Edge Function weather-proxy;
 const AVIATION_KEY = ''; // Moved to Edge Function flight-proxy;
 
 
-function updatePrice() {
-  // Auto-suggest season based on current month if user hasn't manually changed it
-  const autoSeason = () => {
-    const m = new Date().getMonth() + 1;
-    if ([12,1].includes(m)) return 1500;      // Peak — Noël/AN
-    if ([3,4].includes(m)) return 850;        // Haute — Pâques
-    if ([7,8].includes(m)) return 950;        // Très haute — été
-    if ([10,11].includes(m)) return 850;      // Haute — Festival/automne
-    if ([5,6].includes(m)) return 650;        // Basse — creux
-    return 750;                               // Normale — reste
-  };
-  const seasonEl = document.getElementById('season');
-  if (seasonEl && seasonEl.dataset.autoset !== 'manual') {
-    const suggested = autoSeason();
-    if (seasonEl.value != suggested) {
-      seasonEl.value = suggested;
-      seasonEl.dataset.autoset = 'auto';
+// ════════════════════════════════════════════════════════════════
+// AUTO-PRICING ENGINE
+// Auto-detects season/weekend/event from current date.
+// User can override any field manually; manual overrides are remembered
+// per-field via dataset.userset='1'. Resetting via "🔄 AUTO" toggle
+// clears all overrides and re-applies date-based logic.
+// ════════════════════════════════════════════════════════════════
+
+// Marrakech high-impact event windows (auto-trigger Événement +15%)
+// Format: [start_MMDD, end_MMDD, label_fr, label_en]
+const MK_EVENTS = [
+  ['1220','0105', 'Noël / Nouvel An',                'Christmas / NY'],
+  ['0125','0202', 'Marathon de Marrakech',           'Marrakech Marathon'],
+  ['0315','0410', 'Pâques / Printemps',              'Easter / Spring'],
+  ['0610','0625', 'Marrakech du Rire',               'Marrakech du Rire'],
+  ['1115','1205', 'Festival International du Film',  'Marrakech Film Festival']
+];
+
+function isInEventWindow(date) {
+  date = date || new Date();
+  const mm = String(date.getMonth()+1).padStart(2,'0');
+  const dd = String(date.getDate()).padStart(2,'0');
+  const today = mm + dd;
+  for (const ev of MK_EVENTS) {
+    const start = ev[0], end = ev[1];
+    if (start > end) {
+      // wraps year-end (e.g. 1220 → 0105)
+      if (today >= start || today <= end) return { label_fr: ev[2], label_en: ev[3] };
+    } else {
+      if (today >= start && today <= end) return { label_fr: ev[2], label_en: ev[3] };
     }
   }
+  return null;
+}
+
+function isWeekendNow(date) {
+  date = date || new Date();
+  const d = date.getDay(); // 0=Sun, 5=Fri, 6=Sat
+  return (d === 5 || d === 6);
+}
+
+function getAutoPricingMode() {
+  return localStorage.getItem('stafflo_auto_pricing') !== '0'; // ON by default
+}
+function setAutoPricingMode(on) {
+  localStorage.setItem('stafflo_auto_pricing', on ? '1' : '0');
+  if (on) {
+    // Clear all user overrides
+    var seasonEl = document.getElementById('season');
+    var eventBtn = document.getElementById('t-event');
+    var weekendBtn = document.getElementById('t-weekend');
+    if (seasonEl) seasonEl.dataset.autoset = '';
+    if (eventBtn) eventBtn.dataset.userset = '';
+    if (weekendBtn) weekendBtn.dataset.userset = '';
+  }
+  if (typeof updatePrice === 'function') updatePrice();
+  if (typeof renderAutoBadges === 'function') renderAutoBadges();
+  if (typeof toast === 'function') {
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    toast(on ? (fr?'🔄 Pricing auto activé':'🔄 Auto pricing on') : (fr?'🔓 Pricing manuel':'🔓 Manual pricing'));
+  }
+}
+window.setAutoPricingMode = setAutoPricingMode;
+
+// Apply date-based logic to the form (called from updatePrice)
+// Returns the date to use for auto-pricing context.
+// Priority: explicit input field > current guest arrival > next guest arrival > today
+function getAutoPricingDate() {
+  var input = document.getElementById('autoPricingDate');
+  if (input && input.value) {
+    var d = new Date(input.value);
+    if (!isNaN(d.getTime())) return d;
+  }
+  if (typeof clients !== 'undefined' && Array.isArray(clients)) {
+    var today = new Date(); today.setHours(0,0,0,0);
+    var current = clients.find(function(c){
+      if (!c.arrival || !c.departure) return false;
+      var a = new Date(c.arrival), dep = new Date(c.departure);
+      return a <= today && today < dep;
+    });
+    if (current) return new Date(current.arrival);
+    var upcoming = clients.filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
+      .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
+    if (upcoming[0]) return new Date(upcoming[0].arrival);
+  }
+  return new Date();
+}
+window.getAutoPricingDate = getAutoPricingDate;
+
+function applyAutoPricing() {
+  if (!getAutoPricingMode()) return null;
+  var ctxDate = getAutoPricingDate();
+  var seasonEl = document.getElementById('season');
+  var eventBtn = document.getElementById('t-event');
+  var weekendBtn = document.getElementById('t-weekend');
+
+  // 1. Season auto from month of target date
+  var suggestedSeason = 750;
+  var m = ctxDate.getMonth() + 1;
+  if (m === 12 || m === 1) suggestedSeason = 1500;        // Peak — Noël/AN
+  else if (m === 3 || m === 4) suggestedSeason = 850;     // Haute — Pâques
+  else if (m === 7 || m === 8) suggestedSeason = 950;     // Très haute — été
+  else if (m === 10 || m === 11) suggestedSeason = 850;   // Haute — Festival/automne
+  else if (m === 5 || m === 6) suggestedSeason = 650;     // Basse — creux
+
+  if (seasonEl && seasonEl.dataset.autoset !== 'manual') {
+    if (parseInt(seasonEl.value) !== suggestedSeason) {
+      seasonEl.value = suggestedSeason;
+    }
+    seasonEl.dataset.autoset = 'auto';
+  }
+
+  // 2. Weekend auto (Fri/Sat) for target date
+  var wkAuto = isWeekendNow(ctxDate);
+  if (weekendBtn && weekendBtn.dataset.userset !== '1') {
+    if (mods.weekend !== wkAuto) {
+      mods.weekend = wkAuto;
+      weekendBtn.classList.toggle('active', wkAuto);
+    }
+  }
+
+  // 3. Event auto for target date
+  var ev = isInEventWindow(ctxDate);
+  if (eventBtn && eventBtn.dataset.userset !== '1') {
+    var evOn = !!ev;
+    if (mods.event !== evOn) {
+      mods.event = evOn;
+      eventBtn.classList.toggle('active', evOn);
+    }
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    eventBtn.title = ev ? (fr ? ev.label_fr : ev.label_en) : '';
+    if (ev) eventBtn.dataset.evlabel = fr ? ev.label_fr : ev.label_en;
+    else delete eventBtn.dataset.evlabel;
+  }
+  return { date: ctxDate, season: suggestedSeason, weekend: wkAuto, event: ev };
+}
+
+// Render visual AUTO badges on auto-set fields
+function renderAutoBadges() {
+  // Cleanup
+  document.querySelectorAll('.auto-badge').forEach(function(el){ el.remove(); });
+  document.querySelectorAll('[data-evlabel-shown]').forEach(function(el){
+    el.removeAttribute('data-evlabel-shown');
+    var lbl = el.querySelector('.ev-inline-label');
+    if (lbl) lbl.remove();
+  });
+
+  if (!getAutoPricingMode()) return;
+
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+
+  function makeBadge() {
+    var b = document.createElement('span');
+    b.className = 'auto-badge';
+    b.textContent = 'AUTO';
+    b.style.cssText = 'display:inline-block;font-size:8px;font-weight:700;letter-spacing:1.2px;color:#3B6D11;background:rgba(60,108,17,.12);border:1px solid rgba(60,108,17,.25);padding:1px 5px;border-radius:99px;margin-left:6px;vertical-align:middle';
+    return b;
+  }
+
+  // Season AUTO badge — only if not manually overridden
+  var seasonEl = document.getElementById('season');
+  if (seasonEl && seasonEl.dataset.autoset === 'auto') {
+    var seasonGrp = seasonEl.closest('.cs-grp');
+    var seasonLbl = seasonGrp ? seasonGrp.querySelector('.cs-lbl') : null;
+    if (seasonLbl) seasonLbl.appendChild(makeBadge());
+  }
+
+  // Weekend AUTO badge
+  var weekendBtn = document.getElementById('t-weekend');
+  if (weekendBtn && weekendBtn.dataset.userset !== '1' && mods.weekend) {
+    weekendBtn.appendChild(makeBadge());
+  }
+
+  // Event AUTO badge + inline event name
+  var eventBtn = document.getElementById('t-event');
+  if (eventBtn && eventBtn.dataset.userset !== '1') {
+    if (mods.event && eventBtn.dataset.evlabel) {
+      eventBtn.appendChild(makeBadge());
+      // Show event name inline (small tag below row)
+      var modRow = eventBtn.parentElement;
+      if (modRow && !modRow.querySelector('.ev-inline-label')) {
+        var tag = document.createElement('span');
+        tag.className = 'ev-inline-label';
+        tag.textContent = '🎯 ' + eventBtn.dataset.evlabel;
+        tag.style.cssText = 'display:inline-block;font-size:10px;color:#A57930;background:rgba(201,150,58,.10);border:1px solid rgba(201,150,58,.22);padding:2px 7px;border-radius:99px;margin-left:6px;font-style:italic';
+        modRow.appendChild(tag);
+        modRow.setAttribute('data-evlabel-shown','1');
+      }
+    }
+  }
+}
+window.renderAutoBadges = renderAutoBadges;
+
+// Inject AUTO/MANUAL toggle into the control strip — one-time
+function injectAutoPricingToggle() {
+  if (document.getElementById('autoPricingToggle')) return;
+  var modRow = document.querySelector('.mod-row');
+  if (!modRow) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var on = getAutoPricingMode();
+  var btn = document.createElement('button');
+  btn.id = 'autoPricingToggle';
+  btn.type = 'button';
+  btn.className = 'mod-pill';
+  btn.style.cssText = 'background:'+(on?'rgba(60,108,17,.10)':'transparent')+';border:1.5px solid '+(on?'rgba(60,108,17,.4)':'var(--border)')+';color:'+(on?'#3B6D11':'var(--muted)')+';font-weight:700;letter-spacing:.5px';
+  btn.innerHTML = on ? (fr?'🔄 AUTO':'🔄 AUTO') : (fr?'🔓 MANUEL':'🔓 MANUAL');
+  btn.title = fr
+    ? 'Auto = saison/weekend/événement détectés depuis la date du jour. Clique pour basculer en manuel.'
+    : 'Auto = season/weekend/event detected from today\'s date. Click to switch to manual.';
+  btn.onclick = function(){
+    setAutoPricingMode(!getAutoPricingMode());
+    var nowOn = getAutoPricingMode();
+    btn.style.background = nowOn?'rgba(60,108,17,.10)':'transparent';
+    btn.style.borderColor = nowOn?'rgba(60,108,17,.4)':'var(--border)';
+    btn.style.color = nowOn?'#3B6D11':'var(--muted)';
+    btn.innerHTML = nowOn ? (fr?'🔄 AUTO':'🔄 AUTO') : (fr?'🔓 MANUEL':'🔓 MANUAL');
+  };
+  modRow.insertBefore(btn, modRow.firstChild);
+}
+
+// Inject date picker into the control strip — auto-pricing for date X
+function injectAutoPricingDate() {
+  if (document.getElementById('autoPricingDate')) return;
+  var ctrlStrip = document.querySelector('.ctrl-strip');
+  if (!ctrlStrip) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+
+  var defaultDate = new Date();
+  try { var d = getAutoPricingDate(); if (d) defaultDate = d; } catch(e){}
+  var iso = defaultDate.toISOString().slice(0,10);
+
+  var grp = document.createElement('div');
+  grp.className = 'cs-grp';
+  grp.style.cssText = 'flex:0 0 auto';
+  grp.innerHTML =
+    '<span class="cs-lbl">' + (fr?'DATE':'DATE') + '</span>' +
+    '<input type="date" id="autoPricingDate" value="'+iso+'" class="cs-sel" style="cursor:pointer;min-width:140px" title="'+(fr?'Date de séjour pour le calcul auto':'Stay date for auto pricing')+'">';
+
+  var firstGrp = ctrlStrip.querySelector('.cs-grp');
+  if (firstGrp && firstGrp.nextSibling) ctrlStrip.insertBefore(grp, firstGrp.nextSibling);
+  else ctrlStrip.appendChild(grp);
+
+  var inp = grp.querySelector('#autoPricingDate');
+  inp.addEventListener('change', function(){
+    if (!getAutoPricingMode()) return;
+    // Force re-apply for new date by clearing overrides
+    var seasonEl = document.getElementById('season');
+    var eventBtn = document.getElementById('t-event');
+    var weekendBtn = document.getElementById('t-weekend');
+    if (seasonEl) seasonEl.dataset.autoset = '';
+    if (eventBtn) eventBtn.dataset.userset = '';
+    if (weekendBtn) weekendBtn.dataset.userset = '';
+    updatePrice();
+  });
+}
+
+// Run injection once DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function(){
+    injectAutoPricingToggle();
+    injectAutoPricingDate();
+  });
+} else {
+  setTimeout(function(){ injectAutoPricingToggle(); injectAutoPricingDate(); }, 100);
+}
+
+function updatePrice() {
+  // AUTO mode: applies season/weekend/event from current date if user hasn't overridden each field
+  applyAutoPricing();
   
   const d = getPrice();
   const netPN = Math.round(d.net / d.nights);
@@ -6197,6 +6739,7 @@ function updatePrice() {
 
   renderCompetitors();
   renderScenarios(d.pricePN);
+  if (typeof renderAutoBadges === 'function') renderAutoBadges();
 }
 
 function getPrice() {
@@ -6229,7 +6772,10 @@ function getPrice() {
 
 function toggleMod(k) {
   mods[k] = !mods[k];
-  document.getElementById('t-'+k).classList.toggle('active', mods[k]);
+  var btn = document.getElementById('t-'+k);
+  btn.classList.toggle('active', mods[k]);
+  // Mark as user-overridden so auto-pricing won't reset this field
+  if (k === 'event' || k === 'weekend') btn.dataset.userset = '1';
   updatePrice();
 }
 
@@ -6269,17 +6815,70 @@ function renderCompetitors() {
     </div>`;
 }
 
+// Curated Marrakech luxury villa suggestions (manually researched)
+var MRX_COMP_SUGGESTIONS = [
+  { name: 'Dar Julina', price: 1100, source: 'Villanovo', area: 'Palmeraie' },
+  { name: 'Dar Tahira', price: 950, source: 'Villanovo', area: 'Al Maaden' },
+  { name: 'Villa Akhdar', price: 1350, source: 'Le Collectionist', area: 'Palmeraie' },
+  { name: 'Villa Anouk', price: 850, source: 'Airbnb', area: 'Route Ourika' },
+  { name: 'Riad Joya', price: 720, source: 'Booking', area: 'Médina' },
+  { name: 'Villa Yasmine', price: 980, source: 'Airbnb', area: 'Palmeraie' },
+  { name: 'Dar Zellij', price: 1200, source: 'Le Collectionist', area: 'Palmeraie' },
+  { name: 'Villa Mabrouka', price: 1450, source: 'Direct', area: 'Palmeraie' },
+];
+
 function addCompetitor() {
-  const form = document.getElementById('compForm');
-  const div = document.createElement('div');
+  var fr = lang === 'fr';
+  var form = document.getElementById('compForm');
+  // Inject suggestions panel once
+  if (!document.getElementById('compSuggestions')) {
+    var sug = document.createElement('div');
+    sug.id = 'compSuggestions';
+    sug.style.cssText = 'background:rgba(201,150,58,.06);border:1px dashed rgba(201,150,58,.4);border-radius:10px;padding:10px;margin-bottom:8px';
+    var saved = loadSavedCompetitors();
+    var savedNames = saved.map(function(c){return (c.name||'').toLowerCase();});
+    var available = MRX_COMP_SUGGESTIONS.filter(function(s){ return savedNames.indexOf(s.name.toLowerCase()) < 0; });
+    var html = '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);font-weight:700;margin-bottom:8px">'+ (fr?'💡 SUGGESTIONS MARRAKECH':'💡 MARRAKECH SUGGESTIONS') +'</div>';
+    if (available.length) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+      available.forEach(function(s, i) {
+        html += '<button onclick="addCompFromSuggestion('+i+')" data-idx="'+i+'" style="background:#fff;border:1px solid rgba(201,150,58,.4);border-radius:14px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:4px;transition:all .15s" onmouseover="this.style.background=\'var(--gold)\';this.style.color=\'var(--green3)\'" onmouseout="this.style.background=\'#fff\';this.style.color=\'\'">+ '+ s.name +' <span style="opacity:.6;font-size:10px">·' + s.price + '€</span></button>';
+      });
+      html += '</div>';
+    } else {
+      html += '<div style="font-size:11px;color:var(--muted);font-style:italic">'+ (fr?'Toutes les suggestions ajoutées':'All suggestions added') +'</div>';
+    }
+    sug.innerHTML = html;
+    form.parentElement.insertBefore(sug, form);
+  }
+  var div = document.createElement('div');
   div.className = 'comp-edit-row';
   div.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
-  div.innerHTML = `
-    <input class="comp-name-input" placeholder="Nom de la villa" style="flex:2;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:6px;font-size:11px;font-family:Josefin Sans,sans-serif;background:var(--bg);color:var(--text)">
-    <input class="comp-price-input" type="number" placeholder="Prix €" style="width:72px;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:6px;font-size:11px;font-family:Josefin Sans,sans-serif;background:var(--bg);color:var(--text)">
-    <input class="comp-source-input" placeholder="Source" style="width:80px;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:6px;font-size:11px;font-family:Josefin Sans,sans-serif;background:var(--bg);color:var(--text)">
-    <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 4px">x</button>`;
+  div.innerHTML =
+    '<input class="comp-name-input" placeholder="'+ (fr?'Nom villa':'Villa name') +'" style="flex:2;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:6px;font-size:11px;font-family:DM Sans,sans-serif;background:var(--paper)">' +
+    '<input class="comp-price-input" type="number" placeholder="Prix €" style="width:72px;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:6px;font-size:11px;font-family:DM Sans,sans-serif;background:var(--paper)">' +
+    '<input class="comp-source-input" placeholder="'+ (fr?'Source':'Source') +'" style="width:80px;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:6px;font-size:11px;font-family:DM Sans,sans-serif;background:var(--paper)">' +
+    '<button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:0 4px">×</button>';
   form.appendChild(div);
+  setTimeout(function(){ div.querySelector('.comp-name-input').focus(); }, 50);
+}
+
+function addCompFromSuggestion(idx) {
+  var s = MRX_COMP_SUGGESTIONS[idx];
+  if (!s) return;
+  var form = document.getElementById('compForm');
+  var div = document.createElement('div');
+  div.className = 'comp-edit-row';
+  div.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
+  div.innerHTML =
+    '<input class="comp-name-input" value="'+ s.name.replace(/"/g,'&quot;') +'" style="flex:2;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:6px;font-size:11px;font-family:DM Sans,sans-serif;background:var(--paper)">' +
+    '<input class="comp-price-input" type="number" value="'+ s.price +'" style="width:72px;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:6px;font-size:11px;font-family:DM Sans,sans-serif;background:var(--paper)">' +
+    '<input class="comp-source-input" value="'+ s.source +'" style="width:80px;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:6px;font-size:11px;font-family:DM Sans,sans-serif;background:var(--paper)">' +
+    '<button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:0 4px">×</button>';
+  form.appendChild(div);
+  // Hide that suggestion chip
+  var btn = document.querySelector('#compSuggestions [data-idx="'+idx+'"]');
+  if (btn) btn.style.display = 'none';
 }
 
 function saveCompetitors() {
@@ -8486,33 +9085,216 @@ let sopState = JSON.parse(localStorage.getItem('stafflo_sop') || '{}');
 // ════════════════════════════════════════════════════════
 // VILLA OPS — checklists, SOP
 // ════════════════════════════════════════════════════════
+// Phased checklist — items grouped by stay phase, scoped per guest
+const VILLA_SOP_PHASES = [
+  { id:'preArrival', label_fr:'Avant arrivée (J-2 / J-1)', label_en:'Before arrival (D-2 / D-1)', items:[
+    {id:'staff_brief',  label_fr:'Briefer Said (majordome) + Faiza (chef)', label_en:'Brief Said (butler) + Faiza (chef)'},
+    {id:'groceries',    label_fr:'Courses + fleurs fraîches',                 label_en:'Groceries + fresh flowers'},
+    {id:'rooms',        label_fr:'Chambres préparées (linge, amenities)',     label_en:'Rooms prepared (linen, amenities)'},
+    {id:'pool',         label_fr:'Piscine 28°C, produits OK',                 label_en:'Pool 28°C, chemicals OK'},
+    {id:'driver',       label_fr:'Chauffeur confirmé (heure, terminal)',      label_en:'Driver confirmed (time, terminal)'},
+    {id:'welcome',      label_fr:'Message bienvenue WhatsApp envoyé',         label_en:'WhatsApp welcome message sent'},
+    {id:'passport',     label_fr:'Passeports demandés (loi marocaine)',       label_en:'Passports requested (Moroccan law)'}
+  ]},
+  { id:'arrival', label_fr:'Jour d\'arrivée', label_en:'Arrival day', items:[
+    {id:'final_check',  label_fr:'Inspection finale villa (Bouchra)',         label_en:'Final villa inspection (Bouchra)'},
+    {id:'welcome_setup',label_fr:'Plateau de bienvenue + champagne',          label_en:'Welcome tray + champagne'},
+    {id:'wifi_card',    label_fr:'Carte WiFi + code porte sur table',         label_en:'WiFi card + door code on table'},
+    {id:'arrival_msg',  label_fr:'Message "ETA confirmée"',                   label_en:'"ETA confirmed" message'},
+    {id:'checkin',      label_fr:'Check-in personnel + tour villa',            label_en:'In-person check-in + villa tour'}
+  ]},
+  { id:'stay', label_fr:'Pendant le séjour', label_en:'During stay', items:[
+    {id:'midstay',      label_fr:'Check-in mi-séjour (J+2)',                  label_en:'Mid-stay check-in (D+2)'},
+    {id:'chef_menu',    label_fr:'Menus chef confirmés / ajustés',            label_en:'Chef menus confirmed / adjusted'},
+    {id:'experiences',  label_fr:'Expériences proposées (hammam, excursion)', label_en:'Experiences offered (hammam, excursion)'}
+  ]},
+  { id:'departure', label_fr:'Départ', label_en:'Departure', items:[
+    {id:'checkout_msg', label_fr:'Message check-out + demande d\'avis',        label_en:'Check-out message + review request'},
+    {id:'transfer_back',label_fr:'Transfert retour confirmé',                  label_en:'Return transfer confirmed'},
+    {id:'inventory',    label_fr:'Inventaire (chambre + extras)',             label_en:'Inventory (room + extras)'},
+    {id:'cleaning',     label_fr:'Briefing ménage Bouchra (turnover)',         label_en:'Cleaning brief Bouchra (turnover)'}
+  ]}
+];
+
+function getActiveOrNextGuest() {
+  if (typeof clients === 'undefined' || !Array.isArray(clients)) return null;
+  var today = new Date(); today.setHours(0,0,0,0);
+  var current = clients.find(function(c){
+    if (!c.arrival || !c.departure) return false;
+    var a = new Date(c.arrival), d = new Date(c.departure);
+    return a <= today && today < d;
+  });
+  if (current) return { guest: current, status: 'current' };
+  var upcoming = clients.filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
+    .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
+  if (upcoming.length > 0) {
+    var days = Math.round((new Date(upcoming[0].arrival) - today) / 86400000);
+    return { guest: upcoming[0], status: 'upcoming', daysOut: days };
+  }
+  return null;
+}
+
+function getCurrentPhase(ctx) {
+  if (!ctx) return 'preArrival';
+  if (ctx.status === 'current') {
+    var today = new Date(); today.setHours(0,0,0,0);
+    var arr = new Date(ctx.guest.arrival); arr.setHours(0,0,0,0);
+    var dep = new Date(ctx.guest.departure); dep.setHours(0,0,0,0);
+    if (arr.getTime() === today.getTime()) return 'arrival';
+    var dayBefore = new Date(dep); dayBefore.setDate(dayBefore.getDate() - 1);
+    if (today.getTime() >= dayBefore.getTime()) return 'departure';
+    return 'stay';
+  }
+  return 'preArrival';
+}
+
 function renderVillaOpsExtra() {
-  // Add SOP checklist to My Home AI / Villa Ops tab — into the 50/50 row slot if present
+  // Inject phased SOP checklist into Home tab
   const homeTab = document.getElementById('tab-home');
-  if (!homeTab || document.getElementById('sopSection')) return;
+  if (!homeTab) return;
+  // Remove old version if present
+  const existing = document.getElementById('sopSection');
+  if (existing) existing.remove();
 
   const fr = lang === 'fr';
-  const sopHtml = '<div class="hm-card" id="sopSection" style="margin-bottom:0">' +
-    '<div class="hm-hdr"><div class="hm-hdr-lbl">' + (fr?'✅ CHECKLIST VILLA':'✅ VILLA CHECKLIST') + '</div>' +
-    '<button class="hm-refresh" onclick="resetSOP()" title="Reset">↺</button></div>' +
-    '<div class="hm-body" style="padding:8px 14px">' +
-    VILLA_SOP.map(item => {
-      const done = sopState[item.id];
-      const label = fr ? item.label_fr : item.label_en;
-      return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">' +
-        '<input type="checkbox" id="sop_' + item.id + '" ' + (done?'checked':'') +
-        ' onchange="toggleSOP(\'' + item.id + '\',this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:var(--green)">' +
-        '<label for="sop_' + item.id + '" style="font-size:13px;color:' + (done?'var(--muted)':'var(--ink)') + ';' + (done?'text-decoration:line-through':'') + ';cursor:pointer;flex:1">' + label + '</label>' +
-        '<span style="font-size:10px;color:var(--muted);background:var(--paper);padding:2px 6px;border-radius:4px">' + (fr ? (item.category==='arrival'?'Arrivée':item.category==='communication'?'Comm.':'Logistique') : item.category) + '</span>' +
+  const ctx = getActiveOrNextGuest();
+  const activePhase = getCurrentPhase(ctx);
+  const guestName = ctx ? (ctx.guest.name || '').replace(/[<>]/g,'') : '';
+  const gid = ctx ? ctx.guest.id : 'none';
+
+  // Compute progress per phase
+  function phaseStats(phase) {
+    var done = 0;
+    phase.items.forEach(function(it){
+      if (localStorage.getItem('sop2_'+phase.id+'_'+it.id+'_'+gid) === 'done') done++;
+    });
+    return { done: done, total: phase.items.length };
+  }
+  var totalDone = 0, totalAll = 0;
+  VILLA_SOP_PHASES.forEach(function(ph){ var s = phaseStats(ph); totalDone += s.done; totalAll += s.total; });
+  var pctAll = totalAll > 0 ? Math.round(totalDone / totalAll * 100) : 0;
+
+  // Header: guest context
+  var hdrCtx;
+  if (!ctx) {
+    hdrCtx = '<div style="font-size:11px;color:var(--muted);font-style:italic">' + (fr?'Aucun séjour proche · checklist générique grisée':'No upcoming stay · generic checklist (greyed)') + '</div>';
+  } else if (ctx.status === 'current') {
+    hdrCtx = '<div style="font-size:12px;color:var(--ink)"><strong>' + guestName + '</strong> <span style="color:var(--green);font-weight:600;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-left:6px">' + (fr?'EN COURS':'IN PROGRESS') + '</span></div>';
+  } else {
+    hdrCtx = '<div style="font-size:12px;color:var(--ink)"><strong>' + guestName + '</strong> <span style="color:#BA7517;font-weight:600;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-left:6px">' + (ctx.daysOut===0 ? (fr?'AUJOURD\'HUI':'TODAY') : ctx.daysOut===1 ? (fr?'DEMAIN':'TOMORROW') : (fr?('J-'+ctx.daysOut):('D-'+ctx.daysOut))) + '</span></div>';
+  }
+
+  var phasesHtml = VILLA_SOP_PHASES.map(function(phase){
+    var s = phaseStats(phase);
+    var isActive = phase.id === activePhase && ctx;
+    var pct = s.total > 0 ? Math.round(s.done/s.total*100) : 0;
+    var lbl = fr ? phase.label_fr : phase.label_en;
+    var dim = !ctx ? 'opacity:.5' : '';
+    var phaseId = 'sop2_phase_'+phase.id;
+    // Active phase open by default; others closed
+    var openByDefault = isActive;
+
+    var itemsHtml = phase.items.map(function(it){
+      var key = 'sop2_'+phase.id+'_'+it.id+'_'+gid;
+      var done = ctx && localStorage.getItem(key) === 'done';
+      var label = fr ? it.label_fr : it.label_en;
+      var disabled = !ctx ? 'pointer-events:none' : '';
+      return '<div data-sop-item="'+it.id+'" style="display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid var(--border);cursor:pointer;'+disabled+'" onclick="toggleSOP2(\''+key+'\',this)">' +
+        '<span class="sop2-box" style="display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:5px;border:1.5px solid '+(done?'var(--green)':'var(--border)')+';background:'+(done?'var(--green)':'#fff')+';color:#fff;font-size:11px;font-weight:700;flex-shrink:0">'+(done?'✓':'')+'</span>' +
+        '<span class="sop2-lbl" style="font-size:13px;'+(done?'color:var(--muted);text-decoration:line-through':'color:var(--ink)')+';flex:1">'+label+'</span>' +
         '</div>';
-    }).join('') +
-    '</div></div>';
+    }).join('');
+
+    return '<details '+(openByDefault?'open':'')+' style="border:1px solid '+(isActive?'rgba(60,108,17,.35)':'var(--border)')+';border-radius:10px;margin-bottom:8px;overflow:hidden;'+dim+';background:'+(isActive?'rgba(60,108,17,.04)':'var(--card)')+'">' +
+      '<summary style="list-style:none;padding:10px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;user-select:none">' +
+        '<span style="font-size:12px;color:var(--muted);transition:transform .15s">▸</span>' +
+        '<span style="font-size:12px;font-weight:600;color:var(--ink);flex:1">'+lbl+'</span>' +
+        (isActive ? '<span style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--green);font-weight:700">'+(fr?'ACTIF':'ACTIVE')+'</span>' : '') +
+        '<span style="font-family:\'Fraunces\',serif;font-size:13px;color:'+(s.done===s.total && s.total>0 ?'var(--green)':'var(--muted)')+';font-weight:500">'+s.done+'/'+s.total+'</span>' +
+      '</summary>' +
+      '<div style="padding:0 12px 10px">' +
+        '<div style="height:3px;background:var(--paper);border-radius:99px;overflow:hidden;margin-bottom:4px"><div style="height:100%;width:'+pct+'%;background:'+(isActive?'var(--green)':'var(--muted)')+';transition:width .25s"></div></div>' +
+        itemsHtml +
+      '</div></details>';
+  }).join('');
+
+  const sopHtml =
+    '<div class="hm-card" id="sopSection" style="margin-bottom:0">' +
+      '<div class="hm-hdr" style="display:flex;align-items:center;gap:10px">' +
+        '<div class="hm-hdr-lbl" style="flex-shrink:0">' + (fr?'✅ CHECKLIST SÉJOUR':'✅ STAY CHECKLIST') + '</div>' +
+        '<div style="flex:1;min-width:0">' + hdrCtx + '</div>' +
+        '<div style="text-align:right;font-family:\'Fraunces\',serif;font-size:18px;color:'+(pctAll===100?'var(--green)':'var(--gold)')+';font-weight:500">'+pctAll+'<span style="font-size:11px;color:var(--muted)">%</span></div>' +
+        (ctx ? '<button class="hm-refresh" onclick="resetSOPGuest(\''+gid+'\')" title="'+(fr?'Réinitialiser pour ce séjour':'Reset for this stay')+'">↺</button>' : '') +
+      '</div>' +
+      '<div class="hm-body" style="padding:10px 14px">' + phasesHtml + '</div>' +
+    '</div>';
 
   // Prefer the dedicated 50/50 slot next to Scenarios; fallback to end of tab
   const slot = document.getElementById('villaScenarioRow');
   if (slot) slot.insertAdjacentHTML('beforeend', sopHtml);
   else homeTab.insertAdjacentHTML('beforeend', sopHtml);
 }
+
+function toggleSOP2(key, rowEl) {
+  var cur = localStorage.getItem(key) === 'done';
+  var next = !cur;
+  localStorage.setItem(key, next ? 'done' : 'todo');
+  var box = rowEl.querySelector('.sop2-box');
+  var lbl = rowEl.querySelector('.sop2-lbl');
+  if (box) {
+    box.style.borderColor = next ? 'var(--green)' : 'var(--border)';
+    box.style.background  = next ? 'var(--green)' : '#fff';
+    box.textContent       = next ? '✓' : '';
+  }
+  if (lbl) {
+    lbl.style.color = next ? 'var(--muted)' : 'var(--ink)';
+    lbl.style.textDecoration = next ? 'line-through' : 'none';
+  }
+  // Update phase + global counters by re-computing from DOM
+  try {
+    var det = rowEl.closest('details');
+    if (det) {
+      var rows = det.querySelectorAll('[data-sop-item]');
+      var done = Array.from(det.querySelectorAll('.sop2-box')).filter(function(b){ return b.textContent === '✓'; }).length;
+      var summary = det.querySelector('summary');
+      if (summary) {
+        var counter = summary.querySelector('span:last-child');
+        if (counter) {
+          counter.textContent = done + '/' + rows.length;
+          counter.style.color = (done === rows.length && rows.length > 0) ? 'var(--green)' : 'var(--muted)';
+        }
+      }
+      var bar = det.querySelector('div[style*="height:3px"] > div');
+      if (bar && rows.length > 0) bar.style.width = Math.round(done/rows.length*100) + '%';
+    }
+    // Global %
+    var section = document.getElementById('sopSection');
+    if (section) {
+      var allBoxes = section.querySelectorAll('.sop2-box');
+      var allDone = Array.from(allBoxes).filter(function(b){ return b.textContent === '✓'; }).length;
+      var pct = allBoxes.length > 0 ? Math.round(allDone / allBoxes.length * 100) : 0;
+      var pctEl = section.querySelector('.hm-hdr > div[style*="text-align:right"]');
+      if (pctEl) {
+        pctEl.style.color = pct === 100 ? 'var(--green)' : 'var(--gold)';
+        pctEl.innerHTML = pct + '<span style="font-size:11px;color:var(--muted)">%</span>';
+      }
+    }
+  } catch(e) {}
+}
+window.toggleSOP2 = toggleSOP2;
+
+function resetSOPGuest(gid) {
+  if (!gid) return;
+  var keys = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (k && k.indexOf('sop2_') === 0 && k.endsWith('_'+gid)) keys.push(k);
+  }
+  keys.forEach(function(k){ localStorage.removeItem(k); });
+  document.getElementById('sopSection')?.remove();
+  renderVillaOpsExtra();
+}
+window.resetSOPGuest = resetSOPGuest;
 
 function toggleSOP(id, checked) {
   sopState[id] = checked;
@@ -9383,6 +10165,359 @@ function applyInboxDefaultState() {
   });
 }
 
+// ════════════════════════════════════════════════════════════════
+// HOTEL BENCHMARK ENGINE
+// Compares villa price to equivalent stay in 4★/5★ Marrakech hotels.
+// Logic: hotel benchmark = (per-room rate × bedrooms_used) × villa-vs-hotel ratio
+// where ratio depends on guest density and is < 1 (villa always discounts).
+// ════════════════════════════════════════════════════════════════
+
+// Marrakech hotel reference rates per room/night (2 pers, base season)
+// Sources: public rate cards 2024-2025 (Mamounia, Royal Mansour, Selman, Amanjena,
+// Riad Yasmine, La Sultana, Beldi Country Club, Es Saadi, Four Seasons MK).
+// Tiers map roughly to tripadvisor 4★ / 5★ boutique / 5★ palace bands.
+const HOTEL_BENCHMARK_MK = {
+  '4_star':           { label_fr: '4★ premium',     label_en: '4★ premium',     low: 180, normal: 230, high: 320, peak: 480 },
+  '5_star_boutique':  { label_fr: '5★ boutique',    label_en: '5★ boutique',    low: 350, normal: 450, high: 620, peak: 950 },
+  '5_star_palace':    { label_fr: '5★ palace',      label_en: '5★ palace',      low: 700, normal: 950, high: 1400, peak: 2200 }
+};
+
+// Pick tier from villa base price (per night, full villa) + bedroom count
+function inferVillaTier(basePrice, bedrooms) {
+  var perRoom = basePrice / Math.max(1, bedrooms);
+  if (perRoom < 130) return '4_star';
+  if (perRoom < 250) return '5_star_boutique';
+  return '5_star_palace';
+}
+
+// Season key based on month (Marrakech)
+function getSeasonKey(date) {
+  var m = (date || new Date()).getMonth(); // 0-11
+  // Peak: Dec 20 - Jan 5 + Easter week — approximated by Dec/Apr edges
+  // High: Oct, Nov, Mar, Apr (cool months)
+  // Low: Jul, Aug (heat); rest = normal
+  if (m === 6 || m === 7) return 'low';
+  if (m === 9 || m === 10 || m === 2 || m === 3) return 'high';
+  if (m === 11 || m === 0) return 'peak'; // Dec/Jan
+  return 'normal';
+}
+
+// Villa vs Hotel ratio:
+// More guests vs bedrooms = villa more competitive (ratio higher, closer to additive hotel cost)
+// Sparse guest density = villa less competitive (ratio lower, paying for unused capacity)
+function villaVsHotelRatio(guests, bedrooms) {
+  var density = guests / Math.max(1, bedrooms); // typical 1.5–2.0
+  // Empirical curve from luxury rental observations:
+  //   density 0.8 → 0.55  (2 ppl in 5br = sparse)
+  //   density 1.5 → 0.70
+  //   density 2.0 → 0.80
+  //   density 2.5+ → 0.85 (cap)
+  if (density <= 0.8) return 0.55;
+  if (density >= 2.5) return 0.85;
+  // Linear interp
+  if (density <= 1.5) return 0.55 + (density - 0.8) / (1.5 - 0.8) * (0.70 - 0.55);
+  if (density <= 2.0) return 0.70 + (density - 1.5) / (2.0 - 1.5) * (0.80 - 0.70);
+  return 0.80 + (density - 2.0) / (2.5 - 2.0) * (0.85 - 0.80);
+}
+
+// Bedrooms required to host N guests in a hotel (conservatively: 2 per room)
+function hotelBedroomsForGuests(guests) {
+  return Math.ceil(guests / 2);
+}
+
+// Main API: returns benchmark + villa target price band
+function computeHotelBenchmark(opts) {
+  opts = opts || {};
+  var bedrooms = opts.bedrooms || 5;
+  var guests = opts.guests || 6;
+  var basePrice = opts.basePrice || 750;
+  var date = opts.date || new Date();
+
+  var tier = opts.tier || inferVillaTier(basePrice, bedrooms);
+  var tierData = HOTEL_BENCHMARK_MK[tier];
+  if (!tierData) tierData = HOTEL_BENCHMARK_MK['5_star_boutique'];
+
+  var seasonKey = getSeasonKey(date);
+  var hotelPerRoom = tierData[seasonKey] || tierData.normal;
+
+  var bedroomsHotel = hotelBedroomsForGuests(guests);
+  var hotelTotal = hotelPerRoom * bedroomsHotel; // What N guests would pay at the hotel
+  var ratio = villaVsHotelRatio(guests, bedrooms);
+
+  // Villa "fair value" = what guests psychologically expect to save vs hotel
+  var villaFair = Math.round(hotelTotal * ratio / 50) * 50;
+  // Floor: don't recommend below villa cost basis (use basePrice * 0.85 as soft floor)
+  var floor = Math.round(basePrice * 0.85 / 50) * 50;
+  if (villaFair < floor) villaFair = floor;
+
+  return {
+    tier: tier,
+    tierLabel: tierData,
+    seasonKey: seasonKey,
+    hotelPerRoom: hotelPerRoom,
+    bedroomsHotel: bedroomsHotel,
+    hotelTotal: hotelTotal,
+    ratio: ratio,
+    villaFair: villaFair,
+    bedrooms: bedrooms,
+    guests: guests,
+    basePrice: basePrice
+  };
+}
+window.computeHotelBenchmark = computeHotelBenchmark;
+
+// Read villa config (bedrooms, base price) from cfg + price form
+function getVillaConfig() {
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  var bedrooms = parseInt(cfg.bedrooms || '5', 10);
+  if (isNaN(bedrooms) || bedrooms < 1) bedrooms = 5;
+  var basePrice = 750;
+  try {
+    var seasonEl = document.getElementById('season');
+    if (seasonEl && seasonEl.value) basePrice = parseInt(seasonEl.value, 10);
+  } catch(e){}
+  return { bedrooms: bedrooms, basePrice: basePrice, tier: cfg.villaTier || null };
+}
+window.getVillaConfig = getVillaConfig;
+
+// ════════════════════════════════════════════════════════════════
+// AIRDNA SLOT (dormant — wires up when key is provided)
+// ════════════════════════════════════════════════════════════════
+function getAirdnaKey() {
+  try {
+    var cfg = getCfg();
+    return (cfg.airdnaKey || '').trim();
+  } catch(e) { return ''; }
+}
+
+function setAirdnaKey(k) {
+  var cfg = getCfg(); cfg.airdnaKey = (k || '').trim(); setCfg(cfg);
+}
+window.setAirdnaKey = setAirdnaKey;
+
+// Real call point — currently a no-op until you have an actual key + endpoint.
+// When you're ready: replace fetch URL with AirDNA's market_minder/comp endpoint.
+async function airdnaScanCompetitors() {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var key = getAirdnaKey();
+  if (!key) {
+    if (typeof toast === 'function') toast(fr ? '🔌 Clé AirDNA non configurée' : '🔌 AirDNA key not set');
+    return null;
+  }
+  // PLACEHOLDER: real endpoint goes here. Until then we surface an honest status,
+  // not fake data.
+  if (typeof toast === 'function') toast(fr ? '🔌 AirDNA: endpoint pas encore activé' : '🔌 AirDNA: endpoint not yet activated');
+  return null;
+}
+window.airdnaScanCompetitors = airdnaScanCompetitors;
+
+// Toggle "Why this price?" panel (reads benchmark + chips, builds details)
+function toggleTonightDetails() {
+  var el = document.getElementById('tonightDetails');
+  var btn = document.getElementById('tonightDetailsBtn');
+  if (!el || !btn) return;
+  var open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  btn.textContent = (open ? '▸ ' : '▾ ') + (btn.dataset.label || 'Pourquoi ?');
+}
+window.toggleTonightDetails = toggleTonightDetails;
+
+// Lightweight AirDNA setup prompt — saves key to cfg, then runs scan if user confirms.
+function promptAirdnaSetup() {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var existing = getAirdnaKey();
+  if (existing) {
+    var action = confirm(fr
+      ? 'AirDNA connecté.\n\nOK = lancer un scan\nAnnuler = changer la clé'
+      : 'AirDNA connected.\n\nOK = run a scan\nCancel = change key');
+    if (action) {
+      airdnaScanCompetitors();
+    } else {
+      var newKey = prompt(fr ? 'Nouvelle clé AirDNA (vide pour déconnecter) :' : 'New AirDNA key (empty to disconnect):', existing);
+      if (newKey !== null) {
+        setAirdnaKey(newKey);
+        if (typeof toast === 'function') toast(fr ? '🔌 Clé AirDNA mise à jour' : '🔌 AirDNA key updated');
+        if (typeof v2RenderHero === 'function') v2RenderHero();
+      }
+    }
+    return;
+  }
+  // First setup
+  var msg = fr
+    ? 'Connecter AirDNA pour scan automatique des villas voisines.\n\n1. Crée un compte sur airdna.co\n2. Récupère ta clé API (plan Market Minder)\n3. Colle-la ci-dessous\n\nClé API AirDNA :'
+    : 'Connect AirDNA to auto-scan nearby villas.\n\n1. Create an account at airdna.co\n2. Get your API key (Market Minder plan)\n3. Paste it below\n\nAirDNA API key:';
+  var k = prompt(msg, '');
+  if (k === null) return;
+  k = (k || '').trim();
+  if (!k) {
+    if (typeof toast === 'function') toast(fr ? 'Annulé' : 'Cancelled');
+    return;
+  }
+  setAirdnaKey(k);
+  if (typeof toast === 'function') toast(fr ? '🔌 AirDNA connecté · l\'endpoint sera activé prochainement' : '🔌 AirDNA connected · endpoint to be activated soon');
+  if (typeof v2RenderHero === 'function') v2RenderHero();
+}
+window.promptAirdnaSetup = promptAirdnaSetup;
+
+// ════════════════════════════════════════════════════════════════
+// AIRBNB API SLOT (ready-to-plug)
+// When Airbnb gives you an API key (likely via Hostaway/Guesty/Lodgify
+// channel manager OR direct Airbnb Partner program), paste it via
+// promptAirbnbSetup(). Storage: cfg.airbnbApiKey + cfg.airbnbListingId.
+// Endpoint: assumes Supabase Edge Function /functions/v1/airbnb-price
+// that proxies the auth'd call (key never leaves your backend).
+// ════════════════════════════════════════════════════════════════
+
+function getAirbnbConfig() {
+  try {
+    var cfg = getCfg();
+    return {
+      apiKey: (cfg.airbnbApiKey || '').trim(),
+      listingId: (cfg.airbnbListingId || '756889438032872685').trim(),
+      provider: cfg.airbnbProvider || 'direct' // 'direct' | 'hostaway' | 'guesty' | 'lodgify'
+    };
+  } catch(e) { return { apiKey:'', listingId:'756889438032872685', provider:'direct' }; }
+}
+
+function setAirbnbConfig(patch) {
+  var cfg = getCfg();
+  if (patch.apiKey !== undefined)    cfg.airbnbApiKey    = (patch.apiKey || '').trim();
+  if (patch.listingId !== undefined) cfg.airbnbListingId = (patch.listingId || '').trim();
+  if (patch.provider !== undefined)  cfg.airbnbProvider  = patch.provider;
+  setCfg(cfg);
+}
+window.setAirbnbConfig = setAirbnbConfig;
+
+function promptAirbnbSetup() {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var cur = getAirbnbConfig();
+  var msg = fr
+    ? 'Connexion Airbnb (live pricing).\n\nQuand tu auras ta clé API (via Airbnb Partner program ou un channel manager comme Hostaway/Guesty/Lodgify), colle-la ici.\n\nClé API :'
+    : 'Airbnb connection (live pricing).\n\nWhen you have your API key (via Airbnb Partner program or a channel manager like Hostaway/Guesty/Lodgify), paste it here.\n\nAPI key:';
+  var key = prompt(msg, cur.apiKey || '');
+  if (key === null) return;
+  key = (key || '').trim();
+  if (!key) {
+    if (confirm(fr?'Vide → déconnecter Airbnb ?':'Empty → disconnect Airbnb?')) {
+      setAirbnbConfig({ apiKey: '' });
+      if (typeof toast === 'function') toast(fr?'Airbnb déconnecté':'Airbnb disconnected');
+    }
+    return;
+  }
+  // Listing ID
+  var lid = prompt(fr?'ID du listing Airbnb (laisse vide pour Villa DarJ):':'Airbnb listing ID (leave empty for Villa DarJ):', cur.listingId);
+  if (lid === null) return;
+  lid = (lid || '756889438032872685').trim();
+  // Provider
+  var prov = prompt(fr?'Source : direct, hostaway, guesty, lodgify ?':'Source: direct, hostaway, guesty, lodgify?', cur.provider || 'direct');
+  if (prov === null) return;
+  prov = (prov || 'direct').trim().toLowerCase();
+  setAirbnbConfig({ apiKey: key, listingId: lid, provider: prov });
+  if (typeof toast === 'function') toast(fr?'🔌 Airbnb API configuré · test en cours…':'🔌 Airbnb API configured · testing…');
+  // Try a fetch right away
+  fetchAirbnbLivePrice().then(function(p){
+    if (p && typeof toast === 'function') toast((fr?'✓ Connecté · prix actuel : ':'✓ Connected · current price: ') + p.price + '€');
+    else if (typeof toast === 'function') toast(fr?'⚠ Connecté mais aucun prix retourné':'⚠ Connected but no price returned');
+  });
+}
+window.promptAirbnbSetup = promptAirbnbSetup;
+
+// In-memory cache to avoid hammering the proxy
+var _airbnbPriceCache = { ts: 0, price: null, currency: 'EUR' };
+var AIRBNB_CACHE_TTL = 6 * 60 * 60 * 1000; // 6h
+
+async function fetchAirbnbLivePrice(opts) {
+  opts = opts || {};
+  var force = !!opts.force;
+  var cfg = getAirbnbConfig();
+  if (!cfg.apiKey) return null;
+
+  // Cache check
+  var now = Date.now();
+  if (!force && _airbnbPriceCache.price !== null && (now - _airbnbPriceCache.ts) < AIRBNB_CACHE_TTL) {
+    return _airbnbPriceCache;
+  }
+
+  var sb = getCfg();
+  var url = (sb.sbUrl || SB_URL).replace(/\/$/, '') + '/functions/v1/airbnb-price';
+  // Body: dates from price form
+  var nightsEl = document.getElementById('nights');
+  var guestsEl = document.getElementById('guests');
+  var checkin = new Date(); checkin.setHours(0,0,0,0);
+  var checkout = new Date(checkin); checkout.setDate(checkout.getDate() + (parseInt(nightsEl?nightsEl.value:'7',10) || 7));
+  var iso = function(d){ return d.toISOString().slice(0,10); };
+
+  try {
+    var res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: sb.sbKey || SB_ANON,
+        Authorization: 'Bearer ' + (sb.sbKey || SB_ANON)
+      },
+      body: JSON.stringify({
+        provider: cfg.provider,
+        listing_id: cfg.listingId,
+        api_key: cfg.apiKey, // proxy stores+forwards; never logged
+        checkin: iso(checkin),
+        checkout: iso(checkout),
+        guests: parseInt(guestsEl?guestsEl.value:'6',10) || 6
+      })
+    });
+    if (!res.ok) {
+      console.warn('airbnb-price failed:', res.status);
+      return null;
+    }
+    var data = await res.json();
+    // Expected shape from Edge Function: { price_per_night, currency, total, nights }
+    if (data && data.price_per_night) {
+      _airbnbPriceCache = {
+        ts: now,
+        price: Math.round(data.price_per_night),
+        currency: data.currency || 'EUR',
+        total: data.total,
+        nights: data.nights
+      };
+      return _airbnbPriceCache;
+    }
+    return null;
+  } catch(e) {
+    console.warn('airbnb-price error:', e);
+    return null;
+  }
+}
+window.fetchAirbnbLivePrice = fetchAirbnbLivePrice;
+
+// ── Toggle for hero action checklist (in-place, no full re-render) ──
+function toggleHeroAction(storageKey, rowEl) {
+  var cur = localStorage.getItem(storageKey) === 'done';
+  var next = !cur;
+  localStorage.setItem(storageKey, next ? 'done' : 'todo');
+  var box = rowEl.querySelector('.act-box');
+  var lbl = rowEl.querySelector('.act-lbl');
+  if (box) {
+    box.style.borderColor = next ? 'var(--green)' : 'var(--border)';
+    box.style.background  = next ? 'var(--green)' : '#fff';
+    box.textContent       = next ? '✓' : '';
+  }
+  if (lbl) {
+    lbl.style.color = next ? 'var(--muted)' : 'var(--ink)';
+    lbl.style.textDecoration = next ? 'line-through' : 'none';
+  }
+  // Update counter
+  var cnt = document.getElementById('heroActionsCount');
+  if (cnt) {
+    var body = document.getElementById('heroActionsBody');
+    if (body) {
+      var rows = body.querySelectorAll('[data-act-row]');
+      var done = body.querySelectorAll('.act-box').length
+        ? Array.from(body.querySelectorAll('.act-box')).filter(function(b){ return b.textContent === '✓'; }).length : 0;
+      cnt.textContent = done + '/' + rows.length;
+    }
+  }
+}
+window.toggleHeroAction = toggleHeroAction;
+
 // ── Hero panels — populate from existing data ──
 function v2RenderHero() {
   // Find current and upcoming guests from existing 'clients' array
@@ -9433,31 +10568,91 @@ function v2RenderHero() {
     }
   }
 
-  // Today: actions board summary
+  // Today: actions board summary — contextual based on guest phase
   var actBody = document.getElementById('heroActionsBody');
   var actCount = document.getElementById('heroActionsCount');
   if (actBody) {
-    if (current) {
-      var keys = ['villa_ready','pool_safety','welcome_msg','chef_confirm'];
-      var labels = {
-        villa_ready: '🧹 Villa prête',
-        pool_safety: '🏊 Piscine sécurité',
-        welcome_msg: '👋 Message bienvenue',
-        chef_confirm: '👨‍🍳 Confirmer chef'
+    var fr_ = (typeof lang !== 'undefined' && lang === 'fr');
+    // Find next arriving guest (within 3 days) if no current
+    var nextArrival = null;
+    var daysToArrival = null;
+    if (!current) {
+      var sorted = clients.filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
+        .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
+      if (sorted.length > 0) {
+        nextArrival = sorted[0];
+        daysToArrival = Math.round((new Date(nextArrival.arrival) - today) / 86400000);
+      }
+    }
+    // Departure today?
+    var departingToday = clients.find(function(c){
+      if (!c.departure) return false;
+      var d = new Date(c.departure); d.setHours(0,0,0,0);
+      return d.getTime() === today.getTime();
+    });
+
+    var ctx = null;
+    if (departingToday) {
+      ctx = { guest: departingToday, phase: 'departure', label: fr_?'Départ aujourd\'hui':'Departing today' };
+    } else if (current) {
+      ctx = { guest: current, phase: 'stay', label: fr_?'Séjour en cours':'Stay in progress' };
+    } else if (nextArrival && daysToArrival <= 3) {
+      ctx = { guest: nextArrival, phase: 'preArrival', daysOut: daysToArrival,
+              label: daysToArrival===0 ? (fr_?'Arrivée aujourd\'hui':'Arrival today')
+                   : daysToArrival===1 ? (fr_?'Arrivée demain':'Arrival tomorrow')
+                   : (fr_?('Arrivée dans '+daysToArrival+'j'):('Arrival in '+daysToArrival+'d')) };
+    }
+
+    if (!ctx) {
+      actBody.innerHTML = '<div style="color:var(--muted);font-style:italic;font-size:12px" data-fr="Pas d\'actions urgentes — aucun séjour proche" data-en="No urgent actions — no upcoming stay">Pas d\'actions urgentes — aucun séjour proche</div>';
+      if (actCount) actCount.textContent = '';
+    } else {
+      // Action presets per phase
+      var presets = {
+        preArrival: [
+          {k:'staff_brief',  fr:'Briefer Said + Faiza', en:'Brief Said + Faiza'},
+          {k:'groceries',    fr:'Courses + fleurs',     en:'Groceries + flowers'},
+          {k:'rooms_ready',  fr:'Chambres prêtes',      en:'Rooms ready'},
+          {k:'driver_conf',  fr:'Chauffeur confirmé',   en:'Driver confirmed'},
+          {k:'welcome_msg',  fr:'Message bienvenue',    en:'Welcome message'},
+          {k:'passport_req', fr:'Passeports demandés',  en:'Passports requested'}
+        ],
+        stay: [
+          {k:'pool_check',   fr:'Piscine 28°C',         en:'Pool 28°C'},
+          {k:'breakfast',    fr:'Petit-déj confirmé',   en:'Breakfast confirmed'},
+          {k:'midstay_msg',  fr:'Check-in mi-séjour',   en:'Mid-stay check-in'},
+          {k:'chef_menu',    fr:'Menu chef du soir',    en:'Tonight\'s chef menu'}
+        ],
+        departure: [
+          {k:'checkout_msg', fr:'Message départ + avis',en:'Checkout + review msg'},
+          {k:'cleaning_brief',fr:'Briefer Bouchra ménage',en:'Brief Bouchra cleaning'},
+          {k:'driver_back',  fr:'Transfert retour',     en:'Return transfer'},
+          {k:'inventory',    fr:'Inventaire chambre',   en:'Room inventory'}
+        ]
       };
-      var rows = keys.map(function(k){
-        var done = localStorage.getItem('rdy_'+k+'_'+current.id) === 'done';
-        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer" onclick="(function(){localStorage.setItem(\'rdy_'+k+'_'+current.id+'\',\''+(done?'todo':'done')+'\');v2RenderHero();})()">' +
-               '<span style="display:inline-block;width:16px;height:16px;border-radius:4px;border:1.5px solid '+(done?'var(--green)':'var(--border)')+';background:'+(done?'var(--green)':'#fff')+';color:#fff;font-size:11px;text-align:center;line-height:14px">'+(done?'✓':'')+'</span>' +
-               '<span style="font-size:13px;'+(done?'color:var(--muted);text-decoration:line-through':'color:var(--ink)')+'">'+labels[k]+'</span>' +
+      var actions = presets[ctx.phase] || presets.stay;
+      var keyPrefix = 'act_'+ctx.phase+'_';
+      var gid = ctx.guest.id;
+
+      // Header: phase pill
+      var phaseColor = ctx.phase==='departure' ? '#A32D2D' : ctx.phase==='preArrival' ? '#BA7517' : 'var(--green)';
+      var hdr = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">' +
+        '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:'+phaseColor+';flex-shrink:0"></span>' +
+        '<span style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:'+phaseColor+';font-weight:600">'+ctx.label+'</span>' +
+        '<span style="font-size:11px;color:var(--muted);margin-left:auto">'+(ctx.guest.name||'').replace(/[<>]/g,'').split(' ')[0]+'</span>' +
+        '</div>';
+
+      var rows = actions.map(function(a){
+        var done = localStorage.getItem(keyPrefix+a.k+'_'+gid) === 'done';
+        var lbl = fr_ ? a.fr : a.en;
+        return '<div data-act-row="'+a.k+'" style="display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;transition:opacity .15s" onclick="toggleHeroAction(\''+keyPrefix+a.k+'_'+gid+'\',this)">' +
+               '<span class="act-box" style="display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:5px;border:1.5px solid '+(done?'var(--green)':'var(--border)')+';background:'+(done?'var(--green)':'#fff')+';color:#fff;font-size:11px;font-weight:700;flex-shrink:0">'+(done?'✓':'')+'</span>' +
+               '<span class="act-lbl" style="font-size:13px;'+(done?'color:var(--muted);text-decoration:line-through':'color:var(--ink)')+'">'+lbl+'</span>' +
                '</div>';
       }).join('');
-      actBody.innerHTML = rows;
-      var doneCount = keys.filter(function(k){ return localStorage.getItem('rdy_'+k+'_'+current.id) === 'done'; }).length;
-      if (actCount) actCount.textContent = doneCount + '/' + keys.length;
-    } else {
-      actBody.innerHTML = '<div style="color:var(--muted);font-style:italic" data-fr="Pas d\'actions — aucun client en cours" data-en="No actions — no current guest">Pas d\'actions — aucun client en cours</div>';
-      if (actCount) actCount.textContent = '';
+      actBody.innerHTML = hdr + rows;
+      var doneCount = actions.filter(function(a){ return localStorage.getItem(keyPrefix+a.k+'_'+gid) === 'done'; }).length;
+      if (actCount) actCount.textContent = doneCount + '/' + actions.length;
     }
   }
 
@@ -9488,9 +10683,192 @@ function v2RenderHero() {
       '<div style="font-size:10px;color:var(--muted);margin-top:2px">/ nuit · saison normale</div>' +
       '<button onclick="goTab(\'home\')" style="margin-top:10px;background:var(--green);color:#fff;border:none;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Pricing →</button>';
   }
-  // Villa hero tonight price
+  // Villa hero tonight price — with reasoning + competitor delta
   var villaTonight = document.getElementById('heroVillaTonightPrice');
+  var villaTonightBody = document.getElementById('heroVillaTonightBody');
   if (villaTonight && heroPrice) villaTonight.textContent = heroPrice.textContent;
+  if (villaTonightBody) {
+    try {
+      var fr2 = (typeof lang !== 'undefined' && lang === 'fr');
+      var p = (typeof getPrice === 'function') ? getPrice() : null;
+      var nowDate = new Date();
+      var dow = nowDate.getDay(); // 0=Sun, 5=Fri, 6=Sat
+      var month = nowDate.getMonth(); // 0-11
+      var isWeekend = (dow === 5 || dow === 6 || dow === 0);
+      // High season Marrakech: Oct-Apr (cool months) — proxy
+      var highSeason = (month >= 9 || month <= 3);
+      // Competitor band
+      var comps = [];
+      try { comps = (typeof loadSavedCompetitors === 'function') ? loadSavedCompetitors() : []; } catch(e){}
+      var compMin = null, compMax = null, compAvg = null, compDelta = null;
+      if (comps.length > 0 && p) {
+        var prices = comps.map(function(c){ return c.price; }).filter(function(x){ return typeof x === 'number'; });
+        if (prices.length > 0) {
+          compMin = Math.min.apply(null, prices);
+          compMax = Math.max.apply(null, prices);
+          compAvg = Math.round(prices.reduce(function(a,b){return a+b;},0) / prices.length);
+          compDelta = p.pricePN - compAvg;
+        }
+      }
+
+      var priceTxt = p ? (p.pricePN + '€') : (heroPrice.textContent || '—');
+      var chips = [];
+      if (highSeason) chips.push({icon:'🍂', txt: fr2?'saison haute':'high season', tone:'gold'});
+      else chips.push({icon:'🌱', txt: fr2?'saison normale':'normal season', tone:'muted'});
+      if (isWeekend) chips.push({icon:'📅', txt: fr2?'weekend':'weekend', tone:'gold'});
+      if (compAvg !== null) {
+        var dStr = compDelta > 0 ? ('+'+compDelta+'€ '+(fr2?'vs marché':'vs market'))
+                 : compDelta < 0 ? (compDelta+'€ '+(fr2?'sous marché':'below market'))
+                 : (fr2?'au marché':'at market');
+        chips.push({icon: compDelta > 50 ? '⬆' : compDelta < -50 ? '⬇' : '≈', txt:dStr, tone: compDelta < -50 ? 'red' : compDelta > 50 ? 'green' : 'muted'});
+      }
+
+      var toneCss = {
+        gold:   'background:rgba(201,150,58,.12);color:#A57930;border:1px solid rgba(201,150,58,.25)',
+        green:  'background:rgba(60,108,17,.10);color:#3B6D11;border:1px solid rgba(60,108,17,.22)',
+        red:    'background:rgba(163,45,45,.08);color:#A32D2D;border:1px solid rgba(163,45,45,.20)',
+        muted:  'background:var(--paper);color:var(--muted);border:1px solid var(--border)'
+      };
+      var chipsHtml = chips.map(function(c){
+        return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:500;'+toneCss[c.tone]+'">'+c.icon+' '+c.txt+'</span>';
+      }).join('');
+
+      var bandHtml = '';
+      if (compAvg !== null) {
+        bandHtml = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">' +
+          '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10px;color:var(--muted);letter-spacing:.5px;margin-bottom:4px"><span>'+(fr2?'MARCHÉ VILLA':'VILLA MARKET')+' '+comps.length+'</span><span>'+compMin+'€ – '+compMax+'€</span></div>' +
+          '<div style="position:relative;height:6px;background:var(--paper);border-radius:99px;overflow:visible">' +
+            (function(){
+              var range = compMax - compMin || 1;
+              var ourPos = Math.max(0, Math.min(100, ((p.pricePN - compMin) / range) * 100));
+              var avgPos = Math.max(0, Math.min(100, ((compAvg - compMin) / range) * 100));
+              return '<div style="position:absolute;top:0;left:'+avgPos+'%;width:1px;height:100%;background:var(--border)"></div>' +
+                     '<div style="position:absolute;top:-3px;left:'+ourPos+'%;width:12px;height:12px;border-radius:50%;background:var(--gold);transform:translateX(-50%);box-shadow:0 0 0 2px #fff"></div>';
+            })() +
+          '</div></div>';
+      }
+
+      // ── HOTEL BENCHMARK ──
+      var benchHtml = '';
+      var benchDetailsHtml = '';
+      try {
+        var vcfg = (typeof getVillaConfig === 'function') ? getVillaConfig() : { bedrooms:5, basePrice:750, tier:null };
+        var bench = (typeof computeHotelBenchmark === 'function') ? computeHotelBenchmark({
+          bedrooms: vcfg.bedrooms,
+          guests: p ? p.guests : 6,
+          basePrice: vcfg.basePrice,
+          tier: vcfg.tier
+        }) : null;
+        if (bench) {
+          var villaPrice = p ? p.pricePN : null;
+          var deltaHotel = villaPrice ? Math.round((villaPrice - bench.villaFair) / 50) * 50 : 0;
+          var saveVsHotel = villaPrice ? (bench.hotelTotal - villaPrice) : 0;
+          var savePct = villaPrice && bench.hotelTotal > 0 ? Math.round((saveVsHotel / bench.hotelTotal) * 100) : 0;
+          var tierLabel = fr2 ? bench.tierLabel.label_fr : bench.tierLabel.label_en;
+          var seasonLabels = {
+            low:    fr2 ? 'basse'    : 'low',
+            normal: fr2 ? 'normale'  : 'normal',
+            high:   fr2 ? 'haute'    : 'high',
+            peak:   fr2 ? 'pic'      : 'peak'
+          };
+
+          // Compact summary line
+          var benchTone = deltaHotel < -100 ? 'red' : deltaHotel > 100 ? 'green' : 'muted';
+          var benchIcon = deltaHotel < -100 ? '⬇' : deltaHotel > 100 ? '⬆' : '≈';
+          var benchTxt = deltaHotel < -100
+            ? (fr2 ? ('sous cible hôtel ('+deltaHotel+'€)') : ('below hotel target ('+deltaHotel+'€)'))
+            : deltaHotel > 100
+              ? (fr2 ? ('au-dessus cible hôtel (+'+deltaHotel+'€)') : ('above hotel target (+'+deltaHotel+'€)'))
+              : (fr2 ? 'aligné cible hôtel' : 'on hotel target');
+          chips.push({icon:'🏨', txt: tierLabel + ' · ' + seasonLabels[bench.seasonKey], tone:'muted'});
+          chips.push({icon:benchIcon, txt:benchTxt, tone:benchTone});
+
+          // Details panel
+          var savings = savePct > 0
+            ? ('<strong style="color:var(--green)">−'+savePct+'%</strong> ' + (fr2?'vs hôtel équivalent':'vs equivalent hotel'))
+            : ('<strong style="color:#A32D2D">+'+Math.abs(savePct)+'%</strong> ' + (fr2?'au-dessus hôtel équivalent':'above equivalent hotel'));
+          benchDetailsHtml =
+            '<div style="background:var(--paper);border-radius:10px;padding:11px 13px;margin-top:6px;font-size:12px;line-height:1.6">' +
+              '<div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">' + (fr2?'BENCHMARK HÔTEL':'HOTEL BENCHMARK') + '</div>' +
+              '<div style="display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:12px">' +
+                '<span style="color:var(--muted)">' + (fr2?'Tier estimé':'Estimated tier') + '</span><span style="color:var(--ink);font-weight:500">' + tierLabel + '</span>' +
+                '<span style="color:var(--muted)">' + (fr2?'Saison':'Season') + '</span><span style="color:var(--ink)">' + seasonLabels[bench.seasonKey] + '</span>' +
+                '<span style="color:var(--muted)">' + (fr2?'Prix hôtel/chambre':'Hotel rate/room') + '</span><span style="color:var(--ink)">' + bench.hotelPerRoom + '€</span>' +
+                '<span style="color:var(--muted)">' + (fr2?'Chambres pour ':'Rooms for ') + bench.guests + (fr2?' pers.':' guests') + '</span><span style="color:var(--ink)">' + bench.bedroomsHotel + '</span>' +
+                '<span style="color:var(--muted)">' + (fr2?'Coût hôtel total':'Hotel total cost') + '</span><span style="color:var(--ink);font-weight:500">' + bench.hotelTotal + '€</span>' +
+                '<span style="color:var(--muted)">' + (fr2?'Ratio villa/hôtel':'Villa/hotel ratio') + '</span><span style="color:var(--ink)">×' + bench.ratio.toFixed(2) + '</span>' +
+                '<span style="color:var(--muted);border-top:1px solid var(--border);padding-top:6px;margin-top:2px">' + (fr2?'Cible villa':'Villa fair value') + '</span><span style="color:var(--gold);font-weight:600;font-family:\'Fraunces\',serif;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">' + bench.villaFair + '€</span>' +
+              '</div>' +
+              (villaPrice ? '<div style="margin-top:9px;padding-top:9px;border-top:1px dashed var(--border);font-size:11px;color:var(--muted)">' + (fr2?'À ':'At ') + villaPrice + '€, ' + (fr2?'tes guests économisent ':'your guests save ') + savings + '</div>' : '') +
+              '<div style="margin-top:6px;font-size:10px;color:var(--muted);font-style:italic">' + (fr2?'Refs : Mamounia, Royal Mansour, Selman, Riad Yasmine, Beldi Country (publiées 2024-25)':'Refs: Mamounia, Royal Mansour, Selman, Riad Yasmine, Beldi Country (2024-25 public rates)') + '</div>' +
+            '</div>';
+        }
+      } catch(e) { console.warn('hotel benchmark:', e); }
+
+      // ── AIRBNB API SLOT + live price chip ──
+      var airbnbCfg = (typeof getAirbnbConfig === 'function') ? getAirbnbConfig() : { apiKey:'' };
+      var airbnbConnected = !!airbnbCfg.apiKey;
+      var liveCache = (typeof _airbnbPriceCache !== 'undefined') ? _airbnbPriceCache : null;
+
+      // Live price chip (only if cache hit)
+      if (liveCache && liveCache.price) {
+        var ageMin = Math.round((Date.now() - liveCache.ts) / 60000);
+        chips.push({
+          icon: '📡',
+          txt: (fr2?'Airbnb live ':'Airbnb live ') + liveCache.price + '€' + (ageMin < 1 ? '' : (' · '+ageMin+'min')),
+          tone: 'green'
+        });
+      }
+
+      // Trigger background fetch if connected & cache stale (no await)
+      if (airbnbConnected && (!liveCache || !liveCache.price || (Date.now() - liveCache.ts) > AIRBNB_CACHE_TTL)) {
+        try { fetchAirbnbLivePrice().then(function(r){ if (r && typeof v2RenderHero === 'function') v2RenderHero(); }); } catch(e){}
+      }
+
+      var airbnbHtml =
+        '<div style="background:var(--paper);border-radius:10px;padding:9px 12px;margin-top:6px;display:flex;align-items:center;gap:10px;font-size:11px;'+(airbnbConnected?'':'opacity:.65')+'">' +
+          '<span style="font-size:14px">🏠</span>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-weight:600;color:var(--ink);font-size:11px">Airbnb' + (airbnbConnected ? ' <span style="color:var(--green);font-size:9px;letter-spacing:1px">● LIVE</span>' : '') + '</div>' +
+            '<div style="font-size:10px;color:var(--muted)">' + (airbnbConnected
+              ? (liveCache && liveCache.price ? (fr2?('Dernier prix: '+liveCache.price+'€/nuit'):('Latest: '+liveCache.price+'€/night')) : (fr2?'Récupération en cours…':'Fetching…'))
+              : (fr2?'Brancher l\'API quand tu as la clé':'Plug API when you have the key')) + '</div>' +
+          '</div>' +
+          '<button onclick="promptAirbnbSetup()" style="background:'+(airbnbConnected?'var(--green)':'transparent')+';color:'+(airbnbConnected?'#fff':'var(--muted)')+';border:1px solid '+(airbnbConnected?'var(--green)':'var(--border)')+';border-radius:6px;padding:5px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">'+(airbnbConnected?(fr2?'GÉRER':'MANAGE'):(fr2?'CONNECTER':'CONNECT'))+'</button>' +
+        '</div>';
+
+      // ── AIRDNA SLOT (dormant) ──
+      var airdnaKey = (typeof getAirdnaKey === 'function') ? getAirdnaKey() : '';
+      var airdnaHtml =
+        '<div style="background:var(--paper);border-radius:10px;padding:9px 12px;margin-top:6px;display:flex;align-items:center;gap:10px;font-size:11px;'+(airdnaKey?'':'opacity:.65')+'">' +
+          '<span style="font-size:14px">🔌</span>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-weight:600;color:var(--ink);font-size:11px">AirDNA</div>' +
+            '<div style="font-size:10px;color:var(--muted)">' + (airdnaKey ? (fr2?'Clé connectée · scan villas voisines':'Key connected · scan nearby villas') : (fr2?'Scan automatique villas voisines (clé requise)':'Auto-scan nearby villas (key required)')) + '</div>' +
+          '</div>' +
+          '<button onclick="promptAirdnaSetup()" style="background:'+(airdnaKey?'var(--green)':'transparent')+';color:'+(airdnaKey?'#fff':'var(--muted)')+';border:1px solid '+(airdnaKey?'var(--green)':'var(--border)')+';border-radius:6px;padding:5px 10px;font-size:10px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">'+(airdnaKey?(fr2?'SCAN':'SCAN'):(fr2?'CONNECTER':'CONNECT'))+'</button>' +
+        '</div>';
+
+      // Why-this-price toggle
+      var whyBtn = benchDetailsHtml ? ('<button id="tonightDetailsBtn" data-label="' + (fr2?'Pourquoi ?':'Why this price?') + '" onclick="toggleTonightDetails()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:6px 0 0;font-family:inherit;letter-spacing:.3px">▸ ' + (fr2?'Pourquoi ?':'Why this price?') + '</button>') : '';
+      var detailsWrapHtml = benchDetailsHtml ? ('<div id="tonightDetails" style="display:none">'+benchDetailsHtml+'</div>') : '';
+
+      // Re-build chipsHtml with potentially-added Airbnb live chip
+      chipsHtml = chips.map(function(c){
+        return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:500;'+toneCss[c.tone]+'">'+c.icon+' '+c.txt+'</span>';
+      }).join('');
+
+      villaTonight.textContent = priceTxt;
+      villaTonightBody.innerHTML =
+        '<div style="font-family:\'Fraunces\',serif;font-size:32px;color:var(--gold);font-weight:500;line-height:1" id="heroVillaTonightPrice">'+priceTxt+'</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'+chipsHtml+'</div>' +
+        bandHtml +
+        whyBtn +
+        detailsWrapHtml +
+        airbnbHtml +
+        airdnaHtml;
+    } catch(e) { /* keep existing render */ }
+  }
 
   // Today: pipeline (pending inquiries / future bookings count)
   var pipeBody = document.getElementById('card33PipelineBody');
