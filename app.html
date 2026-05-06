@@ -12214,23 +12214,84 @@ function populateInboxRow(rowId) {
 }
 function refreshInboxRow(btn) {
   if (btn) btn.classList.add('spin');
-  setTimeout(function(){ if (btn) btn.classList.remove('spin'); }, 800);
-  if (typeof loadInboxCount === 'function') loadInboxCount();
-  // Refresh whichever row is currently open
-  ['inboxRowToday','inboxRowGuests','inboxRowVilla'].forEach(function(rid){
-    var r = document.getElementById(rid);
-    if (r && r.classList.contains('open')) populateInboxRow(rid);
-  });
-  // Update last sync timestamp
+
+  // ── Round 3: Trigger Gmail pull from Supabase Edge Function ──
+  // Only if user is authed AND has a Gmail connection in cfg.
+  var pullPromise = Promise.resolve({ skipped: true });
   try {
-    var d = new Date();
-    var hh = String(d.getHours()).padStart(2,'0');
-    var mm = String(d.getMinutes()).padStart(2,'0');
-    localStorage.setItem('stafflo_inbox_last_sync', hh + ':' + mm);
-    var el = document.getElementById('inboxSetLastSync');
-    if (el) el.textContent = hh + ':' + mm;
+    var cfgI = (typeof getCfg === 'function') ? getCfg() : {};
+    var sess = (typeof _stafflo_session !== 'undefined') ? _stafflo_session : null;
+    var conn = cfgI.email_connection;
+    if (sess && sess.access_token && conn && conn.provider === 'Google') {
+      pullPromise = fetch(SB_URL + '/functions/v1/gmail-pull', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + sess.access_token,
+          'apikey': SB_ANON
+        },
+        body: '{}'
+      }).then(function(r) { return r.json().catch(function(){ return {}; }); }).catch(function(){ return {}; });
+    }
   } catch(e){}
+
+  pullPromise.then(function(result) {
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    if (result && typeof result.new_emails === 'number') {
+      if (result.new_emails > 0) {
+        if (typeof toast === 'function') {
+          toast(fr ? '✓ ' + result.new_emails + ' nouveau' + (result.new_emails>1?'x':'') + ' email' + (result.new_emails>1?'s':'')
+                   : '✓ ' + result.new_emails + ' new email' + (result.new_emails>1?'s':''));
+        }
+      }
+    } else if (result && result.error === 'label_not_found') {
+      if (typeof toast === 'function') {
+        toast(fr ? '⚠ Créez un label "Stafflo" dans Gmail et appliquez-le aux emails à importer'
+                 : '⚠ Create a "Stafflo" label in Gmail and apply it to emails to import');
+      }
+    } else if (result && result.error === 'gmail not connected') {
+      // silent — user just hasn't connected yet
+    }
+
+    if (typeof loadInboxCount === 'function') loadInboxCount();
+    ['inboxRowToday','inboxRowGuests','inboxRowVilla'].forEach(function(rid){
+      var r = document.getElementById(rid);
+      if (r && r.classList.contains('open')) populateInboxRow(rid);
+    });
+
+    if (btn) setTimeout(function(){ btn.classList.remove('spin'); }, 400);
+
+    // Update last sync timestamp
+    try {
+      var d = new Date();
+      var hh = String(d.getHours()).padStart(2,'0');
+      var mm = String(d.getMinutes()).padStart(2,'0');
+      localStorage.setItem('stafflo_inbox_last_sync', hh + ':' + mm);
+      var el = document.getElementById('inboxSetLastSync');
+      if (el) el.textContent = hh + ':' + mm;
+    } catch(e){}
+  });
 }
+
+// ── Round 3: Auto-refresh inbox every 2 min if any inbox row is open ──
+var _inboxAutoRefreshTimer = null;
+function startInboxAutoRefresh() {
+  if (_inboxAutoRefreshTimer) return;
+  _inboxAutoRefreshTimer = setInterval(function(){
+    var anyOpen = ['inboxRowToday','inboxRowGuests','inboxRowVilla'].some(function(rid){
+      var r = document.getElementById(rid);
+      return r && r.classList.contains('open');
+    });
+    if (anyOpen) refreshInboxRow(null);
+  }, 120000); // 2 minutes
+}
+function stopInboxAutoRefresh() {
+  if (_inboxAutoRefreshTimer) { clearInterval(_inboxAutoRefreshTimer); _inboxAutoRefreshTimer = null; }
+}
+// Start once on init
+try { startInboxAutoRefresh(); } catch(e){}
+window.startInboxAutoRefresh = startInboxAutoRefresh;
+window.stopInboxAutoRefresh = stopInboxAutoRefresh;
 
 // ── Inbox unread badge sync ──
 function updateInboxBadges(count) {
