@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -167,10 +168,12 @@ main{max-width:760px;margin:0 auto;padding:16px}
 .cf-btn.on{background:var(--green);border-color:var(--green);color:#fff}
 .crm-search{width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:'DM Sans',sans-serif;background:var(--card);color:var(--ink);outline:none;margin-bottom:12px;transition:border-color .2s}
 .crm-search:focus{border-color:var(--gold)}
-.client-card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:10px;box-shadow:var(--shadow);cursor:pointer;border-left:3px solid transparent;transition:all .2s}
+.client-card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:0;box-shadow:var(--shadow);cursor:pointer;border-left:3px solid transparent;transition:all .2s}
 .client-card:hover{box-shadow:var(--shadow-lg);border-left-color:var(--gold);transform:translateY(-1px)}
 .client-card.current{border-left-color:var(--gold)}
 .client-card.upcoming{border-left-color:var(--green)}
+#clientList{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:768px){#clientList{grid-template-columns:1fr}}
 .cc-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
 .cc-avatar{width:40px;height:40px;border-radius:50%;background:var(--green);color:#fff;font-family:'Fraunces',serif;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .cc-avatar.returning{background:var(--gold)}
@@ -1136,11 +1139,11 @@ body.v2-active #chatPanel{display:none !important}
   <input class="crm-search" id="crmSearch" oninput="renderClients()" placeholder="🔍 Rechercher..." data-placeholder-fr="🔍 Rechercher..." data-placeholder-en="🔍 Search...">
 
   <div class="crm-filters">
-    <button class="cf-btn on" data-f="all" onclick="setFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
+    <button class="cf-btn on" data-f="all" onclick="setFilter('all',this)" data-fr="Tous (actifs)" data-en="All (active)">Tous (actifs)</button>
     <button class="cf-btn" data-f="inquiry" onclick="setFilter('inquiry',this)" data-fr="💬 Demandes" data-en="💬 Inquiries">💬 Demandes</button>
     <button class="cf-btn" data-f="current" onclick="setFilter('current',this)" data-fr="En cours" data-en="Current">En cours</button>
     <button class="cf-btn" data-f="upcoming" onclick="setFilter('upcoming',this)" data-fr="À venir" data-en="Upcoming">À venir</button>
-    <button class="cf-btn" data-f="past" onclick="setFilter('past',this)" data-fr="Passés" data-en="Past">Passés</button>
+    <button class="cf-btn" data-f="past" onclick="setFilter('past',this)" style="margin-left:auto;background:var(--paper);border-color:var(--border);color:var(--muted)" data-fr="📁 Historique" data-en="📁 History">📁 Historique</button>
   </div>
 
   <div id="clientList"></div>
@@ -2451,7 +2454,8 @@ function renderClients() {
              (x.source||'').toLowerCase().indexOf(search) !== -1;
     });
   }
-  if (crmFilter === 'inquiry')  list = list.filter(function(x){ return getStatus(x) === 'inquiry'; });
+  if (crmFilter === 'all')           list = list.filter(function(x){ return getStatus(x) !== 'past'; });
+  else if (crmFilter === 'inquiry')  list = list.filter(function(x){ return getStatus(x) === 'inquiry'; });
   else if (crmFilter === 'current')  list = list.filter(function(x){ return getStatus(x) === 'current'; });
   else if (crmFilter === 'upcoming') list = list.filter(function(x){ return getStatus(x) === 'upcoming'; });
   else if (crmFilter === 'past')     list = list.filter(function(x){ return getStatus(x) === 'past'; });
@@ -8712,6 +8716,96 @@ function closeAriaModal() {
   document.body.style.overflow = '';
   stopAriaChatMirror();
 }
+
+// Aria history viewer — loads from Supabase chat_history
+async function openAriaHistory() {
+  var body = document.getElementById('ariaModalMessages');
+  if (!body) return;
+  var fr = lang === 'fr';
+  // Show loading bubble
+  var loading = document.createElement('div');
+  loading.className = 'aria-modal-bubble aria';
+  loading.id = 'ariaHistLoading';
+  loading.innerHTML = '<strong>🕘 ' + (fr?'Historique':'History') + '</strong> · <span style="color:var(--muted)">' + (fr?'Chargement…':'Loading…') + '</span>';
+  body.appendChild(loading);
+  body.scrollTop = body.scrollHeight;
+  try {
+    var rows = (typeof loadChatHistory === 'function') ? await loadChatHistory({ limit: 40 }) : [];
+    var ld = document.getElementById('ariaHistLoading'); if (ld) ld.remove();
+    if (!rows.length) {
+      var empty = document.createElement('div');
+      empty.className = 'aria-modal-bubble aria';
+      empty.innerHTML = '<strong>🕘 ' + (fr?'Historique':'History') + '</strong> · ' + (fr?'Aucun message précédent.':'No previous messages.');
+      body.appendChild(empty);
+      body.scrollTop = body.scrollHeight;
+      return;
+    }
+    // Group by session_id, show last 5 sessions
+    var bySession = {};
+    rows.forEach(function(r){
+      var sid = r.session_id || 'orphan';
+      if (!bySession[sid]) bySession[sid] = [];
+      bySession[sid].push(r);
+    });
+    var sessions = Object.keys(bySession).map(function(sid){
+      var msgs = bySession[sid];
+      var first = msgs[0];
+      return { sid: sid, msgs: msgs, when: new Date(first.created_at), preview: (msgs.find(function(m){return m.role==='user';})||{}).content || '' };
+    }).sort(function(a,b){ return b.when - a.when; }).slice(0, 8);
+
+    var panel = document.createElement('div');
+    panel.className = 'aria-modal-bubble aria';
+    panel.style.maxWidth = '100%';
+    var html = '<strong>🕘 ' + (fr?'Vos conversations récentes':'Your recent conversations') + '</strong>';
+    html += '<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">';
+    sessions.forEach(function(s){
+      var d = s.when;
+      var when = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      var preview = (s.preview || '').slice(0, 80);
+      html += '<button onclick="loadAriaHistorySession(\''+s.sid.replace(/'/g,"\\'")+'\')" style="text-align:left;background:#fff;border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor=\'var(--gold)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
+      html += '<div style="font-size:11px;color:var(--muted);margin-bottom:2px">' + when + ' · ' + s.msgs.length + ' messages</div>';
+      html += '<div style="font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (preview || '(vide)') + '</div>';
+      html += '</button>';
+    });
+    html += '</div>';
+    panel.innerHTML = html;
+    body.appendChild(panel);
+    body.scrollTop = body.scrollHeight;
+  } catch(e) {
+    var ld2 = document.getElementById('ariaHistLoading'); if (ld2) ld2.remove();
+    console.warn('history:', e);
+  }
+}
+
+async function loadAriaHistorySession(sessionId) {
+  var body = document.getElementById('ariaModalMessages');
+  if (!body) return;
+  var fr = lang === 'fr';
+  try {
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var key = (cfg.sbKey) || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
+    var url = SB_URL + '/rest/v1/chat_history?session_id=eq.' + encodeURIComponent(sessionId) + '&order=created_at.asc&limit=100';
+    var r = await fetch(url, { headers: { apikey: key, Authorization: 'Bearer ' + key } });
+    if (!r.ok) return;
+    var rows = await r.json();
+    if (!rows.length) return;
+    var sep = document.createElement('div');
+    sep.className = 'aria-modal-bubble aria';
+    sep.style.background = 'var(--paper)';
+    sep.style.borderColor = 'var(--border)';
+    sep.innerHTML = '<strong style="font-size:11px;letter-spacing:1px;color:var(--muted)">― ' + (fr?'CONVERSATION RESTAURÉE':'RESTORED CONVERSATION') + ' ―</strong>';
+    body.appendChild(sep);
+    rows.forEach(function(row){
+      var bub = document.createElement('div');
+      bub.className = 'aria-modal-bubble ' + (row.role === 'user' ? 'user' : 'aria');
+      if (row.role === 'user') bub.textContent = row.content;
+      else bub.innerHTML = '<strong>ARIA</strong> · ' + (row.content||'').replace(/\n/g,'<br>');
+      body.appendChild(bub);
+    });
+    body.scrollTop = body.scrollHeight;
+  } catch(e) { console.warn('restore:', e); }
+}
+
 function onAriaModalInput(el) {
   var btn = document.getElementById('ariaModalSendBtn');
   if (btn) btn.disabled = !el.value.trim();
@@ -8842,6 +8936,13 @@ function sendAriaModal() {
       bub.className = 'aria-modal-bubble aria';
       bub.innerHTML = '<strong>ARIA</strong> · ' + reply.replace(/\n/g,'<br>');
       if (body) { body.appendChild(bub); body.scrollTop = body.scrollHeight; }
+      // Persist to Supabase
+      try {
+        if (typeof saveChatMessage === 'function') {
+          saveChatMessage('user', '[📎 ' + (attach.filename||'fichier') + '] ' + (text||''), null, null);
+          saveChatMessage('assistant', reply, null, null);
+        }
+      } catch(e){}
     })
     .catch(function(e) {
       if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">' + e.message + '</span>';
@@ -9033,6 +9134,53 @@ function toggleInboxRow(rowId, evt) {
   // Persist preference (per-tab)
   try { localStorage.setItem('stafflo_inbox_open_' + rowId, row.classList.contains('open') ? '1' : '0'); } catch(e) {}
 }
+// Global rich inbox card renderer (shared by Today inline + modal)
+window.renderInboxCard = function(row) {
+  var fr = lang === 'fr';
+  var d = new Date(row.received_at);
+  var now = new Date();
+  var diffMin = Math.floor((now - d) / 60000);
+  var dateStr;
+  if (diffMin < 1) dateStr = fr ? 'à l\'instant' : 'just now';
+  else if (diffMin < 60) dateStr = (fr ? 'il y a ' : '') + diffMin + (fr ? ' min' : ' min ago');
+  else if (diffMin < 1440) dateStr = (fr ? 'il y a ' : '') + Math.floor(diffMin/60) + 'h' + (fr ? '' : ' ago');
+  else {
+    var y = new Date(now); y.setDate(y.getDate()-1);
+    if (d.toDateString() === y.toDateString()) dateStr = (fr?'hier ':'yesterday ') + String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    else dateStr = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  var ex = row.extracted || {};
+  var fromEmail = (row.from_email||'').toLowerCase();
+  var src = 'other', srcLabel = '', srcLetter = '?';
+  if (fromEmail.indexOf('airbnb') >= 0) { src='airbnb'; srcLabel='Airbnb'; srcLetter='A'; }
+  else if (fromEmail.indexOf('booking') >= 0) { src='booking'; srcLabel='Booking'; srcLetter='B'; }
+  else if (fromEmail) { src='direct'; srcLabel='Direct'; srcLetter=(fromEmail.charAt(0)||'?').toUpperCase(); }
+  var typeChip = ex.email_type ? '<span class="ic-chip">'+ex.email_type+'</span>' : '';
+  var guestChip = ex.name ? '<span class="ic-chip guest">👤 '+ex.name+'</span>' : '';
+  var body = row.body || '';
+  var airbnbMatch = body.match(/https?:\/\/(?:www\.)?airbnb\.[a-z\.]+\/[^\s\)\]"<>]+/i);
+  var bookingMatch = body.match(/https?:\/\/(?:admin\.)?booking\.com\/[^\s\)\]"<>]+/i);
+  var externalLink = airbnbMatch ? airbnbMatch[0] : (bookingMatch ? bookingMatch[0] : null);
+  var linkIcon = airbnbMatch ? '🅰️' : (bookingMatch ? '📘' : '');
+  var preview = (body.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0, 120)) || '';
+  var html = '<div class="inbox-card ' + (row.status==='new'?'new':'') + '" data-email-id="' + row.id + '">';
+  html += '<div class="ic-row">';
+  html += '<div class="ic-avatar '+src+'" title="'+srcLabel+'">'+srcLetter+'</div>';
+  html += '<div class="ic-content">';
+  html += '<div class="ic-subject">' + (row.subject||'No subject') + '</div>';
+  if (preview) html += '<div class="ic-preview">' + preview + '</div>';
+  html += '<div class="ic-meta"><span>' + dateStr + '</span>';
+  if (typeChip || guestChip) html += '<span style="opacity:.4">·</span>';
+  if (typeChip) html += typeChip;
+  if (guestChip) html += guestChip;
+  html += '</div></div></div>';
+  html += '<div class="ic-actions">';
+  html += '<button class="ic-open-btn" data-email-id="' + row.id + '">📖 ' + (fr?'Analyser':'Analyze') + '</button>';
+  if (externalLink) html += '<a class="ic-link-btn" href="' + externalLink + '" target="_blank" onclick="event.stopPropagation()" title="'+(fr?'Ouvrir sur ':'Open on ')+srcLabel+'">' + linkIcon + ' '+(fr?'Ouvrir':'Open')+'</a>';
+  html += '</div></div>';
+  return html;
+};
+
 function populateInboxRow(rowId) {
   var listIdMap = {
     inboxRowToday: 'inboxRowListToday',
@@ -9046,32 +9194,50 @@ function populateInboxRow(rowId) {
 
   list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted)">⏳ <span data-fr="Chargement..." data-en="Loading...">Chargement...</span></div>';
 
-  // Trigger the existing loader to populate window._inboxEmails
   var loadPromise = (typeof loadInboxEmails === 'function') ? Promise.resolve(loadInboxEmails()) : Promise.resolve();
   loadPromise.then(function() {
     var emails = window._inboxEmails ? Object.values(window._inboxEmails) : [];
     if (!emails.length) {
-      list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Aucun message" data-en="No messages">Aucun message</div>';
+      list.innerHTML = '<div style="text-align:center;padding:24px 16px;color:var(--muted)">' +
+        '<div style="font-size:28px;margin-bottom:8px;opacity:.5">📭</div>' +
+        '<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px" data-fr="Aucun email reçu" data-en="No emails received">Aucun email reçu</div>' +
+        '<div style="font-size:11px;line-height:1.5" data-fr="Configurez le transfert auto Gmail, ou collez un email dans ARIA ↑" data-en="Set up Gmail auto-forwarding, or paste an email in ARIA ↑">Configurez le transfert auto Gmail, ou collez un email dans ARIA ↑</div>' +
+        '</div>';
       return;
     }
-    // Sort by received_at desc
     emails.sort(function(a,b){
       var da = new Date(a.received_at || 0), db = new Date(b.received_at || 0);
       return db - da;
     });
-    list.innerHTML = emails.slice(0, 20).map(function(row){
-      var subj = (row.subject || '(no subject)').replace(/[<>]/g,'');
-      var from = (row.from_name || row.from_email || '').replace(/[<>]/g,'');
-      var when = '';
-      try {
-        var d = new Date(row.received_at);
-        when = (d.getDate()+'/'+(d.getMonth()+1)) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-      } catch(e){}
-      return '<div class="inbox-card '+(row.status==='new'?'new':'')+'" data-email-id="'+row.id+'" onclick="(function(){var r=window._inboxEmails[\''+row.id+'\'];if(r&&typeof openInboxEmail===\'function\')openInboxEmail(r);})()">' +
-             '<div class="ic-subject">'+subj+'</div>' +
-             '<div class="ic-meta">'+from+' · '+when+'</div>' +
-             '</div>';
-    }).join('');
+    var SHOW = 3;
+    var fr = lang === 'fr';
+    var visible = emails.slice(0, SHOW);
+    var hidden = emails.slice(SHOW);
+    var html = visible.map(window.renderInboxCard).join('');
+    if (hidden.length) {
+      var more = fr ? '▼ Voir ' + hidden.length + ' de plus' : '▼ See ' + hidden.length + ' more';
+      var less = fr ? '▲ Moins' : '▲ Less';
+      html += '<div id="inboxRowMore_' + rowId + '" style="display:none">' + hidden.map(window.renderInboxCard).join('') + '</div>';
+      html += '<button onclick="(function(b){var m=document.getElementById(\'inboxRowMore_' + rowId + '\');var open=m.style.display===\'block\';m.style.display=open?\'none\':\'block\';b.textContent=open?\'' + more + '\':\'' + less + '\';})(this)" style="width:100%;padding:8px;background:none;border:none;border-top:1px solid var(--border);font-size:12px;color:var(--muted);cursor:pointer;margin-top:4px;font-family:\'DM Sans\',sans-serif">' + more + '</button>';
+    }
+    list.innerHTML = html;
+    // Wire clicks
+    list.querySelectorAll('.inbox-card').forEach(function(card){
+      card.addEventListener('click', function(e){
+        if (e.target.closest('a,button')) return;
+        var id = card.getAttribute('data-email-id');
+        var r = window._inboxEmails && window._inboxEmails[id];
+        if (r && typeof openInboxEmail === 'function') openInboxEmail(r);
+      });
+    });
+    list.querySelectorAll('.ic-open-btn').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var id = btn.getAttribute('data-email-id');
+        var r = window._inboxEmails && window._inboxEmails[id];
+        if (r && typeof openInboxEmail === 'function') openInboxEmail(r);
+      });
+    });
   }).catch(function(e){
     console.warn('inbox row load:', e);
     list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Erreur de chargement" data-en="Load error">Erreur de chargement</div>';
@@ -9450,7 +9616,10 @@ window.addEventListener('DOMContentLoaded', function() {
         <span class="aria-name">ARIA</span>
         <span class="aria-badge">AI</span>
       </div>
-      <button onclick="closeAriaModal()" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">✕</button>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button onclick="openAriaHistory()" title="Historique" aria-label="History" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">🕘</button>
+        <button onclick="closeAriaModal()" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">✕</button>
+      </div>
     </div>
     <div class="aria-modal-body" id="ariaModalMessages" ondragover="onAriaDragOver(event)" ondragleave="onAriaDragLeave(event)" ondrop="onAriaDrop(event)">
       <div id="ariaDropOverlay" style="display:none;position:absolute;inset:0;background:rgba(27,67,50,.85);border:3px dashed var(--gold);border-radius:14px;z-index:5;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:20px;pointer-events:none;backdrop-filter:blur(2px)">
