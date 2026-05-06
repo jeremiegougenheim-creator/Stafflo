@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1304,12 +1305,12 @@ body.v2-active #chatPanel{display:none !important}
       <div>
         <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.3);margin-bottom:8px" data-fr="DÉCOMPOSITION" data-en="BREAKDOWN">DÉCOMPOSITION</div>
         <div class="bd-list">
-          <div class="bd-item"><span class="bd-lbl" data-fr="Prix base" data-en="Base price">Prix base</span><span class="bd-val" id="bdBase">750€</span></div>
-          <div class="bd-item"><span class="bd-lbl" data-fr="Modificateurs" data-en="Modifiers">Modificateurs</span><span class="bd-val" id="bdMods">+0€</span></div>
-          <div class="bd-item"><span class="bd-lbl" data-fr="Supplément pers." data-en="Guest suppl.">Supplément pers.</span><span class="bd-val" id="bdGuests">—</span></div>
+          <div class="bd-item"><span class="bd-lbl" data-fr="Prix base" data-en="Base price">Prix base <span class="info-i" data-info="basePrice">ⓘ</span></span><span class="bd-val" id="bdBase">750€</span></div>
+          <div class="bd-item"><span class="bd-lbl" data-fr="Modificateurs" data-en="Modifiers">Modificateurs <span class="info-i" data-info="modifiers">ⓘ</span></span><span class="bd-val" id="bdMods">+0€</span></div>
+          <div class="bd-item"><span class="bd-lbl" data-fr="Supplément pers." data-en="Guest suppl.">Supplément pers. <span class="info-i" data-info="guestSuppl">ⓘ</span></span><span class="bd-val" id="bdGuests">—</span></div>
           <div class="bd-item"><span class="bd-lbl">Total <span id="bdNights">7</span>n</span><span class="bd-val" id="bdTotal">5250€</span></div>
-          <div class="bd-item"><span class="bd-lbl">Airbnb 17%</span><span class="bd-val neg" id="bdComm">-893€</span></div>
-          <div class="bd-item"><span class="bd-lbl" data-fr="Net vous" data-en="Your net">Net vous</span><span class="bd-val net" id="bdNet">4357€</span></div>
+          <div class="bd-item"><span class="bd-lbl"><span id="bdCommLbl">Airbnb 17%</span> <span class="info-i" data-info="commission">ⓘ</span></span><span class="bd-val neg" id="bdComm">-893€</span></div>
+          <div class="bd-item"><span class="bd-lbl" data-fr="Net vous" data-en="Your net">Net vous <span class="info-i" data-info="netPayout">ⓘ</span></span><span class="bd-val net" id="bdNet">4357€</span></div>
         </div>
       </div>
       <div>
@@ -1708,6 +1709,147 @@ let cloudEnabled = false;
 //   - 'guest'   → not connected, redirected to login screen
 // All Supabase fetches should use authHeaders() instead of {apikey, Bearer key}
 // ════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════
+// INFO TOOLTIPS — small "ⓘ" icons that open contextual explanations
+// Used near price calculations to explain how each line is computed.
+// ════════════════════════════════════════════════════════════════
+const INFO_CONTENT = {
+  basePrice: {
+    title_fr: 'Prix de base', title_en: 'Base price',
+    body_fr: 'Le prix de base par nuit selon la saison sélectionnée. Les saisons sont auto-détectées en mode 🔄 AUTO selon la date de séjour :<br><br><strong>• Basse</strong> (mai/juin) : 650€<br><strong>• Normale</strong> (sept/fév) : 750€<br><strong>• Haute</strong> (mars/avril/oct/nov) : 850€<br><strong>• Très haute</strong> (juil/août) : 950€<br><strong>• Peak</strong> (Noël/NY) : 1500€<br><br>Ce prix correspond au prix nu, avant modificateurs.',
+    body_en: 'Base price per night by season. Auto-detected in 🔄 AUTO mode based on stay date:<br><br><strong>• Low</strong> (May/June): 650€<br><strong>• Normal</strong> (Sept/Feb): 750€<br><strong>• High</strong> (Mar/Apr/Oct/Nov): 850€<br><strong>• Very high</strong> (Jul/Aug): 950€<br><strong>• Peak</strong> (Christmas/NY): 1500€<br><br>This is the bare price before modifiers.'
+  },
+  modifiers: {
+    title_fr: 'Modificateurs', title_en: 'Modifiers',
+    body_fr: 'Ajustements appliqués au prix de base selon les conditions :<br><br><strong>• Événement +15%</strong> — Festival du Film, Marathon, Marrakech du Rire (auto-détecté)<br><strong>• Week-end +50€</strong> — vendredi et samedi (auto-détecté)<br><strong>• Last min -15%</strong> — réservation moins de 7 jours avant<br><strong>• Long séjour -20%</strong> — 14 nuits ou plus<br><br>Les modificateurs auto sont marqués <span style="color:#3B6D11;font-weight:700">AUTO</span>. Tu peux toujours forcer manuellement.',
+    body_en: 'Adjustments applied to base price based on conditions:<br><br><strong>• Event +15%</strong> — Film Festival, Marathon, Marrakech du Rire (auto)<br><strong>• Weekend +50€</strong> — Friday and Saturday (auto)<br><strong>• Last min -15%</strong> — booking less than 7 days ahead<strong>• Long stay -20%</strong> — 14 nights or more<br><br>Auto modifiers are tagged <span style="color:#3B6D11;font-weight:700">AUTO</span>. You can always override manually.'
+  },
+  guestSuppl: {
+    title_fr: 'Supplément invités', title_en: 'Guest supplement',
+    body_fr: 'Le prix de base couvre jusqu\'à 8 personnes.<br><br><strong>+50€/nuit par personne au-delà de 8</strong>, jusqu\'à 10 max (capacité Villa DarJ).<br><br>Cohérent avec ta règle Airbnb : "Base rate covers up to 8 guests · Additional guests: €50/night per person".',
+    body_en: 'Base price covers up to 8 guests.<br><br><strong>+50€/night per person above 8</strong>, up to 10 max (Villa DarJ capacity).<br><br>Matches your Airbnb rule: "Base rate covers up to 8 guests · Additional guests: €50/night per person".'
+  },
+  commission: {
+    title_fr: 'Commission Airbnb', title_en: 'Airbnb commission',
+    body_fr: '<strong>Airbnb host fee = 15.5%</strong> depuis août 2025 (modèle host-only worldwide).<br><br>L\'app utilise 15.5% par défaut mais peut afficher 17% pour les anciennes annonces sur le modèle split-fee.<br><br>Sur d\'autres canaux :<br>• <strong>Booking.com</strong> : ~15%<br>• <strong>Direct</strong> : 0%<br><br>La commission s\'applique au prix total brut (prix/nuit × nuits + suppléments).',
+    body_en: '<strong>Airbnb host fee = 15.5%</strong> since August 2025 (host-only model worldwide).<br><br>App defaults to 15.5% but may show 17% for older split-fee listings.<br><br>Other channels:<br>• <strong>Booking.com</strong>: ~15%<br>• <strong>Direct</strong>: 0%<br><br>Commission applies to gross total (price/night × nights + supplements).'
+  },
+  netPayout: {
+    title_fr: 'Net pour vous', title_en: 'Your net payout',
+    body_fr: 'Ce que tu touches réellement après commission plateforme.<br><br><strong>Formule :</strong> (Prix nuit × Nuits + Supplément invités) − Commission<br><br>Pour comparer entre canaux :<br>• Direct = 100% du brut<br>• Airbnb = 84.5% du brut<br>• Booking = 85% du brut<br><br>L\'objectif Stafflo recommandé : <strong>Net ≥ 700€/nuit</strong> pour rester rentable sur Villa DarJ.',
+    body_en: 'What you actually receive after platform commission.<br><br><strong>Formula:</strong> (Price/night × Nights + Guest supplement) − Commission<br><br>To compare across channels:<br>• Direct = 100% of gross<br>• Airbnb = 84.5% of gross<br>• Booking = 85% of gross<br><br>Stafflo recommended target: <strong>Net ≥ 700€/night</strong> to stay profitable on Villa DarJ.'
+  }
+};
+
+function showInfoPopover(triggerEl, key) {
+  closeInfoPopovers();
+  var data = INFO_CONTENT[key];
+  if (!data) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var pop = document.createElement('div');
+  pop.className = 'info-popover';
+  pop.style.cssText = 'position:fixed;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:14px 16px;max-width:320px;font-size:12px;line-height:1.55;color:#1a3a1a;z-index:99998;border:1px solid #E8E2D8;font-family:DM Sans,sans-serif';
+  pop.innerHTML =
+    '<div style="font-family:Fraunces,serif;font-size:14px;font-weight:600;margin-bottom:8px;color:#1a3a1a">' + (fr ? data.title_fr : data.title_en) + '</div>' +
+    '<div style="color:#3a4a3a">' + (fr ? data.body_fr : data.body_en) + '</div>' +
+    '<button onclick="closeInfoPopovers()" style="position:absolute;top:6px;right:8px;background:none;border:none;color:#8A8070;font-size:16px;cursor:pointer;padding:2px 6px;line-height:1">×</button>';
+  document.body.appendChild(pop);
+  // Position relative to trigger
+  var r = triggerEl.getBoundingClientRect();
+  var popR = pop.getBoundingClientRect();
+  var top = r.bottom + 6;
+  var left = r.left;
+  if (left + popR.width > window.innerWidth - 12) left = window.innerWidth - popR.width - 12;
+  if (top + popR.height > window.innerHeight - 12) top = r.top - popR.height - 6;
+  pop.style.top = top + 'px';
+  pop.style.left = Math.max(12, left) + 'px';
+  // Close on outside click
+  setTimeout(function(){
+    document.addEventListener('click', _infoOutsideClick, { once: true });
+  }, 50);
+}
+
+function _infoOutsideClick(e) {
+  if (e.target.closest('.info-popover') || e.target.closest('.info-i')) {
+    document.addEventListener('click', _infoOutsideClick, { once: true });
+    return;
+  }
+  closeInfoPopovers();
+}
+
+function closeInfoPopovers() {
+  document.querySelectorAll('.info-popover').forEach(function(p){ p.remove(); });
+}
+window.closeInfoPopovers = closeInfoPopovers;
+
+// Wire up tooltip triggers (delegated)
+document.addEventListener('click', function(e){
+  var trig = e.target.closest('.info-i');
+  if (!trig) return;
+  e.preventDefault();
+  e.stopPropagation();
+  var key = trig.dataset.info;
+  if (key) showInfoPopover(trig, key);
+});
+
+// ════════════════════════════════════════════════════════════════
+// ALERT/SIGNAL ROUTING — clicking a signal opens the relevant box
+// ════════════════════════════════════════════════════════════════
+function handleAlertClick(action, alertEl) {
+  if (!action) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var alertText = '';
+  try {
+    var titleEl = alertEl.querySelector('div > div:first-child');
+    var subEl = alertEl.querySelector('div > div:nth-child(2)');
+    alertText = (titleEl?titleEl.textContent:'') + ' — ' + (subEl?subEl.textContent:'');
+  } catch(e){}
+
+  var parts = action.split(':');
+  var kind = parts[0];
+  var target = parts[1];
+
+  if (kind === 'goto') {
+    if (typeof goTab === 'function') goTab(target);
+    // Scroll into view of relevant element
+    setTimeout(function(){
+      var anchor = target === 'inbox' ? document.getElementById('inboxRowToday')
+                : target === 'guests' ? document.getElementById('clientList')
+                : target === 'home' ? document.querySelector('.ctrl-strip')
+                : null;
+      if (anchor && anchor.scrollIntoView) anchor.scrollIntoView({ behavior:'smooth', block:'start' });
+    }, 250);
+  } else if (kind === 'open' && target.startsWith('aria')) {
+    // Pre-fill ARIA with the alert context — ARIA = central nervous system
+    var prefill = (target === 'aria-event')
+      ? (fr?'Comment je peux tirer parti de cet événement ? Donne-moi 2-3 actions concrètes (message guests, ajustement prix, brief staff). Signal : ':'How can I leverage this event? Give me 2-3 concrete actions (guest message, price adjustment, staff brief). Signal: ') + alertText
+      : (fr?'Signal détecté. Donne-moi 2-3 actions concrètes que je peux faire maintenant : ':'Signal detected. Give me 2-3 concrete actions I can take now: ') + alertText;
+    if (typeof openAriaModal === 'function') {
+      openAriaModal(prefill);
+    } else {
+      var input = document.querySelector('.aria-searchbar-input');
+      if (input) {
+        input.value = prefill;
+        input.focus();
+        if (typeof sendAriaSearchToModal === 'function') sendAriaSearchToModal(input);
+      }
+    }
+  }
+}
+window.handleAlertClick = handleAlertClick;
+
+// CSS for tooltip triggers — injected once
+(function injectInfoCss(){
+  if (document.getElementById('infoTooltipCss')) return;
+  var s = document.createElement('style');
+  s.id = 'infoTooltipCss';
+  s.textContent = '.info-i{display:inline-block;font-size:11px;color:rgba(255,255,255,.5);cursor:pointer;margin-left:3px;transition:color .15s;user-select:none;font-style:normal}' +
+                  '.info-i:hover{color:var(--gold)}' +
+                  '.bd-lbl .info-i{color:rgba(255,255,255,.4)}' +
+                  '.bd-lbl .info-i:hover{color:var(--gold)}';
+  document.head.appendChild(s);
+})();
 
 var STAFFLO_AUTH = {
   session: null,
@@ -5998,15 +6140,22 @@ function showEmailConnectModal() {
   html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+ (fr?'Outlook, Office 365, hébergeur custom...':'Outlook, Office 365, custom host...') +'</div></div>';
   html += '<span style="font-size:18px;color:var(--muted)">→</span></button>';
 
-  // Forward fallback
+  // Forward fallback — works as backup even when OAuth fails
   html += '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">';
-  html += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:700;margin-bottom:8px">'+ (fr?'OU TRANSFERT MANUEL':'OR MANUAL FORWARD') +'</div>';
-  html += '<div style="background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;color:var(--ink);line-height:1.6">';
-  html += '<div style="margin-bottom:6px">'+ (fr?'Configurez un transfert auto vers cette adresse :':'Set up auto-forwarding to this address:') +'</div>';
-  html += '<div style="display:flex;gap:6px;align-items:center">';
-  html += '<code style="flex:1;background:#fff;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:12px;color:var(--green3);overflow-x:auto;white-space:nowrap">'+ forwardAddr +'</code>';
-  html += '<button onclick="navigator.clipboard.writeText(\''+forwardAddr+'\');this.textContent=\'✓\';setTimeout(()=>{this.textContent=\'📋\'},1200)" style="background:var(--gold);color:var(--green3);border:none;border-radius:6px;width:34px;height:34px;cursor:pointer;font-size:14px;flex-shrink:0">📋</button>';
-  html += '</div></div></div>';
+  html += '<div style="font-size:10px;letter-spacing:2px;color:var(--muted);font-weight:700;margin-bottom:8px">'+ (fr?'OU TRANSFERT MANUEL (FALLBACK)':'OR MANUAL FORWARD (FALLBACK)') +'</div>';
+  html += '<div style="background:var(--paper);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px;color:var(--ink);line-height:1.5">';
+  html += '<div style="margin-bottom:8px">'+ (fr?'Configurez un transfert auto Gmail/Outlook vers cette adresse :':'Set up auto-forwarding from Gmail/Outlook to this address:') +'</div>';
+  html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">';
+  html += '<input type="text" readonly value="'+ forwardAddr +'" id="forwardAddrInput" onclick="this.select()" style="flex:1;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-family:monospace;font-size:12px;color:var(--green3);cursor:text">';
+  html += '<button type="button" onclick="(function(btn){var inp=document.getElementById(\'forwardAddrInput\');inp.select();try{navigator.clipboard.writeText(inp.value);}catch(e){document.execCommand(\'copy\');}btn.textContent=\'✓\';btn.style.background=\'var(--green)\';btn.style.color=\'#fff\';setTimeout(function(){btn.textContent=\'📋\';btn.style.background=\'var(--gold)\';btn.style.color=\'var(--green3)\';},1500);})(this)" style="background:var(--gold);color:var(--green3);border:none;border-radius:6px;width:38px;height:38px;cursor:pointer;font-size:14px;flex-shrink:0;font-family:inherit;transition:all .2s">📋</button>';
+  html += '</div>';
+  html += '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:var(--muted);user-select:none">'+ (fr?'▸ Comment configurer le transfert ?':'▸ How to set up forwarding?') +'</summary>';
+  html += '<div style="margin-top:8px;padding:10px;background:#fff;border-radius:6px;font-size:11px;line-height:1.7;color:var(--ink)">';
+  html += '<strong>'+ (fr?'Gmail :':'Gmail:') +'</strong> '+ (fr?'Paramètres → Voir tous les paramètres → Transfert et POP/IMAP → Ajouter une adresse de transfert':'Settings → See all settings → Forwarding and POP/IMAP → Add a forwarding address') +'<br><br>';
+  html += '<strong>'+ (fr?'Outlook :':'Outlook:') +'</strong> '+ (fr?'Paramètres → Courrier → Transfert → Activer':'Settings → Mail → Forwarding → Enable') +'<br><br>';
+  html += '<em style="color:var(--muted)">'+ (fr?'Vos emails Airbnb/Booking arriveront automatiquement dans Stafflo.':'Your Airbnb/Booking emails will arrive automatically in Stafflo.') +'</em>';
+  html += '</div></details>';
+  html += '</div></div>';
 
   // Test button if connected
   if (conn.provider) {
@@ -6018,15 +6167,20 @@ function showEmailConnectModal() {
   document.body.appendChild(modal);
 }
 
+// Stafflo's hardcoded Google OAuth Client ID — works for all users, no per-user setup.
+// Configured in Google Cloud Console with redirect URI = https://jeremiegougenheim-creator.github.io/Stafflo/?oauth_callback=1
+const STAFFLO_GOOGLE_CLIENT_ID = '143101936715-uj14sgt7vf4mva19g9iq6i92balcj0l5.apps.googleusercontent.com';
+
 async function connectEmailProvider(kind) {
   var fr = lang === 'fr';
+  // Close current modal first to prevent z-index/stacking bugs
+  var existing = document.getElementById('emailConnectModal');
+  if (existing) existing.style.opacity = '0.4';
+
   if (kind === 'google') {
+    // Use hardcoded Client ID — fall back to user's if they've set one
     var cfg = getCfg();
-    var clientId = cfg.googleClientId || cfg.google_client_id;
-    if (!clientId) {
-      alert(fr ? 'Client ID Google manquant. Allez dans Réglages → Google Cloud pour le configurer.' : 'Missing Google Client ID. Go to Settings → Google Cloud to configure.');
-      return;
-    }
+    var clientId = cfg.googleClientId || cfg.google_client_id || STAFFLO_GOOGLE_CLIENT_ID;
     var redirectUri = location.origin + location.pathname + '?oauth_callback=1';
     var scope = encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly email profile');
     var oauthUrl = 'https://accounts.google.com/o/oauth2/v2/auth' +
@@ -6037,9 +6191,12 @@ async function connectEmailProvider(kind) {
       '&prompt=consent' +
       '&state=email_connect';
     var popup = window.open(oauthUrl, 'stafflo_oauth', 'width=520,height=640');
-    if (!popup) { alert(fr?'Popup bloquée — autorisez les popups':'Popup blocked — allow popups'); return; }
+    if (!popup) {
+      if (existing) existing.style.opacity = '1';
+      alert(fr?'Popup bloquée — autorisez les popups dans votre navigateur':'Popup blocked — allow popups in your browser');
+      return;
+    }
 
-    // Listen for postMessage from callback page
     var handler = async function(event) {
       if (!event.data || event.data.type !== 'stafflo_oauth_token') return;
       window.removeEventListener('message', handler);
@@ -6053,15 +6210,20 @@ async function connectEmailProvider(kind) {
         showEmailConnectModal();
       } catch(e) {
         toast(fr?'❌ Erreur OAuth':'❌ OAuth error');
+        if (existing) existing.style.opacity = '1';
       }
     };
     window.addEventListener('message', handler);
-    setTimeout(function(){ window.removeEventListener('message', handler); }, 180000);
+    setTimeout(function(){
+      window.removeEventListener('message', handler);
+      if (existing) existing.style.opacity = '1';
+    }, 180000);
   } else if (kind === 'yahoo') {
     var cfg = getCfg();
     var ycid = cfg.yahooClientId;
     if (!ycid) {
-      alert(fr?'Yahoo Client ID manquant — Réglages → Email avancé':'Missing Yahoo Client ID — Settings → Advanced Email');
+      if (existing) existing.style.opacity = '1';
+      alert(fr?'Yahoo non configuré pour le moment — utilisez Gmail ou le transfert manuel':'Yahoo not configured yet — use Gmail or manual forward');
       return;
     }
     var redirectUri = location.origin + location.pathname + '?oauth_callback=1';
@@ -6071,6 +6233,11 @@ async function connectEmailProvider(kind) {
       '&response_type=token' +
       '&scope=mail-r&state=email_connect_yahoo';
     var popup = window.open(oauthUrl, 'stafflo_yahoo', 'width=520,height=640');
+    if (!popup) {
+      if (existing) existing.style.opacity = '1';
+      alert(fr?'Popup bloquée — autorisez les popups':'Popup blocked — allow popups');
+      return;
+    }
     var handler = async function(event) {
       if (!event.data || event.data.type !== 'stafflo_oauth_token') return;
       window.removeEventListener('message', handler);
@@ -6082,6 +6249,7 @@ async function connectEmailProvider(kind) {
     };
     window.addEventListener('message', handler);
   } else if (kind === 'imap') {
+    var m = document.getElementById('emailConnectModal'); if (m) m.remove();
     showImapForm();
   }
 }
@@ -7588,14 +7756,29 @@ async function generateAlerts(weatherTemp) {
     sub: fr?'Aucune action urgente. Bonne journée !':'No urgent actions. Have a great day!'});
 
   // ── RENDER ──
-  const renderAlert = (a) => `
-    <div class="alert-hm ${a.type}">
+  // Alert routing: keywords → action that opens the relevant box/modal
+  const routeAlert = (a) => {
+    const txt = ((a.title||'') + ' ' + (a.sub||'')).toLowerCase();
+    if (/prix|rate|pricing|marché|market|tarif|price/i.test(txt)) return { action: 'goto:home', label: fr?'→ Pricing':'→ Pricing' };
+    if (/email|inbox|message|booking|airbnb/i.test(txt)) return { action: 'goto:inbox', label: fr?'→ Inbox':'→ Inbox' };
+    if (/arriv|check-?in|guest|client/i.test(txt)) return { action: 'goto:guests', label: fr?'→ Clients':'→ Guests' };
+    if (/checklist|staff|brief|prep/i.test(txt)) return { action: 'goto:home', label: fr?'→ Checklist':'→ Checklist' };
+    if (/aria|ai|chat/i.test(txt)) return { action: 'open:aria', label: fr?'→ Demander à ARIA':'→ Ask ARIA' };
+    if (/event|festival|marathon|fête|noël/i.test(txt)) return { action: 'open:aria-event', label: fr?'→ ARIA: planifier':'→ ARIA: plan' };
+    return { action: 'open:aria', label: fr?'→ Demander à ARIA':'→ Ask ARIA' };
+  };
+  const renderAlert = (a, idx) => {
+    const route = routeAlert(a);
+    return `
+    <div class="alert-hm ${a.type}" data-alert-idx="${idx}" onclick="handleAlertClick('${route.action}', this)" style="cursor:pointer;transition:background .15s" onmouseenter="this.style.background='rgba(60,108,17,.04)'" onmouseleave="this.style.background=''">
       <span style="flex-shrink:0;font-size:14px">${a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡'}</span>
-      <div>
+      <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:12px;margin-bottom:2px">${a.title}</div>
         <div style="font-size:11px;opacity:.85;line-height:1.4">${a.sub}</div>
       </div>
+      <span style="flex-shrink:0;font-size:10px;color:var(--muted);font-weight:600;letter-spacing:.5px;align-self:flex-start;margin-top:2px;white-space:nowrap">${route.label}</span>
     </div>`;
+  };
 
   // Split: operational alerts go to brief (left), signal/info alerts stay in Signaux card (right)
   const opKw = /(arriv|départ|checkout|check-in|check-out|rotation|turnover|in-house|aujourd|today|demain|tomorrow|same.?day|départ.?aujourd)/i;
@@ -7608,18 +7791,12 @@ async function generateAlerts(weatherTemp) {
     sub: fr?'Pas d\'opportunité ou d\'alerte marché aujourd\'hui.':'No opportunity or market alert today.'
   }];
 
-  const SHOW_FIRST = 4;
-  const visible = signalsToRender.slice(0, SHOW_FIRST);
-  const hidden  = signalsToRender.slice(SHOW_FIRST);
+  const SHOW_FIRST = 5;
+  const cappedSignals = signalsToRender.slice(0, SHOW_FIRST);
+  const visible = cappedSignals;
+  const hidden  = []; // No "see more" — strict cap at 5
 
-  let alertsHtml = visible.map(renderAlert).join('');
-  if (hidden.length) {
-    alertsHtml += `<div id="alertsMore" style="display:none">${hidden.map(renderAlert).join('')}</div>
-    <button onclick="const m=document.getElementById('alertsMore');const b=this;if(m.style.display==='none'){m.style.display='block';b.textContent='${fr?'▲ Moins':'▲ Less'}'}else{m.style.display='none';b.textContent='${fr?'▼ Voir '+hidden.length+' de plus':'▼ See '+hidden.length+' more'}'}" 
-      style="width:100%;padding:8px;background:none;border:none;border-top:1px solid var(--border);font-size:12px;color:var(--muted);cursor:pointer;margin-top:4px;font-family:'DM Sans',sans-serif">
-      ${fr?'▼ Voir '+hidden.length+' de plus':'▼ See '+hidden.length+' more'}
-    </button>`;
-  }
+  let alertsHtml = visible.map((a, i) => renderAlert(a, i)).join('');
 
   const elV = document.getElementById('alertsContent');
   if (elV) elV.innerHTML = alertsHtml;
@@ -8928,15 +9105,61 @@ window._briefActions = {};
 function briefCardTap(idx) {
   const act = window._briefActions[idx];
   if (!act) return;
-  if (act.type === 'open_guests') goTab('clients');
-  else if (act.type === 'open_home') goTab('home');
-  else if (act.type === 'copy') navigator.clipboard.writeText(act.label).then(() => toast('📋 Copié'));
-  else if (act.type === 'whatsapp') {
-    const encoded = encodeURIComponent(act.label);
-    window.open('https://wa.me/?text=' + encoded);
-  } else if (act.type === 'settings') {
-    document.getElementById('settingsPanel')?.classList.add('open');
+  const card = (window._briefCards || [])[idx] || {};
+  const fr = lang === 'fr';
+
+  // Navigation actions stay direct
+  if (act.type === 'open_guests') return goTab('clients');
+  if (act.type === 'open_home')   return goTab('home');
+  if (act.type === 'open_pricing'){ goTab('home'); setTimeout(function(){ var s=document.querySelector('.ctrl-strip'); if(s&&s.scrollIntoView)s.scrollIntoView({behavior:'smooth'}); }, 250); return; }
+  if (act.type === 'settings')    return document.getElementById('settingsPanel')?.classList.add('open');
+
+  // Copy stays direct (utility action)
+  if (act.type === 'copy') {
+    return navigator.clipboard.writeText(act.label).then(function(){ toast('📋 ' + (fr?'Copié':'Copied')); });
   }
+
+  // ✨ WhatsApp + notify-staff actions now orchestrated by ARIA
+  // ARIA proposes 2-3 options instead of opening WhatsApp blindly.
+  if (act.type === 'whatsapp' || act.type === 'notify_staff' || act.type === 'msg' || act.type === 'message') {
+    var ctxTitle  = (card.title || '').replace(/^[^\w]+/u, '').trim();
+    var ctxDetail = (card.detail || '').trim();
+    var ctxWhy    = (card.why || '').trim();
+    var prebuilt  = (act.label || '').trim();
+
+    var prompt = (fr
+      ? 'Centre nerveux ARIA : nouvelle situation à gérer.\n\n' +
+        '🎯 Sujet : ' + ctxTitle + '\n' +
+        '📝 Détails : ' + ctxDetail + '\n' +
+        (ctxWhy ? '🧠 Pourquoi : ' + ctxWhy + '\n' : '') +
+        (prebuilt ? '✉️ Message pré-rédigé suggéré : ' + prebuilt + '\n' : '') +
+        '\nDonne-moi 2 ou 3 actions concrètes, chacune avec un libellé court (max 5 mots) et le contenu prêt à l\'emploi. Format JSON :\n' +
+        '[{"label":"Notifier Said WhatsApp","kind":"whatsapp","target":"staff","content":"..."},{"label":"...","kind":"...","target":"...","content":"..."}]\n\n' +
+        'Types de "kind" valides : whatsapp, email, sms, internal_note, copy. Cibles : staff, guest, owner.'
+      : 'ARIA central nervous system: new situation to handle.\n\n' +
+        '🎯 Topic: ' + ctxTitle + '\n' +
+        '📝 Details: ' + ctxDetail + '\n' +
+        (ctxWhy ? '🧠 Why: ' + ctxWhy + '\n' : '') +
+        (prebuilt ? '✉️ Suggested pre-built message: ' + prebuilt + '\n' : '') +
+        '\nGive me 2 or 3 concrete actions, each with a short label (max 5 words) and ready-to-use content. JSON format:\n' +
+        '[{"label":"Notify Said WhatsApp","kind":"whatsapp","target":"staff","content":"..."},{"label":"...","kind":"...","target":"...","content":"..."}]\n\n' +
+        'Valid "kind" types: whatsapp, email, sms, internal_note, copy. Targets: staff, guest, owner.');
+
+    if (typeof openAriaModal === 'function') {
+      openAriaModal(prompt);
+    } else {
+      var input = document.querySelector('.aria-searchbar-input');
+      if (input) {
+        input.value = prompt;
+        input.focus();
+        if (typeof sendAriaSearchToModal === 'function') sendAriaSearchToModal(input);
+      }
+    }
+    return;
+  }
+
+  // Fallback: surface label in ARIA so user has an actionable next step
+  if (typeof openAriaModal === 'function') openAriaModal(act.label);
 }
 
 function renderBriefCards(el, cards) {
