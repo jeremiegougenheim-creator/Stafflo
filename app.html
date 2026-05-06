@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -4354,9 +4355,12 @@ async function chatSend() {
       return;
     }
     
+    // ARIA orchestrator prompts: skip email-extraction route, go straight to chat
+    var isAriaOrchestrator = /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]|donne-moi 2 ou 3 actions|2 or 3 concrete actions|JSON format/i.test(text);
+
     // Check if it's a question about clients/villa
     var isQuestion = /qui|quand|combien|quel|comment|prochain|demain|aujourd|revenu|alerte|check/i.test(text);
-    var isPastedEmail = text.length > 200 && (
+    var isPastedEmail = !isAriaOrchestrator && text.length > 200 && (
       /airbnb|booking|check.?in|checkout|guest|réservation|confirmation/i.test(text) ||
       /\[\d{1,2}\/\d{1,2}\/\d{4}/.test(text) // WA timestamp
     );
@@ -4383,44 +4387,87 @@ async function handleChatQuestion(text) {
   var cfg = getCfg();
   var ownerName = cfg.owner || 'Jérémie';
   var villaName = cfg.villa || 'Villa DarJ';
-  
+
+  // Detect ARIA orchestrator request → return JSON action array
+  var isOrchestrator = /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]|JSON format|2 or 3 concrete actions|donne-moi 2 ou 3 actions/i.test(text);
+
   // Load recent chat history from DB (includes previous sessions)
   var dbHistory = await loadRecentChatContext(12);
   var historyBlock = dbHistory || buildChatHistoryBlock(8);
-  
-  var systemPrompt = [
-    'Tu es l\'assistant personnel de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
-    'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
-    'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
-    'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
-    'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
-  ].join('\n');
-  
-  var userCtx = [
-    'Aujourd\'hui: ' + today,
-    'Clients (' + clients.length + '): ' + clients.slice(0,8).map(function(cl) {
-      return cl.name + (cl.arrival?' →'+cl.arrival:'');
-    }).join(', '),
-    '',
-    historyBlock,
-    '',
-    'Message de ' + ownerName + ': "' + text + '"',
-    '',
-    'Instructions:',
-    '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}',
-    '- Si c\'est une question: réponds directement, max 2-3 phrases',
-    '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule'
-  ].join('\n');
-  
-  var raw = await callBestAI('chat_fr', systemPrompt, userCtx, 500);
+
+  var systemPrompt;
+  if (isOrchestrator) {
+    systemPrompt = [
+      'You are ARIA, the central nervous system for ' + ownerName + ' (owner of ' + villaName + ' Marrakech).',
+      'Your role: take a situation and propose 2-3 concrete, ready-to-execute actions.',
+      'Staff: Said (butler), Faiza (chef), Bouchra (housekeeping). Owner signs as ' + ownerName + '.',
+      '',
+      'CRITICAL OUTPUT FORMAT: Return ONLY a valid JSON array, no preamble, no markdown fences, no explanation.',
+      'Format: [{"label":"short label max 5 words","kind":"whatsapp|email|sms|internal_note|copy","target":"staff|guest|owner","content":"ready-to-send text"}]',
+      '',
+      'Rules:',
+      '- 2 or 3 actions max, sorted by priority',
+      '- "content" must be the FULL ready-to-send message (not a description)',
+      '- For staff WhatsApp: write in French, casual but professional, signed ' + ownerName,
+      '- For guest WhatsApp/email: warm, hospitable, signed ' + ownerName,
+      '- For internal_note: short reminder for ' + ownerName + ' himself',
+      '- Use guest/staff names when they appear in context'
+    ].join('\n');
+  } else {
+    systemPrompt = [
+      'Tu es l\'assistant personnel de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
+      'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
+      'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
+      'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
+      'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
+    ].join('\n');
+  }
+
+  var userCtx;
+  if (isOrchestrator) {
+    // For orchestrator, send the prompt as-is — it already has the structure
+    userCtx = [
+      'Today: ' + today,
+      'Active clients (' + clients.length + '): ' + clients.slice(0,5).map(function(cl) {
+        return cl.name + (cl.arrival?' arr:'+cl.arrival:'') + (cl.guests?' '+cl.guests+'p':'');
+      }).join(' · '),
+      '',
+      'Situation:',
+      text
+    ].join('\n');
+  } else {
+    userCtx = [
+      'Aujourd\'hui: ' + today,
+      'Clients (' + clients.length + '): ' + clients.slice(0,8).map(function(cl) {
+        return cl.name + (cl.arrival?' →'+cl.arrival:'');
+      }).join(', '),
+      '',
+      historyBlock,
+      '',
+      'Message de ' + ownerName + ': "' + text + '"',
+      '',
+      'Instructions:',
+      '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}',
+      '- Si c\'est une question: réponds directement, max 2-3 phrases',
+      '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule'
+    ].join('\n');
+  }
+
+  var raw = await callBestAI('chat_fr', systemPrompt, userCtx, isOrchestrator ? 700 : 500);
   document.getElementById('chatTyping').style.display = 'none';
-  
+
+  // For orchestrator: emit raw JSON so the ARIA modal parser kicks in
+  if (isOrchestrator) {
+    addChatBubble('ai', raw || '[]', []);
+    return;
+  }
+
   // Parse response + action
   var response = raw || '...';
   var action = null;
   var respMatch = raw.match(/R[ÉE]PONSE:\s*(.+?)(?=\nACTION:|$)/s);
   var actionMatch = raw.match(/ACTION:\s*(\{.+?\})/s);
-  
+
   if (respMatch) response = respMatch[1].trim();
   if (actionMatch) {
     try { action = JSON.parse(actionMatch[1]); } catch(e) {}
