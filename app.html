@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -644,7 +645,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .aria-modal-hd{background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;color:#fff}
 .aria-modal-body{flex:1;overflow-y:auto;padding:14px 16px;background:var(--paper);position:relative}
 .aria-modal-input-area{padding:12px 14px;background:var(--card);border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end}
-.aria-modal-textarea{flex:1;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--paper);color:var(--ink);outline:none;resize:none;min-height:42px;max-height:120px;transition:border-color .15s}
+.aria-modal-textarea{flex:1;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--paper);color:var(--ink);outline:none;resize:none;min-height:42px;max-height:120px;transition:border-color .15s;-webkit-user-select:text;user-select:text;-webkit-touch-callout:default;touch-action:auto}
 .aria-modal-textarea:focus{border-color:var(--gold);background:#fff}
 .aria-modal-bubble{background:var(--paper);border-radius:12px;padding:10px 13px;margin-bottom:8px;font-size:13px;line-height:1.5;color:var(--ink);max-width:88%}
 .aria-modal-bubble.user{background:var(--green3);color:#fff;margin-left:auto}
@@ -4737,6 +4738,8 @@ async function handleChatQuestion(text) {
         return cl.name + (cl.arrival?' arr:'+cl.arrival:'') + (cl.guests?' '+cl.guests+'p':'');
       }).join(' · '),
       '',
+      historyBlock,
+      '',
       'Situation:',
       text
     ].join('\n');
@@ -4758,7 +4761,42 @@ async function handleChatQuestion(text) {
     ].join('\n');
   }
 
-  var raw = await callBestAI('chat_fr', systemPrompt, userCtx, isOrchestrator ? 700 : 500);
+  // ── Patch 4: Intent classification → choose best AI task route ──
+  // Heuristics on the message text decide which task to call.
+  // Tasks defined in proxy: extract / brief / chat_fr / write_fr / reason / fast_classify / vision
+  var aiTask = 'chat_fr'; // default
+  var aiMaxTokens = isOrchestrator ? 700 : 500;
+  if (!isOrchestrator) {
+    var lc = text.toLowerCase();
+    var wordCount = text.split(/\s+/).length;
+    // Reasoning needed: comparative analysis, complex strategy, multi-step decision
+    if (/compare|analyse|stratégie|stratégies|optim|recommend|conseil|que dois-je|comment je|that should|why|pourquoi|expliqu/i.test(lc) && wordCount > 8) {
+      aiTask = 'reason';
+      aiMaxTokens = 800;
+    }
+    // Writing: drafting messages, emails, formal text
+    else if (/écris|rédige|message|email|mail|réponse à|réponds à|draft|write|compose|texte pour/i.test(lc) && wordCount > 5) {
+      aiTask = 'write_fr';
+      aiMaxTokens = 700;
+    }
+    // Extraction: pasting raw email/booking data
+    else if (text.length > 400 && /check.?in|check.?out|arrival|departure|booking|reservation|airbnb|guest|night/i.test(lc)) {
+      aiTask = 'extract';
+      aiMaxTokens = 600;
+    }
+    // Quick factual: short message, simple question
+    else if (wordCount < 8 && /\?$/.test(text.trim())) {
+      aiTask = 'fast_classify';
+      aiMaxTokens = 300;
+    }
+  }
+  // Allow user to force "deep" via prefix
+  if (/^\/deep\s|^\/approfondi/i.test(text)) {
+    aiTask = 'reason';
+    aiMaxTokens = 1000;
+  }
+
+  var raw = await callBestAI(aiTask, systemPrompt, userCtx, aiMaxTokens);
   document.getElementById('chatTyping').style.display = 'none';
 
   // For orchestrator: emit raw JSON so the ARIA modal parser kicks in
@@ -11407,6 +11445,10 @@ function mirrorChatBubble(node) {
   try {
     if (clone.classList.contains('aria-modal-bubble') && clone.className.indexOf('user') === -1) {
       enhanceAriaActions(clone);
+      // Bug A fix: also clean legacy RÉPONSE:/ACTION: tags if they leaked in
+      enhanceLegacyActionTags(clone);
+      // Patch 5: contextual follow-up chips (pricing/email/guest topics)
+      appendContextualChips(clone);
     }
   } catch(e){}
   return clone;
@@ -11474,6 +11516,254 @@ function enhanceAriaActions(bubble) {
     (outro ? '<div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,.55);font-style:italic">' + outro.replace(/</g,'&lt;') + '</div>' : '');
   bubble.dataset.actionsParsed = '1';
 }
+
+// ── Bug A fix: clean legacy "RÉPONSE: ... ACTION: {...}" leaks ──
+// The legacy chat (handleChatQuestion) emits this format. When mirrored into
+// the ARIA modal, the raw markers leak. This strips them and renders the
+// ACTION JSON as a clickable button matching the orchestrator style.
+function enhanceLegacyActionTags(bubble) {
+  if (!bubble || bubble.dataset.legacyParsed === '1') return;
+  if (bubble.dataset.actionsParsed === '1') return; // skip if orchestrator already parsed
+  var txt = bubble.textContent || '';
+  // Quick guard: must contain RÉPONSE: and/or ACTION:
+  if (!/R[ÉE]PONSE\s*:|ACTION\s*:/i.test(txt)) return;
+
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+
+  // Extract RÉPONSE block (the actual message to user)
+  var respMatch = txt.match(/R[ÉE]PONSE\s*:\s*([\s\S]+?)(?=\n\s*ACTION\s*:|$)/i);
+  // Extract ACTION JSON block
+  var actionMatch = txt.match(/ACTION\s*:\s*(\{[\s\S]+?\})/i);
+
+  // If neither matched, just strip leftover keywords inline
+  if (!respMatch && !actionMatch) {
+    bubble.innerHTML = txt
+      .replace(/R[ÉE]PONSE\s*:/gi, '')
+      .replace(/ACTION\s*:[\s\S]*$/i, '')
+      .replace(/</g, '&lt;')
+      .trim();
+    bubble.dataset.legacyParsed = '1';
+    return;
+  }
+
+  var responseText = respMatch ? respMatch[1].trim() : txt
+    .replace(/ACTION\s*:[\s\S]*$/i, '')
+    .replace(/R[ÉE]PONSE\s*:/gi, '')
+    .trim();
+
+  var action = null;
+  if (actionMatch) {
+    try { action = JSON.parse(actionMatch[1]); } catch(e) {
+      try { action = JSON.parse(actionMatch[1].replace(/,\s*([}\]])/g, '$1')); } catch(e2) {}
+    }
+  }
+
+  // Build a strong sender bubble: response text + action button if any
+  var html = '';
+  // Preserve any "ARIA · " prefix span if present
+  var prefixHtml = '';
+  var strongEl = bubble.querySelector('strong');
+  if (strongEl && strongEl.textContent.toLowerCase().indexOf('aria') >= 0) {
+    prefixHtml = '<strong>ARIA</strong> · ';
+  }
+  html += prefixHtml + '<span style="white-space:pre-wrap">' + responseText.replace(/</g, '&lt;') + '</span>';
+
+  if (action && action.type) {
+    var kindIcon = action.type === 'send_wa' ? '💬'
+                 : action.type === 'send_email' ? '✉️'
+                 : action.type === 'copy' ? '📋'
+                 : '⚡';
+    var actLabel = action.type === 'send_wa' ? (fr?'Envoyer via WhatsApp':'Send via WhatsApp')
+                 : action.type === 'send_email' ? (fr?'Envoyer email':'Send email')
+                 : (fr?'Exécuter':'Execute');
+    var msgText = (action.msg || action.content || '').toString();
+    var safeAction = JSON.stringify(action).replace(/'/g, '&#39;');
+    html += '<div style="margin-top:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:9px 11px">' +
+      '<div style="font-size:12px;font-weight:600;color:#fff;margin-bottom:6px">' + kindIcon + ' ' + actLabel + '</div>' +
+      (msgText ? '<div style="font-size:11px;color:rgba(255,255,255,.7);margin-bottom:7px;line-height:1.45;white-space:pre-wrap">' + msgText.replace(/</g, '&lt;') + '</div>' : '') +
+      '<div style="display:flex;gap:6px">' +
+        '<button onclick="ariaExecuteLegacyAction(this)" data-legacy-action=\'' + safeAction + '\' style="flex:1;background:#C9963A;color:#0F2318;border:none;border-radius:5px;padding:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px">' + (fr?'EXÉCUTER':'EXECUTE') + '</button>' +
+        '<button onclick="ariaCopyLegacyAction(this)" data-legacy-content=\'' + msgText.replace(/'/g, '&#39;').replace(/\n/g, '\\n') + '\' style="background:rgba(255,255,255,.1);color:#fff;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📋</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  bubble.innerHTML = html;
+  bubble.dataset.legacyParsed = '1';
+}
+
+function ariaExecuteLegacyAction(btn) {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var raw = btn.dataset.legacyAction;
+  if (!raw) return;
+  var a;
+  try { a = JSON.parse(raw.replace(/&#39;/g, "'")); } catch(e){ return; }
+  if (!a || !a.type) return;
+  var msg = a.msg || a.content || '';
+  if (a.type === 'send_wa') {
+    var phone = '';
+    try {
+      if (typeof clients !== 'undefined') {
+        var match = null;
+        if (a.clientId) {
+          match = clients.find(function(c){
+            return c.id === a.clientId || (c.name||'').toLowerCase().indexOf(String(a.clientId).toLowerCase()) >= 0;
+          });
+        }
+        if (!match) {
+          var today = new Date(); today.setHours(0,0,0,0);
+          match = clients.find(function(c){ if (!c.arrival||!c.departure) return false; var ad = new Date(c.arrival), dd = new Date(c.departure); return ad <= today && today < dd; });
+        }
+        if (match) phone = (match.phone||'').replace(/[\s\-+()]/g,'');
+      }
+    } catch(e){}
+    var url = phone ? ('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg)) : ('https://wa.me/?text=' + encodeURIComponent(msg));
+    window.open(url, '_blank');
+  } else if (a.type === 'send_email') {
+    var subj = a.subject || '';
+    window.open('mailto:?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(msg), '_blank');
+  } else {
+    try { navigator.clipboard.writeText(msg); } catch(e){}
+  }
+  btn.textContent = (fr?'✓ OUVERT':'✓ OPENED');
+  setTimeout(function(){ btn.textContent = (fr?'EXÉCUTER':'EXECUTE'); }, 2000);
+}
+window.ariaExecuteLegacyAction = ariaExecuteLegacyAction;
+
+function ariaCopyLegacyAction(btn) {
+  var content = btn.dataset.legacyContent || '';
+  content = content.replace(/\\n/g, '\n');
+  try { navigator.clipboard.writeText(content); } catch(e){}
+  var orig = btn.textContent;
+  btn.textContent = '✓';
+  setTimeout(function(){ btn.textContent = orig; }, 1500);
+}
+window.ariaCopyLegacyAction = ariaCopyLegacyAction;
+
+// ── Patch 5: Quick modifier bar — re-prompt last AI reply with modifier ──
+function ariaQuickModifier(mode) {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var input = document.getElementById('ariaModalInput');
+  if (!input) return;
+  // Try to get last AI bubble text
+  var body = document.getElementById('ariaModalMessages');
+  var lastAiText = '';
+  if (body) {
+    var bubbles = body.querySelectorAll('.aria-modal-bubble');
+    for (var i = bubbles.length - 1; i >= 0; i--) {
+      var b = bubbles[i];
+      if (!b.classList.contains('user')) {
+        // Strip "ARIA · " prefix if present
+        lastAiText = (b.textContent || '').replace(/^\s*ARIA\s*[·.]?\s*/i, '').trim();
+        break;
+      }
+    }
+  }
+  var prompt = '';
+  switch (mode) {
+    case 'deep':
+      prompt = '/deep ' + (lastAiText
+        ? (fr?'Approfondis ta dernière réponse avec plus de contexte, données chiffrées, et 3-5 actions précises. Ta dernière réponse : "':'Go deeper on your last answer with more context, numbers, and 3-5 precise actions. Your last answer: "') + lastAiText.slice(0, 600) + '"'
+        : (fr?'Donne-moi une analyse approfondie sur le contexte actuel.':'Give me a deep analysis of the current context.'));
+      break;
+    case 'shorter':
+      prompt = lastAiText
+        ? (fr?'Reformule ta dernière réponse en 2 lignes maximum, garde l\'essentiel : "':'Rephrase your last answer in 2 lines max, keep the essential: "') + lastAiText.slice(0, 600) + '"'
+        : (fr?'Sois plus concis dans tes prochaines réponses.':'Be more concise in your next answers.');
+      break;
+    case 'translate':
+      var targetLang = fr ? 'English' : 'français';
+      prompt = lastAiText
+        ? 'Traduis cette réponse en ' + targetLang + ', garde le ton et le format : "' + lastAiText.slice(0, 800) + '"'
+        : (fr?'Traduis ta dernière réponse en anglais.':'Translate your last answer to French.');
+      break;
+    case 'staff':
+      prompt = (fr?'Génère le brief staff WhatsApp pour aujourd\'hui : qui arrive, allergies, courses, tâches Said/Faiza/Bouchra. Format ready-to-send.':'Generate today\'s staff WhatsApp brief: arrivals, allergies, groceries, tasks for Said/Faiza/Bouchra. Ready-to-send format.');
+      break;
+    case 'warmer':
+      prompt = lastAiText
+        ? (fr?'Reformule ta dernière réponse avec un ton plus chaleureux et personnel : "':'Rephrase your last answer with a warmer, more personal tone: "') + lastAiText.slice(0, 600) + '"'
+        : (fr?'Adopte un ton plus chaleureux dans tes prochaines réponses.':'Use a warmer tone in your next answers.');
+      break;
+    case 'formal':
+      prompt = lastAiText
+        ? (fr?'Reformule ta dernière réponse avec un ton plus formel et professionnel : "':'Rephrase your last answer with a more formal, professional tone: "') + lastAiText.slice(0, 600) + '"'
+        : (fr?'Adopte un ton plus formel dans tes prochaines réponses.':'Use a more formal tone.');
+      break;
+  }
+  if (!prompt) return;
+  input.value = prompt;
+  onAriaModalInput(input);
+  setTimeout(function(){ sendAriaModal(); }, 50);
+}
+window.ariaQuickModifier = ariaQuickModifier;
+
+// ── Patch 5: Contextual action chips — appended after each AI reply ──
+// Detects the topic of the AI message and shows 2-3 relevant follow-up chips.
+function appendContextualChips(bubble) {
+  if (!bubble || bubble.dataset.contextualChips === '1') return;
+  // Skip user bubbles
+  if (bubble.classList.contains('user')) return;
+  var text = (bubble.textContent || '').toLowerCase();
+  if (!text || text.length < 30) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+
+  // Detect topic
+  var chips = [];
+  // Pricing context
+  if (/\d+\s*€|prix|price|tarif|nuit|night|airbnb|booking/i.test(text) && /strat|recommand|optim|ajust/i.test(text)) {
+    chips.push({ label: fr?'💰 Appliquer ce prix':'💰 Apply this price', prompt: fr?'Mets à jour mes settings de pricing avec le prix recommandé ci-dessus.':'Update my pricing settings with the recommended price above.' });
+    chips.push({ label: fr?'📊 Comparer marché':'📊 Compare market', prompt: fr?'Compare ce prix avec le marché Marrakech actuel : villas 5★ similaires.':'Compare this price with current Marrakech market: similar 5-star villas.' });
+    chips.push({ label: fr?'📈 Scénarios revenus':'📈 Revenue scenarios', prompt: fr?'Donne-moi 3 scénarios de revenus mensuels selon ce prix (occupation 50%/70%/90%).':'Give me 3 monthly revenue scenarios at this price (50%/70%/90% occupancy).' });
+  }
+  // Email/message context
+  else if (/email|message|wa|whatsapp|envo|réponse|reply/i.test(text)) {
+    chips.push({ label: fr?'📋 Brief staff':'📋 Staff brief', prompt: fr?'Crée le brief staff lié à cette conversation.':'Create the staff brief linked to this conversation.' });
+    chips.push({ label: fr?'📅 Bloquer les dates':'📅 Block dates', prompt: fr?'Aide-moi à bloquer les dates mentionnées si nécessaire.':'Help me block the dates mentioned if needed.' });
+    chips.push({ label: fr?'➕ Ajouter au CRM':'➕ Add to CRM', prompt: fr?'Crée la fiche client à partir des infos ci-dessus.':'Create the client record from the info above.' });
+  }
+  // Guest/arrival context
+  else if (/guest|client|arriv|départ|séjour|stay/i.test(text)) {
+    chips.push({ label: fr?'📋 Brief staff':'📋 Staff brief', prompt: fr?'Brief staff pour ce séjour : Said, Faiza, Bouchra.':'Staff brief for this stay: Said, Faiza, Bouchra.' });
+    chips.push({ label: fr?'💬 Message guest':'💬 Guest message', prompt: fr?'Rédige un message WhatsApp chaleureux pour ce client.':'Write a warm WhatsApp message for this guest.' });
+    chips.push({ label: fr?'🛒 Liste courses':'🛒 Shopping list', prompt: fr?'Liste de courses pour ce séjour selon les notes guest.':'Shopping list for this stay based on guest notes.' });
+  }
+  // Event context
+  else if (/event|festival|marathon|noël|christmas/i.test(text)) {
+    chips.push({ label: fr?'💰 Pricing premium':'💰 Premium pricing', prompt: fr?'Quel prix premium appliquer pour cet événement ?':'What premium price for this event?' });
+    chips.push({ label: fr?'📣 Marketing':'📣 Marketing', prompt: fr?'Rédige un message marketing pour mes contacts intéressés.':'Write a marketing message for my interested contacts.' });
+  }
+  // Generic: always offer "deeper" and "next action"
+  else {
+    return; // don't pollute generic replies
+  }
+
+  if (!chips.length) return;
+  var html = '<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.1);display:flex;gap:6px;flex-wrap:wrap">';
+  chips.forEach(function(c){
+    var safePrompt = c.prompt.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+    html += '<button onclick="ariaContextChip(this)" data-prompt="' + safePrompt + '" style="background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:14px;padding:4px 10px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .15s" onmouseover="this.style.background=\'rgba(201,150,58,.3)\'" onmouseout="this.style.background=\'rgba(255,255,255,.08)\'">' + c.label + '</button>';
+  });
+  html += '</div>';
+
+  // Append (don't replace)
+  var wrap = document.createElement('div');
+  wrap.innerHTML = html;
+  bubble.appendChild(wrap.firstChild);
+  bubble.dataset.contextualChips = '1';
+}
+window.appendContextualChips = appendContextualChips;
+
+function ariaContextChip(btn) {
+  var prompt = btn.getAttribute('data-prompt');
+  if (!prompt) return;
+  var input = document.getElementById('ariaModalInput');
+  if (!input) return;
+  input.value = prompt;
+  onAriaModalInput(input);
+  setTimeout(function(){ sendAriaModal(); }, 50);
+}
+window.ariaContextChip = ariaContextChip;
 
 // Execute an action proposed by ARIA — opens the right channel (WhatsApp/email/copy)
 function ariaExecuteAction(idx, btn) {
@@ -12984,13 +13274,24 @@ window.addEventListener('DOMContentLoaded', function() {
         <button onclick="clearAriaAttachment()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 0 0 4px" title="Retirer">✕</button>
       </div>
     </div>
+    <!-- Patch 5: Premium quick-options bar (always visible) -->
+    <div id="ariaQuickBar" style="padding:8px 14px;background:var(--paper);border-top:1px solid var(--border);display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;align-items:center">
+      <button onclick="ariaQuickModifier('deep')" title="Réponse approfondie via reasoning model" style="flex-shrink:0;background:linear-gradient(135deg,var(--green3),#1B4332);color:#fff;border:none;border-radius:14px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:4px">🧠 <span data-fr="Approfondir" data-en="Deep dive">Approfondir</span></button>
+      <button onclick="ariaQuickModifier('shorter')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="↓ Plus court" data-en="↓ Shorter">↓ Plus court</button>
+      <button onclick="ariaQuickModifier('translate')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="🌐 Traduire EN" data-en="🌐 Translate FR">🌐 Traduire EN</button>
+      <button onclick="ariaQuickModifier('staff')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="📋 Brief staff" data-en="📋 Staff brief">📋 Brief staff</button>
+      <button onclick="ariaQuickModifier('warmer')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="✨ Plus chaleureux" data-en="✨ Warmer">✨ Plus chaleureux</button>
+      <button onclick="ariaQuickModifier('formal')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="🎩 Formel" data-en="🎩 Formal">🎩 Formel</button>
+    </div>
     <div class="aria-modal-input-area">
       <button onclick="document.getElementById('ariaFileInput').click()" title="Joindre fichier ou image" style="background:none;border:1px solid var(--border);color:var(--muted);width:38px;height:38px;border-radius:8px;cursor:pointer;font-size:16px;flex-shrink:0;transition:all .15s" onmouseover="this.style.color='var(--gold)';this.style.borderColor='var(--gold)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">📎</button>
       <input type="file" id="ariaFileInput" style="display:none" accept="image/*,.pdf,.txt,.md,.csv" onchange="handleAriaFile(this.files[0])">
       <textarea class="aria-modal-textarea" id="ariaModalInput" rows="1"
         placeholder="Message, commande ou email..."
         oninput="onAriaModalInput(this)"
-        onkeydown="ariaModalKeyDown(event)"></textarea>
+        onpaste="setTimeout(function(){onAriaModalInput(document.getElementById('ariaModalInput'))},0)"
+        onkeydown="ariaModalKeyDown(event)"
+        autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true"></textarea>
       <button class="aria-send-btn" id="ariaModalSendBtn" onclick="sendAriaModal()" disabled>↑</button>
     </div>
   </div>
