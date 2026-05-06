@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -620,7 +621,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .aria-modal{background:var(--card);border-radius:16px;width:60vw;max-width:60vw;height:90vh;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.45)}
 @media(max-width:768px){.aria-modal{width:96vw;max-width:96vw;height:88vh;max-height:88vh}}
 .aria-modal-hd{background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;color:#fff}
-.aria-modal-body{flex:1;overflow-y:auto;padding:14px 16px;background:var(--paper)}
+.aria-modal-body{flex:1;overflow-y:auto;padding:14px 16px;background:var(--paper);position:relative}
 .aria-modal-input-area{padding:12px 14px;background:var(--card);border-top:1px solid var(--border);display:flex;gap:8px;align-items:flex-end}
 .aria-modal-textarea{flex:1;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--paper);color:var(--ink);outline:none;resize:none;min-height:42px;max-height:120px;transition:border-color .15s}
 .aria-modal-textarea:focus{border-color:var(--gold);background:#fff}
@@ -849,18 +850,18 @@ body.v2-active #chatPanel{display:none !important}
   </div>
 </div>
 
-<!-- Row 2: Morning brief 50% + Smart alerts 50% -->
+<!-- Row 2: Today (Morning brief + Smart alerts merged) -->
 <div class="row row-50">
-  <div class="v2-card" id="card50MorningBrief">
+  <div class="v2-card" id="card50MorningBrief" style="grid-column:span 2">
     <div class="v2-card-hd">
-      <div class="v2-card-title">☀ <span data-fr="Brief du jour" data-en="Morning brief">Brief du jour</span></div>
-      <button class="v2-icon-btn" onclick="loadMorningBrief(true)" title="Refresh" aria-label="Refresh brief">↻</button>
+      <div class="v2-card-title">☀ <span data-fr="Aujourd'hui" data-en="Today">Aujourd'hui</span></div>
+      <button class="v2-icon-btn" onclick="loadMorningBrief(true);loadHomeData()" title="Refresh" aria-label="Refresh">↻</button>
     </div>
     <div class="v2-card-body" id="card50MorningBriefBody">
       <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
     </div>
   </div>
-  <div class="v2-card" id="heroAlertsToday">
+  <div class="v2-card" id="heroAlertsToday" style="display:none">
     <div class="v2-card-hd">
       <div class="v2-card-title">💡 <span data-fr="Alertes intelligentes" data-en="Smart Alerts">Alertes intelligentes</span></div>
       <button class="v2-icon-btn" onclick="loadHomeData()" title="Refresh" aria-label="Refresh alerts">↻</button>
@@ -1621,6 +1622,14 @@ body.v2-active #chatPanel{display:none !important}
 // STAFFLO PROXY — set URL to remove API key requirement
 // ════════════════════════════════════════════
 const STAFFLO_PROXY = 'https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/ai-proxy';
+// Optional shared secret — only enforced if PROXY_SECRET is set in Edge Function env.
+// When unset on the server, the header is just ignored. Safe to keep here.
+const STAFFLO_PROXY_SECRET = '';
+function proxyHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (STAFFLO_PROXY_SECRET) h['x-stafflo-secret'] = STAFFLO_PROXY_SECRET;
+  return h;
+}
 // ── Hardcoded Supabase constants (never broken by bad localStorage) ──
 const SB_URL  = 'https://rcjhgilpmojohmrqzokx.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
@@ -6579,6 +6588,29 @@ async function generateAlerts(weatherTemp) {
   const elV = document.getElementById('alertsContent');
   if (elV) elV.innerHTML = alertsHtml;
 
+  // ── Merge alerts into Brief du jour as cards ──
+  // Convert alert types → urgency: urgent=9, warn=7, info=5, good=3
+  const typeToUrgency = { urgent: 9, warn: 7, info: 5, good: 3 };
+  const typeToIcon = { urgent: '🚨', warn: '⚠️', info: '💡', good: '✅' };
+  window._localAlertCards = alerts.map(a => ({
+    urgency: typeToUrgency[a.type] || 5,
+    icon: (a.title && /\p{Emoji}/u.test(a.title.slice(0,3))) ? a.title.slice(0,2).trim() : (typeToIcon[a.type] || '💡'),
+    title: (a.title || '').replace(/^[\p{Emoji}\s]+/u, '').trim() || a.title,
+    detail: a.sub || '',
+    action: '',
+    action_type: 'none',
+    _fromAlert: true
+  }));
+  // Trigger re-render of brief if it has data, so alerts show prepended
+  if (window._briefCards && window._briefCards.length) {
+    const briefEl = document.getElementById('briefCards');
+    if (briefEl) renderBriefCards(briefEl, window._briefCards.filter(c => !c._fromAlert));
+  } else {
+    // No AI brief yet — show alerts alone in the brief card
+    const briefEl = document.getElementById('briefCards');
+    if (briefEl && window._localAlertCards.length) renderBriefCards(briefEl, []);
+  }
+
   // ── Today tab badge ──
   const hasUrgent = alerts.some(a => a.type === 'urgent');
   const todayBtn = document.getElementById('nb-today');
@@ -7393,7 +7425,7 @@ async function extractFormAI() {
     if (useProxy) {
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: proxyHeaders(),
         body: JSON.stringify({ task: 'extract', system: systemPrompt||'', user: userPrompt, max_tokens: 600 })
       });
       if (r.ok) {
@@ -7650,7 +7682,7 @@ async function loadMorningBrief(forceRefresh = false) {
     if (STAFFLO_PROXY) {
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: proxyHeaders(),
         body: JSON.stringify({ task: 'brief', system: '', user: prompt, max_tokens: 1000 })
       });
       const d = await r.json();
@@ -7724,7 +7756,7 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
       var resolvedTask = task;
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: proxyHeaders(),
         body: JSON.stringify({
           task: resolvedTask,
           system: systemPrompt || '',
@@ -7873,10 +7905,21 @@ function renderBriefCards(el, cards) {
   // Hide skeleton whenever real content arrives
   const sk = document.getElementById('briefSkeleton');
   if (sk) sk.style.display = 'none';
-  if (!cards || !cards.length) { el.innerHTML = ''; return; }
+  // Merge: prepend local alert cards (instant, deterministic) before AI brief cards
+  const aiCards = (cards || []).filter(c => !c._fromAlert);
+  const alertCards = window._localAlertCards || [];
+  // Dedup: if AI card title matches alert title (case-insensitive contains), drop the AI dup
+  const alertTitles = alertCards.map(a => (a.title||'').toLowerCase());
+  const dedupedAi = aiCards.filter(c => {
+    const t = (c.title||'').toLowerCase();
+    return !alertTitles.some(at => at && (t.includes(at) || at.includes(t)));
+  });
+  const merged = alertCards.concat(dedupedAi).sort((a,b) => (b.urgency||0) - (a.urgency||0));
+  if (!merged.length) { el.innerHTML = ''; return; }
   const fr = lang === 'fr';
   window._briefActions = {};
-  window._briefCards = cards.slice();
+  window._briefCards = merged.slice();
+  const cardsToRender = merged;
 
   const buildCard = (card, idx) => {
     const u = card.urgency || 5;
@@ -7916,9 +7959,9 @@ function renderBriefCards(el, cards) {
     '</div>';
   };
 
-  const SHOW_FIRST = 4;
-  const visibleCards = cards.slice(0, SHOW_FIRST);
-  const hiddenCards = cards.slice(SHOW_FIRST);
+  const SHOW_FIRST = 2;
+  const visibleCards = cardsToRender.slice(0, SHOW_FIRST);
+  const hiddenCards = cardsToRender.slice(SHOW_FIRST);
 
   let html = visibleCards.map(buildCard).join('');
 
@@ -8657,25 +8700,86 @@ function stopAriaChatMirror() {
 function sendAriaModal() {
   var input = document.getElementById('ariaModalInput');
   var text = (input && input.value || '').trim();
-  if (!text) return;
+  var attach = window._ariaAttachment || null;
+  if (!text && !attach) return;
+
   var body = document.getElementById('ariaModalMessages');
   if (body) {
     var u = document.createElement('div');
     u.className = 'aria-modal-bubble user';
-    u.textContent = text;
+    if (attach) {
+      var fileLine = document.createElement('div');
+      fileLine.style.cssText = 'font-size:11px;opacity:.85;margin-bottom:4px;display:flex;align-items:center;gap:6px';
+      fileLine.innerHTML = '<span>📎</span><span>' + (attach.filename || 'fichier') + '</span>';
+      u.appendChild(fileLine);
+    }
+    if (text) {
+      var txt = document.createElement('div');
+      txt.textContent = text;
+      u.appendChild(txt);
+    }
     body.appendChild(u);
     body.scrollTop = body.scrollHeight;
   }
   input.value = '';
   onAriaModalInput(input);
-  // Bridge to existing chat engine — ensure the mirror observer is running so replies surface
+
+  // ── Path A: attachment present → call proxy directly with vision route ──
+  if (attach) {
+    var defaultPrompt = lang === 'fr'
+      ? 'Analyse ce fichier et résume ce qui est important pour la gestion de la villa.'
+      : 'Analyze this file and summarize what matters for villa operations.';
+    var promptText = text || defaultPrompt;
+    var attachToSend = { media_type: attach.media_type, data: attach.data };
+    clearAriaAttachment();
+
+    // Typing indicator
+    var typing = null;
+    if (body) {
+      typing = document.createElement('div');
+      typing.className = 'aria-modal-bubble aria';
+      typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--muted)">📎 Lecture du fichier…</span>';
+      body.appendChild(typing);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    var endpoint = (typeof STAFFLO_PROXY !== 'undefined' && STAFFLO_PROXY) ? STAFFLO_PROXY : null;
+    if (!endpoint) {
+      if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">Proxy non configuré.</span>';
+      return;
+    }
+    fetch(endpoint, {
+      method: 'POST',
+      headers: proxyHeaders(),
+      body: JSON.stringify({
+        task: 'vision',
+        user: promptText,
+        max_tokens: 800,
+        attachment: attachToSend
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (typing) typing.remove();
+      var reply = (d && d.text) || (lang==='fr' ? 'Désolé, lecture impossible.' : 'Sorry, could not read the file.');
+      var bub = document.createElement('div');
+      bub.className = 'aria-modal-bubble aria';
+      bub.innerHTML = '<strong>ARIA</strong> · ' + reply.replace(/\n/g,'<br>');
+      if (body) { body.appendChild(bub); body.scrollTop = body.scrollHeight; }
+    })
+    .catch(function(e) {
+      if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">' + e.message + '</span>';
+    });
+    return;
+  }
+
+  // ── Path B: text only → bridge to existing chat engine ──
   startAriaChatMirror();
   try {
     if (typeof chatSend === 'function') {
       var legacy = document.getElementById('chatInput');
       if (legacy) {
         legacy.value = text;
-        // Enable send button (chatSend checks it)
         var sb = document.getElementById('chatSendBtn');
         if (sb) sb.disabled = false;
         chatSend();
@@ -8688,7 +8792,6 @@ function sendAriaModal() {
   // Typing indicator inside the popup (replaced when real reply arrives)
   setTimeout(function() {
     if (!body) return;
-    // Don't add placeholder if a real reply already came in
     var lastChild = body.lastElementChild;
     if (lastChild && lastChild.classList.contains('aria-modal-bubble') && lastChild.classList.contains('aria')) return;
     var r = document.createElement('div');
@@ -8696,11 +8799,74 @@ function sendAriaModal() {
     r.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--muted)">…</span>';
     body.appendChild(r);
     body.scrollTop = body.scrollHeight;
-    // Remove placeholder after 800ms — real reply (mirrored from chatMessages) will replace it
     setTimeout(function(){
       if (r.parentElement) r.remove();
     }, 800);
   }, 200);
+}
+
+// ── ARIA file attach: paperclip + drag-drop ─────────────────
+window._ariaAttachment = null;
+function handleAriaFile(file) {
+  if (!file) return;
+  var maxBytes = 8 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    alert(lang==='fr' ? 'Fichier trop gros (max 8 Mo)' : 'File too big (max 8 MB)');
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dataUrl = e.target.result;
+    var b64 = (dataUrl.split(',')[1]) || '';
+    window._ariaAttachment = {
+      filename: file.name,
+      media_type: file.type || 'application/octet-stream',
+      size: file.size,
+      data: b64
+    };
+    var chip = document.getElementById('ariaAttachChip');
+    var nameEl = document.getElementById('ariaAttachName');
+    var sizeEl = document.getElementById('ariaAttachSize');
+    var iconEl = document.getElementById('ariaAttachIcon');
+    if (nameEl) nameEl.textContent = file.name;
+    if (sizeEl) sizeEl.textContent = (file.size/1024).toFixed(0) + ' KB';
+    if (iconEl) iconEl.textContent = file.type.startsWith('image/') ? '🖼' : (file.type === 'application/pdf' ? '📄' : '📎');
+    if (chip) chip.style.display = 'block';
+    // Enable send button even without text
+    var sb = document.getElementById('ariaModalSendBtn');
+    if (sb) sb.disabled = false;
+  };
+  reader.onerror = function() { alert('Erreur lecture fichier'); };
+  reader.readAsDataURL(file);
+}
+function clearAriaAttachment() {
+  window._ariaAttachment = null;
+  var chip = document.getElementById('ariaAttachChip');
+  if (chip) chip.style.display = 'none';
+  var fi = document.getElementById('ariaFileInput');
+  if (fi) fi.value = '';
+  // Recompute send button state from textarea
+  var input = document.getElementById('ariaModalInput');
+  if (input && typeof onAriaModalInput === 'function') onAriaModalInput(input);
+}
+function onAriaDragOver(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  var ov = document.getElementById('ariaDropOverlay');
+  if (ov) ov.style.display = 'flex';
+}
+function onAriaDragLeave(e) {
+  if (e.currentTarget.contains(e.relatedTarget)) return;
+  var ov = document.getElementById('ariaDropOverlay');
+  if (ov) ov.style.display = 'none';
+}
+function onAriaDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  var ov = document.getElementById('ariaDropOverlay');
+  if (ov) ov.style.display = 'none';
+  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) handleAriaFile(f);
 }
 
 // ── ARIA inline (search box) — typing opens modal ──
@@ -9173,7 +9339,13 @@ window.addEventListener('DOMContentLoaded', function() {
       </div>
       <button onclick="closeAriaModal()" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">✕</button>
     </div>
-    <div class="aria-modal-body" id="ariaModalMessages">
+    <div class="aria-modal-body" id="ariaModalMessages" ondragover="onAriaDragOver(event)" ondragleave="onAriaDragLeave(event)" ondrop="onAriaDrop(event)">
+      <div id="ariaDropOverlay" style="display:none;position:absolute;inset:0;background:rgba(27,67,50,.85);border:3px dashed var(--gold);border-radius:14px;z-index:5;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:20px;pointer-events:none;backdrop-filter:blur(2px)">
+        <div style="text-align:center">
+          <div style="font-size:36px;margin-bottom:8px">📎</div>
+          <div data-fr="Déposer le fichier" data-en="Drop the file">Déposer le fichier</div>
+        </div>
+      </div>
       <div class="aria-modal-bubble aria">
         <strong>ARIA</strong> · <span data-fr="Comment puis-je vous aider ?" data-en="How can I help?">Comment puis-je vous aider ?</span>
         <div style="margin-top:6px;font-size:12px;color:var(--muted)">
@@ -9181,7 +9353,18 @@ window.addEventListener('DOMContentLoaded', function() {
         </div>
       </div>
     </div>
+    <!-- Attachment preview chip (hidden until file added) -->
+    <div id="ariaAttachChip" style="display:none;padding:8px 14px;background:var(--card);border-top:1px solid var(--border)">
+      <div style="display:inline-flex;align-items:center;gap:8px;background:var(--gold-light);border:1px solid rgba(201,150,58,.35);border-radius:8px;padding:6px 10px;font-size:12px;max-width:100%">
+        <span id="ariaAttachIcon">📎</span>
+        <span id="ariaAttachName" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px"></span>
+        <span id="ariaAttachSize" style="color:var(--muted);font-size:11px"></span>
+        <button onclick="clearAriaAttachment()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 0 0 4px" title="Retirer">✕</button>
+      </div>
+    </div>
     <div class="aria-modal-input-area">
+      <button onclick="document.getElementById('ariaFileInput').click()" title="Joindre fichier ou image" style="background:none;border:1px solid var(--border);color:var(--muted);width:38px;height:38px;border-radius:8px;cursor:pointer;font-size:16px;flex-shrink:0;transition:all .15s" onmouseover="this.style.color='var(--gold)';this.style.borderColor='var(--gold)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">📎</button>
+      <input type="file" id="ariaFileInput" style="display:none" accept="image/*,.pdf,.txt,.md,.csv" onchange="handleAriaFile(this.files[0])">
       <textarea class="aria-modal-textarea" id="ariaModalInput" rows="1"
         placeholder="Message, commande ou email..."
         oninput="onAriaModalInput(this)"
