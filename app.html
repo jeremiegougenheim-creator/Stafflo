@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -943,6 +944,7 @@ body.v2-active #chatPanel{display:none !important}
     <div class="v2-card-hd">
       <div class="v2-card-title">📅 <span data-fr="Calendrier" data-en="Calendar">Calendrier</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" id="calMonthLbl">—</span></div>
       <div style="display:flex;gap:4px">
+        <button class="v2-icon-btn" onclick="staffloCal.toggleView()" title="Basculer mois / 90 jours" aria-label="Toggle view" id="calViewToggleBtn">▦</button>
         <button class="v2-icon-btn" onclick="staffloCal.prev()" title="Mois précédent" aria-label="Previous month">‹</button>
         <button class="v2-icon-btn" onclick="staffloCal.today()" title="Aujourd'hui" aria-label="Today">●</button>
         <button class="v2-icon-btn" onclick="staffloCal.next()" title="Mois suivant" aria-label="Next month">›</button>
@@ -2284,28 +2286,48 @@ function getFile() { /* placeholder */ }
 // Premium features only: occupancy heatmap, event overlays, ARIA quick-actions.
 // ════════════════════════════════════════════════════════════════
 var staffloCal = (function(){
-  var state = { year: null, month: null }; // month is 0-11
+  var state = { year: null, month: null, view: null }; // view: 'month' | 'ribbon'
   function init() {
     var n = new Date();
     if (state.year === null) { state.year = n.getFullYear(); state.month = n.getMonth(); }
+    if (state.view === null) {
+      try { state.view = localStorage.getItem('stafflo_cal_view') || 'month'; } catch(e){ state.view = 'month'; }
+    }
+  }
+  function toggleView() {
+    init();
+    state.view = (state.view === 'month') ? 'ribbon' : 'month';
+    try { localStorage.setItem('stafflo_cal_view', state.view); } catch(e){}
+    render();
   }
   function setMonth(y, m) {
     state.year = y; state.month = m; render();
   }
   function prev() {
     init();
+    if (state.view === 'ribbon') return; // ribbon scrolls horizontally instead
     var m = state.month - 1, y = state.year;
     if (m < 0) { m = 11; y--; }
     setMonth(y, m);
   }
   function next() {
     init();
+    if (state.view === 'ribbon') return;
     var m = state.month + 1, y = state.year;
     if (m > 11) { m = 0; y++; }
     setMonth(y, m);
   }
   function today() {
     var n = new Date();
+    if (state.view === 'ribbon') {
+      // Scroll ribbon to today
+      setTimeout(function(){
+        var rib = document.getElementById('calRibbon');
+        var todayEl = rib && rib.querySelector('[data-today="1"]');
+        if (todayEl && todayEl.scrollIntoView) todayEl.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
+      }, 50);
+      return;
+    }
     setMonth(n.getFullYear(), n.getMonth());
   }
   // Map of YYYY-MM-DD → { type: 'arrival'|'departure'|'stay'|'event', guest, ev }
@@ -2352,6 +2374,21 @@ var staffloCal = (function(){
   }
   function render() {
     init();
+    // Update toggle icon to reflect mode
+    var btn = document.getElementById('calViewToggleBtn');
+    if (btn) {
+      btn.textContent = state.view === 'ribbon' ? '▦' : '☰';
+      btn.title = state.view === 'ribbon' ? 'Vue mois' : 'Vue 90 jours (ribbon)';
+    }
+    // Hide prev/next in ribbon view (irrelevant — scroll instead)
+    var prevBtn = document.querySelector('button[onclick="staffloCal.prev()"]');
+    var nextBtn = document.querySelector('button[onclick="staffloCal.next()"]');
+    if (prevBtn) prevBtn.style.display = state.view === 'ribbon' ? 'none' : '';
+    if (nextBtn) nextBtn.style.display = state.view === 'ribbon' ? 'none' : '';
+    if (state.view === 'ribbon') return renderRibbon();
+    return renderMonth();
+  }
+  function renderMonth() {
     var body = document.getElementById('calBody');
     var lbl = document.getElementById('calMonthLbl');
     if (!body) return;
@@ -2408,6 +2445,98 @@ var staffloCal = (function(){
     body.innerHTML = html;
   }
   // Click on a day → contextual action panel
+  // ── RIBBON VIEW: 90-day horizontal scrollable strip with guests/events
+  function renderRibbon() {
+    init();
+    var body = document.getElementById('calBody');
+    var lbl = document.getElementById('calMonthLbl');
+    if (!body) return;
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    if (lbl) lbl.textContent = fr ? '90 jours' : '90 days';
+
+    var occ = buildOccupancyMap();
+    var todayD = new Date(); todayD.setHours(0,0,0,0);
+    var todayKey = todayD.toISOString().slice(0,10);
+    // Range: -7 days → +83 days = 90 days total
+    var startD = new Date(todayD); startD.setDate(startD.getDate() - 7);
+
+    var dayLbls = fr ? ['D','L','M','M','J','V','S'] : ['S','M','T','W','T','F','S'];
+    var monthShort = fr
+      ? ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc']
+      : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    // Group consecutive days for the same guest into spans
+    var html = '<div id="calRibbon" style="overflow-x:auto;overflow-y:hidden;padding:6px 4px 10px;scroll-behavior:smooth;-webkit-overflow-scrolling:touch">';
+    html += '<div style="display:flex;gap:2px;min-width:max-content">';
+
+    var lastMonth = -1;
+    for (var i = 0; i < 90; i++) {
+      var d = new Date(startD); d.setDate(startD.getDate() + i);
+      var key = d.toISOString().slice(0,10);
+      var info = occ[key];
+      var isToday = (key === todayKey);
+      var isPast = (d < todayD);
+      var dow = d.getDay();
+      var dayNum = d.getDate();
+      var monthIdx = d.getMonth();
+
+      var bg = '#fff', fg = 'var(--ink)', border = '1px solid var(--border)';
+      var topBadge = '';
+      var bottomLabel = '';
+      if (info) {
+        if (info.type === 'arrival') { bg = 'rgba(60,108,17,.85)'; fg = '#fff'; topBadge = '→'; bottomLabel = (info.guest && info.guest.name) ? info.guest.name.split(' ')[0] : ''; }
+        else if (info.type === 'departure') { bg = 'rgba(163,45,45,.78)'; fg = '#fff'; topBadge = '←'; bottomLabel = (info.guest && info.guest.name) ? info.guest.name.split(' ')[0] : ''; }
+        else if (info.type === 'stay') { bg = 'rgba(60,108,17,.30)'; fg = 'var(--green3)'; bottomLabel = (info.guest && info.guest.name) ? info.guest.name.split(' ')[0] : ''; }
+        else if (info.type === 'event') { bg = 'rgba(201,150,58,.18)'; fg = 'var(--green3)'; border = '1px dashed rgba(201,150,58,.5)'; topBadge = '🎯'; bottomLabel = (info.ev && info.ev[fr?2:3]) ? info.ev[fr?2:3].split(' ')[0] : ''; }
+      }
+      if (isPast && !info) { bg = 'var(--paper)'; fg = 'var(--muted)'; }
+      if (isToday) border = '2px solid var(--gold)';
+
+      // Show month label on day 1 OR first cell
+      var monthHeader = '';
+      if (monthIdx !== lastMonth || i === 0) {
+        monthHeader = '<div style="font-size:8px;letter-spacing:1px;color:var(--gold);font-weight:700;text-align:center;margin-bottom:2px;text-transform:uppercase">' + monthShort[monthIdx] + '</div>';
+        lastMonth = monthIdx;
+      } else {
+        monthHeader = '<div style="height:11px"></div>';
+      }
+
+      html += '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">' +
+        monthHeader +
+        '<button data-cal-day="' + key + '"' + (isToday?' data-today="1"':'') + ' onclick="staffloCal.tap(\'' + key + '\')" title="' + (info && info.guest ? (info.guest.name||'').replace(/"/g,'') : '') + '" style="position:relative;width:38px;height:54px;background:' + bg + ';color:' + fg + ';border:' + border + ';border-radius:8px;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3px;transition:transform .1s" onmouseenter="this.style.transform=\'translateY(-2px)\'" onmouseleave="this.style.transform=\'\'">' +
+          (topBadge ? '<span style="position:absolute;top:1px;right:2px;font-size:8px">' + topBadge + '</span>' : '') +
+          '<span style="font-size:8px;opacity:.7;letter-spacing:.5px">' + dayLbls[dow] + '</span>' +
+          '<span style="font-size:14px;font-weight:' + (isToday?'700':'600') + ';line-height:1">' + dayNum + '</span>' +
+          (bottomLabel ? '<span style="font-size:7px;font-weight:600;letter-spacing:.3px;margin-top:2px;max-width:34px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + bottomLabel + '</span>' : '<span style="height:9px"></span>') +
+        '</button>' +
+      '</div>';
+    }
+    html += '</div></div>';
+
+    // Legend
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;color:var(--muted);padding:4px 8px;border-top:1px solid var(--border);margin-top:4px">' +
+      '<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:9px;height:9px;border-radius:2px;background:rgba(60,108,17,.85);display:inline-block"></span> ' + (fr?'Arrivée':'Arrival') + '</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:9px;height:9px;border-radius:2px;background:rgba(60,108,17,.30);display:inline-block"></span> ' + (fr?'Séjour':'Stay') + '</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:9px;height:9px;border-radius:2px;background:rgba(163,45,45,.78);display:inline-block"></span> ' + (fr?'Départ':'Depart') + '</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:3px">🎯 ' + (fr?'Événement':'Event') + '</span>' +
+      '<span style="margin-left:auto;font-style:italic">' + (fr?'← scroll →':'← scroll →') + '</span>' +
+    '</div>';
+
+    body.innerHTML = html;
+
+    // Scroll to today on first paint
+    setTimeout(function(){
+      var rib = document.getElementById('calRibbon');
+      var todayEl = rib && rib.querySelector('[data-today="1"]');
+      if (todayEl) {
+        var ribRect = rib.getBoundingClientRect();
+        var elRect = todayEl.getBoundingClientRect();
+        var offset = (todayEl.offsetLeft - rib.offsetLeft) - (ribRect.width / 2) + (elRect.width / 2);
+        rib.scrollLeft = Math.max(0, offset);
+      }
+    }, 30);
+  }
+
   function tap(dateKey) {
     var fr = (typeof lang !== 'undefined' && lang === 'fr');
     var occ = buildOccupancyMap();
@@ -2472,7 +2601,7 @@ var staffloCal = (function(){
     }
     if (typeof openAriaModal === 'function') openAriaModal(prompt);
   }
-  return { setMonth: setMonth, prev: prev, next: next, today: today, render: render, tap: tap, askAria: askAria };
+  return { setMonth: setMonth, prev: prev, next: next, today: today, render: render, tap: tap, askAria: askAria, toggleView: toggleView, getView: function(){ init(); return state.view; } };
 })();
 window.staffloCal = staffloCal;
 
@@ -10574,6 +10703,22 @@ function mirrorChatBubble(node) {
   clone.className = clone.className
     .replace('chat-bubble', 'aria-modal-bubble')
     .replace(' ai', ' aria');
+  // Collapse long orchestrator user bubbles for cleaner UX
+  try {
+    if (clone.classList.contains('user')) {
+      var fullText = clone.textContent || '';
+      if (fullText.length > 240 && /ARIA central nervous system|Centre nerveux ARIA|JSON format|Signal d[ée]tect[ée]/i.test(fullText)) {
+        var fr = (typeof lang !== 'undefined' && lang === 'fr');
+        // Extract topic line if present
+        var topicMatch = fullText.match(/(?:Topic|Sujet)\s*[:：]\s*([^\n]+)/i);
+        var topic = topicMatch ? topicMatch[1].trim() : (fr?'Demande à ARIA':'Request to ARIA');
+        var summary = '🎯 ' + topic;
+        clone.innerHTML = '<div style="display:flex;align-items:center;gap:8px;justify-content:space-between"><span style="flex:1">' + summary + '</span>' +
+          '<button onclick="this.parentElement.parentElement.querySelector(\'.full-prompt\').style.display=\'block\';this.style.display=\'none\'" style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:10px;cursor:pointer;font-family:inherit">▾ ' + (fr?'voir':'show') + '</button></div>' +
+          '<div class="full-prompt" style="display:none;margin-top:8px;font-size:11px;opacity:.75;white-space:pre-wrap">' + fullText.replace(/</g,'&lt;') + '</div>';
+      }
+    }
+  } catch(e){}
   // ARIA orchestrator: if AI bubble contains a JSON array of actions, render as buttons
   try {
     if (clone.classList.contains('aria-modal-bubble') && clone.className.indexOf('user') === -1) {
@@ -10589,20 +10734,22 @@ function mirrorChatBubble(node) {
 function enhanceAriaActions(bubble) {
   if (!bubble || bubble.dataset.actionsParsed === '1') return;
   var txt = bubble.textContent || '';
+  // Normalize smart quotes early so detection works
+  var normalizedTxt = txt.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
   // Quick guard: must contain JSON-like with label+kind
-  if (!/\[\s*\{[^}]*"label"[^}]*"kind"/i.test(txt)) return;
+  if (!/\[\s*\{[^}]*"label"[^}]*"kind"/i.test(normalizedTxt)) return;
   // Try to extract first JSON array
-  var start = txt.indexOf('[');
-  var end = txt.lastIndexOf(']');
+  var start = normalizedTxt.indexOf('[');
+  var end = normalizedTxt.lastIndexOf(']');
   if (start < 0 || end < 0 || end <= start) return;
-  var raw = txt.slice(start, end + 1);
+  var raw = normalizedTxt.slice(start, end + 1);
   var actions;
   try {
     actions = JSON.parse(raw);
   } catch(e) {
-    // Try to clean common LLM mistakes: trailing commas, smart quotes
+    // Try to clean common LLM mistakes: trailing commas
     try {
-      var cleaned = raw.replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/,\s*([}\]])/g,'$1');
+      var cleaned = raw.replace(/,\s*([}\]])/g, '$1');
       actions = JSON.parse(cleaned);
     } catch(e2){ return; }
   }
@@ -10612,9 +10759,14 @@ function enhanceAriaActions(bubble) {
   if (!actions.length) return;
 
   var fr = (typeof lang !== 'undefined' && lang === 'fr');
-  // Replace text content with intro + action buttons
-  var intro = txt.slice(0, start).trim();
-  var outro = txt.slice(end + 1).trim();
+  // Replace text content with intro + action buttons (use original txt for intro/outro to keep formatting)
+  var origStart = txt.indexOf('[');
+  var origEnd = txt.lastIndexOf(']');
+  var intro = (origStart > 0 ? txt.slice(0, origStart) : '').trim();
+  var outro = (origEnd >= 0 ? txt.slice(origEnd + 1) : '').trim();
+  // Strip leftover code fences
+  intro = intro.replace(/```(json)?\s*$/i, '').trim();
+  outro = outro.replace(/^\s*```/i, '').trim();
 
   var actionsHtml = '<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">';
   actions.forEach(function(a, idx){
