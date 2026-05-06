@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1700,6 +1701,367 @@ let cloudEnabled = false;
 // ════════════════════════════════════════════════════════
 // CONFIG
 // ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// AUTH MODULE — Supabase Auth (login/signup/demo)
+// Modes:
+//   - 'authed'  → user logged in, owner_id = session.user.id, real DB
+//   - 'demo'    → mock data, no DB writes, sandbox for prospects
+//   - 'guest'   → not connected, redirected to login screen
+// All Supabase fetches should use authHeaders() instead of {apikey, Bearer key}
+// ════════════════════════════════════════════════════════════════
+
+var STAFFLO_AUTH = {
+  session: null,
+  user: null,
+  mode: 'guest', // 'authed' | 'demo' | 'guest'
+  initialized: false
+};
+
+function authMode() { return STAFFLO_AUTH.mode; }
+function isAuthed() { return STAFFLO_AUTH.mode === 'authed' && !!STAFFLO_AUTH.session; }
+function isDemo()   { return STAFFLO_AUTH.mode === 'demo'; }
+function getUserId(){ return STAFFLO_AUTH.user ? STAFFLO_AUTH.user.id : null; }
+function getUserEmail(){ return STAFFLO_AUTH.user ? STAFFLO_AUTH.user.email : null; }
+
+// Headers builder: real session OR anon fallback (used during transition)
+function authHeaders() {
+  var anonKey = (typeof SB_ANON !== 'undefined') ? SB_ANON : '';
+  if (isAuthed() && STAFFLO_AUTH.session) {
+    return {
+      'Content-Type': 'application/json',
+      apikey: anonKey,
+      Authorization: 'Bearer ' + STAFFLO_AUTH.session.access_token
+    };
+  }
+  // Demo or guest: anon key, but RLS will reject reads/writes that need owner_id
+  return {
+    'Content-Type': 'application/json',
+    apikey: anonKey,
+    Authorization: 'Bearer ' + anonKey
+  };
+}
+window.authHeaders = authHeaders;
+
+// Persist session to localStorage so refresh keeps user logged in
+function saveSessionLocal(session) {
+  try {
+    if (session) localStorage.setItem('stafflo_session', JSON.stringify(session));
+    else localStorage.removeItem('stafflo_session');
+  } catch(e){}
+}
+function loadSessionLocal() {
+  try {
+    var raw = localStorage.getItem('stafflo_session');
+    if (!raw) return null;
+    var s = JSON.parse(raw);
+    // Check expiry
+    if (s.expires_at && (s.expires_at * 1000) < Date.now()) {
+      localStorage.removeItem('stafflo_session');
+      return null;
+    }
+    return s;
+  } catch(e){ return null; }
+}
+
+async function authSignIn(email, password) {
+  var sb = (typeof SB_URL !== 'undefined') ? SB_URL : (getCfg().sbUrl);
+  var anon = (typeof SB_ANON !== 'undefined') ? SB_ANON : (getCfg().sbKey);
+  var url = sb.replace(/\/$/,'') + '/auth/v1/token?grant_type=password';
+  var res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', apikey: anon, Authorization: 'Bearer ' + anon },
+    body: JSON.stringify({ email: email, password: password })
+  });
+  var data = await res.json();
+  if (!res.ok) throw new Error(data.msg || data.error_description || data.error || 'Login failed');
+  STAFFLO_AUTH.session = data;
+  STAFFLO_AUTH.user = data.user;
+  STAFFLO_AUTH.mode = 'authed';
+  saveSessionLocal(data);
+  return data;
+}
+
+async function authSignUp(email, password, meta) {
+  var sb = (typeof SB_URL !== 'undefined') ? SB_URL : (getCfg().sbUrl);
+  var anon = (typeof SB_ANON !== 'undefined') ? SB_ANON : (getCfg().sbKey);
+  var url = sb.replace(/\/$/,'') + '/auth/v1/signup';
+  var res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', apikey: anon, Authorization: 'Bearer ' + anon },
+    body: JSON.stringify({ email: email, password: password, data: meta || {} })
+  });
+  var data = await res.json();
+  if (!res.ok) throw new Error(data.msg || data.error_description || data.error || 'Signup failed');
+  // If email confirmation required, no session yet
+  if (data.access_token) {
+    STAFFLO_AUTH.session = data;
+    STAFFLO_AUTH.user = data.user;
+    STAFFLO_AUTH.mode = 'authed';
+    saveSessionLocal(data);
+  }
+  return data;
+}
+
+async function authResetPassword(email) {
+  var sb = (typeof SB_URL !== 'undefined') ? SB_URL : (getCfg().sbUrl);
+  var anon = (typeof SB_ANON !== 'undefined') ? SB_ANON : (getCfg().sbKey);
+  var url = sb.replace(/\/$/,'') + '/auth/v1/recover';
+  var res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json', apikey: anon, Authorization: 'Bearer ' + anon },
+    body: JSON.stringify({ email: email })
+  });
+  if (!res.ok) {
+    var d = await res.json().catch(function(){return{};});
+    throw new Error(d.msg || d.error_description || 'Reset failed');
+  }
+  return true;
+}
+
+function authSignOut() {
+  STAFFLO_AUTH.session = null;
+  STAFFLO_AUTH.user = null;
+  STAFFLO_AUTH.mode = 'guest';
+  saveSessionLocal(null);
+  // Clear cached app data
+  try {
+    localStorage.removeItem('stafflo_clients');
+    localStorage.removeItem('stafflo_inbox_cache');
+  } catch(e){}
+  location.reload();
+}
+window.authSignOut = authSignOut;
+
+function enterDemoMode() {
+  STAFFLO_AUTH.mode = 'demo';
+  STAFFLO_AUTH.user = { id: 'demo-user', email: 'demo@stafflo.app' };
+  STAFFLO_AUTH.session = null;
+  // Don't persist — demo is per-tab
+  if (typeof loadDemoData === 'function') loadDemoData();
+}
+window.enterDemoMode = enterDemoMode;
+
+// Initialize auth state on app load
+async function initAuth() {
+  if (STAFFLO_AUTH.initialized) return;
+  STAFFLO_AUTH.initialized = true;
+  var s = loadSessionLocal();
+  if (s && s.access_token && s.user) {
+    STAFFLO_AUTH.session = s;
+    STAFFLO_AUTH.user = s.user;
+    STAFFLO_AUTH.mode = 'authed';
+    return;
+  }
+  // Check URL for demo mode
+  try {
+    var qs = new URLSearchParams(location.search);
+    if (qs.get('demo') === '1') {
+      enterDemoMode();
+      return;
+    }
+  } catch(e){}
+  STAFFLO_AUTH.mode = 'guest';
+}
+window.initAuth = initAuth;
+
+// Auth gate UI — shown when mode === 'guest'
+function showAuthGate() {
+  if (document.getElementById('staffloAuthGate')) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr') ||
+           (typeof navigator !== 'undefined' && navigator.language && navigator.language.startsWith('fr'));
+  var gate = document.createElement('div');
+  gate.id = 'staffloAuthGate';
+  gate.style.cssText = 'position:fixed;inset:0;background:#FAF7F2;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;font-family:DM Sans,sans-serif';
+  gate.innerHTML =
+    '<div style="background:#fff;border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.08);padding:36px 32px;max-width:400px;width:100%">' +
+      '<div style="text-align:center;margin-bottom:24px">' +
+        '<div style="font-family:Fraunces,serif;font-size:32px;font-weight:500;color:#1a3a1a;letter-spacing:-.5px">Stafflo</div>' +
+        '<div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8A8070;margin-top:4px">' + (fr?'Villa ops · IA':'Villa ops · AI') + '</div>' +
+      '</div>' +
+      '<div id="authTabs" style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid #E8E2D8">' +
+        '<button data-tab="login" class="auth-tab auth-tab-active" onclick="switchAuthTab(\'login\')" style="flex:1;background:none;border:none;padding:10px;font-size:13px;font-weight:600;color:#1a3a1a;cursor:pointer;border-bottom:2px solid #C9963A;font-family:inherit">' + (fr?'Connexion':'Login') + '</button>' +
+        '<button data-tab="signup" class="auth-tab" onclick="switchAuthTab(\'signup\')" style="flex:1;background:none;border:none;padding:10px;font-size:13px;font-weight:600;color:#8A8070;cursor:pointer;font-family:inherit">' + (fr?'Créer un compte':'Sign up') + '</button>' +
+      '</div>' +
+      '<div id="authForms">' +
+        '<div id="authLoginForm">' +
+          '<input id="authEmail" type="email" placeholder="' + (fr?'Email':'Email') + '" autocomplete="email" style="width:100%;padding:12px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit;box-sizing:border-box">' +
+          '<input id="authPassword" type="password" placeholder="' + (fr?'Mot de passe':'Password') + '" autocomplete="current-password" style="width:100%;padding:12px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit;box-sizing:border-box">' +
+          '<button onclick="handleAuthLogin()" id="authLoginBtn" style="width:100%;background:#1a3a1a;color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' + (fr?'Se connecter':'Sign in') + '</button>' +
+          '<div style="text-align:center;margin-top:12px"><a href="#" onclick="event.preventDefault();handleAuthReset()" style="font-size:12px;color:#8A8070;text-decoration:none">' + (fr?'Mot de passe oublié ?':'Forgot password?') + '</a></div>' +
+        '</div>' +
+        '<div id="authSignupForm" style="display:none">' +
+          '<input id="authSuName" type="text" placeholder="' + (fr?'Nom de votre villa':'Your villa name') + '" style="width:100%;padding:12px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit;box-sizing:border-box">' +
+          '<input id="authSuEmail" type="email" placeholder="' + (fr?'Email':'Email') + '" autocomplete="email" style="width:100%;padding:12px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit;box-sizing:border-box">' +
+          '<input id="authSuPassword" type="password" placeholder="' + (fr?'Mot de passe (8+ caractères)':'Password (8+ chars)') + '" autocomplete="new-password" style="width:100%;padding:12px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit;box-sizing:border-box">' +
+          '<button onclick="handleAuthSignup()" id="authSignupBtn" style="width:100%;background:#C9963A;color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' + (fr?'Créer mon compte':'Create account') + '</button>' +
+          '<div style="font-size:11px;color:#8A8070;text-align:center;margin-top:10px;line-height:1.5">' + (fr?'Une villa par défaut sera créée pour toi.':'A default villa will be created for you.') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div id="authMsg" style="margin-top:14px;font-size:12px;text-align:center;min-height:18px"></div>' +
+      '<div style="margin:20px 0 0;padding-top:18px;border-top:1px solid #E8E2D8;text-align:center">' +
+        '<button onclick="enterDemoMode();location.search=\'?demo=1\'" style="background:none;border:1.5px solid #E8E2D8;color:#1a3a1a;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">' + (fr?'🎬 Essayer en mode démo':'🎬 Try demo mode') + '</button>' +
+        '<div style="font-size:10px;color:#8A8070;margin-top:8px">' + (fr?'Données factices · Pas d\'inscription':'Mock data · No signup') + '</div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(gate);
+
+  // Enter key submits
+  setTimeout(function(){
+    var emailEl = document.getElementById('authEmail');
+    var passEl = document.getElementById('authPassword');
+    if (emailEl) emailEl.focus();
+    [emailEl, passEl, document.getElementById('authSuEmail'), document.getElementById('authSuPassword'), document.getElementById('authSuName')].forEach(function(el){
+      if (!el) return;
+      el.addEventListener('keydown', function(e){
+        if (e.key === 'Enter') {
+          if (document.getElementById('authLoginForm').style.display !== 'none') handleAuthLogin();
+          else handleAuthSignup();
+        }
+      });
+    });
+  }, 100);
+}
+window.showAuthGate = showAuthGate;
+
+function hideAuthGate() {
+  var g = document.getElementById('staffloAuthGate');
+  if (g) g.remove();
+}
+window.hideAuthGate = hideAuthGate;
+
+function switchAuthTab(tab) {
+  var login = document.getElementById('authLoginForm');
+  var signup = document.getElementById('authSignupForm');
+  var tabs = document.querySelectorAll('.auth-tab');
+  tabs.forEach(function(t){
+    var active = t.dataset.tab === tab;
+    t.style.color = active ? '#1a3a1a' : '#8A8070';
+    t.style.borderBottom = active ? '2px solid #C9963A' : 'none';
+  });
+  if (tab === 'login') { login.style.display = 'block'; signup.style.display = 'none'; }
+  else { login.style.display = 'none'; signup.style.display = 'block'; }
+  document.getElementById('authMsg').textContent = '';
+}
+window.switchAuthTab = switchAuthTab;
+
+function setAuthMsg(txt, kind) {
+  var el = document.getElementById('authMsg');
+  if (!el) return;
+  el.textContent = txt || '';
+  el.style.color = kind === 'err' ? '#A32D2D' : kind === 'ok' ? '#3B6D11' : '#8A8070';
+}
+
+async function handleAuthLogin() {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var email = (document.getElementById('authEmail').value || '').trim();
+  var pass = document.getElementById('authPassword').value || '';
+  if (!email || !pass) { setAuthMsg(fr?'Email et mot de passe requis':'Email and password required', 'err'); return; }
+  var btn = document.getElementById('authLoginBtn');
+  btn.disabled = true; btn.textContent = fr?'Connexion...':'Signing in...';
+  setAuthMsg(fr?'Connexion en cours...':'Signing in...');
+  try {
+    await authSignIn(email, pass);
+    setAuthMsg(fr?'✓ Connecté · chargement...':'✓ Signed in · loading...', 'ok');
+    setTimeout(function(){ location.reload(); }, 400);
+  } catch(e) {
+    setAuthMsg('✗ ' + (e.message || 'Erreur'), 'err');
+    btn.disabled = false; btn.textContent = fr?'Se connecter':'Sign in';
+  }
+}
+window.handleAuthLogin = handleAuthLogin;
+
+async function handleAuthSignup() {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var name = (document.getElementById('authSuName').value || '').trim();
+  var email = (document.getElementById('authSuEmail').value || '').trim();
+  var pass = document.getElementById('authSuPassword').value || '';
+  if (!email || !pass) { setAuthMsg(fr?'Email et mot de passe requis':'Email and password required', 'err'); return; }
+  if (pass.length < 8) { setAuthMsg(fr?'Mot de passe min 8 caractères':'Password 8+ characters', 'err'); return; }
+  var btn = document.getElementById('authSignupBtn');
+  btn.disabled = true; btn.textContent = fr?'Création...':'Creating...';
+  setAuthMsg(fr?'Création du compte...':'Creating account...');
+  try {
+    var data = await authSignUp(email, pass, { villa_name: name || 'Ma Villa', bedrooms: 5, base_price: 750 });
+    if (data.access_token) {
+      setAuthMsg(fr?'✓ Compte créé · chargement...':'✓ Account created · loading...', 'ok');
+      setTimeout(function(){ location.reload(); }, 600);
+    } else {
+      setAuthMsg(fr?'✓ Compte créé · vérifie ton email pour confirmer':'✓ Account created · check your email to confirm', 'ok');
+      btn.disabled = false; btn.textContent = fr?'Créer mon compte':'Create account';
+    }
+  } catch(e) {
+    setAuthMsg('✗ ' + (e.message || 'Erreur'), 'err');
+    btn.disabled = false; btn.textContent = fr?'Créer mon compte':'Create account';
+  }
+}
+window.handleAuthSignup = handleAuthSignup;
+
+async function handleAuthReset() {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var email = (document.getElementById('authEmail').value || '').trim();
+  if (!email) { setAuthMsg(fr?'Entre ton email d\'abord':'Enter your email first', 'err'); return; }
+  setAuthMsg(fr?'Envoi du lien...':'Sending link...');
+  try {
+    await authResetPassword(email);
+    setAuthMsg(fr?'✓ Lien envoyé · vérifie ton email':'✓ Link sent · check your email', 'ok');
+  } catch(e) {
+    setAuthMsg('✗ ' + (e.message || 'Erreur'), 'err');
+  }
+}
+window.handleAuthReset = handleAuthReset;
+
+// ════════════════════════════════════════════════════════════════
+// DEMO DATA — fake guests, emails, settings for sandbox mode
+// ════════════════════════════════════════════════════════════════
+function loadDemoData() {
+  // Inject demo clients
+  var today = new Date();
+  function dt(offset) { var d = new Date(today); d.setDate(d.getDate() + offset); return d.toISOString().slice(0,10); }
+  window.__DEMO_CLIENTS = [
+    { id:'demo-1', name:'Sophie Bernard', nat:'🇫🇷', email:'sophie.b@example.com', phone:'+33612345678',
+      arrival: dt(-2), departure: dt(5), nights:7, guests:6, price:5250, net:4436, source:'Airbnb',
+      notes:'Anniversaire mariage 15 ans · vegan · piscine chauffée demandée', status:'active' },
+    { id:'demo-2', name:'Marcus Weber', nat:'🇩🇪', email:'m.weber@example.com', phone:'+491701234567',
+      arrival: dt(3), departure: dt(10), nights:7, guests:8, price:7350, net:6211, source:'Direct',
+      notes:'Entreprise · séminaire 6 cadres + 2 conjoints · besoin Wi-Fi pro', status:'active' },
+    { id:'demo-3', name:'Sarah Mitchell', nat:'🇬🇧', email:'sarah@example.co.uk', phone:'+447700123456',
+      arrival: dt(8), departure: dt(15), nights:7, guests:4, price:5950, net:5028, source:'Booking',
+      notes:'Famille avec 2 enfants 8 et 11 ans · lit bébé pour neveu visite', status:'active' },
+    { id:'demo-4', name:'Alessandro Romano', nat:'🇮🇹', email:'a.romano@example.it', phone:'+393331234567',
+      arrival: dt(20), departure: dt(27), nights:7, guests:10, price:9100, net:7693, source:'Airbnb',
+      notes:'Groupe d\'amis 30-40 ans · chef demandé tous les soirs · transferts aéroport', status:'active' },
+    { id:'demo-5', name:'Famille Lopez', nat:'🇪🇸', email:'lopez@example.es', phone:'+34611234567',
+      arrival: dt(-15), departure: dt(-8), nights:7, guests:6, price:4900, net:4140, source:'Direct',
+      notes:'Repeat guest · 3e séjour', status:'past' }
+  ];
+  try { localStorage.setItem('stafflo_clients_demo', JSON.stringify(window.__DEMO_CLIENTS)); } catch(e){}
+
+  // Demo emails
+  window.__DEMO_INBOX = [
+    { id:'em-1', from_name:'Sophie Bernard', from_email:'sophie.b@example.com', subject:'Demande chef ce soir',
+      body:'Bonjour, on adorerait un menu marocain traditionnel ce soir si possible. Tajine agneau pour 4 + option vegan pour moi. Merci !',
+      received_at: new Date(Date.now() - 30*60000).toISOString(), source:'direct', read:false },
+    { id:'em-2', from_name:'Booking.com', from_email:'noreply@booking.com', subject:'Nouvelle réservation confirmée — Sarah Mitchell',
+      body:'Vous avez une nouvelle réservation pour Sarah Mitchell, 4 personnes, du ' + dt(8) + ' au ' + dt(15) + '. Total : 5 950 €.',
+      received_at: new Date(Date.now() - 4*3600000).toISOString(), source:'booking', read:true },
+    { id:'em-3', from_name:'Marcus Weber', from_email:'m.weber@example.com', subject:'Question Wi-Fi',
+      body:'Bonjour Jérémie, on prévoit un séminaire pendant notre séjour. Le Wi-Fi tient combien d\'appareils en simultané ? Merci.',
+      received_at: new Date(Date.now() - 8*3600000).toISOString(), source:'direct', read:false }
+  ];
+
+  // Demo villa settings
+  window.__DEMO_VILLA = {
+    villa_name: 'Villa Demo Marrakech',
+    bedrooms: 5,
+    base_price: 750,
+    location: 'Marrakech, Maroc',
+    capacity: 10
+  };
+}
+window.loadDemoData = loadDemoData;
+
+function getFile() { /* placeholder */ }
+
 function getCfg() {
   try {
     var c1 = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
@@ -11084,6 +11446,43 @@ window.addEventListener('DOMContentLoaded', function() {
     </div>
   </div>
 </div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// AUTH BOOTSTRAP — runs after all functions are defined
+// Decides: show login gate? load demo? proceed to app?
+// ════════════════════════════════════════════════════════════════
+(function bootstrapAuth(){
+  function go() {
+    try {
+      if (typeof initAuth === 'function') {
+        initAuth().then(function(){
+          if (typeof STAFFLO_AUTH !== 'undefined') {
+            if (STAFFLO_AUTH.mode === 'authed') {
+              // User logged in — proceed normally
+              console.log('[stafflo] authed as', STAFFLO_AUTH.user && STAFFLO_AUTH.user.email);
+              hideAuthGate && hideAuthGate();
+            } else if (STAFFLO_AUTH.mode === 'demo') {
+              console.log('[stafflo] demo mode');
+              hideAuthGate && hideAuthGate();
+            } else {
+              console.log('[stafflo] not authenticated — showing gate');
+              showAuthGate();
+            }
+          }
+        });
+      }
+    } catch(e) {
+      console.error('[stafflo] auth bootstrap error:', e);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', go);
+  } else {
+    go();
+  }
+})();
+</script>
 
 </body>
 </html>
