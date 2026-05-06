@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -937,30 +938,33 @@ body.v2-active #chatPanel{display:none !important}
   </div>
 </div>
 
-<!-- Row 4: 1/3 × 3 — Current guest · Villa snap · Pipeline -->
-<div class="row row-33">
-  <div class="v2-card" id="card33CurrentGuest">
+<!-- Row 4: Calendar 50% + Villa snap 50% (with Current guest + Pipeline merged inside) -->
+<div class="row row-50">
+  <div class="v2-card" id="card50Calendar">
     <div class="v2-card-hd">
-      <div class="v2-card-title">👤 <span data-fr="Client en cours" data-en="Current guest">Client en cours</span></div>
+      <div class="v2-card-title">📅 <span data-fr="Calendrier" data-en="Calendar">Calendrier</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" id="calMonthLbl">—</span></div>
+      <div style="display:flex;gap:4px">
+        <button class="v2-icon-btn" onclick="staffloCal.prev()" title="Mois précédent" aria-label="Previous month">‹</button>
+        <button class="v2-icon-btn" onclick="staffloCal.today()" title="Aujourd'hui" aria-label="Today">●</button>
+        <button class="v2-icon-btn" onclick="staffloCal.next()" title="Mois suivant" aria-label="Next month">›</button>
+      </div>
     </div>
-    <div class="v2-card-body" id="card33CurrentGuestBody">
-      <div style="color:var(--muted);font-style:italic" data-fr="Aucun client en cours" data-en="No guest currently">Aucun client en cours</div>
-    </div>
+    <div class="v2-card-body" id="calBody" style="padding:8px 4px 4px"></div>
   </div>
-  <div class="v2-card" id="card33VillaSnap">
+  <div class="v2-card" id="card50VillaSnap">
     <div class="v2-card-hd">
-      <div class="v2-card-title">🏡 <span data-fr="Villa" data-en="Villa">Villa</span></div>
+      <div class="v2-card-title">🏡 <span data-fr="Villa & Pipeline" data-en="Villa & Pipeline">Villa & Pipeline</span></div>
     </div>
-    <div class="v2-card-body" id="card33VillaBody">
-      <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
-    </div>
-  </div>
-  <div class="v2-card" id="card33Pipeline">
-    <div class="v2-card-hd">
-      <div class="v2-card-title">📈 <span data-fr="Pipeline" data-en="Pipeline">Pipeline</span></div>
-    </div>
-    <div class="v2-card-body" id="card33PipelineBody">
-      <div style="color:var(--muted);font-style:italic" data-fr="Aucune demande en attente" data-en="No pending inquiries">Aucune demande en attente</div>
+    <div class="v2-card-body" id="card50VillaSnapBody">
+      <div id="card33CurrentGuestBody" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+        <div style="color:var(--muted);font-style:italic" data-fr="Aucun client en cours" data-en="No guest currently">Aucun client en cours</div>
+      </div>
+      <div id="card33VillaBody" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+        <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
+      </div>
+      <div id="card33PipelineBody">
+        <div style="color:var(--muted);font-style:italic" data-fr="Aucune demande en attente" data-en="No pending inquiries">Aucune demande en attente</div>
+      </div>
     </div>
   </div>
 </div>
@@ -1882,6 +1886,79 @@ function authHeaders() {
 }
 window.authHeaders = authHeaders;
 
+// ════════════════════════════════════════════════════════════════
+// FETCH INTERCEPTOR — auto-inject JWT user token on Supabase calls
+// when authenticated. Single source of truth: no need to refactor
+// every existing fetch site. Safe: never touches non-Supabase URLs,
+// never overrides explicit Authorization headers passed by caller.
+// ════════════════════════════════════════════════════════════════
+(function installSupabaseAuthInterceptor(){
+  if (window.__staffloFetchPatched) return;
+  window.__staffloFetchPatched = true;
+  var origFetch = window.fetch.bind(window);
+  // Match Supabase REST + auth + functions endpoints
+  function isSupabaseUrl(u) {
+    if (!u) return false;
+    var s = (typeof u === 'string') ? u : (u.url || '');
+    return /\.supabase\.co\/(rest|functions|auth|storage)\//.test(s);
+  }
+  // Match auth/v1 endpoints (sign-in, sign-up, recover) — never override these
+  function isSupabaseAuthEndpoint(u) {
+    if (!u) return false;
+    var s = (typeof u === 'string') ? u : (u.url || '');
+    return /\/auth\/v1\/(token|signup|recover|user|logout)/.test(s);
+  }
+  // Tables that have an owner_id column (auto-injected on insert)
+  var OWNED_TABLES = ['email_inbox','chat_history','ai_usage_log','villa_settings','clients'];
+  function getTableFromUrl(u) {
+    var s = (typeof u === 'string') ? u : (u.url || '');
+    var m = s.match(/\/rest\/v1\/([a-z_]+)(\?|$)/);
+    return m ? m[1] : null;
+  }
+  // Inject owner_id into request body if we're inserting/updating an owned table
+  function injectOwnerId(input, init) {
+    if (!init || !init.method) return init;
+    var method = (init.method || '').toUpperCase();
+    if (method !== 'POST' && method !== 'PATCH' && method !== 'PUT') return init;
+    var table = getTableFromUrl(input);
+    if (!table || OWNED_TABLES.indexOf(table) === -1) return init;
+    if (!isAuthed || !isAuthed() || !STAFFLO_AUTH.user) return init;
+    var uid = STAFFLO_AUTH.user.id;
+    if (!init.body) return init;
+    try {
+      var body = (typeof init.body === 'string') ? JSON.parse(init.body) : init.body;
+      if (Array.isArray(body)) {
+        body.forEach(function(row){ if (row && typeof row === 'object' && !row.owner_id) row.owner_id = uid; });
+      } else if (body && typeof body === 'object' && !body.owner_id) {
+        body.owner_id = uid;
+      }
+      init.body = JSON.stringify(body);
+    } catch(e) { /* body not JSON, leave alone */ }
+    return init;
+  }
+  window.fetch = function(input, init){
+    try {
+      if (isSupabaseUrl(input) && !isSupabaseAuthEndpoint(input) && isAuthed && isAuthed() && STAFFLO_AUTH.session && STAFFLO_AUTH.session.access_token) {
+        init = init || {};
+        init.headers = init.headers || {};
+        var h = {};
+        if (init.headers instanceof Headers) {
+          init.headers.forEach(function(v, k){ h[k] = v; });
+        } else if (Array.isArray(init.headers)) {
+          init.headers.forEach(function(pair){ h[pair[0]] = pair[1]; });
+        } else {
+          h = Object.assign({}, init.headers);
+        }
+        h['Authorization'] = 'Bearer ' + STAFFLO_AUTH.session.access_token;
+        if (!h['apikey'] && !h['Apikey']) h['apikey'] = SB_ANON;
+        init.headers = h;
+        init = injectOwnerId(input, init);
+      }
+    } catch(e) { /* fail open */ }
+    return origFetch(input, init);
+  };
+})();
+
 // Persist session to localStorage so refresh keeps user logged in
 function saveSessionLocal(session) {
   try {
@@ -2201,6 +2278,221 @@ function loadDemoData() {
 window.loadDemoData = loadDemoData;
 
 function getFile() { /* placeholder */ }
+
+// ════════════════════════════════════════════════════════════════
+// CALENDAR WIDGET — month view with occupancy density, click → ARIA
+// Renders into #calBody. Reuses `clients` array (no extra fetches).
+// Premium features only: occupancy heatmap, event overlays, ARIA quick-actions.
+// ════════════════════════════════════════════════════════════════
+var staffloCal = (function(){
+  var state = { year: null, month: null }; // month is 0-11
+  function init() {
+    var n = new Date();
+    if (state.year === null) { state.year = n.getFullYear(); state.month = n.getMonth(); }
+  }
+  function setMonth(y, m) {
+    state.year = y; state.month = m; render();
+  }
+  function prev() {
+    init();
+    var m = state.month - 1, y = state.year;
+    if (m < 0) { m = 11; y--; }
+    setMonth(y, m);
+  }
+  function next() {
+    init();
+    var m = state.month + 1, y = state.year;
+    if (m > 11) { m = 0; y++; }
+    setMonth(y, m);
+  }
+  function today() {
+    var n = new Date();
+    setMonth(n.getFullYear(), n.getMonth());
+  }
+  // Map of YYYY-MM-DD → { type: 'arrival'|'departure'|'stay'|'event', guest, ev }
+  function buildOccupancyMap() {
+    var map = {};
+    var list = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+    list.forEach(function(c){
+      if (c.deleted_at) return;
+      if (!c.arrival || !c.departure) return;
+      var a = new Date(c.arrival); a.setHours(0,0,0,0);
+      var d = new Date(c.departure); d.setHours(0,0,0,0);
+      for (var t = a.getTime(); t <= d.getTime(); t += 86400000) {
+        var dt = new Date(t);
+        var key = dt.toISOString().slice(0,10);
+        var isArr = (t === a.getTime());
+        var isDep = (t === d.getTime());
+        var type = isArr ? 'arrival' : isDep ? 'departure' : 'stay';
+        // Don't override arrival/departure with stay
+        if (!map[key] || (map[key].type === 'stay' && type !== 'stay')) {
+          map[key] = { type: type, guest: c };
+        }
+      }
+    });
+    // Overlay events
+    if (typeof MK_EVENTS !== 'undefined') {
+      for (var i = 0; i < MK_EVENTS.length; i++) {
+        var ev = MK_EVENTS[i];
+        // Crude: just mark in current visible year for both start and end month
+        // Since events are MMDD, we apply them for state.year
+        var startMM = parseInt(ev[0].slice(0,2), 10) - 1;
+        var startDD = parseInt(ev[0].slice(2,4), 10);
+        var endMM = parseInt(ev[1].slice(0,2), 10) - 1;
+        var endDD = parseInt(ev[1].slice(2,4), 10);
+        var sd = new Date(state.year, startMM, startDD);
+        var ed = new Date(ev[0] > ev[1] ? state.year + 1 : state.year, endMM, endDD);
+        for (var t2 = sd.getTime(); t2 <= ed.getTime(); t2 += 86400000) {
+          var key2 = new Date(t2).toISOString().slice(0,10);
+          if (!map[key2]) map[key2] = { type: 'event', ev: ev };
+          else map[key2].ev = ev; // overlay
+        }
+      }
+    }
+    return map;
+  }
+  function render() {
+    init();
+    var body = document.getElementById('calBody');
+    var lbl = document.getElementById('calMonthLbl');
+    if (!body) return;
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    var monthNames = fr
+      ? ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+      : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var dayNames = fr ? ['L','M','M','J','V','S','D'] : ['M','T','W','T','F','S','S'];
+    if (lbl) lbl.textContent = monthNames[state.month] + ' ' + state.year;
+
+    var first = new Date(state.year, state.month, 1);
+    var last = new Date(state.year, state.month + 1, 0);
+    var startDow = (first.getDay() + 6) % 7; // Monday-first
+    var daysInMonth = last.getDate();
+    var todayKey = new Date().toISOString().slice(0,10);
+    var todayD = new Date(); todayD.setHours(0,0,0,0);
+
+    var occ = buildOccupancyMap();
+
+    var html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;text-align:center;padding:0 4px 4px">';
+    dayNames.forEach(function(d){ html += '<div>' + d + '</div>'; });
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:0 4px 4px">';
+    // Empty cells before first day
+    for (var i = 0; i < startDow; i++) html += '<div></div>';
+    for (var d = 1; d <= daysInMonth; d++) {
+      var dateObj = new Date(state.year, state.month, d);
+      var key = dateObj.toISOString().slice(0,10);
+      var info = occ[key];
+      var isToday = (key === todayKey);
+      var isPast = (dateObj < todayD);
+      var bg = '#fff', fg = 'var(--ink)', border = '1px solid var(--border)';
+      var dot = '';
+      if (info) {
+        if (info.type === 'arrival') { bg = 'rgba(60,108,17,.85)'; fg = '#fff'; dot = '<span style="position:absolute;top:2px;right:2px;font-size:8px;color:#fff">→</span>'; }
+        else if (info.type === 'departure') { bg = 'rgba(163,45,45,.78)'; fg = '#fff'; dot = '<span style="position:absolute;top:2px;right:2px;font-size:8px;color:#fff">←</span>'; }
+        else if (info.type === 'stay') { bg = 'rgba(60,108,17,.35)'; fg = 'var(--green3)'; }
+        else if (info.type === 'event') { bg = 'rgba(201,150,58,.18)'; fg = 'var(--green3)'; border = '1px dashed rgba(201,150,58,.5)'; dot = '<span style="position:absolute;top:1px;right:2px;font-size:8px">🎯</span>'; }
+        if (info.ev && info.type !== 'event') { dot += '<span style="position:absolute;bottom:1px;right:2px;font-size:7px">🎯</span>'; }
+      }
+      if (isPast && !info) { bg = 'var(--paper)'; fg = 'var(--muted)'; }
+      if (isToday) border = '1.5px solid var(--gold)';
+      html += '<button data-cal-day="' + key + '" onclick="staffloCal.tap(\'' + key + '\')" title="' + (info && info.guest ? (info.guest.name||'') : '') + '" style="position:relative;background:' + bg + ';color:' + fg + ';border:' + border + ';border-radius:6px;padding:6px 0;font-size:11px;font-weight:' + (isToday?'700':'500') + ';cursor:pointer;font-family:inherit;min-height:30px;transition:transform .1s">' + d + dot + '</button>';
+    }
+    html += '</div>';
+    // Legend
+    html += '<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:9px;color:var(--muted);padding:8px 8px 4px;border-top:1px solid var(--border);margin-top:6px">' +
+      '<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:9px;height:9px;border-radius:2px;background:rgba(60,108,17,.85);display:inline-block"></span> ' + (fr?'Arrivée':'Arrival') + '</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:9px;height:9px;border-radius:2px;background:rgba(60,108,17,.35);display:inline-block"></span> ' + (fr?'Séjour':'Stay') + '</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:3px"><span style="width:9px;height:9px;border-radius:2px;background:rgba(163,45,45,.78);display:inline-block"></span> ' + (fr?'Départ':'Depart') + '</span>' +
+      '<span style="display:inline-flex;align-items:center;gap:3px">🎯 ' + (fr?'Événement':'Event') + '</span>' +
+    '</div>';
+
+    body.innerHTML = html;
+  }
+  // Click on a day → contextual action panel
+  function tap(dateKey) {
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    var occ = buildOccupancyMap();
+    var info = occ[dateKey];
+    var dt = new Date(dateKey);
+    var dateLbl = dt.toLocaleDateString(fr?'fr-FR':'en-GB', { weekday:'long', day:'numeric', month:'long' });
+
+    var modal = document.createElement('div');
+    modal.className = 'cal-day-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.55);z-index:9997;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)';
+    modal.onclick = function(e){ if (e.target === modal) modal.remove(); };
+    var html = '<div style="background:#fff;border-radius:14px;max-width:380px;width:100%;padding:18px 20px;box-shadow:0 24px 64px rgba(0,0,0,.3);font-family:DM Sans,sans-serif" onclick="event.stopPropagation()">';
+    html += '<div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#8A8070;margin-bottom:4px">' + dateLbl + '</div>';
+
+    if (!info) {
+      html += '<div style="font-family:Fraunces,serif;font-size:18px;color:#1a3a1a;margin-bottom:12px">' + (fr?'📭 Jour libre':'📭 Free day') + '</div>';
+      html += '<div style="font-size:12px;color:#3a4a3a;margin-bottom:14px;line-height:1.5">' + (fr?'Aucune réservation. Tu peux planifier, bloquer ou demander à ARIA des suggestions de pricing.':'No booking. Plan, block or ask ARIA for pricing suggestions.') + '</div>';
+      html += '<button onclick="staffloCal.askAria(\'' + dateKey + '\',\'pricing\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:#1B4332;color:#fff;border:none;border-radius:9px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:6px;font-family:inherit">→ ' + (fr?'ARIA : optimiser pricing':'ARIA: optimize pricing') + '</button>';
+      html += '<button onclick="staffloCal.askAria(\'' + dateKey + '\',\'block\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:none;color:#8A8070;border:1.5px solid #E8E2D8;border-radius:9px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ ' + (fr?'Bloquer cette date':'Block this date') + '</button>';
+    } else if (info.type === 'event') {
+      var evLbl = (info.ev && info.ev[ fr?2:3 ]) || '';
+      html += '<div style="font-family:Fraunces,serif;font-size:18px;color:#1a3a1a;margin-bottom:6px">🎯 ' + evLbl + '</div>';
+      html += '<div style="font-size:12px;color:#3a4a3a;margin-bottom:14px;line-height:1.5">' + (fr?'Événement à fort impact. Pricing +15% appliqué automatiquement en mode AUTO.':'High-impact event. +15% pricing auto-applied in AUTO mode.') + '</div>';
+      html += '<button onclick="staffloCal.askAria(\'' + dateKey + '\',\'event\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:#C9963A;color:#0F2318;border:none;border-radius:9px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">→ ' + (fr?'ARIA : actions pour cet événement':'ARIA: actions for this event') + '</button>';
+    } else {
+      var g = info.guest || {};
+      var gName = (g.name||'').replace(/[<>]/g,'') + ' ' + (g.nat||'');
+      var typeLbl = info.type === 'arrival' ? (fr?'Arrivée':'Arrival') : info.type === 'departure' ? (fr?'Départ':'Departure') : (fr?'En séjour':'In stay');
+      html += '<div style="font-family:Fraunces,serif;font-size:18px;color:#1a3a1a;margin-bottom:4px">' + gName + '</div>';
+      html += '<div style="font-size:11px;color:#8A8070;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px">' + typeLbl + ' · ' + (g.guests||'?') + ' pers · ' + (g.nights||'?') + 'n</div>';
+      if (g.notes) html += '<div style="font-size:12px;color:#3a4a3a;margin-bottom:14px;line-height:1.5;font-style:italic;background:#FAF7F2;padding:8px 10px;border-radius:6px">' + g.notes + '</div>';
+      html += '<button onclick="if(typeof openDetail===\'function\')openDetail(\'' + g.id + '\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:#1B4332;color:#fff;border:none;border-radius:9px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:6px;font-family:inherit">→ ' + (fr?'Voir profil':'Open profile') + '</button>';
+      html += '<button onclick="staffloCal.askAria(\'' + dateKey + '\',\'guest\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:none;color:#1a3a1a;border:1.5px solid #E8E2D8;border-radius:9px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">→ ' + (fr?'ARIA : actions pour ce séjour':'ARIA: actions for this stay') + '</button>';
+    }
+    html += '<button onclick="this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:none;border:none;color:#8A8070;font-size:11px;cursor:pointer;margin-top:10px;font-family:inherit">' + (fr?'Annuler':'Cancel') + '</button>';
+    html += '</div>';
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+  }
+  function askAria(dateKey, kind) {
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    var occ = buildOccupancyMap();
+    var info = occ[dateKey];
+    var dt = new Date(dateKey);
+    var dateLbl = dt.toLocaleDateString(fr?'fr-FR':'en-GB', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+    var prompt = '';
+    if (kind === 'pricing') {
+      prompt = (fr?'Optimise mon pricing pour le ':'Optimize pricing for ') + dateLbl + '. ' +
+        (fr?'Donne-moi 2-3 stratégies (last-minute discount, premium si événement, repositionnement marché) avec le prix recommandé pour chaque.':'Give me 2-3 strategies (last-minute discount, premium if event, market repositioning) with recommended price for each.');
+    } else if (kind === 'block') {
+      prompt = (fr?'Je veux bloquer la date du ':'I want to block ') + dateLbl + '. ' +
+        (fr?'Aide-moi à : (1) comprendre l\'impact revenu, (2) proposer une raison à afficher (maintenance, perso), (3) générer un message si un guest demande déjà cette date.':'Help me: (1) understand revenue impact, (2) suggest a reason to display (maintenance, personal), (3) generate a message if a guest already asked for this date.');
+    } else if (kind === 'event') {
+      var evLbl = (info && info.ev && info.ev[ fr?2:3 ]) || '';
+      prompt = (fr?'Événement ':'Event ') + evLbl + ' ' + (fr?'le ':'on ') + dateLbl + '. ' +
+        (fr?'Donne-moi 2-3 actions concrètes : (a) prix recommandé, (b) message marketing pour mes guests existants ou en demande, (c) brief staff spécifique.':'Give me 2-3 concrete actions: (a) recommended price, (b) marketing message for existing/inquiring guests, (c) specific staff brief.');
+    } else if (kind === 'guest') {
+      var g = (info && info.guest) || {};
+      prompt = (fr?'Pour le séjour de ':'For ') + (g.name||'') + ' ' + (fr?'le ':'on ') + dateLbl + ' ' +
+        '(' + (info && info.type === 'arrival' ? (fr?'jour d\'arrivée':'arrival day') : info && info.type === 'departure' ? (fr?'jour de départ':'departure day') : (fr?'séjour':'stay')) + '), ' +
+        (fr?'donne-moi 2-3 actions prioritaires : message guest, brief staff, vérification opérationnelle. Notes guest : ':'give me 2-3 priority actions: guest message, staff brief, operational check. Guest notes: ') + (g.notes || (fr?'(aucune)':'(none)'));
+    }
+    if (typeof openAriaModal === 'function') openAriaModal(prompt);
+  }
+  return { setMonth: setMonth, prev: prev, next: next, today: today, render: render, tap: tap, askAria: askAria };
+})();
+window.staffloCal = staffloCal;
+
+// Auto-render on tab change to home/today
+(function(){
+  function tryRender(){ try { staffloCal.render(); } catch(e){} }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(tryRender, 200); });
+  } else {
+    setTimeout(tryRender, 200);
+  }
+  // Re-render when clients change
+  if (typeof window !== 'undefined') {
+    var origRender = window.renderClients;
+    if (typeof origRender === 'function') {
+      window.renderClients = function(){ var r = origRender.apply(this, arguments); tryRender(); return r; };
+    }
+  }
+})();
 
 function getCfg() {
   try {
@@ -7783,17 +8075,46 @@ async function generateAlerts(weatherTemp) {
   const opKw = /(arriv|départ|checkout|check-in|check-out|rotation|turnover|in-house|aujourd|today|demain|tomorrow|same.?day|départ.?aujourd)/i;
   const isOperational = (a) => a.type === 'urgent' || a.type === 'warn' || opKw.test((a.title||'') + ' ' + (a.sub||''));
   const signalAlerts = alerts.filter(a => !isOperational(a));
-  // If no signals, show a placeholder
-  const signalsToRender = signalAlerts.length ? signalAlerts : [{
-    type: 'good',
-    title: '✅ ' + (fr?'Aucun signal urgent':'No urgent signals'),
-    sub: fr?'Pas d\'opportunité ou d\'alerte marché aujourd\'hui.':'No opportunity or market alert today.'
-  }];
 
+  // Smart fillers — generic but ARIA-actionable signals to fill the box up to 5
+  // Each is a real insight a villa owner cares about, not "all clear" noise.
+  const m = (new Date()).getMonth() + 1;
+  const seasonHint = [12,1].includes(m) ? (fr?'Peak Noël/NY — pricing premium possible':'Peak Christmas/NY — premium pricing possible')
+    : [3,4].includes(m) ? (fr?'Pâques approche — vérifie ton calendrier':'Easter approaching — check calendar')
+    : [7,8].includes(m) ? (fr?'Saison chaude — promo families bienvenue':'Hot season — family promo welcome')
+    : [10,11].includes(m) ? (fr?'Saison haute — Festival du Film en vue':'High season — Film Festival ahead')
+    : (fr?'Période standard — opportunités long-stay':'Standard period — long-stay opportunities');
+
+  const fillerSignals = [
+    { type:'info', title:'💰 ' + (fr?'Optimiser pricing 30 prochains jours':'Optimize next 30 days pricing'),
+      sub: fr?'Demande à ARIA un check rapide vs marché Marrakech.':'Ask ARIA for a quick market check vs Marrakech.' },
+    { type:'info', title:'📊 ' + (fr?'Comparer vs concurrents':'Compare vs competitors'),
+      sub: fr?'Identifie 2 villas similaires — ajuste si tu sous-vends.':'Spot 2 similar villas — adjust if you underprice.' },
+    { type:'info', title:'🎯 ' + seasonHint,
+      sub: fr?'ARIA peut générer un message marketing aux ex-guests.':'ARIA can generate a marketing message to past guests.' },
+    { type:'info', title:'⭐ ' + (fr?'Demander des avis aux guests passés':'Ask past guests for reviews'),
+      sub: fr?'+5 reviews = +12% conversion en moyenne.':'+5 reviews = +12% conversion on average.' },
+    { type:'info', title:'📧 ' + (fr?'Relancer les demandes en attente':'Follow up on pending inquiries'),
+      sub: fr?'ARIA peut écrire un follow-up personnalisé en 1 clic.':'ARIA can write a personalized follow-up in 1 click.' },
+    { type:'info', title:'🏡 ' + (fr?'Mettre à jour les photos saisonnières':'Update seasonal photos'),
+      sub: fr?'Photos récentes = +18% taux de booking.':'Fresh photos = +18% booking rate.' }
+  ];
+
+  // Build final list: real signals first, then fillers up to 5 (no duplicates)
   const SHOW_FIRST = 5;
-  const cappedSignals = signalsToRender.slice(0, SHOW_FIRST);
-  const visible = cappedSignals;
-  const hidden  = []; // No "see more" — strict cap at 5
+  const seenTitles = new Set(signalAlerts.map(a => (a.title||'').toLowerCase().trim()));
+  const padded = signalAlerts.slice();
+  for (let i = 0; padded.length < SHOW_FIRST && i < fillerSignals.length; i++) {
+    const f = fillerSignals[i];
+    const k = (f.title||'').toLowerCase().trim();
+    if (seenTitles.has(k)) continue;
+    padded.push(f);
+    seenTitles.add(k);
+  }
+  const signalsToRender = padded.slice(0, SHOW_FIRST);
+
+  const visible = signalsToRender;
+  const hidden  = []; // strict cap at 5
 
   let alertsHtml = visible.map((a, i) => renderAlert(a, i)).join('');
 
@@ -10208,9 +10529,124 @@ function mirrorChatBubble(node) {
   clone.className = clone.className
     .replace('chat-bubble', 'aria-modal-bubble')
     .replace(' ai', ' aria');
-  // Keep buttons/actions intact
+  // ARIA orchestrator: if AI bubble contains a JSON array of actions, render as buttons
+  try {
+    if (clone.classList.contains('aria-modal-bubble') && clone.className.indexOf('user') === -1) {
+      enhanceAriaActions(clone);
+    }
+  } catch(e){}
   return clone;
 }
+
+// Detect [{"label":...,"kind":...,"target":...,"content":...}] in text
+// and replace with clickable buttons. ARIA = central nervous system: it
+// proposes options, user clicks → action executes (whatsapp / email / copy).
+function enhanceAriaActions(bubble) {
+  if (!bubble || bubble.dataset.actionsParsed === '1') return;
+  var txt = bubble.textContent || '';
+  // Quick guard: must contain JSON-like with label+kind
+  if (!/\[\s*\{[^}]*"label"[^}]*"kind"/i.test(txt)) return;
+  // Try to extract first JSON array
+  var start = txt.indexOf('[');
+  var end = txt.lastIndexOf(']');
+  if (start < 0 || end < 0 || end <= start) return;
+  var raw = txt.slice(start, end + 1);
+  var actions;
+  try {
+    actions = JSON.parse(raw);
+  } catch(e) {
+    // Try to clean common LLM mistakes: trailing commas, smart quotes
+    try {
+      var cleaned = raw.replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/,\s*([}\]])/g,'$1');
+      actions = JSON.parse(cleaned);
+    } catch(e2){ return; }
+  }
+  if (!Array.isArray(actions) || !actions.length) return;
+  // Filter valid action shapes
+  actions = actions.filter(function(a){ return a && typeof a === 'object' && a.label && a.kind; });
+  if (!actions.length) return;
+
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  // Replace text content with intro + action buttons
+  var intro = txt.slice(0, start).trim();
+  var outro = txt.slice(end + 1).trim();
+
+  var actionsHtml = '<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">';
+  actions.forEach(function(a, idx){
+    var kindIcon = a.kind === 'whatsapp' ? '💬' : a.kind === 'email' ? '✉️' : a.kind === 'sms' ? '📱' : a.kind === 'copy' ? '📋' : '📝';
+    var targetLbl = a.target ? ('<span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.55);margin-left:6px">→ ' + a.target + '</span>') : '';
+    actionsHtml += '<div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:9px 11px">' +
+      '<div style="font-size:12px;font-weight:600;color:#fff;margin-bottom:4px">' + kindIcon + ' ' + a.label + targetLbl + '</div>' +
+      (a.content ? '<div style="font-size:11px;color:rgba(255,255,255,.7);margin-bottom:7px;line-height:1.45;white-space:pre-wrap">' + a.content.replace(/</g,'&lt;') + '</div>' : '') +
+      '<div style="display:flex;gap:6px">' +
+        '<button onclick="ariaExecuteAction(' + idx + ', this)" data-aria-action=\'' + JSON.stringify(a).replace(/'/g, '&#39;') + '\' style="flex:1;background:#C9963A;color:#0F2318;border:none;border-radius:5px;padding:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px">' + (fr?'EXÉCUTER':'EXECUTE') + '</button>' +
+        '<button onclick="ariaCopyAction(this)" data-aria-content=\'' + (a.content||'').replace(/'/g, '&#39;') + '\' style="background:rgba(255,255,255,.1);color:#fff;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📋</button>' +
+      '</div>' +
+    '</div>';
+  });
+  actionsHtml += '</div>';
+
+  // Rebuild bubble content: keep intro/outro text + actions
+  bubble.innerHTML =
+    (intro ? '<div style="margin-bottom:6px">' + intro.replace(/</g,'&lt;') + '</div>' : '') +
+    actionsHtml +
+    (outro ? '<div style="margin-top:8px;font-size:11px;color:rgba(255,255,255,.55);font-style:italic">' + outro.replace(/</g,'&lt;') + '</div>' : '');
+  bubble.dataset.actionsParsed = '1';
+}
+
+// Execute an action proposed by ARIA — opens the right channel (WhatsApp/email/copy)
+function ariaExecuteAction(idx, btn) {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var raw = btn.dataset.ariaAction;
+  if (!raw) return;
+  var a;
+  try { a = JSON.parse(raw.replace(/&#39;/g, "'")); } catch(e){ return; }
+  if (!a) return;
+  var content = a.content || a.label || '';
+  if (a.kind === 'whatsapp') {
+    // Try to find phone from current guest if target=guest
+    var phone = '';
+    try {
+      if (a.target === 'guest' && typeof clients !== 'undefined') {
+        var today = new Date(); today.setHours(0,0,0,0);
+        var current = clients.find(function(c){ if (!c.arrival||!c.departure) return false; var ad = new Date(c.arrival), dd = new Date(c.departure); return ad <= today && today < dd; });
+        if (current) phone = (current.phone||'').replace(/[\s\-+()]/g,'');
+      }
+    } catch(e){}
+    var url = phone ? ('https://wa.me/' + phone + '?text=' + encodeURIComponent(content)) : ('https://wa.me/?text=' + encodeURIComponent(content));
+    window.open(url, '_blank');
+    btn.textContent = (fr?'✓ OUVERT':'✓ OPENED');
+    setTimeout(function(){ btn.textContent = (fr?'EXÉCUTER':'EXECUTE'); }, 2000);
+  } else if (a.kind === 'email') {
+    var subject = a.label || (fr?'Stafflo':'Stafflo');
+    var mailto = 'mailto:?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(content);
+    window.location.href = mailto;
+    btn.textContent = (fr?'✓ OUVERT':'✓ OPENED');
+    setTimeout(function(){ btn.textContent = (fr?'EXÉCUTER':'EXECUTE'); }, 2000);
+  } else if (a.kind === 'sms') {
+    var sms = 'sms:?body=' + encodeURIComponent(content);
+    window.location.href = sms;
+  } else if (a.kind === 'copy') {
+    try { navigator.clipboard.writeText(content); } catch(e){}
+    btn.textContent = (fr?'✓ COPIÉ':'✓ COPIED');
+    setTimeout(function(){ btn.textContent = (fr?'EXÉCUTER':'EXECUTE'); }, 2000);
+  } else {
+    // internal_note or unknown: just copy
+    try { navigator.clipboard.writeText(content); } catch(e){}
+    if (typeof toast === 'function') toast(fr?'📋 Copié':'📋 Copied');
+  }
+}
+window.ariaExecuteAction = ariaExecuteAction;
+
+function ariaCopyAction(btn) {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var content = (btn.dataset.ariaContent || '').replace(/&#39;/g, "'");
+  if (!content) return;
+  try { navigator.clipboard.writeText(content); } catch(e){}
+  btn.textContent = '✓';
+  setTimeout(function(){ btn.textContent = '📋'; }, 1500);
+}
+window.ariaCopyAction = ariaCopyAction;
 
 var _ariaChatMirrorObserver = null;
 function startAriaChatMirror() {
