@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -7055,13 +7056,23 @@ function showEmailConnectModal() {
 
   html += '<div style="padding:18px 22px">';
 
-  // Current state
-  if (conn.provider) {
+  // Current state — three cases: connected, expired (token cleared), disconnected
+  if (conn.provider && conn.access_token) {
+    // Truly connected
     html += '<div style="background:rgba(45,159,82,.08);border:1px solid rgba(45,159,82,.3);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">';
     html += '<span style="font-size:18px">✅</span>';
     html += '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--green)">'+ (fr?'Connecté':'Connected') +'</div>';
     html += '<div style="font-size:11px;color:var(--muted)">'+ (conn.provider||'—') + (conn.email ? ' · '+conn.email : '') +'</div></div>';
     html += '<button onclick="disconnectEmail()" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit">'+ (fr?'Déconnecter':'Disconnect') +'</button>';
+    html += '</div>';
+  } else if (conn.provider && !conn.access_token) {
+    // Token was cleared (expired or revoked) — needs reconnect
+    var providerLower = (conn.provider || 'google').toLowerCase();
+    html += '<div style="background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.4);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">';
+    html += '<span style="font-size:18px">⚠️</span>';
+    html += '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--red)">'+ (fr?'Token expiré':'Token expired') +'</div>';
+    html += '<div style="font-size:11px;color:var(--muted)">'+ (conn.provider||'—') + (conn.email ? ' · '+conn.email : '') + ' — ' + (fr?'reconnexion requise':'reconnection required') +'</div></div>';
+    html += '<button onclick="connectEmailProvider(\'' + providerLower + '\')" style="background:var(--gold);border:none;color:var(--green3);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px">'+ (fr?'🔄 RECONNECTER':'🔄 RECONNECT') +'</button>';
     html += '</div>';
   }
 
@@ -7697,7 +7708,11 @@ function renderInboxConnectionStatus() {
     chip.className = 'inbox-status-chip';
     chip.style.cssText = 'background:rgba(192,57,43,.15);border:1px solid rgba(192,57,43,.4);color:#ff8a7a;border-radius:8px;padding:7px 11px;margin-bottom:8px;font-size:11px;font-weight:600;cursor:pointer;text-align:center;letter-spacing:.3px';
     chip.textContent = label;
-    chip.onclick = function() { if (typeof openSettings === 'function') openSettings(); };
+    chip.onclick = function() {
+      // Open the email connection modal directly — not generic settings
+      if (typeof showEmailConnectModal === 'function') showEmailConnectModal();
+      else if (typeof openSettings === 'function') openSettings();
+    };
     list.insertBefore(chip, list.firstChild);
   });
 }
@@ -7759,7 +7774,19 @@ async function forcePullAllEmails(btn) {
     log('Has token: ' + (conn.access_token ? 'YES (length ' + conn.access_token.length + ')' : 'NO'));
     log('Last error: ' + (conn.last_error || 'none'));
     if (!conn.access_token) {
-      log('\n❌ STOP: No Gmail token. Reconnect Gmail in main Settings.');
+      log('\n❌ STOP: No Gmail token. Click below to reconnect:');
+      // Add an inline reconnect button to the output panel
+      var reconnectBtn = document.createElement('button');
+      reconnectBtn.textContent = '🔄 ' + (fr ? 'RECONNECTER GMAIL' : 'RECONNECT GMAIL');
+      reconnectBtn.style.cssText = 'display:block;margin:10px auto 0;background:var(--gold);color:var(--green3);border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.5px';
+      reconnectBtn.onclick = function() {
+        // Close inbox settings, open email connect modal
+        if (typeof closeInboxSettings === 'function') closeInboxSettings();
+        if (typeof showEmailConnectModal === 'function') {
+          setTimeout(function(){ showEmailConnectModal(); }, 100);
+        }
+      };
+      out.appendChild(reconnectBtn);
       if (btn) { btn.disabled = false; btn.textContent = '⚡ Pull NOW'; }
       return;
     }
