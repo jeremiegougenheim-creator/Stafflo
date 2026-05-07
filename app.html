@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -17652,6 +17653,509 @@ window.addEventListener('DOMContentLoaded', function() {
   }
 
   console.log('[stafflo-patch] === pack v4 2026-05-08 loaded ===');
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STAFFLO PATCH v5 — 2026-05-08
+     Overrides v4 with: collapsible original email, deduped facts,
+     LEAD status badge, accordion reply options, gmail-pull silenced.
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function staffloPatchV5(){
+  'use strict';
+
+  /* ── #0 Disable gmail-pull endpoint (function doesn't exist on Supabase) ── */
+  if (!window._stafflo_gmail_pull_disabled) {
+    var _origFetchV5 = window.fetch;
+    window.fetch = function() {
+      var url = arguments[0];
+      if (typeof url === 'string' && url.indexOf('/functions/v1/gmail-pull') >= 0) {
+        return Promise.resolve(new Response(
+          JSON.stringify({ error: 'gmail-pull function not deployed' }),
+          { status: 404, headers: { 'Content-Type': 'application/json' } }
+        ));
+      }
+      return _origFetchV5.apply(this, arguments);
+    };
+    window._stafflo_gmail_pull_disabled = true;
+    console.log('[stafflo-v5] ✓ gmail-pull endpoint short-circuited (no more CORS noise)');
+  }
+
+  /* ── Helpers ── */
+  function _esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function _fmtSentDate(row, fr) {
+    var d = row.created_at || row.received_at || row.date || row.sent_at;
+    if (!d) return '';
+    try {
+      var dt = new Date(d);
+      if (isNaN(dt.getTime())) return '';
+      var opts = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' };
+      return dt.toLocaleDateString(fr ? 'fr-FR' : 'en-GB', opts);
+    } catch (e) { return ''; }
+  }
+
+  function _intentColor(category) {
+    switch ((category || '').toLowerCase()) {
+      case 'opportunity':   return 'var(--green)';
+      case 'clarification': return '#BA7517';
+      case 'sensitive':     return 'var(--red)';
+      default:              return 'var(--gold)';
+    }
+  }
+
+  function _intentBg(category) {
+    switch ((category || '').toLowerCase()) {
+      case 'opportunity':   return 'rgba(27,67,50,.04)';
+      case 'clarification': return 'rgba(186,117,23,.06)';
+      case 'sensitive':     return 'rgba(192,57,43,.04)';
+      default:              return 'rgba(201,150,58,.04)';
+    }
+  }
+
+  function _isLeadEmail(parsed, row) {
+    var subj = (row.subject || '').toLowerCase();
+    var cat = (parsed.intent_category || '').toLowerCase();
+    var type = (parsed.email_type || '').toLowerCase();
+    if (/confirmed reservation|réservation confirmée|booking confirmed/i.test(subj)) return false;
+    if (/enquiry|pre-approval|pré-approval|preapproval|demande|devis|quote/i.test(subj)) return true;
+    if (/devis|enquiry|pre-approval|pré-approval|demande/i.test(type)) return true;
+    if (cat === 'opportunity' || cat === 'clarification') return true;
+    return false;
+  }
+
+  function _filterKeyFacts(facts, hasGuest) {
+    if (!Array.isArray(facts)) return [];
+    facts = facts.filter(function(f) { return f && f.label && f.value; });
+    if (!hasGuest) return facts;
+    var redundant = /^(date d['']arriv|date d['']arr|date arriv|arriv|date d['']actuel|date d['']entr|date d['']entrée|date dépar|départ|date de départ|nombre de personnes|personnes|guests|nuits|nights|source|prix net|net|montant net|prix initial|prix de base|destination|villa|adresse villa)/i;
+    return facts.filter(function(f) {
+      return !redundant.test(f.label.trim());
+    });
+  }
+
+  function buildEmailAnalysisPromptV5(row, owner, villa, fr) {
+    var memBlock = '';
+    try {
+      var memo = (typeof getCfg === 'function' ? (getCfg().ariaMemory || '') : '').trim();
+      if (memo) memBlock = '\n\n=== INFORMATIONS DE RÉFÉRENCE ===\n' + memo.slice(0, 2500) + '\n=== FIN ===\n';
+    } catch(e){}
+    return [
+      'Tu analyses un email reçu pour ' + villa + ' à Marrakech (propriétaire: ' + owner + ').',
+      'Classe librement l\'intention, détecte le ton, extrais les faits-clés non-redondants, propose 3 réponses adaptées.',
+      memBlock,
+      '=== EMAIL ===',
+      'De: ' + (row.from_email || ''),
+      'Sujet: ' + (row.subject || ''),
+      'Contenu:',
+      (row.body || '').slice(0, 2500),
+      '',
+      '=== TÂCHE ===',
+      'Retourne UNIQUEMENT un JSON valide (pas de markdown, pas de texte autour) :',
+      '{',
+      '  "summary": "1-2 phrases qui décrivent ce que veut le client",',
+      '  "email_type": "libellé court 1-3 mots (ex: \\"Demande de devis\\", \\"Modification dates\\", \\"Plainte wifi\\")",',
+      '  "intent_category": "opportunity | clarification | sensitive | informational",',
+      '  "urgency": "low | medium | high",',
+      '  "tone_for_reply": "warm | professional | apologetic | firm | reassuring",',
+      '  "key_facts": [',
+      '    {"label":"...","value":"..."}',
+      '  ],',
+      '  "guest": {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"phone":"","notes":"","lang":"fr|en"},',
+      '  "context": [{"category":"flight|meals|transport|arrival|preferences|general","key":"...","value":"..."}],',
+      '  "responses": [',
+      '    {"label":"Court 3-5 mots","tone":"...","text":"Message complet en ' + (fr ? 'français' : 'English') + ', signé ' + owner + '"},',
+      '    {"label":"...","tone":"...","text":"Variante avec un angle différent"},',
+      '    {"label":"...","tone":"...","text":"Troisième angle"}',
+      '  ],',
+      '  "missing": ["infos manquantes que tu poserais comme question"],',
+      '  "alerts": ["alertes critiques pour ' + owner + '"]',
+      '}',
+      '',
+      'Règles strictes pour key_facts :',
+      '- N\'inclus JAMAIS dans key_facts ce qui est déjà dans guest : date arrivée, date départ, nombre nuits, nombre personnes, source plateforme, prix net, nom guest.',
+      '- Inclus UNIQUEMENT des faits qui apportent de la valeur en plus du guest : prix initial vs nouveau prix, deadlines spécifiques, allergies, infos de vol, méthode de paiement, raison invoquée si annulation/plainte, requêtes spéciales (extra bed, transport, courses spéciales).',
+      '- key_facts peut être vide [] si l\'email ne contient pas de fait additionnel notable.',
+      '- max 5 entrées.',
+      '',
+      'Règles strictes pour responses :',
+      '- Si annulation : 3 angles distincts (full refund / partial / report).',
+      '- Si plainte : commence par reconnaître + s\'excuser, varie sur la résolution.',
+      '- Si devis/enquiry : 3 réponses chaleureuses, signées ' + owner + ', proposer disponibilité OU précision OU offre personnalisée.',
+      '- Si spam : 1 seule réponse "ignore + marquer spam".',
+      '- Adapte la langue à guest.lang (par défaut ' + (fr ? 'français' : 'English') + ').',
+      '- alerts: vide [] si rien de critique.'
+    ].join('\n');
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     Override openInboxEmail — clean header with date, original collapsible
+     ════════════════════════════════════════════════════════════════════ */
+  if (typeof window.openInboxEmail === 'function' && typeof window.handleInboxEmailFull === 'function') {
+    var _origOpenEmailV5 = window.openInboxEmail;
+    window.openInboxEmail = function(row) {
+      try {
+        if (!row) return _origOpenEmailV5.apply(this, arguments);
+        var fr = (typeof lang !== 'undefined' && lang === 'fr');
+        var fixMojibake = window.fixMojibake || function(s){return s;};
+        var cleanRow = Object.assign({}, row);
+        cleanRow.subject = fixMojibake(row.subject || '');
+        cleanRow.body = fixMojibake(row.body || '');
+        cleanRow.from_email = row.from_email || '';
+        var ex = cleanRow.extracted || {};
+
+        try {
+          if (typeof getCfg === 'function' && typeof SB_URL !== 'undefined' && typeof SB_ANON !== 'undefined') {
+            var cfg = getCfg();
+            fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + cleanRow.id, {
+              method: 'PATCH',
+              headers: { 'Content-Type':'application/json', apikey: cfg.sbKey||SB_ANON, Authorization:'Bearer '+(cfg.sbKey||SB_ANON) },
+              body: JSON.stringify({ status: 'processed' })
+            }).catch(function(){});
+          }
+          if (typeof loadInboxCount === 'function') loadInboxCount();
+        } catch(e){}
+
+        if (typeof closeInbox === 'function') closeInbox();
+        if (typeof openAriaModal === 'function') openAriaModal('');
+
+        setTimeout(function(){
+          try {
+            var fromShort = (cleanRow.from_email || '').split('<').pop().replace(/>/g,'').trim();
+            var senderName = (cleanRow.from_email || '').split('<')[0].trim().replace(/^"|"$/g, '') || fromShort.split('@')[0];
+            var sentDate = _fmtSentDate(cleanRow, fr);
+            var bodyText = (cleanRow.body || '').trim();
+            var bodyId = 'orig-email-' + Date.now() + '-' + Math.floor(Math.random()*1000);
+
+            var headerHtml =
+              '<div style="font-size:10px;letter-spacing:1.5px;color:var(--gold);font-weight:700;margin-bottom:4px">📧 ' + (fr?'EMAIL REÇU':'INCOMING EMAIL') + '</div>' +
+              '<div style="font-size:11px;color:var(--muted);margin-bottom:2px">' + (fr?'De':'From') + ' : ' + _esc(senderName) +
+                (fromShort && fromShort !== senderName ? ' <span style="opacity:.7">&lt;' + _esc(fromShort) + '&gt;</span>' : '') +
+              '</div>' +
+              (sentDate ? '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">📅 ' + _esc(sentDate) + '</div>' : '') +
+              '<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:8px">' + _esc(cleanRow.subject || (fr?'(sans sujet)':'(no subject)')) + '</div>';
+
+            if (bodyText) {
+              headerHtml +=
+                '<details style="margin-top:6px;border-top:1px dashed var(--border);padding-top:6px">' +
+                  '<summary style="cursor:pointer;font-size:11px;color:var(--muted);user-select:none;list-style:none">▸ ' + (fr?'Voir le message original':'View original message') + '</summary>' +
+                  '<div id="' + bodyId + '" style="margin-top:8px;padding:10px;background:rgba(0,0,0,.02);border-radius:6px;font-size:12px;line-height:1.5;color:var(--ink);white-space:pre-wrap;max-height:300px;overflow-y:auto">' +
+                    _esc(bodyText) +
+                  '</div>' +
+                '</details>';
+            }
+
+            var hdrDiv = document.createElement('div');
+            hdrDiv.className = 'chat-bubble system';
+            hdrDiv.style.cssText = 'max-width:100%;text-align:left;background:var(--paper);border-left:3px solid var(--gold);padding:12px';
+            hdrDiv.innerHTML = headerHtml;
+            var msgs = document.getElementById('chatMessages');
+            if (msgs) msgs.appendChild(hdrDiv);
+
+            var typing = document.getElementById('chatTyping');
+            if (typing) typing.style.display = 'block';
+            if (typeof scrollChat === 'function') scrollChat();
+
+            window.handleInboxEmailFull(cleanRow, ex).catch(function(e) {
+              if (typing) typing.style.display = 'none';
+              if (typeof addChatBubble === 'function') addChatBubble('ai', '⚠ ' + (e.message || 'Erreur'), []);
+              console.error('[stafflo-v5] handleInboxEmailFull error:', e);
+            });
+          } catch(e) { console.error('[stafflo-v5] inbox header inject failed:', e); }
+        }, 100);
+      } catch(err) {
+        console.error('[stafflo-v5] openInboxEmail crashed, falling back:', err);
+        return _origOpenEmailV5.apply(this, arguments);
+      }
+    };
+    console.log('[stafflo-v5] ✓ openInboxEmail v5 — sender + date + collapsible original body');
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     Override handleInboxEmailFull — deduped card + LEAD status + accordion
+     ════════════════════════════════════════════════════════════════════ */
+  if (typeof window.handleInboxEmailFull === 'function') {
+    var _origHandleEmailV5 = window.handleInboxEmailFull;
+    window.handleInboxEmailFull = async function(row, ex) {
+      try {
+        var fr = (typeof lang !== 'undefined' && lang === 'fr');
+        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+        var owner = cfg.owner || 'Jérémie';
+        var villa = cfg.villa || 'Villa DarJ';
+        var fixMojibake = window.fixMojibake || function(s){return s;};
+
+        var cleanRow = Object.assign({}, row);
+        cleanRow.subject = fixMojibake(row.subject || '');
+        cleanRow.body    = fixMojibake(row.body || '');
+
+        var prompt = buildEmailAnalysisPromptV5(cleanRow, owner, villa, fr);
+        var raw = await callBestAI('reason', '', prompt, 1500);
+
+        var typing = document.getElementById('chatTyping');
+        if (typing) typing.style.display = 'none';
+
+        var parsed = (typeof parseAIJson === 'function') ? parseAIJson(raw) : null;
+        if (!parsed) {
+          try {
+            var c = (raw||'').replace(/```json|```/g,'').trim();
+            var fb = c.indexOf('{'), lb = c.lastIndexOf('}');
+            if (fb >= 0 && lb > fb) parsed = JSON.parse(c.slice(fb, lb+1));
+          } catch(e) {}
+        }
+        if (!parsed) {
+          if (typeof addChatBubble === 'function') addChatBubble('ai', raw || (fr?'Email analysé mais format inattendu.':'Email analyzed but unexpected format.'));
+          return;
+        }
+
+        var g = parsed.guest || {};
+        var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
+        var commissionPct = (cleanRow.from_email||'').match(/airbnb/i) ? 3.6 : (cleanRow.from_email||'').match(/booking/i) ? 15 : 0;
+        var net = g.price ? Math.round(g.price * (1 - commissionPct/100)) : 0;
+
+        var clientList = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+        var existing = g.name ? clientList.find(function(cl){
+          return (cl.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);
+        }) : null;
+
+        var category = parsed.intent_category || 'informational';
+        var color = _intentColor(category);
+        var bg = _intentBg(category);
+        var emailType = parsed.email_type || (fr?'Email':'Email');
+        var urgency = parsed.urgency || 'low';
+        var isLead = !existing && _isLeadEmail(parsed, cleanRow);
+
+        var urgencyLabel = '';
+        if (urgency === 'high')        urgencyLabel = ' <span style="font-size:9px;letter-spacing:1.5px;color:var(--red);font-weight:700;margin-left:6px">⚡ URGENT</span>';
+        else if (urgency === 'medium') urgencyLabel = ' <span style="font-size:9px;letter-spacing:1.5px;color:#BA7517;font-weight:700;margin-left:6px">• ATTENTION</span>';
+
+        var summaryHtml =
+          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">' +
+            '<span style="font-size:10px;letter-spacing:1.5px;color:' + color + ';font-weight:700">📧 ' + _esc(emailType.toUpperCase()) + '</span>' +
+            urgencyLabel +
+          '</div>' +
+          '<div style="font-size:13px;color:var(--ink);line-height:1.5;margin-bottom:10px">' + _esc(parsed.summary || '') + '</div>';
+
+        if (g.name) {
+          var statusBadge, borderColor;
+          if (existing) {
+            statusBadge = (fr ? '⚠️ CLIENT EXISTANT — ' : '⚠️ EXISTING — ') + _esc(existing.name);
+            borderColor = 'var(--gold)';
+          } else if (isLead) {
+            statusBadge = (fr ? '🎯 LEAD' : '🎯 LEAD');
+            borderColor = '#BA7517';
+          } else {
+            statusBadge = (fr ? '🆕 NOUVEAU CLIENT' : '🆕 NEW GUEST');
+            borderColor = 'var(--green)';
+          }
+
+          summaryHtml +=
+            '<div style="background:var(--paper);border-radius:8px;padding:10px 12px;margin-bottom:10px;border-left:3px solid ' + borderColor + '">' +
+              '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);margin-bottom:5px">' + statusBadge + '</div>' +
+              '<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:3px">' + _esc(g.name) + (g.nat?' <span style="font-size:11px;color:var(--muted);font-weight:400">'+_esc(g.nat)+'</span>':'') + '</div>' +
+              (g.arrival ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">📅 ' + (typeof fmtDate==='function'?fmtDate(g.arrival,true):_esc(g.arrival)) + (g.departure?' → '+(typeof fmtDate==='function'?fmtDate(g.departure,true):_esc(g.departure)):'') + (nights?' · '+nights+(fr?' nuits':' nights'):'') + '</div>' : '') +
+              (g.guests ? '<div style="font-size:11px;color:var(--muted);margin-top:2px">👥 ' + g.guests + (fr?' pers.':' people') + '</div>' : '') +
+              (net ? '<div style="font-size:11px;color:var(--green);margin-top:2px;font-weight:600">💰 ' + (fr?'Net estimé':'Net est.') + ' : ~' + net + '€</div>' : '') +
+            '</div>';
+        }
+
+        var hasGuest = !!g.name;
+        var facts = _filterKeyFacts(parsed.key_facts, hasGuest);
+        if (facts.length) {
+          summaryHtml +=
+            '<div style="background:' + bg + ';border-radius:8px;padding:8px 12px;margin-bottom:10px">' +
+              '<div style="font-size:10px;letter-spacing:1.5px;color:' + color + ';font-weight:700;margin-bottom:6px">🧾 ' + (fr?'FAITS-CLÉS':'KEY FACTS') + '</div>' +
+              facts.map(function(f){
+                return '<div style="font-size:11px;color:var(--ink);line-height:1.7">• <span style="color:var(--muted)">' + _esc(f.label) + ' :</span> <strong>' + _esc(f.value) + '</strong></div>';
+              }).join('') +
+            '</div>';
+        }
+
+        var alerts = Array.isArray(parsed.alerts) ? parsed.alerts.filter(Boolean) : [];
+        if (alerts.length) {
+          summaryHtml += '<div style="background:rgba(192,57,43,.05);border-left:3px solid var(--red);border-radius:6px;padding:8px 11px;font-size:11px;color:var(--red);margin-bottom:8px;line-height:1.5">⚠️ ' + alerts.map(_esc).join(' · ') + '</div>';
+        }
+
+        var missing = Array.isArray(parsed.missing) ? parsed.missing.filter(Boolean) : [];
+        if (missing.length) {
+          summaryHtml += '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-style:italic">❓ ' + (fr?'Manquant':'Missing') + ' : ' + missing.map(_esc).join(', ') + '</div>';
+        }
+
+        var sysDiv = document.createElement('div');
+        sysDiv.className = 'chat-bubble system';
+        sysDiv.style.cssText = 'max-width:100%;text-align:left;border-left:3px solid ' + color + ';padding:12px 14px';
+        sysDiv.innerHTML = summaryHtml;
+        var msgsEl = document.getElementById('chatMessages');
+        if (msgsEl) msgsEl.appendChild(sysDiv);
+
+        if (g.name) {
+          var actDiv = document.createElement('div');
+          actDiv.className = 'chat-actions';
+          actDiv.style.cssText = 'margin-top:10px;display:flex;gap:6px;flex-wrap:wrap';
+          var saveBtn = document.createElement('button');
+          saveBtn.className = 'chat-action-btn save';
+          saveBtn.style.cssText = 'background:var(--green);color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
+          if (existing) {
+            saveBtn.textContent = (fr?'🔄 Mettre à jour ':'🔄 Update ') + existing.name.split(' ')[0];
+          } else if (isLead) {
+            saveBtn.textContent = (fr?'🎯 Sauvegarder comme LEAD':'🎯 Save as LEAD');
+          } else {
+            saveBtn.textContent = (fr?'💾 Sauvegarder':'💾 Save');
+          }
+          saveBtn.onclick = function() {
+            try {
+              if (existing) {
+                var merged = Object.assign({}, existing, {
+                  arrival: g.arrival || existing.arrival,
+                  departure: g.departure || existing.departure,
+                  guests: g.guests || existing.guests,
+                  notes: ((existing.notes||'') + (g.notes?' · '+g.notes:'')).trim()
+                });
+                if (typeof pushToSupabase === 'function') pushToSupabase(merged);
+                var idx = clientList.findIndex(function(x){return x.id===existing.id;});
+                if (idx>=0) clientList[idx] = merged;
+                if (typeof saveLocal === 'function') saveLocal();
+                if (typeof renderAll === 'function') renderAll();
+                this.textContent = fr?'✅ Mis à jour':'✅ Updated';
+                this.disabled = true;
+              } else {
+                var gWithStatus = Object.assign({}, g, {
+                  bookingStatus: isLead ? 'lead' : 'confirmed',
+                  source: g.source || ((cleanRow.from_email||'').match(/airbnb/i) ? 'Airbnb' : (cleanRow.from_email||'').match(/booking/i) ? 'Booking' : 'Direct')
+                });
+                if (typeof saveFromResult === 'function') saveFromResult(gWithStatus);
+                this.textContent = isLead ? (fr?'🎯 Lead créé':'🎯 Lead created') : (fr?'✅ Sauvegardé':'✅ Saved');
+                this.disabled = true;
+              }
+              if (parsed.context && parsed.context.length) {
+                var targetId = existing ? existing.id : null;
+                if (!targetId) {
+                  var newCl = clientList.find(function(x){return (x.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);});
+                  if (newCl) targetId = newCl.id;
+                }
+                if (targetId && typeof saveClientContext === 'function') saveClientContext(targetId, parsed.context);
+              }
+            } catch(e) { console.error('[stafflo-v5] save failed:', e); }
+          };
+          actDiv.appendChild(saveBtn);
+          sysDiv.appendChild(actDiv);
+        }
+
+        var responses = Array.isArray(parsed.responses) ? parsed.responses.filter(function(r){ return r && r.text; }) : [];
+        if (responses.length) {
+          var introTxt = responses.length === 1
+            ? (fr?'✍ Action suggérée — clique pour ouvrir':'✍ Suggested action — click to open')
+            : (fr?'✍ ' + responses.length + ' options de réponse — clique pour ouvrir':'✍ ' + responses.length + ' reply options — click to open');
+          if (typeof addChatBubble === 'function') addChatBubble('system', introTxt);
+
+          var optsWrap = document.createElement('div');
+          optsWrap.className = 'aria-options-list';
+          optsWrap.style.cssText = 'padding:0 4px 8px;display:flex;flex-direction:column;gap:6px';
+
+          responses.forEach(function(resp, i) {
+            var clientPhone = existing ? existing.phone : g.phone;
+            var clientId = existing ? existing.id : null;
+            var waKey = (typeof storePendingWA === 'function') ? storePendingWA(clientId, resp.text) : null;
+            if (waKey && clientPhone && typeof _pendingWA !== 'undefined' && _pendingWA[waKey]) {
+              _pendingWA[waKey].phone = (clientPhone||'').replace(/[\s\-+()]/g,'');
+            }
+
+            var toneEmoji = {
+              warm:'🌟', professional:'💼', apologetic:'🙏',
+              firm:'⚖️', reassuring:'🤝'
+            }[(resp.tone||'').toLowerCase()] || '';
+
+            var details = document.createElement('details');
+            details.style.cssText = 'background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;transition:all .15s';
+
+            var summary = document.createElement('summary');
+            summary.style.cssText = 'cursor:pointer;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;user-select:none;list-style:none;font-size:13px';
+            summary.innerHTML =
+              '<span style="display:flex;align-items:center;gap:8px;flex:1">' +
+                '<span style="font-size:10px;letter-spacing:1.2px;color:' + color + ';font-weight:700">OPT '+(i+1)+'</span>' +
+                '<span style="color:var(--ink);font-weight:500">' + _esc(resp.label || (fr?'Option':'Option')) + '</span>' +
+                (toneEmoji ? '<span style="font-size:13px">'+toneEmoji+'</span>' : '') +
+              '</span>' +
+              '<span class="opt-chev" style="color:var(--muted);font-size:14px;transition:transform .2s">▾</span>';
+
+            var expanded = document.createElement('div');
+            expanded.style.cssText = 'padding:4px 14px 14px;border-top:1px solid var(--border);background:rgba(0,0,0,.01)';
+
+            var txtDiv = document.createElement('div');
+            txtDiv.style.cssText = 'margin:10px 0 12px;white-space:pre-wrap;line-height:1.5;font-size:13px;color:var(--ink)';
+            txtDiv.textContent = resp.text;
+
+            var btnDiv = document.createElement('div');
+            btnDiv.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+
+            var sendBtn = document.createElement('button');
+            sendBtn.style.cssText = 'background:#25D366;color:#fff;border:none;border-radius:6px;padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
+            sendBtn.textContent = fr?'💬 Envoyer WhatsApp':'💬 Send WhatsApp';
+            sendBtn.onclick = function(e){ e.stopPropagation(); if (typeof sendPendingWA === 'function' && waKey) sendPendingWA(waKey); };
+
+            var editBtn = document.createElement('button');
+            editBtn.style.cssText = 'background:#fff;border:1px solid var(--border);border-radius:6px;padding:7px 11px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--ink)';
+            editBtn.textContent = fr?'✏️ Éditer':'✏️ Edit';
+            editBtn.onclick = function(e){ e.stopPropagation(); if (typeof editPendingWA === 'function' && waKey) editPendingWA(waKey, editBtn); };
+
+            var copyBtn = document.createElement('button');
+            copyBtn.style.cssText = 'background:#fff;border:1px solid var(--border);border-radius:6px;padding:7px 11px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--ink)';
+            copyBtn.textContent = fr?'📋 Copier':'📋 Copy';
+            copyBtn.onclick = function(e){
+              e.stopPropagation();
+              navigator.clipboard.writeText(resp.text).then(function(){
+                if (typeof toast === 'function') toast('📋 ' + (fr?'Copié':'Copied'));
+              });
+            };
+
+            btnDiv.appendChild(sendBtn);
+            btnDiv.appendChild(editBtn);
+            btnDiv.appendChild(copyBtn);
+            expanded.appendChild(txtDiv);
+            expanded.appendChild(btnDiv);
+
+            details.appendChild(summary);
+            details.appendChild(expanded);
+
+            details.addEventListener('toggle', function() {
+              if (details.open) {
+                optsWrap.querySelectorAll('details').forEach(function(d) {
+                  if (d !== details && d.open) d.open = false;
+                });
+              }
+            });
+
+            optsWrap.appendChild(details);
+          });
+          if (msgsEl) msgsEl.appendChild(optsWrap);
+          if (typeof scrollChat === 'function') scrollChat();
+        }
+
+      } catch(err) {
+        console.error('[stafflo-v5] handleInboxEmailFull crashed:', err);
+        var typing2 = document.getElementById('chatTyping');
+        if (typing2) typing2.style.display = 'none';
+        if (typeof addChatBubble === 'function') addChatBubble('ai', '⚠ ' + (err.message || 'Erreur'), []);
+      }
+    };
+    console.log('[stafflo-v5] ✓ handleInboxEmailFull v5 — deduped facts, LEAD status, accordion replies');
+  }
+
+  /* ── Style cleanup for native details/summary ── */
+  var _styleEl = document.createElement('style');
+  _styleEl.textContent = [
+    'details > summary::-webkit-details-marker { display: none; }',
+    'details[open] > summary .opt-chev { transform: rotate(180deg); }',
+    '.aria-options-list details:hover { border-color: var(--gold) !important; }',
+    '.aria-options-list details[open] { border-color: var(--gold) !important; box-shadow: 0 2px 6px rgba(0,0,0,.04); }'
+  ].join('\n');
+  document.head.appendChild(_styleEl);
+
+  console.log('[stafflo-v5] === pack v5 2026-05-08 loaded ===');
 })();
 </script>
 
