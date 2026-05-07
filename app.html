@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -15061,13 +15062,21 @@ window.addEventListener('DOMContentLoaded', function() {
   }
 
   // Override le pipeline email Airbnb pour utiliser le nouveau prompt + isWorthSaving
+  // NOTE : ce pipeline a été remplacé par le pipeline universel plus bas dans ce fichier.
+  // On le désactive ici pour éviter le double-traitement. Le code reste pour référence.
   var _origSendAriaModal2 = window.sendAriaModal;
   window.sendAriaModal = function(){
+    return _origSendAriaModal2 ? _origSendAriaModal2.apply(this, arguments) : null;
+  };
+  // Stub conservé (jamais appelé) pour ne rien casser
+  var _phaseA1Pipeline = function(){
     var input = document.getElementById('ariaModalInput');
     var text = (input && input.value || '').trim();
     var attach = window._ariaAttachment || null;
 
     if (text && !attach && isStrongAirbnbEmail(text)){
+      // Vire le préfixe parasite "Analyze this incoming email..." si présent (vient d'Inbox)
+      text = stripParasitePrompt(text);
       var emailPreview = extractHumanMessage(text);
       var body = document.getElementById('ariaModalMessages');
       if (body){
@@ -15192,54 +15201,78 @@ window.addEventListener('DOMContentLoaded', function() {
   // ──────────────── Fix 4 : Auto-analyse emails entrants Inbox ────────────────
   // Quand l'user clique "📖 Analyser" sur un email Inbox → on push le body dans Aria
   // qui déclenche le pipeline complet (extraction + auto-save + actions)
+  // Helper : nettoie HTML d'un email Inbox brut → texte propre
+  function htmlToText(html){
+    if (!html) return '';
+    var t = html;
+    // Décode entities communes
+    t = t.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'").replace(/&euro;/gi, '€').replace(/&#x[0-9a-f]+;/gi, '');
+    // Vire <style> et <script> en entier (avec leur contenu)
+    t = t.replace(/<style[\s\S]*?<\/style>/gi, '');
+    t = t.replace(/<script[\s\S]*?<\/script>/gi, '');
+    // Vire toutes les balises HTML
+    t = t.replace(/<[^>]+>/g, ' ');
+    // Compress whitespace
+    t = t.replace(/\s+/g, ' ').trim();
+    return t;
+  }
+
   // On override openInboxEmail pour éviter le modal email (qui ne fait rien d'utile)
   // et envoyer direct dans Aria
   var _origOpenInboxEmail = window.openInboxEmail;
-  if (_origOpenInboxEmail){
-    window.openInboxEmail = function(row){
-      var f = fr();
-      // Si l'email a déjà été extrait avec des données utiles → ouvre la fiche client
-      if (row && row.extracted && row.extracted.name){
-        // Recherche le client correspondant dans le CRM
-        try {
-          var match = (clients||[]).find(function(c){
-            return c.name && c.name.toLowerCase() === (row.extracted.name||'').toLowerCase();
-          });
-          if (match && typeof openDetail==='function'){
-            // Ferme inbox, ouvre fiche
-            if (typeof closeInbox==='function') closeInbox();
-            openDetail(match.id);
-            return;
-          }
-        } catch(e){}
-      }
-      // Sinon → ouvre Aria avec le body pour analyse complète
-      var body = (row && row.body) || '';
-      if (!body){
-        if (_origOpenInboxEmail) return _origOpenInboxEmail(row);
-        return;
-      }
-      // Ferme inbox
-      if (typeof closeInbox==='function') closeInbox();
-      // Ouvre Aria avec le body en input
-      if (typeof openAriaModal==='function') openAriaModal();
-      setTimeout(function(){
-        var inp = document.getElementById('ariaModalInput');
-        if (inp){
-          inp.value = body;
-          if (typeof onAriaModalInput==='function') onAriaModalInput(inp);
-          // Marque l'email comme lu
-          if (row.id && typeof inboxPatchStatus==='function'){
-            inboxPatchStatus(row.id, 'read').then(function(){
-              if (typeof loadInboxCount==='function') loadInboxCount();
-            }).catch(function(){});
-          }
-          // Trigger send
-          setTimeout(function(){ if (typeof sendAriaModal==='function') sendAriaModal(); }, 150);
+  window.openInboxEmail = function(row){
+    var f = fr();
+    if (!row){ if (_origOpenInboxEmail) return _origOpenInboxEmail(row); return; }
+
+    // 1. Si déjà extrait avec un nom + match dans CRM → ouvre la fiche client direct
+    if (row.extracted && row.extracted.name){
+      try {
+        var match = (clients||[]).find(function(c){
+          return c.name && c.name.toLowerCase() === (row.extracted.name||'').toLowerCase();
+        });
+        if (match && typeof openDetail==='function'){
+          if (typeof closeInbox==='function') closeInbox();
+          openDetail(match.id);
+          return;
         }
-      }, 200);
-    };
-  }
+      } catch(e){}
+    }
+
+    // 2. Construit un texte propre depuis subject + from + body
+    var subject = row.subject || '';
+    var fromEmail = row.from_email || '';
+    var bodyText = htmlToText(row.body || '');
+    if (!bodyText && !subject){
+      // Vraiment rien — fallback ancien comportement
+      if (_origOpenInboxEmail) return _origOpenInboxEmail(row);
+      return;
+    }
+    // Texte construit pour Aria : sender + subject + body propre
+    var fullText = '';
+    if (fromEmail) fullText += 'De / From: ' + fromEmail + '\n';
+    if (subject) fullText += 'Sujet / Subject: ' + subject + '\n\n';
+    fullText += bodyText;
+
+    // 3. Ferme Inbox + ouvre Aria + lance pipeline
+    if (typeof closeInbox==='function') closeInbox();
+    if (typeof openAriaModal==='function') openAriaModal();
+    setTimeout(function(){
+      var inp = document.getElementById('ariaModalInput');
+      if (!inp) return;
+      inp.value = fullText;
+      if (typeof onAriaModalInput==='function') onAriaModalInput(inp);
+      // Marque comme lu (best-effort)
+      try {
+        if (row.id && typeof inboxPatchStatus==='function'){
+          inboxPatchStatus(row.id, 'read').then(function(){
+            if (typeof loadInboxCount==='function') loadInboxCount();
+          }).catch(function(){});
+        }
+      } catch(e){}
+      // Trigger send (notre wrapper sendAriaModal détectera l'email Airbnb fort et lancera l'extraction)
+      setTimeout(function(){ if (typeof sendAriaModal==='function') sendAriaModal(); }, 150);
+    }, 200);
+  };
 
   // Force créer un client même si peu d'infos (fallback bouton "Créer quand même")
   // On garde une ref au dernier g extrait
@@ -15292,8 +15325,8 @@ window.addEventListener('DOMContentLoaded', function() {
     }
 
     // Message — on cherche après salutation, on coupe au premier marker de fin
-    // (pas de flag /i sur les markers en CAPS pour éviter "VILLA" → "villa with")
-    var startMatch = t.match(/(Bonjour|Bonsoir|Hello|Hi|Hey|Salut|Coucou|Dear|Cher|Chère)\s+\w+[,!]?\s/i);
+    // Pattern accepte "Bonjour Jeremie," "Hello John!" "Bonjour," (sans nom) "Hi"
+    var startMatch = t.match(/(Bonjour|Bonsoir|Hello|Hi|Hey|Salut|Coucou|Dear|Cher|Chère)(?:\s+\w+)?[\s,!.]+/i);
     if (startMatch){
       var afterStart = t.slice(startMatch.index + startMatch[0].length);
       var endRegexes = [
@@ -15355,16 +15388,31 @@ window.addEventListener('DOMContentLoaded', function() {
 
   // ──────────────── Détecteur FORT email Airbnb/Booking ────────────────
   function isStrongAirbnbEmail(text){
-    if (!text || text.length < 300) return false;
+    if (!text || text.length < 100) return false;
     var t = text.toLowerCase();
     var s = 0;
-    if (/noreply@airbnb|automated@airbnb|express@airbnb|airbnb\.co/i.test(t)) s += 3;
+    if (/noreply@airbnb|automated@airbnb|express@airbnb|airbnb\.co|airbnb\.com/i.test(t)) s += 3;
     if (/noreply@booking|customer\.service@booking|booking\.com/i.test(t)) s += 3;
     if (/confirmation code\s*[:\s]*[A-Z0-9]{6,}/i.test(t)) s += 2;
     if (/host payout|guest paid|host service fee/i.test(t)) s += 2;
     if (/check-?in[\s\S]{0,40}check-?out/i.test(t)) s += 1;
-    if (/reservation reminder|reservation confirmed|new booking|new inquiry|nouvelle réservation|nouvelle demande/i.test(t)) s += 2;
+    if (/reservation reminder|reservation confirmed|new booking|new inquiry|nouvelle réservation|nouvelle demande|enquiry from|inquiry from/i.test(t)) s += 2;
     return s >= 3;
+  }
+
+  // Strip le préfixe parasite "Analyze this incoming email..." si présent
+  // (vient de openInboxEmail original qui injectait un prompt avant le body)
+  function stripParasitePrompt(text){
+    if (!text) return text;
+    // Coupe tout ce qui précède "=== EMAIL ===" si présent
+    var idx = text.indexOf('=== EMAIL ===');
+    if (idx >= 0) return text.slice(idx + '=== EMAIL ==='.length).trim();
+    // Sinon coupe avant "De / From:" ou "From:"
+    var m = text.match(/(?:^|\n)\s*(?:De\s*\/\s*From|From|De)\s*:/i);
+    if (m && m.index > 50){
+      return text.slice(m.index).trim();
+    }
+    return text;
   }
 
   function detectGuestLang(text){
@@ -15847,97 +15895,777 @@ window.addEventListener('DOMContentLoaded', function() {
   };
 
   // ──────────────── Pipeline UNIFIÉ : email Airbnb collé ────────────────
-  // Override sendAriaModal en amont pour intercepter les emails Airbnb forts
+  // NOTE : cet override est désormais un simple pass-through.
+  // Le vrai pipeline email Airbnb est dans Phase A.1 (plus haut dans ce fichier),
+  // qui utilise le nouveau prompt few-shot + isWorthSaving + stripParasitePrompt.
+  // On laisse cet override pour ne rien casser, mais il ne fait plus rien.
   var _origSendAriaModal = window.sendAriaModal;
   window.sendAriaModal = function(){
-    var input = document.getElementById('ariaModalInput');
-    var text = (input && input.value || '').trim();
-    var attach = window._ariaAttachment || null;
-
-    // Si c'est un email Airbnb FORT et pas de fichier joint → pipeline unifié
-    if (text && !attach && isStrongAirbnbEmail(text)){
-      // Extrait sender + message humain pour la preview (pas le HTML brut)
-      var emailPreview = extractHumanMessage(text);
-      // Ajoute la bubble user (preview propre)
-      var body = document.getElementById('ariaModalMessages');
-      if (body){
-        var u = document.createElement('div'); u.className = 'aria-modal-bubble user';
-        var senderLine = emailPreview.sender ? '<span>' + emailPreview.sender.replace(/</g,'&lt;') + '</span>' : '<span>' + (fr()?'Email Airbnb':'Airbnb email') + '</span>';
-        var bodyHtml = emailPreview.message
-          ? '<div style="font-size:12px;line-height:1.5;color:rgba(255,255,255,.95);font-style:italic">"' + emailPreview.message.replace(/</g,'&lt;').replace(/\n/g,'<br>') + '"</div>'
-          : '<div style="font-size:11px;opacity:.7;font-style:italic">' + (fr()?'(email Airbnb sans message texte)':'(Airbnb email without text message)') + '</div>';
-        u.innerHTML = '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:.7;margin-bottom:6px;display:flex;align-items:center;gap:6px"><span>📧</span>' + senderLine + '</div>' + bodyHtml;
-        body.appendChild(u); body.scrollTop = body.scrollHeight;
-      }
-      input.value = ''; if (typeof onAriaModalInput==='function') onAriaModalInput(input);
-
-      // Typing
-      var typing = null;
-      if (body){
-        typing = document.createElement('div');
-        typing.className = 'aria-modal-bubble aria';
-        typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--muted)">📨 ' + (fr()?'Lecture de l\'email...':'Reading email...') + '</span>';
-        body.appendChild(typing); body.scrollTop = body.scrollHeight;
-      }
-
-      // Pipeline async
-      (async function(){
-        try {
-          var cleaned = cleanEmailBoilerplate(text);
-          var today = new Date().toISOString().slice(0,10);
-          var p1 = [
-            'Extract from this Airbnb/Booking email. Return ONLY valid JSON, no markdown.',
-            '{"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","guests":0,"price":0,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"confirmed","notes":""}',
-            'Rules: bookingStatus="inquiry" if pending question, "confirmed" if booking done.',
-            'price = "Guest paid" total in EUR (number only, no currency).',
-            'commission: Airbnb=15.5, Booking=15, Direct=0.',
-            'notes: anything important about guest (children, infants, special requests, allergies). MAX 150 chars.',
-            'Today: ' + today
-          ].join('\n');
-          var raw = await window.callBestAI('extract', p1, cleaned, 500);
-          var g = {};
-          try {
-            var m = (raw||'').replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
-            if (m) g = JSON.parse(m[0]);
-          } catch(e){}
-          if (!g.name){
-            if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">⚠ ' + (fr()?'Extraction impossible — email incomplet ?':'Could not extract — incomplete email?') + '</span>';
-            return;
-          }
-          g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
-
-          // AUTO-SAVE direct (await pour garantir persistance avant la suite)
-          var saved = await autoSaveGuest(g, cleaned);
-
-          // Génère actions contextuelles (pas LLM, pure logique)
-          var actions = generateContextualActions(saved, cleaned);
-
-          // Affiche la carte résultat dans la bubble
-          var cardHtml = renderExtractedCard(saved, actions, cleaned);
-          if (typing){
-            typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?'Email traité, fiche client ajoutée au CRM.':'Email processed, guest added to CRM.') + cardHtml;
-          }
-
-          // Persiste dans chat_history
-          try {
-            if (typeof saveChatMessage==='function'){
-              saveChatMessage('user', '[📧 Email Airbnb] ' + cleaned.slice(0,1000), saved.id, saved.name);
-              saveChatMessage('assistant', '[Auto-extract] '+saved.name+' · '+saved.arrival+'→'+saved.departure+' · '+saved.guests+' guests · '+saved.price+'€', saved.id, saved.name);
-            }
-          } catch(e){}
-        } catch(e){
-          if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">⚠ ' + (e.message||'Erreur') + '</span>';
-        }
-      })();
-      return;
-    }
-
-    // Sinon → pipeline normal
     return _origSendAriaModal ? _origSendAriaModal.apply(this, arguments) : null;
   };
 
   // Helper detectLang utilisé par generateContextualActions
   if (typeof window.detectLang !== 'function') window.detectLang = detectGuestLang;
+
+  /* ══════════════════════════════════════════════════════════════════
+     CLASSIFIER UNIFIÉ — toutes sources (email, WA, SMS, photo, doc)
+     Un seul point d'entrée intelligent → bon pipeline
+     ══════════════════════════════════════════════════════════════════ */
+
+  // Détecteur WhatsApp : timestamp [DD/MM/YYYY, HH:MM:SS] ou ~Name: ou patterns WA
+  function isWhatsAppConv(text){
+    if (!text || text.length < 50) return false;
+    if (/\[\d{1,2}\/\d{1,2}\/\d{2,4},?\s*\d{1,2}:\d{2}(:\d{2})?\]/.test(text)) return true;
+    if (/(?:^|\n)~[A-Za-zÀ-ÿ\s]+:/.test(text)) return true;
+    // Plus subtle : ligne avec "Nom (07h32):" ou similaire
+    if (/(?:^|\n)\s*[A-ZÀ-Ü][a-zà-ÿ]+\s*\(\d{1,2}[h:]\d{2}\)\s*:/.test(text)) return true;
+    return false;
+  }
+
+  // Détecteur SMS : court + numéro de téléphone + sans signaux email/WA
+  function isSMSLike(text){
+    if (!text || text.length > 800) return false;
+    if (text.includes('@')) return false;
+    if (/<[a-z]+>/i.test(text)) return false; // pas d'HTML
+    var hasPhone = /\+?\d[\d\s\-\(\)]{7,}/.test(text);
+    return hasPhone && text.length > 30 && text.length < 600;
+  }
+
+  // Classifier principal — retourne le type d'entrée pour router correctement
+  function classifyAriaInput(text, attachment){
+    if (attachment){
+      var mt = (attachment.media_type || '').toLowerCase();
+      if (mt.startsWith('image/')) return { type:'image', source:'photo', mediaType:mt };
+      if (mt === 'application/pdf') return { type:'document', source:'pdf', mediaType:mt };
+      return { type:'document', source:'file', mediaType:mt };
+    }
+    if (!text) return { type:'empty' };
+
+    // Strip preamble parasite avant analyse
+    var cleaned = stripParasitePrompt(text);
+
+    if (isStrongAirbnbEmail(cleaned)){
+      var src = /booking\.com|noreply@booking/i.test(cleaned) ? 'booking' : 'airbnb';
+      return { type:'email_platform', source:src, cleaned: cleaned };
+    }
+    if (isWhatsAppConv(cleaned)){
+      return { type:'whatsapp', source:'wa', cleaned: cleaned };
+    }
+    // Email générique (signaux faibles : "From:" + ">@" mais pas Airbnb/Booking)
+    if (/(?:^|\n)\s*(?:De\s*\/\s*From|From|De)\s*:.*@/i.test(cleaned) && cleaned.length > 150){
+      return { type:'email_other', source:'email', cleaned: cleaned };
+    }
+    if (isSMSLike(cleaned)){
+      return { type:'sms', source:'sms', cleaned: cleaned };
+    }
+    // Texte libre / question / commande
+    return { type:'text', source:'free', cleaned: cleaned };
+  }
+
+  // Renderer unifié de la bubble user (preview propre, pas de junk)
+  function renderInputBubble(classification, originalText){
+    var f = fr();
+    var icon, label, preview;
+    switch(classification.type){
+      case 'email_platform':
+        icon = '📧';
+        label = classification.source === 'booking' ? 'Email Booking' : 'Email Airbnb';
+        var emailPrev = extractHumanMessage(classification.cleaned);
+        return {
+          icon: icon,
+          label: emailPrev.sender || label,
+          quote: emailPrev.message
+        };
+      case 'whatsapp':
+        return {
+          icon: '💬',
+          label: f?'Conversation WhatsApp':'WhatsApp conversation',
+          quote: classification.cleaned.slice(0, 250) + (classification.cleaned.length > 250 ? '...' : '')
+        };
+      case 'sms':
+        return {
+          icon: '📱',
+          label: f?'SMS':'SMS',
+          quote: classification.cleaned.slice(0, 200)
+        };
+      case 'email_other':
+        return {
+          icon: '✉️',
+          label: f?'Email':'Email',
+          quote: classification.cleaned.slice(0, 250) + (classification.cleaned.length > 250 ? '...' : '')
+        };
+      case 'image':
+        return { icon: '🖼', label: f?'Photo':'Photo', quote: '' };
+      case 'document':
+        return { icon: '📎', label: f?'Document':'Document', quote: '' };
+      default:
+        return null;
+    }
+  }
+
+  // Append la bubble user dans le modal Aria
+  function appendInputBubble(classification, originalText){
+    var preview = renderInputBubble(classification, originalText);
+    if (!preview) return null;
+    var body = document.getElementById('ariaModalMessages');
+    if (!body) return null;
+    var u = document.createElement('div'); u.className = 'aria-modal-bubble user';
+    var headerLine = '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:.7;margin-bottom:6px;display:flex;align-items:center;gap:6px"><span>' + preview.icon + '</span><span>' + preview.label.replace(/</g,'&lt;') + '</span></div>';
+    var bodyLine = preview.quote
+      ? '<div style="font-size:12px;line-height:1.5;color:rgba(255,255,255,.95);font-style:italic">"' + preview.quote.replace(/</g,'&lt;').replace(/\n/g,'<br>') + '"</div>'
+      : '';
+    u.innerHTML = headerLine + bodyLine;
+    body.appendChild(u); body.scrollTop = body.scrollHeight;
+    return u;
+  }
+
+  // Append la bubble Aria "typing" et retourne la div pour la mettre à jour
+  function appendTypingBubble(message){
+    var body = document.getElementById('ariaModalMessages');
+    if (!body) return null;
+    var t = document.createElement('div');
+    t.className = 'aria-modal-bubble aria';
+    t.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--muted)">' + (message || '...') + '</span>';
+    body.appendChild(t); body.scrollTop = body.scrollHeight;
+    return t;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     EXTRACTION UNIVERSELLE — un seul prompt qui marche pour toutes sources
+     ══════════════════════════════════════════════════════════════════ */
+  function buildUniversalExtractPrompt(today, sourceHint){
+    return [
+      'You extract guest data from any source (Airbnb/Booking email, WhatsApp conversation, SMS, generic email, transcribed photo/document).',
+      'Return ONLY valid JSON, no markdown, no comments.',
+      'JSON shape: {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","guests":0,"children":0,"infants":0,"price":0,"commission":15.5,"source":"","phone":"","email":"","bookingStatus":"confirmed","lang":"","notes":""}',
+      'Rules:',
+      '- "name": full name (first + last). Extract even from informal sources (WhatsApp, SMS).',
+      '- "nat": city, country if mentioned',
+      '- "arrival"/"departure": YYYY-MM-DD format. If only "in May" mentioned, use first matching weekend.',
+      '- "guests": total adults+children+infants. "children": 1-12yo. "infants": 0-2yo.',
+      '- "bookingStatus": "inquiry" if asking, "confirmed" if booked, "current" if already on-site.',
+      '- "source": "Airbnb", "Booking", "Direct", "WhatsApp", "SMS", "Email" — based on signals.',
+      '- "commission": Airbnb=15.5, Booking=15, others=0.',
+      '- "phone": E.164 format if possible (+33...).',
+      '- "email": guest email if visible.',
+      '- "lang": "fr" or "en" or "es" etc — language the guest writes in.',
+      '- "notes": IMPORTANT — capture allergies, dietary restrictions (vegetarian, vegan, halal), preferences, special requests, family details, reason for trip, anything useful for staff. MAX 250 chars.',
+      '- If a field is unknown, leave empty/0. NEVER refuse, NEVER hallucinate.',
+      'Source hint: ' + (sourceHint || 'unknown'),
+      'Today: ' + today,
+      '',
+      'Example 1 (Airbnb confirmed):',
+      'INPUT: "Massi Mekla Paris France Bonjour avec ma femme et nos 2 enfants 7 mois et 3 ans CONFIRMATION CODE HMF8MQ49HW Check-in Fri 15 May Checkout Tue 19 May 2 adults 1 child 1 infant GUEST PAID 2035.20 EUR"',
+      'OUTPUT: {"name":"Massi Mekla","nat":"Paris, France","arrival":"2026-05-15","departure":"2026-05-19","guests":4,"children":1,"infants":1,"price":2035.20,"commission":15.5,"source":"Airbnb","phone":"","email":"","bookingStatus":"confirmed","lang":"fr","notes":"famille avec bébé 7 mois et enfant 3 ans, échappée familiale loin de Paris"}',
+      '',
+      'Example 2 (WhatsApp inquiry):',
+      'INPUT: "[15/05/2026, 14:32] +33612345678: Bonjour je m\'appelle Sophie Martin de Lyon je voudrais réserver pour août avec mari et 3 enfants on est végétariens"',
+      'OUTPUT: {"name":"Sophie Martin","nat":"Lyon, France","arrival":"","departure":"","guests":5,"children":3,"infants":0,"price":0,"commission":0,"source":"WhatsApp","phone":"+33612345678","email":"","bookingStatus":"inquiry","lang":"fr","notes":"famille végétarienne, intéressée août, couple + 3 enfants"}',
+      '',
+      'Example 3 (SMS short):',
+      'INPUT: "Hi from John Smith, +44 7700 900123. Question about your villa for July, 6 ppl, peanut allergy"',
+      'OUTPUT: {"name":"John Smith","nat":"","arrival":"","departure":"","guests":6,"children":0,"infants":0,"price":0,"commission":0,"source":"SMS","phone":"+447700900123","email":"","bookingStatus":"inquiry","lang":"en","notes":"⚠️ peanut allergy, July, 6 people"}'
+    ].join('\n');
+  }
+
+  // Extraction unique pour TOUS les types texte
+  async function extractFromAnyText(cleaned, sourceHint){
+    var today = new Date().toISOString().slice(0,10);
+    var sys = buildUniversalExtractPrompt(today, sourceHint);
+    var raw = await window.callBestAI('extract', sys, cleaned, 700);
+    var g = {};
+    try {
+      var m = (raw||'').replace(/```json\n?/gi,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
+      if (m) g = JSON.parse(m[0]);
+    } catch(e){
+      console.warn('[stafflo] extract parse failed:', e);
+    }
+    // Cleanup name
+    if (g.name) g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
+    return g;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     PIPELINE UNIVERSEL : route selon classification
+     ══════════════════════════════════════════════════════════════════ */
+  async function processAriaInput(text, attachment){
+    var classification = classifyAriaInput(text, attachment);
+    if (classification.type === 'empty') return false;
+
+    // Bubble user propre
+    appendInputBubble(classification, text);
+    var input = document.getElementById('ariaModalInput');
+    if (input){ input.value = ''; if (typeof onAriaModalInput==='function') onAriaModalInput(input); }
+
+    // Cas 1 : photo/doc → vision via proxy (existant, on délègue)
+    if (classification.type === 'image' || classification.type === 'document'){
+      // Retombe sur le pipeline existant qui gère vision
+      return false; // false = on n'a pas géré, laisse le pipeline original
+    }
+
+    // Cas 2-5 : tout texte (Airbnb, Booking, WA, SMS, autre email) → extraction
+    var typing = appendTypingBubble(fr() ? '🧠 Analyse...' : '🧠 Analyzing...');
+    try {
+      var cleanedForLLM = classification.cleaned || text;
+      // Pour Airbnb/Booking, virer le boilerplate avant LLM (économie tokens)
+      if (classification.type === 'email_platform'){
+        cleanedForLLM = cleanEmailBoilerplate(cleanedForLLM);
+      }
+      var g = await extractFromAnyText(cleanedForLLM, classification.source);
+
+      // Pas de nom → pas de fiche, juste un résumé
+      if (!g.name){
+        if (typing) typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?'Lu, mais pas assez d\'infos pour identifier un client.':'Read, but not enough info to identify a client.');
+        return true;
+      }
+
+      // Pas assez d'info utile → résumé sans création
+      if (!isWorthSaving(g)){
+        if (typing){
+          var html = '<strong>ARIA</strong> · ' + (fr()?'Lu — pas assez d\'infos pour créer une fiche.':'Read — not enough info to create a record.');
+          html += '<div style="margin-top:6px;font-size:11px;color:#3a2f1f">→ <strong>'+g.name+'</strong>'+(g.notes?' · '+g.notes:'')+'</div>';
+          window._ariaLastForceData = g;
+          html += '<div style="margin-top:8px"><button onclick="ariaForceCreateCrm()" style="background:#C9963A;color:#0F2318;border:none;border-radius:5px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">➕ '+(fr()?'Créer quand même':'Create anyway')+'</button></div>';
+          typing.innerHTML = html;
+        }
+        return true;
+      }
+
+      // Auto-save + actions
+      var saved = await autoSaveGuest(g, cleanedForLLM);
+      var actions = generateContextualActions(saved, cleanedForLLM);
+      var cardHtml = renderExtractedCard(saved, actions, cleanedForLLM);
+      if (typing){
+        var srcLabel = classification.source==='airbnb'?'Email Airbnb'
+                     : classification.source==='booking'?'Email Booking'
+                     : classification.source==='wa'?'WhatsApp'
+                     : classification.source==='sms'?'SMS'
+                     : 'Source';
+        typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?srcLabel+' traité, fiche ajoutée au CRM.':srcLabel+' processed, record added to CRM.') + cardHtml;
+      }
+      // Persistence chat_history
+      try {
+        if (typeof saveChatMessage==='function'){
+          var icon = classification.source==='airbnb'?'📧':classification.source==='booking'?'📧':classification.source==='wa'?'💬':classification.source==='sms'?'📱':'✉️';
+          saveChatMessage('user', '['+icon+' '+classification.source+'] ' + cleanedForLLM.slice(0,1500), saved.id, saved.name);
+          saveChatMessage('assistant', '[Auto-extract] '+saved.name+' · '+(saved.arrival||'?')+'→'+(saved.departure||'?')+' · '+(saved.guests||0)+' guests · '+(saved.price||0)+'€', saved.id, saved.name);
+        }
+      } catch(e){}
+      return true;
+    } catch(e){
+      if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">⚠ ' + (e.message||'Erreur') + '</span>';
+      return true;
+    }
+  }
+
+  // Override final sendAriaModal — délègue au pipeline universel pour tous types détectés
+  // Si pipeline universel ne gère pas (free text, image/doc) → fallback chat normal
+  var _finalOrigSendAriaModal = window.sendAriaModal;
+  window.sendAriaModal = async function(){
+    var input = document.getElementById('ariaModalInput');
+    var text = (input && input.value || '').trim();
+    var attach = window._ariaAttachment || null;
+    if (!text && !attach) return;
+
+    // Classifier d'abord
+    var classification = classifyAriaInput(text, attach);
+
+    // Pour text structuré (email, WA, SMS) → pipeline universel
+    if (classification.type === 'email_platform' || classification.type === 'whatsapp' || classification.type === 'sms' || classification.type === 'email_other'){
+      var handled = await processAriaInput(text, null);
+      if (handled) return;
+    }
+
+    // Sinon (free text, image, doc) → pipeline normal existant
+    return _finalOrigSendAriaModal ? _finalOrigSendAriaModal.apply(this, arguments) : null;
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     PHASE 2 — Multi-AI scoring + apprentissage localStorage
+     Routes corrigées avec vrais prix mai 2026 + DeepSeek bien positionné
+     ══════════════════════════════════════════════════════════════════ */
+
+  // Routes par tâche, ordre = tier 1 → tier 4 (corrigé avec recherche prix réelle)
+  var AI_ROUTES = {
+    extract:        ['groq', 'gemini', 'deepseek', 'openai'],   // JSON simple
+    write_guest_fr: ['mistral', 'deepseek', 'gemini', 'openai'], // FR chaleureux
+    write_guest_en: ['groq', 'openai', 'deepseek', 'gemini'],    // EN chaleureux (Groq 70B)
+    write_staff:    ['groq', 'gemini', 'mistral', 'deepseek'],   // Brief court
+    reason:         ['deepseek', 'openai', 'gemini', 'groq'],    // Raisonnement
+    brief:          ['gemini', 'deepseek', 'groq', 'mistral'],
+    write_fr:       ['mistral', 'deepseek', 'gemini', 'openai']  // Alias
+  };
+
+  // Score localStorage : apprend ce qui marche pour CET user
+  var SCORE_KEY = 'stafflo_ai_scores_v1';
+  function loadScores(){
+    try { return JSON.parse(localStorage.getItem(SCORE_KEY) || '{}'); } catch(e){ return {}; }
+  }
+  function saveScores(s){ try { localStorage.setItem(SCORE_KEY, JSON.stringify(s)); } catch(e){} }
+
+  function recordAiCall(task, provider, success, latencyMs, validated){
+    var scores = loadScores();
+    if (!scores[task]) scores[task] = {};
+    if (!scores[task][provider]) scores[task][provider] = { tries:0, ok:0, fails:0, totalMs:0, recent:[] };
+    var s = scores[task][provider];
+    s.tries++;
+    if (success && validated) s.ok++; else s.fails++;
+    if (latencyMs) s.totalMs += latencyMs;
+    // Fenêtre glissante 50 derniers résultats
+    s.recent.push(success && validated ? 1 : 0);
+    if (s.recent.length > 50) s.recent.shift();
+    saveScores(scores);
+  }
+
+  // Score d'un provider pour une tâche (0-100)
+  function getProviderScore(task, provider){
+    var scores = loadScores();
+    var s = scores[task] && scores[task][provider];
+    if (!s || s.recent.length < 3) return 50; // neutre si pas de data
+    var recentSuccess = s.recent.reduce(function(a,b){return a+b;}, 0);
+    var rate = recentSuccess / s.recent.length;
+    return Math.round(rate * 100);
+  }
+
+  // Réordonne la route selon les scores réels (les meilleurs d'abord)
+  function getAdaptiveRoute(task){
+    var baseRoute = AI_ROUTES[task] || AI_ROUTES.extract;
+    var scores = loadScores();
+    if (!scores[task]) return baseRoute;
+    // Tri par score décroissant, mais garde l'ordre de base si scores égaux
+    var withScores = baseRoute.map(function(p, idx){
+      return { p: p, score: getProviderScore(task, p), origIdx: idx };
+    });
+    withScores.sort(function(a,b){
+      if (Math.abs(a.score - b.score) < 10) return a.origIdx - b.origIdx; // garde ordre par défaut si proche
+      return b.score - a.score;
+    });
+    return withScores.map(function(x){ return x.p; });
+  }
+
+  // Validators stricts par tâche (refuse une réponse pourrie pour forcer fallback)
+  var VALIDATORS = {
+    extract: function(text){
+      if (!text || text.length < 10) return { ok:false, reason:'too_short' };
+      // Doit contenir un JSON parsable avec name (même vide accepté, mais structure OK)
+      var clean = text.replace(/```json\n?/gi,'').replace(/```/g,'').trim();
+      var m = clean.match(/\{[\s\S]*\}/);
+      if (!m) return { ok:false, reason:'no_json' };
+      try {
+        var obj = JSON.parse(m[0]);
+        if (typeof obj !== 'object') return { ok:false, reason:'not_object' };
+        return { ok:true };
+      } catch(e){ return { ok:false, reason:'json_parse_fail' }; }
+    },
+    write_generic: function(text){
+      if (!text || text.length < 30) return { ok:false, reason:'too_short' };
+      if (text.length > 3000) return { ok:false, reason:'too_long' };
+      // Refus de l'AI
+      if (/I'?m sorry|I cannot|I can'?t|Je ne peux pas|Désolé.{0,20}je ne peux/i.test(text)) {
+        return { ok:false, reason:'ai_refused' };
+      }
+      return { ok:true };
+    }
+  };
+  function validateAiOutput(task, text){
+    var v = task === 'extract' ? VALIDATORS.extract : VALIDATORS.write_generic;
+    return v(text);
+  }
+
+  // Wrapper intelligent autour de callBestAI : essaie le proxy, puis client-side avec scoring
+  // Garde la signature compatible avec callBestAI existant
+  var _origCallBestAI = window.callBestAI;
+  window.callBestAI = async function(task, systemPrompt, userContent, maxTokens){
+    // Tentative proxy d'abord, en lisant provider_id dans la réponse (v3)
+    if (typeof STAFFLO_PROXY !== 'undefined' && STAFFLO_PROXY){
+      var t0 = Date.now();
+      try {
+        var sessionKey = (typeof getSessionKeyFromUrl==='function' ? getSessionKeyFromUrl() : '') || (typeof getCfg==='function' ? (getCfg().publicSessionKey||'') : '');
+        var clientMode = (typeof getCfg==='function' ? (getCfg().clientMode||'public') : 'public');
+        var headers = (typeof proxyHeaders==='function') ? proxyHeaders() : { 'Content-Type':'application/json' };
+        var pr = await fetch(STAFFLO_PROXY, {
+          method:'POST', headers: headers,
+          body: JSON.stringify({
+            task: task, system: systemPrompt||'', user: userContent,
+            max_tokens: maxTokens||1000,
+            session_key: sessionKey, client_mode: clientMode
+          })
+        });
+        if (pr.status === 429){
+          if (typeof toast==='function') toast(fr() ? '⏳ Limite atteinte — réessayez dans une heure' : '⏳ Rate limit — try again in an hour');
+          throw new Error('rate_limit');
+        }
+        if (pr.ok){
+          var pd = await pr.json();
+          var pText = pd.text || '';
+          // v3 retourne provider_id (ex: "groq_8b") — fallback "proxy" si absent (v2)
+          var actualProvider = pd.provider_id || 'proxy';
+          var validation = validateAiOutput(task, pText);
+          if (validation.ok && pText){
+            recordAiCall(task, actualProvider, true, Date.now()-t0, true);
+            return pText;
+          }
+          recordAiCall(task, actualProvider, false, Date.now()-t0, false);
+          console.warn('[stafflo-ai] proxy '+actualProvider+' invalid output for '+task+' ('+validation.reason+'), trying client fallback');
+        } else {
+          recordAiCall(task, 'proxy', false, Date.now()-t0, false);
+        }
+      } catch(e){
+        if (e.message === 'rate_limit') throw e;
+        recordAiCall(task, 'proxy', false, Date.now()-t0, false);
+        console.warn('[stafflo-ai] proxy error for '+task+':', (e.message||'').slice(0,100));
+      }
+    }
+
+    // Fallback client-side avec route adaptative + validation à chaque tier
+    var cfg = (typeof getCfg==='function')?getCfg():{};
+    var route = getAdaptiveRoute(task);
+    var errors = [];
+    for (var i=0; i<route.length; i++){
+      var pid = route[i];
+      var key = (typeof getProviderKey==='function') ? getProviderKey(cfg, pid) : null;
+      if (!key) continue;
+      var t1 = Date.now();
+      try {
+        var r = await callProviderAPI(pid, key, systemPrompt, userContent, maxTokens || 1000);
+        var v = validateAiOutput(task, r || '');
+        var ms = Date.now() - t1;
+        recordAiCall(task, pid, true, ms, v.ok);
+        if (v.ok){
+          if (i > 0){
+            console.info('[stafflo-ai] '+task+' served by client tier '+(i+1)+' ('+pid+') after '+i+' fail(s)');
+          }
+          return r;
+        }
+        errors.push({provider:pid, reason:v.reason});
+      } catch(e){
+        recordAiCall(task, pid, false, Date.now()-t1, false);
+        errors.push({provider:pid, reason:(e.message||'error').slice(0,80)});
+      }
+    }
+    // Tous les tiers ont raté → toast utilisateur
+    console.error('[stafflo-ai] all providers failed for '+task, errors);
+    if (typeof toast === 'function'){
+      toast(fr() ? '⚠ Tous les services AI sont indisponibles' : '⚠ All AI services unavailable');
+    }
+    throw new Error('All AI providers failed for ' + task);
+  };
+
+  // Commande /stats dans Aria → affiche performance par modèle
+  function isStatsCommand(text){
+    var t = (text||'').trim().toLowerCase();
+    if (t.length > 30) return false;
+    return /^(\/?stats|perf|performance|ai\s*stats)$/i.test(t);
+  }
+  function buildStatsReport(){
+    var f = fr();
+    var scores = loadScores();
+    var lines = ['**'+(f?'📊 Performance AI (50 derniers appels)':'📊 AI Performance (last 50 calls)')+'**', ''];
+    var tasks = Object.keys(scores);
+    if (!tasks.length){
+      lines.push(f?'_Aucune donnée encore — utilise l\'app pour collecter des stats._':'_No data yet — use the app to collect stats._');
+      return lines.join('\n');
+    }
+    tasks.forEach(function(task){
+      lines.push('**'+task.toUpperCase()+'**');
+      var providers = Object.entries(scores[task]).map(function(e){
+        var s = e[1];
+        var rate = s.recent.length ? Math.round(s.recent.reduce(function(a,b){return a+b;},0) / s.recent.length * 100) : 0;
+        var avgMs = s.tries ? Math.round(s.totalMs / s.tries) : 0;
+        return { provider:e[0], rate:rate, tries:s.tries, ok:s.ok, fails:s.fails, avgMs:avgMs };
+      });
+      providers.sort(function(a,b){ return b.rate - a.rate; });
+      providers.forEach(function(p, idx){
+        var emoji = idx===0 ? '🥇' : idx===1 ? '🥈' : idx===2 ? '🥉' : '  ';
+        lines.push(emoji+' '+p.provider.padEnd(10)+' '+p.rate+'% ('+p.ok+'/'+p.tries+') · '+p.avgMs+'ms avg');
+      });
+      lines.push('');
+    });
+    lines.push('_'+(f?'Routes adaptatives : tier 1 = meilleur score historique':'Adaptive routes: tier 1 = best historical score')+'_');
+    return lines.join('\n');
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     QUICK WIN A — Contexte client injecté dans les prompts
+     Quand on rédige pour un guest connu, on injecte ses notes / msgs récents
+     ══════════════════════════════════════════════════════════════════ */
+  function buildClientContextSummary(client){
+    if (!client) return '';
+    var f = fr();
+    var lines = [];
+    lines.push(f?'CLIENT CONNU :':'KNOWN CLIENT:');
+    lines.push('- '+(f?'Nom':'Name')+': '+(client.name||'?'));
+    if (client.nat) lines.push('- '+(f?'De':'From')+': '+client.nat);
+    if (client.lang) lines.push('- '+(f?'Langue':'Language')+': '+client.lang);
+    if (client.guests) lines.push('- '+(f?'Voyageurs':'Travelers')+': '+client.guests);
+    if (client.arrival) lines.push('- '+(f?'Séjour':'Stay')+': '+client.arrival+(client.departure?' → '+client.departure:''));
+    if (client.bookingStatus) lines.push('- '+(f?'Statut':'Status')+': '+client.bookingStatus);
+    if (client.notes && client.notes.length > 5){
+      lines.push('- '+(f?'NOTES IMPORTANTES':'IMPORTANT NOTES')+': '+client.notes.slice(0, 400));
+    }
+    // Préférences détectées dans les notes (allergies, végétarien, etc.)
+    var prefs = [];
+    var notes = (client.notes||'').toLowerCase();
+    if (/v[ée]g[ée]tar/i.test(notes)) prefs.push(f?'végétarien':'vegetarian');
+    if (/v[ée]gan/i.test(notes)) prefs.push(f?'végan':'vegan');
+    if (/halal/i.test(notes)) prefs.push('halal');
+    if (/casher|kosher/i.test(notes)) prefs.push('kosher');
+    if (/allerg/i.test(notes)) prefs.push(f?'⚠️ allergie mentionnée':'⚠️ allergy mentioned');
+    if (/b[ée]b[ée]|infant|nourrisson/i.test(notes)) prefs.push(f?'bébé':'infant');
+    if (/enfant|child|kid/i.test(notes)) prefs.push(f?'enfants':'children');
+    if (prefs.length) lines.push('- '+(f?'PRÉFÉRENCES':'PREFERENCES')+': '+prefs.join(', '));
+    return lines.join('\n');
+  }
+
+  // Trouve le client le plus pertinent à partir d'un texte (par nom)
+  function findClientFromText(text){
+    if (!text || !window.clients) return null;
+    var t = text.toLowerCase();
+    // Chercher mentions explicites de noms connus
+    var matches = clients.filter(function(c){
+      if (!c.name) return false;
+      var firstName = c.name.split(' ')[0].toLowerCase();
+      if (firstName.length < 3) return false;
+      return t.indexOf(firstName) >= 0;
+    });
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1){
+      // Le plus récent / arriving soonest
+      matches.sort(function(a,b){
+        var aT = a.arrival ? new Date(a.arrival).getTime() : 0;
+        var bT = b.arrival ? new Date(b.arrival).getTime() : 0;
+        return bT - aT;
+      });
+      return matches[0];
+    }
+    return null;
+  }
+
+  // Hook : enrichit buildAiPrompt avec contexte client si disponible
+  // (ne casse pas le comportement existant, ajoute juste du contexte au system prompt)
+  var _origBuildAiPrompt = window.buildAiPrompt || (typeof buildAiPrompt === 'function' ? buildAiPrompt : null);
+  if (typeof buildAiPrompt === 'function'){
+    var _bap = buildAiPrompt;
+    window.buildAiPromptEnriched = function(action){
+      var p = _bap(action);
+      // Si l'action a un guest avec un id existant dans CRM → enrichis
+      var client = action.guest && action.guest.id ? clients.find(function(c){ return c.id === action.guest.id; }) : (action.guest && action.guest.name ? findClientFromText(action.guest.name) : null);
+      if (client){
+        var ctx = buildClientContextSummary(client);
+        if (ctx){
+          p.system = p.system + '\n\n' + ctx + '\n\n' + (fr()?'IMPORTANT : utilise ces infos pour personnaliser, mentionne discrètement les préférences/allergies dans tes recommandations staff.':'IMPORTANT: use these to personalize, mention preferences/allergies discreetly in staff recommendations.');
+        }
+      }
+      return p;
+    };
+    // Override : ariaSmartActionGenerate utilise désormais la version enrichie
+    var _origGen = window.ariaSmartActionGenerate;
+    if (_origGen){
+      window.ariaSmartActionGenerate = async function(groupId, idx, btn){
+        var actions = (window._ariaPendingActions||{})[groupId];
+        if (!actions || !actions[idx]) return;
+        var a = actions[idx]; var f = fr();
+        btn.disabled = true; btn.textContent = '⏳ ' + (f?'Génération...':'Generating...');
+        try {
+          var p = window.buildAiPromptEnriched(a);
+          var content = await window.callBestAI(a.ai_task, p.system, p.user, 600);
+          content = (content||'').trim();
+          var resEl = document.querySelector('.aria-smart-result[data-group="'+groupId+'"][data-idx="'+idx+'"]');
+          if (resEl){
+            resEl.style.display = 'block';
+            resEl.innerHTML = content.replace(/</g,'&lt;').replace(/\n/g,'<br>') +
+              '<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">' +
+                '<button onclick="ariaSmartSend(\''+groupId+'\','+idx+',this)" style="flex:1;min-width:120px;background:#1B4332;color:#fff;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">' + (a.kind==='whatsapp'?'💬 '+(f?'Envoyer WhatsApp':'Send WhatsApp'):a.kind==='email'?'✉️ '+(f?'Envoyer email':'Send email'):'✓ '+(f?'Garder':'Keep')) + '</button>' +
+                '<button onclick="ariaSmartCopy(\''+groupId+'\','+idx+',this)" style="background:#0F2318;color:#fff;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📋</button>' +
+                '<button onclick="ariaSmartRegen(\''+groupId+'\','+idx+',this)" style="background:rgba(201,150,58,.18);color:#7A5A1A;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" title="'+(f?'Régénérer':'Regenerate')+'">🔄</button>' +
+              '</div>';
+          }
+          a.generated_content = content;
+          btn.textContent = '✓ ' + (f?'Généré':'Generated');
+          btn.style.opacity = '.7';
+        } catch(e){
+          btn.disabled = false;
+          btn.textContent = '✨ ' + (f?'Générer':'Generate');
+          if (typeof toast==='function') toast('⚠ ' + (f?'Erreur génération':'Generation error'));
+        }
+      };
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     QUICK WIN B — Briefing matinal automatique
+     Quand l'user ouvre Aria pour la 1ère fois de la journée → résumé personnalisé
+     ══════════════════════════════════════════════════════════════════ */
+  var BRIEF_KEY = 'stafflo_last_brief_date';
+
+  function shouldShowMorningBrief(){
+    try {
+      var last = localStorage.getItem(BRIEF_KEY);
+      var today = new Date().toISOString().slice(0,10);
+      // Affiche si jamais shown today ET on est entre 6h et 13h
+      var hour = new Date().getHours();
+      if (hour < 6 || hour > 13) return false;
+      return last !== today;
+    } catch(e){ return false; }
+  }
+  function markBriefShown(){
+    try { localStorage.setItem(BRIEF_KEY, new Date().toISOString().slice(0,10)); } catch(e){}
+  }
+
+  function buildMorningBrief(){
+    var f = fr();
+    var today = new Date(); today.setHours(0,0,0,0);
+    var todayStr = today.toISOString().slice(0,10);
+    var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+    var inSeven = new Date(today); inSeven.setDate(inSeven.getDate()+7);
+
+    var arrivingToday = (clients||[]).filter(function(c){ return c.arrival === todayStr; });
+    var arrivingTomorrow = (clients||[]).filter(function(c){
+      return c.arrival && new Date(c.arrival).toDateString() === tomorrow.toDateString();
+    });
+    var arrivingSoon = (clients||[]).filter(function(c){
+      if (!c.arrival || c.bookingStatus === 'inquiry') return false;
+      var ar = new Date(c.arrival); ar.setHours(0,0,0,0);
+      return ar > tomorrow && ar <= inSeven;
+    });
+    var current = (clients||[]).filter(function(c){
+      if (!c.arrival || !c.departure) return false;
+      var ar = new Date(c.arrival), dep = new Date(c.departure);
+      return ar <= today && today < dep;
+    });
+    var inquiries = (clients||[]).filter(function(c){ return c.bookingStatus === 'inquiry'; });
+    var openInquiries = inquiries.filter(function(c){
+      if (!c.createdAt) return true;
+      var age = Math.round((Date.now() - new Date(c.createdAt).getTime())/86400000);
+      return age <= 14; // demandes des 2 dernières semaines
+    });
+
+    // Inbox unread
+    var unreadCount = 0;
+    try {
+      var legacyBadge = document.getElementById('inboxBadge');
+      if (legacyBadge && legacyBadge.classList.contains('show')){
+        var m = (legacyBadge.textContent||'').match(/^(\d+)/);
+        if (m) unreadCount = +m[1];
+      }
+    } catch(e){}
+
+    var greeting = (function(){
+      var h = new Date().getHours();
+      if (h < 12) return f?'Bonjour':'Good morning';
+      if (h < 18) return f?'Bon après-midi':'Good afternoon';
+      return f?'Bonsoir':'Good evening';
+    })();
+    var ownerName = (typeof getCfg==='function' ? (getCfg().owner||'') : '');
+    var firstName = ownerName ? ' '+ownerName.split(' ')[0] : '';
+
+    var lines = ['**'+greeting+firstName+' ☀️**', ''];
+    var hasContent = false;
+
+    if (current.length){
+      hasContent = true;
+      lines.push('**🏡 '+(f?'Actuellement à la villa':'Currently at the villa')+'**');
+      current.forEach(function(c){
+        var phoneFlag = !c.phone ? ' '+(f?'(pas de tél ⚠️)':'(no phone ⚠️)') : '';
+        lines.push('• '+c.name+phoneFlag);
+      });
+      lines.push('');
+    }
+
+    if (arrivingToday.length){
+      hasContent = true;
+      lines.push('**📍 '+(f?"Arrivent aujourd'hui":'Arriving today')+'**');
+      arrivingToday.forEach(function(c){
+        var phoneFlag = !c.phone ? ' ⚠️ '+(f?'pas de tél':'no phone') : '';
+        var familyFlag = (c.notes && /b[ée]b[ée]|infant|enfant|child/i.test(c.notes)) ? ' 👶' : '';
+        lines.push('• '+c.name+(c.guests?' ('+c.guests+(f?' pers.':' guests')+')':'')+familyFlag+phoneFlag);
+      });
+      lines.push('');
+    }
+
+    if (arrivingTomorrow.length){
+      hasContent = true;
+      lines.push('**📅 '+(f?'Arrivent demain':'Arriving tomorrow')+'**');
+      arrivingTomorrow.forEach(function(c){
+        var phoneFlag = !c.phone ? ' ⚠️ '+(f?'pas de tél':'no phone') : '';
+        lines.push('• '+c.name+phoneFlag);
+      });
+      lines.push('');
+    }
+
+    if (arrivingSoon.length){
+      hasContent = true;
+      lines.push('**🗓 '+(f?'Cette semaine':'This week')+'** ('+arrivingSoon.length+')');
+      arrivingSoon.slice(0,3).forEach(function(c){
+        lines.push('• '+c.name+' · '+c.arrival);
+      });
+      if (arrivingSoon.length > 3) lines.push('... +'+(arrivingSoon.length-3));
+      lines.push('');
+    }
+
+    if (openInquiries.length){
+      hasContent = true;
+      lines.push('**💬 '+(f?'Demandes ouvertes':'Open inquiries')+'** ('+openInquiries.length+')');
+      lines.push((f?'À traiter quand tu peux.':'Handle when possible.'));
+      lines.push('');
+    }
+
+    if (unreadCount){
+      hasContent = true;
+      lines.push('**📬 '+unreadCount+' '+(f?(unreadCount>1?'emails non lus':'email non lu'):(unreadCount>1?'unread emails':'unread email'))+'**');
+      lines.push('');
+    }
+
+    if (!hasContent){
+      lines.push(f?'Pas d\'arrivée prévue, pas de demande ouverte. Journée tranquille 🌿':'No arrivals scheduled, no open inquiries. Quiet day 🌿');
+    } else {
+      lines.push('_'+(f?'Tape "audit" pour vérifier le CRM, ou pose-moi une question.':'Type "audit" to check CRM, or ask me anything.')+'_');
+    }
+    return lines.join('\n');
+  }
+
+  function showMorningBriefIfNeeded(){
+    if (!shouldShowMorningBrief()) return;
+    if (!window.clients || !clients.length) return; // attend que les clients soient chargés
+    var body = document.getElementById('ariaModalMessages');
+    if (!body) return;
+    // Éviter doublon : si déjà un brief ce matin
+    if (body.querySelector('.aria-morning-brief')) return;
+    var brief = buildMorningBrief();
+    var div = document.createElement('div');
+    div.className = 'aria-modal-bubble aria aria-morning-brief';
+    div.innerHTML = '<strong>ARIA</strong> · ' + brief.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/_(.+?)_/g,'<em>$1</em>').replace(/\n/g,'<br>');
+    body.insertBefore(div, body.firstChild);
+    body.scrollTop = 0;
+    markBriefShown();
+  }
+
+  // Hook openAriaModal pour brief matinal (en plus du bandeau Inbox déjà existant)
+  var _prevOpenAria = window.openAriaModal;
+  if (_prevOpenAria){
+    window.openAriaModal = function(){
+      var r = _prevOpenAria.apply(this, arguments);
+      setTimeout(showMorningBriefIfNeeded, 200);
+      return r;
+    };
+  }
+
+  // Hook chatSend pour /stats
+  var _prevChatSend = window.chatSend;
+  if (_prevChatSend){
+    window.chatSend = async function(){
+      var inp = document.getElementById('chatInput');
+      var text = inp ? inp.value.trim() : '';
+      if (text && isStatsCommand(text)){
+        inp.value = ''; inp.style.height = 'auto';
+        var btn = document.getElementById('chatSendBtn'); if (btn) btn.disabled = true;
+        addChatBubble('user', text);
+        addChatBubble('ai', buildStatsReport());
+        return;
+      }
+      return _prevChatSend.apply(this, arguments);
+    };
+  }
 
 })();
 </script>
