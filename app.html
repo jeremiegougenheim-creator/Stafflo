@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -6906,7 +6907,12 @@ var STAFFLO_INTEGRATIONS = {
     description: 'Réception automatique emails Airbnb/Booking',
     setup_url: null, // filled at runtime
     status: 'available',
-    check: function() { return true; }, // no direct health check
+    check: function() {
+      try {
+        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+        return !!(cfg.email_connection && cfg.email_connection.email);
+      } catch(e) { return false; }
+    },
     connect: function() { showGmailSetup(); }
   },
   // ── Payments ──
@@ -7585,11 +7591,35 @@ function showIntegrationsPanel() {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9998;display:flex;align-items:center;justify-content:center;padding:16px';
   modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
 
+  // ── Compute live status from check() functions (synchronous only) ──
+  // Effective status: if check() returns true, treat as 'active' regardless of declared status.
+  // This keeps integrations like Gmail in sync with cfg.email_connection.
+  var liveStatus = {};
+  var liveDetail = {};
+  Object.keys(STAFFLO_INTEGRATIONS).forEach(function(key) {
+    var i = STAFFLO_INTEGRATIONS[key];
+    var declared = i.status;
+    var isActive = false;
+    try {
+      var r = (typeof i.check === 'function') ? i.check() : false;
+      // Ignore promises here — only sync truthy counts as active
+      if (r && typeof r.then !== 'function') isActive = true;
+    } catch(e) {}
+    liveStatus[key] = isActive ? 'active' : declared;
+    // Capture connected email for Gmail to render under the name
+    if (key === 'gmail' && isActive) {
+      try {
+        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+        liveDetail[key] = (cfg.email_connection && cfg.email_connection.email) || '';
+      } catch(e) {}
+    }
+  });
+
   var byCategory = {};
   Object.keys(STAFFLO_INTEGRATIONS).forEach(function(key) {
     var i = STAFFLO_INTEGRATIONS[key];
     if (!byCategory[i.category]) byCategory[i.category] = [];
-    byCategory[i.category].push({ key: key, ...i });
+    byCategory[i.category].push({ key: key, ...i, status: liveStatus[key] });
   });
 
   var catLabels = {
@@ -7624,12 +7654,22 @@ function showIntegrationsPanel() {
       html += '<div style="font-size:24px">' + i.icon + '</div>';
       html += '<div style="flex:1;min-width:0">';
       html += '<div style="font-size:13px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px">' + i.name + ' ' + (statusBadges[i.status]||'') + '</div>';
-      html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + i.description + '</div>';
+      // Description, with connected email appended for Gmail when active
+      var desc = i.description;
+      if (i.key === 'gmail' && i.status === 'active' && liveDetail.gmail) {
+        desc = liveDetail.gmail;
+      }
+      html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + desc + '</div>';
       html += '</div>';
-      if (i.status !== 'coming_soon' && i.status !== 'active') {
+      if (i.status === 'active') {
+        // For Gmail (the only integration that actually has a manage flow), show "Gérer"
+        if (i.key === 'gmail') {
+          html += '<button onclick="document.getElementById(\'integrationsModal\').remove();showEmailConnectModal()" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap">' + (lang==='en'?'Manage':'Gérer') + '</button>';
+        } else {
+          html += '<div style="font-size:16px;color:var(--green)">✓</div>';
+        }
+      } else if (i.status !== 'coming_soon') {
         html += '<button onclick="STAFFLO_INTEGRATIONS.' + i.key + '.connect()" style="background:var(--green);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;white-space:nowrap">Configurer</button>';
-      } else if (i.status === 'active') {
-        html += '<div style="font-size:16px;color:var(--green)">✓</div>';
       } else {
         html += '<div style="font-size:10px;color:var(--muted);font-style:italic">Bientôt</div>';
       }
@@ -12759,12 +12799,20 @@ function openInboxSettings() {
   try {
     var auto = localStorage.getItem('stafflo_inbox_auto') !== '0';
     var interval = parseInt(localStorage.getItem('stafflo_inbox_interval') || '5', 10);
-    var conn = localStorage.getItem('stafflo_inbox_connection') || '';
+    // ── Single source of truth: cfg.email_connection (mirrored to Supabase villa_settings) ──
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var ec = cfg.email_connection || null;
+    var connLabel = '';
+    if (ec && ec.email) {
+      var provider = (ec.provider || 'gmail');
+      var providerName = provider === 'gmail' ? 'Gmail' : (provider.charAt(0).toUpperCase() + provider.slice(1));
+      connLabel = providerName + ' · ' + ec.email;
+    }
     var lastSync = localStorage.getItem('stafflo_inbox_last_sync') || '';
     document.getElementById('inboxSetAutoToggle').checked = auto;
     document.getElementById('inboxSetInterval').value = interval;
-    document.getElementById('inboxSetConnSub').textContent = conn || ((typeof lang !== 'undefined' && lang === 'en') ? 'Not connected' : 'Non connecté');
-    document.getElementById('inboxSetConnBtn').querySelector('span').textContent = conn ? ((typeof lang !== 'undefined' && lang === 'en') ? 'Manage' : 'Gérer') : ((typeof lang !== 'undefined' && lang === 'en') ? 'Configure' : 'Configurer');
+    document.getElementById('inboxSetConnSub').textContent = connLabel || ((typeof lang !== 'undefined' && lang === 'en') ? 'Not connected' : 'Non connecté');
+    document.getElementById('inboxSetConnBtn').querySelector('span').textContent = connLabel ? ((typeof lang !== 'undefined' && lang === 'en') ? 'Manage' : 'Gérer') : ((typeof lang !== 'undefined' && lang === 'en') ? 'Configure' : 'Configurer');
     document.getElementById('inboxSetLastSync').textContent = lastSync || ((typeof lang !== 'undefined' && lang === 'en') ? 'Never' : 'Jamais');
     updateAutoToggleVisual();
   } catch(e) {}
@@ -12798,9 +12846,11 @@ function updateAutoToggleVisual() {
   }
 }
 function manageInboxConnection() {
-  // Open the existing integrations panel if available
-  if (typeof showIntegrationsPanel === 'function') {
-    closeInboxSettings();
+  // Open the real Gmail/email OAuth modal directly (single source of truth)
+  closeInboxSettings();
+  if (typeof showEmailConnectModal === 'function') {
+    showEmailConnectModal();
+  } else if (typeof showIntegrationsPanel === 'function') {
     showIntegrationsPanel();
   } else {
     alert((typeof lang !== 'undefined' && lang === 'en') ? 'Email connection setup coming soon.' : 'Configuration de la connexion email à venir.');
