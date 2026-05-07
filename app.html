@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -14599,6 +14600,328 @@ window.addEventListener('DOMContentLoaded', function() {
       return;
     }
     return _origChatSend ? _origChatSend.apply(this, arguments) : null;
+  };
+
+  /* ════════════════════════════════════════════════════════
+     FIX A — EXÉCUTER avec carte compacte + options claires
+     FIX B — Chips contextuels qui agissent vraiment
+     FIX C — Persistance complète (msg_log + chat_history full)
+     ════════════════════════════════════════════════════════ */
+
+  // ──────────────── FIX C — Pas de troncature à 2000 ────────────────
+  // Override saveChatMessage : 8000 chars (au lieu de 2000)
+  var _origSaveChatMessage = window.saveChatMessage;
+  if (_origSaveChatMessage){
+    window.saveChatMessage = async function(role, text, clientId, clientName){
+      var cfg = (typeof getCfg==='function')?getCfg():{};
+      var key = cfg.sbKey || (typeof SB_ANON!=='undefined'?SB_ANON:'');
+      try {
+        await fetch(SB_URL + '/rest/v1/chat_history', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json', apikey:key, Authorization:'Bearer '+key, Prefer:'return=minimal' },
+          body: JSON.stringify({
+            role: role,
+            content: (text||'').slice(0, 8000),
+            client_id: clientId || null,
+            client_name: clientName || null,
+            session_id: (typeof _chatSessionId!=='undefined'?_chatSessionId:null)
+          })
+        });
+      } catch(e){}
+    };
+  }
+
+  // ──────────────── FIX C — Logger les actions Aria dans msg_log ────────────────
+  function logAriaActionToDb(kind, content, label, target){
+    try {
+      var cfg = (typeof getCfg==='function')?getCfg():{};
+      var key = cfg.sbKey || (typeof SB_ANON!=='undefined'?SB_ANON:'');
+      // Trouver client actif (current guest)
+      var clientId = null, clientName = null, phone = '';
+      try {
+        if (typeof _chatActiveClient!=='undefined' && _chatActiveClient && _chatActiveClient.id){
+          clientId = _chatActiveClient.id; clientName = _chatActiveClient.name;
+        }
+        if (!clientId && target === 'guest' && typeof clients!=='undefined'){
+          var today = new Date(); today.setHours(0,0,0,0);
+          var current = clients.find(function(c){ if (!c.arrival||!c.departure) return false; var ad=new Date(c.arrival),dd=new Date(c.departure); return ad<=today && today<dd; });
+          if (current){ clientId = current.id; clientName = current.name; phone = current.phone||''; }
+        }
+        if (clientId && !phone){
+          var cli = clients.find(function(c){ return c.id===clientId; });
+          if (cli) phone = cli.phone||'';
+        }
+      } catch(e){}
+      var msgType = (kind==='whatsapp'?'wa_aria':kind==='email'?'email_aria':kind==='sms'?'sms_aria':'aria_'+(kind||'action'));
+      fetch(SB_URL + '/rest/v1/msg_log', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', apikey:key, Authorization:'Bearer '+key, Prefer:'return=minimal' },
+        body: JSON.stringify({
+          client_id: clientId, client_name: clientName||'?', phone: phone||'',
+          msg_type: msgType, msg_body: (content||'').slice(0,4000), wa_link: null
+        })
+      }).catch(function(){});
+    } catch(e){}
+  }
+
+  // ──────────────── FIX A — Override enhanceAriaActions : card compacte ────────────────
+  // On rebuild les cards pour montrer label + target + boutons CLAIRS,
+  // le message complet s'affiche après clic sur "Voir le message"
+  var _origEnhance = window.enhanceAriaActions;
+  if (_origEnhance){
+    window.enhanceAriaActions = function(bubble){
+      if (!bubble || bubble.dataset.actionsParsed === '1') return;
+      var txt = bubble.textContent || '';
+      var normalizedTxt = txt.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+      if (!/\[\s*\{[^}]*"label"[^}]*"kind"/i.test(normalizedTxt)) return;
+      var start = normalizedTxt.indexOf('[');
+      var end = normalizedTxt.lastIndexOf(']');
+      if (start < 0 || end < 0 || end <= start) return;
+      var raw = normalizedTxt.slice(start, end + 1);
+      var actions;
+      try { actions = JSON.parse(raw); }
+      catch(e){
+        try { actions = JSON.parse(raw.replace(/,\s*([}\]])/g, '$1')); }
+        catch(e2){ return; }
+      }
+      if (!Array.isArray(actions) || !actions.length) return;
+      actions = actions.filter(function(a){ return a && typeof a === 'object' && a.label && a.kind; });
+      if (!actions.length) return;
+
+      var fr = (typeof lang!=='undefined' && lang==='fr');
+      var origStart = txt.indexOf('[');
+      var origEnd = txt.lastIndexOf(']');
+      var intro = (origStart > 0 ? txt.slice(0, origStart) : '').trim().replace(/```(json)?\s*$/i,'').trim();
+      var outro = (origEnd >= 0 ? txt.slice(origEnd + 1) : '').trim().replace(/^\s*```/i,'').trim();
+
+      // Stocker les actions pour accès via index sans JSON-encoder dans onclick
+      window._ariaPendingActions = window._ariaPendingActions || {};
+      var groupId = 'ag_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+      window._ariaPendingActions[groupId] = actions;
+
+      var actionsHtml = '<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">';
+      actions.forEach(function(a, idx){
+        var kindIcon = a.kind === 'whatsapp' ? '💬' : a.kind === 'email' ? '✉️' : a.kind === 'sms' ? '📱' : a.kind === 'copy' ? '📋' : '📝';
+        var primaryLabel = a.kind==='whatsapp' ? (fr?'✓ Envoyer WhatsApp':'✓ Send WhatsApp')
+                         : a.kind==='email'    ? (fr?'✓ Envoyer email':'✓ Send email')
+                         : a.kind==='sms'      ? (fr?'✓ Envoyer SMS':'✓ Send SMS')
+                         : a.kind==='copy'     ? (fr?'📋 Copier':'📋 Copy')
+                         : (fr?'✓ Demander à Aria':'✓ Ask Aria');
+        var targetLbl = a.target ? ('<span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#8A8070;margin-left:6px">→ ' + a.target + '</span>') : '';
+        var hasContent = !!(a.content && a.content.trim());
+        // Card compacte : label + target + bouton primary + 2 boutons secondary (Voir / Copier)
+        actionsHtml +=
+          '<div class="aria-act-card" data-group="'+groupId+'" data-idx="'+idx+'" style="background:rgba(255,255,255,.55);border:1px solid rgba(201,150,58,.3);border-radius:8px;padding:9px 11px">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px">' +
+              '<div style="font-size:12px;font-weight:600;color:#1A1208;flex:1;min-width:0">' + kindIcon + ' ' + a.label + targetLbl + '</div>' +
+            '</div>' +
+            // Preview content collapsed by default
+            (hasContent
+              ? '<div class="aria-act-preview" data-group="'+groupId+'" data-idx="'+idx+'" style="display:none;font-size:11px;color:#3a2f1f;margin-bottom:7px;line-height:1.45;white-space:pre-wrap;background:rgba(255,255,255,.7);border-radius:6px;padding:7px 9px;border:1px dashed rgba(201,150,58,.3)">'+a.content.replace(/</g,'&lt;')+'</div>'
+              : '') +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+              '<button onclick="ariaActPrimary(\''+groupId+'\','+idx+',this)" style="flex:1;min-width:140px;background:#C9963A;color:#0F2318;border:none;border-radius:5px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px">'+primaryLabel+'</button>' +
+              (hasContent ? '<button onclick="ariaActToggleView(\''+groupId+'\','+idx+',this)" style="background:rgba(15,35,24,.08);color:#0F2318;border:none;border-radius:5px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" title="'+(fr?'Voir/masquer le message':'Show/hide message')+'">👁 '+(fr?'Voir':'View')+'</button>' : '') +
+              (hasContent ? '<button onclick="ariaActCopy(\''+groupId+'\','+idx+',this)" style="background:#0F2318;color:#fff;border:none;border-radius:5px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" title="'+(fr?'Copier':'Copy')+'">📋</button>' : '') +
+            '</div>' +
+          '</div>';
+      });
+      actionsHtml += '</div>';
+
+      bubble.innerHTML =
+        (intro ? '<div style="margin-bottom:6px;color:#1A1208">' + intro.replace(/</g,'&lt;') + '</div>' : '') +
+        actionsHtml +
+        (outro ? '<div style="margin-top:8px;font-size:11px;color:#8A8070;font-style:italic">' + outro.replace(/</g,'&lt;') + '</div>' : '');
+      bubble.dataset.actionsParsed = '1';
+    };
+  }
+
+  // Action primaire : exécute directement le canal (WA/email/SMS/copy/internal)
+  window.ariaActPrimary = function(groupId, idx, btn){
+    var actions = (window._ariaPendingActions||{})[groupId];
+    if (!actions || !actions[idx]) return;
+    var a = actions[idx];
+    var f = fr();
+    var content = a.content || a.label || '';
+    var label = a.label || '';
+    var target = a.target || '';
+
+    if (a.kind === 'whatsapp'){
+      var phone = '';
+      try {
+        if (target === 'guest' && typeof clients!=='undefined'){
+          var today = new Date(); today.setHours(0,0,0,0);
+          var cur = clients.find(function(c){ if(!c.arrival||!c.departure)return false; var ad=new Date(c.arrival),dd=new Date(c.departure); return ad<=today&&today<dd; });
+          if (cur) phone = (cur.phone||'').replace(/[\s\-+()]/g,'');
+        }
+        if (!phone && typeof _chatActiveClient!=='undefined' && _chatActiveClient && _chatActiveClient.id){
+          var cli = clients.find(function(c){ return c.id===_chatActiveClient.id; });
+          if (cli) phone = (cli.phone||'').replace(/[\s\-+()]/g,'');
+        }
+      } catch(e){}
+      var url = phone ? ('https://wa.me/'+phone+'?text='+encodeURIComponent(content)) : ('https://wa.me/?text='+encodeURIComponent(content));
+      window.open(url, '_blank');
+      logAriaActionToDb('whatsapp', content, label, target);
+      btn.textContent = f?'✓ OUVERT':'✓ OPENED';
+      btn.disabled = true; btn.style.opacity = '.7';
+      return;
+    }
+    if (a.kind === 'email'){
+      var subj = label || 'Stafflo';
+      window.location.href = 'mailto:?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(content);
+      logAriaActionToDb('email', content, label, target);
+      btn.textContent = f?'✓ OUVERT':'✓ OPENED';
+      btn.disabled = true; btn.style.opacity = '.7';
+      return;
+    }
+    if (a.kind === 'sms'){
+      window.location.href = 'sms:?body='+encodeURIComponent(content);
+      logAriaActionToDb('sms', content, label, target);
+      btn.textContent = f?'✓ OUVERT':'✓ OPENED';
+      btn.disabled = true; btn.style.opacity = '.7';
+      return;
+    }
+    if (a.kind === 'copy'){
+      var ok = false;
+      try { if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(content); ok = true; } } catch(e){}
+      if (!ok){
+        try {
+          var ta = document.createElement('textarea'); ta.value = content; ta.style.position='fixed'; ta.style.opacity='0';
+          document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+          ok = true;
+        } catch(e){}
+      }
+      logAriaActionToDb('copy', content, label, target);
+      btn.textContent = ok ? (f?'✓ COPIÉ':'✓ COPIED') : (f?'⚠ ÉCHEC':'⚠ FAILED');
+      btn.disabled = true; btn.style.opacity = '.7';
+      return;
+    }
+    // internal_note / unknown / target=owner → re-prompt Aria
+    var promptText = label;
+    if (content && content !== label) promptText = label + ' : ' + content;
+    var input = document.getElementById('ariaModalInput');
+    if (input && typeof sendAriaModal === 'function'){
+      input.value = promptText;
+      if (typeof onAriaModalInput==='function') onAriaModalInput(input);
+      logAriaActionToDb('internal', content, label, target);
+      btn.textContent = f?'✓ ENVOYÉ':'✓ SENT';
+      btn.disabled = true; btn.style.opacity = '.7';
+      sendAriaModal();
+    }
+  };
+
+  window.ariaActToggleView = function(groupId, idx, btn){
+    var preview = document.querySelector('.aria-act-preview[data-group="'+groupId+'"][data-idx="'+idx+'"]');
+    if (!preview) return;
+    var open = preview.style.display === 'block';
+    preview.style.display = open ? 'none' : 'block';
+    var f = fr();
+    btn.innerHTML = open ? ('👁 '+(f?'Voir':'View')) : ('🙈 '+(f?'Masquer':'Hide'));
+  };
+
+  window.ariaActCopy = function(groupId, idx, btn){
+    var actions = (window._ariaPendingActions||{})[groupId]; if (!actions||!actions[idx]) return;
+    var content = actions[idx].content || actions[idx].label || '';
+    var ok = false;
+    try { if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(content); ok = true; } } catch(e){}
+    if (!ok){
+      try {
+        var ta = document.createElement('textarea'); ta.value=content; ta.style.position='fixed'; ta.style.opacity='0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); ok=true;
+      } catch(e){}
+    }
+    var orig = btn.innerHTML;
+    btn.innerHTML = ok ? '✓' : '⚠';
+    setTimeout(function(){ btn.innerHTML = orig; }, 1500);
+  };
+
+  // ──────────────── FIX B — Chips contextuels qui AGISSENT ────────────────
+  // Override appendContextualChips pour wrapper certains chips dans des actions directes
+  var _origAppendChips = window.appendContextualChips;
+  if (_origAppendChips){
+    // On laisse l'original construire la card, puis on intercepte les clicks
+    // via override de ariaContextChip
+  }
+
+  function getLastAriaText(){
+    var body = document.getElementById('ariaModalMessages');
+    if (!body) return '';
+    var bubbles = body.querySelectorAll('.aria-modal-bubble');
+    for (var i = bubbles.length - 1; i >= 0; i--){
+      var b = bubbles[i];
+      if (!b.classList.contains('user')){
+        return (b.textContent || '').replace(/^\s*ARIA\s*[·.]?\s*/i, '').trim();
+      }
+    }
+    return '';
+  }
+  // Cherche aussi dans les bubbles user récents (utile pour "Ajouter au CRM" depuis email collé)
+  function getLastSubstantialContext(){
+    var body = document.getElementById('ariaModalMessages');
+    if (!body) return '';
+    var bubbles = body.querySelectorAll('.aria-modal-bubble');
+    var collected = [];
+    for (var i = bubbles.length - 1; i >= 0 && collected.length < 4; i--){
+      var t = (bubbles[i].textContent || '').trim();
+      if (t.length > 60) collected.unshift(t);
+    }
+    return collected.join('\n\n');
+  }
+
+  // Override ariaContextChip : intercepte les actions concrètes
+  var _origCtxChip = window.ariaContextChip;
+  window.ariaContextChip = function(btn){
+    var prompt = btn.getAttribute('data-prompt') || '';
+    var f = fr();
+
+    // FIX B-1 : "+ Ajouter au CRM" → extraction réelle, pas de prompt LLM blabla
+    if (/Crée la fiche client|Create the client record/i.test(prompt)){
+      var ctx = getLastSubstantialContext();
+      if (!ctx){ if (_origCtxChip) return _origCtxChip(btn); return; }
+      btn.textContent = f?'⏳ Extraction...':'⏳ Extracting...';
+      btn.disabled = true;
+      // Réutilise le pipeline existant qui fait l'extraction + UI de validation
+      if (typeof handleChatEmailAnalysis === 'function'){
+        addChatBubble('user', f?'➕ Ajouter au CRM':'➕ Add to CRM');
+        handleChatEmailAnalysis(ctx).finally(function(){
+          btn.textContent = f?'✓ Extrait':'✓ Extracted';
+          setTimeout(function(){ btn.textContent = f?'➕ Ajouter au CRM':'➕ Add to CRM'; btn.disabled = false; }, 2500);
+        });
+      } else {
+        // fallback
+        if (_origCtxChip) _origCtxChip(btn);
+      }
+      return;
+    }
+
+    // FIX B-2 : "Bloquer les dates" → ouvre le calendrier
+    if (/Bloquer les dates|Block dates|bloquer les dates mention/i.test(prompt)){
+      // Ferme Aria, va sur l'onglet Today/Calendar
+      if (typeof closeAriaModal === 'function') closeAriaModal();
+      try {
+        if (typeof goTab === 'function') goTab('today');
+      } catch(e){}
+      toast(f?'📅 Ouvre le calendrier pour bloquer les dates':'📅 Open the calendar to block dates');
+      return;
+    }
+
+    // FIX B-3 : "💰 Appliquer ce prix" → ouvre Settings sur la section pricing
+    if (/Appliquer ce prix|Apply this price|pricing/i.test(prompt)){
+      if (typeof closeAriaModal === 'function') closeAriaModal();
+      if (typeof openSettings === 'function'){
+        openSettings();
+        setTimeout(function(){
+          var sec = document.querySelector('[data-settings-section="pricing"]') || document.getElementById('settingsPricing') || document.querySelector('summary');
+          if (sec && typeof sec.scrollIntoView==='function') sec.scrollIntoView({behavior:'smooth',block:'center'});
+        }, 200);
+      }
+      toast(f?'⚙ Settings — section Pricing':'⚙ Settings — Pricing section');
+      return;
+    }
+
+    // Tous les autres chips (Brief staff, Message guest, Liste courses, Marketing, Comparer marché, Scénarios revenus)
+    // restent en mode "prompt LLM" — c'est leur usage légitime
+    if (_origCtxChip) return _origCtxChip(btn);
   };
 
 })();
