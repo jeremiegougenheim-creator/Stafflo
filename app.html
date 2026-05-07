@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -17831,27 +17832,37 @@ window.addEventListener('DOMContentLoaded', function() {
             var bodyText = (cleanRow.body || '').trim();
             var bodyId = 'orig-email-' + Date.now() + '-' + Math.floor(Math.random()*1000);
 
-            var headerHtml =
-              '<div style="font-size:10px;letter-spacing:1.5px;color:var(--gold);font-weight:700;margin-bottom:4px">📧 ' + (fr?'EMAIL REÇU':'INCOMING EMAIL') + '</div>' +
-              '<div style="font-size:11px;color:var(--muted);margin-bottom:2px">' + (fr?'De':'From') + ' : ' + _esc(senderName) +
-                (fromShort && fromShort !== senderName ? ' <span style="opacity:.7">&lt;' + _esc(fromShort) + '&gt;</span>' : '') +
-              '</div>' +
-              (sentDate ? '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">📅 ' + _esc(sentDate) + '</div>' : '') +
-              '<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:8px">' + _esc(cleanRow.subject || (fr?'(sans sujet)':'(no subject)')) + '</div>';
+            // ✨ v5.1: super-compact header — everything in a collapsible <details>
+            // Closed state = 1 line: 📧 sender · date · subject (truncated)
+            // Open state = full sender, full subject, full body, all visible
+            var subjectShort = (cleanRow.subject || (fr?'(sans sujet)':'(no subject)'));
+            var subjectTruncated = subjectShort.length > 55 ? subjectShort.slice(0, 55) + '…' : subjectShort;
 
-            if (bodyText) {
-              headerHtml +=
-                '<details style="margin-top:6px;border-top:1px dashed var(--border);padding-top:6px">' +
-                  '<summary style="cursor:pointer;font-size:11px;color:var(--muted);user-select:none;list-style:none">▸ ' + (fr?'Voir le message original':'View original message') + '</summary>' +
-                  '<div id="' + bodyId + '" style="margin-top:8px;padding:10px;background:rgba(0,0,0,.02);border-radius:6px;font-size:12px;line-height:1.5;color:var(--ink);white-space:pre-wrap;max-height:300px;overflow-y:auto">' +
-                    _esc(bodyText) +
+            var headerHtml =
+              '<details style="margin:0">' +
+                '<summary style="cursor:pointer;list-style:none;user-select:none;display:flex;align-items:center;gap:8px;font-size:12px;line-height:1.4">' +
+                  '<span style="color:var(--gold);font-weight:700;flex-shrink:0">📧</span>' +
+                  '<span style="color:var(--muted);flex-shrink:0">' + _esc(senderName) + '</span>' +
+                  (sentDate ? '<span style="color:var(--muted);opacity:.7;flex-shrink:0">·</span><span style="color:var(--muted);opacity:.7;flex-shrink:0">' + _esc(sentDate) + '</span>' : '') +
+                  '<span style="color:var(--muted);opacity:.5;flex-shrink:0">·</span>' +
+                  '<span style="color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">' + _esc(subjectTruncated) + '</span>' +
+                  '<span class="email-chev" style="color:var(--muted);font-size:13px;flex-shrink:0;transition:transform .2s">▾</span>' +
+                '</summary>' +
+                '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">' +
+                  '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">' + (fr?'De':'From') + ' : ' + _esc(senderName) +
+                    (fromShort && fromShort !== senderName ? ' <span style="opacity:.7">&lt;' + _esc(fromShort) + '&gt;</span>' : '') +
                   '</div>' +
-                '</details>';
-            }
+                  '<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:8px">' + _esc(subjectShort) + '</div>' +
+                  (bodyText
+                    ? '<div id="' + bodyId + '" style="padding:10px;background:rgba(0,0,0,.02);border-radius:6px;font-size:12px;line-height:1.5;color:var(--ink);white-space:pre-wrap;max-height:300px;overflow-y:auto">' + _esc(bodyText) + '</div>'
+                    : ''
+                  ) +
+                '</div>' +
+              '</details>';
 
             var hdrDiv = document.createElement('div');
-            hdrDiv.className = 'chat-bubble system';
-            hdrDiv.style.cssText = 'max-width:100%;text-align:left;background:var(--paper);border-left:3px solid var(--gold);padding:12px';
+            hdrDiv.className = 'chat-bubble system stafflo-email-header';
+            hdrDiv.style.cssText = 'max-width:100%;text-align:left;background:var(--paper);border-left:3px solid var(--gold);padding:10px 12px';
             hdrDiv.innerHTML = headerHtml;
             var msgs = document.getElementById('chatMessages');
             if (msgs) msgs.appendChild(hdrDiv);
@@ -17992,12 +18003,13 @@ window.addEventListener('DOMContentLoaded', function() {
         if (msgsEl) msgsEl.appendChild(sysDiv);
 
         if (g.name) {
+          // ✨ v5.1: button is now OUTSIDE sysDiv to avoid click blocking by .chat-bubble
           var actDiv = document.createElement('div');
-          actDiv.className = 'chat-actions';
-          actDiv.style.cssText = 'margin-top:10px;display:flex;gap:6px;flex-wrap:wrap';
+          actDiv.className = 'stafflo-save-row';
+          actDiv.style.cssText = 'margin:8px 0 4px;display:flex;gap:6px;flex-wrap:wrap;padding:0 4px;pointer-events:auto;position:relative;z-index:10';
           var saveBtn = document.createElement('button');
-          saveBtn.className = 'chat-action-btn save';
-          saveBtn.style.cssText = 'background:var(--green);color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit';
+          saveBtn.type = 'button';
+          saveBtn.style.cssText = 'background:var(--green);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;pointer-events:auto;position:relative;z-index:11;box-shadow:0 1px 3px rgba(0,0,0,.08)';
           if (existing) {
             saveBtn.textContent = (fr?'🔄 Mettre à jour ':'🔄 Update ') + existing.name.split(' ')[0];
           } else if (isLead) {
@@ -18005,7 +18017,9 @@ window.addEventListener('DOMContentLoaded', function() {
           } else {
             saveBtn.textContent = (fr?'💾 Sauvegarder':'💾 Save');
           }
-          saveBtn.onclick = function() {
+          saveBtn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            ev.preventDefault();
             try {
               if (existing) {
                 var merged = Object.assign({}, existing, {
@@ -18019,16 +18033,18 @@ window.addEventListener('DOMContentLoaded', function() {
                 if (idx>=0) clientList[idx] = merged;
                 if (typeof saveLocal === 'function') saveLocal();
                 if (typeof renderAll === 'function') renderAll();
-                this.textContent = fr?'✅ Mis à jour':'✅ Updated';
-                this.disabled = true;
+                saveBtn.textContent = fr?'✅ Mis à jour':'✅ Updated';
+                saveBtn.disabled = true;
+                saveBtn.style.opacity = '.7';
               } else {
                 var gWithStatus = Object.assign({}, g, {
                   bookingStatus: isLead ? 'lead' : 'confirmed',
                   source: g.source || ((cleanRow.from_email||'').match(/airbnb/i) ? 'Airbnb' : (cleanRow.from_email||'').match(/booking/i) ? 'Booking' : 'Direct')
                 });
                 if (typeof saveFromResult === 'function') saveFromResult(gWithStatus);
-                this.textContent = isLead ? (fr?'🎯 Lead créé':'🎯 Lead created') : (fr?'✅ Sauvegardé':'✅ Saved');
-                this.disabled = true;
+                saveBtn.textContent = isLead ? (fr?'🎯 Lead créé':'🎯 Lead created') : (fr?'✅ Sauvegardé':'✅ Saved');
+                saveBtn.disabled = true;
+                saveBtn.style.opacity = '.7';
               }
               if (parsed.context && parsed.context.length) {
                 var targetId = existing ? existing.id : null;
@@ -18038,10 +18054,11 @@ window.addEventListener('DOMContentLoaded', function() {
                 }
                 if (targetId && typeof saveClientContext === 'function') saveClientContext(targetId, parsed.context);
               }
-            } catch(e) { console.error('[stafflo-v5] save failed:', e); }
-          };
+            } catch(e) { console.error('[stafflo-v5.1] save failed:', e); }
+          }, false);
           actDiv.appendChild(saveBtn);
-          sysDiv.appendChild(actDiv);
+          // Inject save button OUTSIDE sysDiv (sibling, not child) so .chat-bubble CSS can't block clicks
+          if (msgsEl) msgsEl.appendChild(actDiv);
         }
 
         var responses = Array.isArray(parsed.responses) ? parsed.responses.filter(function(r){ return r && r.text; }) : [];
@@ -18144,17 +18161,27 @@ window.addEventListener('DOMContentLoaded', function() {
     console.log('[stafflo-v5] ✓ handleInboxEmailFull v5 — deduped facts, LEAD status, accordion replies');
   }
 
-  /* ── Style cleanup for native details/summary ── */
+  /* ── Style cleanup for native details/summary + pointer-events fix ── */
   var _styleEl = document.createElement('style');
   _styleEl.textContent = [
     'details > summary::-webkit-details-marker { display: none; }',
     'details[open] > summary .opt-chev { transform: rotate(180deg); }',
+    'details[open] > summary .email-chev { transform: rotate(180deg); }',
     '.aria-options-list details:hover { border-color: var(--gold) !important; }',
-    '.aria-options-list details[open] { border-color: var(--gold) !important; box-shadow: 0 2px 6px rgba(0,0,0,.04); }'
+    '.aria-options-list details[open] { border-color: var(--gold) !important; box-shadow: 0 2px 6px rgba(0,0,0,.04); }',
+    /* v5.1: ensure save button is always clickable */
+    '.stafflo-save-row { pointer-events: auto !important; }',
+    '.stafflo-save-row button { pointer-events: auto !important; cursor: pointer !important; }',
+    '.stafflo-save-row button:hover { filter: brightness(1.05); }',
+    '.stafflo-save-row button:active { transform: translateY(1px); }',
+    /* v5.1: compact email header — reduce vertical footprint */
+    '.stafflo-email-header { padding: 10px 12px !important; }',
+    '.stafflo-email-header summary { outline: none; }',
+    '.stafflo-email-header details[open] summary { margin-bottom: 4px; }'
   ].join('\n');
   document.head.appendChild(_styleEl);
 
-  console.log('[stafflo-v5] === pack v5 2026-05-08 loaded ===');
+  console.log('[stafflo-v5] === pack v5.1 2026-05-08 loaded ===');
 })();
 </script>
 
