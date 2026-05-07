@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -2267,11 +2268,16 @@ function authSignOut() {
 window.authSignOut = authSignOut;
 
 function enterDemoMode() {
+  // Demo mode: clear any auth, load mock data, bypass Supabase entirely
+  try { localStorage.removeItem('stafflo_session'); } catch(e){}
+  try { localStorage.setItem('stafflo_demo_mode', '1'); } catch(e){}
   STAFFLO_AUTH.mode = 'demo';
   STAFFLO_AUTH.user = { id: 'demo-user', email: 'demo@stafflo.app' };
   STAFFLO_AUTH.session = null;
-  // Don't persist — demo is per-tab
+  if (typeof loadDemoSeed === 'function') loadDemoSeed();
   if (typeof loadDemoData === 'function') loadDemoData();
+  if (typeof showDemoBanner === 'function') showDemoBanner();
+  return true;
 }
 window.enterDemoMode = enterDemoMode;
 
@@ -2279,6 +2285,15 @@ window.enterDemoMode = enterDemoMode;
 async function initAuth() {
   if (STAFFLO_AUTH.initialized) return;
   STAFFLO_AUTH.initialized = true;
+  // Check demo mode FIRST (URL param OR localStorage flag) — bypasses Supabase
+  try {
+    var qs = new URLSearchParams(location.search);
+    if (qs.get('demo') === '1' || localStorage.getItem('stafflo_demo_mode') === '1') {
+      enterDemoMode();
+      return;
+    }
+  } catch(e){}
+  // Then check saved session
   var s = loadSessionLocal();
   if (s && s.access_token && s.user) {
     STAFFLO_AUTH.session = s;
@@ -2286,14 +2301,6 @@ async function initAuth() {
     STAFFLO_AUTH.mode = 'authed';
     return;
   }
-  // Check URL for demo mode
-  try {
-    var qs = new URLSearchParams(location.search);
-    if (qs.get('demo') === '1') {
-      enterDemoMode();
-      return;
-    }
-  } catch(e){}
   STAFFLO_AUTH.mode = 'guest';
 }
 window.initAuth = initAuth;
@@ -3081,19 +3088,9 @@ function loadDemoSeed() {
   ];
 }
 
-function enterDemoMode() {
-  // Don't enter if user already has real data
-  try {
-    const existing = JSON.parse(localStorage.getItem('stafflo_clients') || '[]');
-    const hasReal = existing.some(c => c && c.id && !String(c.id).startsWith('demo-'));
-    if (hasReal) return false;
-  } catch(e) {}
-
-  localStorage.setItem('stafflo_demo_mode', '1');
-  loadDemoSeed();
-  showDemoBanner();
-  return true;
-}
+// Note: canonical enterDemoMode is defined earlier (in AUTH MODULE).
+// This older partial version was removed to fix the demo mode bug.
+// loadDemoSeed() is still used by the canonical version.
 
 function showDemoBanner() {
   const b = document.getElementById('demoBanner');
