@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -585,6 +586,23 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 }
 .row-50 > *, .row-33 > *{height:100%;display:flex;flex-direction:column;min-width:0}
 
+/* ── Today: 2-column layout — LEFT (Brief flow) | RIGHT sticky (Signals/Calendar/Villa) ── */
+.today-mainflex{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:14px;align-items:start}
+.today-mainflex-left{display:flex;flex-direction:column;gap:14px;min-width:0}
+.today-mainflex-right{display:flex;flex-direction:column;gap:14px;min-width:0}
+@media(min-width:768px){
+  .today-mainflex{grid-template-columns:1fr 1fr;gap:14px}
+  .today-mainflex-right{position:sticky;top:72px;max-height:calc(100vh - 90px);overflow-y:auto;padding-right:2px}
+  /* hide scrollbar on right column for clean look, keep it functional */
+  .today-mainflex-right::-webkit-scrollbar{width:6px}
+  .today-mainflex-right::-webkit-scrollbar-track{background:transparent}
+  .today-mainflex-right::-webkit-scrollbar-thumb{background:rgba(15,35,24,.12);border-radius:3px}
+  .today-mainflex-right::-webkit-scrollbar-thumb:hover{background:rgba(15,35,24,.25)}
+}
+@media(min-width:1200px){
+  .today-mainflex{grid-template-columns:1.1fr 1fr}
+}
+
 /* Generic v2 card — equal height friendly */
 .v2-card{background:var(--card);border-radius:14px;box-shadow:var(--shadow-lg);border:1px solid var(--border);padding:14px 16px;display:flex;flex-direction:column;min-height:120px;min-width:0}
 .v2-card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px}
@@ -879,55 +897,55 @@ body.v2-active #chatPanel{display:none !important}
   </div>
 </div>
 
-<!-- Row 2: Today actions 50% + Signals 50% -->
-<div class="row row-50">
-  <div class="v2-card" id="card50MorningBrief">
-    <div class="v2-card-hd">
-      <div class="v2-card-title">☀ <span data-fr="Brief du jour" data-en="Daily brief">Brief du jour</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Ce qui compte" data-en="What matters">Ce qui compte</span></div>
-      <button class="v2-icon-btn" onclick="loadMorningBrief(true);loadHomeData()" title="Refresh" aria-label="Refresh">↻</button>
-    </div>
-    <div class="v2-card-body" id="card50MorningBriefBody">
-      <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
-    </div>
-  </div>
-  <div class="v2-card" id="heroAlertsToday">
-    <div class="v2-card-hd">
-      <div class="v2-card-title">💡 <span data-fr="Signaux" data-en="Signals">Signaux</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Opportunités" data-en="Opportunities">Opportunités</span></div>
-      <button class="v2-icon-btn" onclick="loadHomeData()" title="Refresh" aria-label="Refresh signals">↻</button>
-    </div>
-    <div class="v2-card-body" id="heroAlertsBody">
-      <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
-    </div>
-  </div>
-</div>
-
-<!-- Row 3: Calendar 50% + Villa snap 50% (with Current guest + Pipeline merged inside) -->
-<div class="row row-50">
-  <div class="v2-card" id="card50Calendar">
-    <div class="v2-card-hd">
-      <div class="v2-card-title">📅 <span data-fr="Calendrier" data-en="Calendar">Calendrier</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" id="calMonthLbl">—</span></div>
-      <div style="display:flex;gap:4px">
-        <button class="v2-icon-btn" onclick="staffloCal.toggleView()" title="Basculer mois / 90 jours" aria-label="Toggle view" id="calViewToggleBtn">▦</button>
-        <button class="v2-icon-btn" onclick="staffloCal.prev()" title="Mois précédent" aria-label="Previous month">‹</button>
-        <button class="v2-icon-btn" onclick="staffloCal.today()" title="Aujourd'hui" aria-label="Today">●</button>
-        <button class="v2-icon-btn" onclick="staffloCal.next()" title="Mois suivant" aria-label="Next month">›</button>
+<!-- Row 2+3 unified: LEFT (Daily Brief, scrollable flow) | RIGHT sticky (Signals, Calendar, Villa) -->
+<div class="row today-mainflex">
+  <div class="today-mainflex-left">
+    <div class="v2-card" id="card50MorningBrief">
+      <div class="v2-card-hd">
+        <div class="v2-card-title">☀ <span data-fr="Brief du jour" data-en="Daily brief">Brief du jour</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Ce qui compte" data-en="What matters">Ce qui compte</span></div>
+        <button class="v2-icon-btn" onclick="loadMorningBrief(true);loadHomeData()" title="Refresh" aria-label="Refresh">↻</button>
       </div>
-    </div>
-    <div class="v2-card-body" id="calBody" style="padding:8px 4px 4px"></div>
-  </div>
-  <div class="v2-card" id="card50VillaSnap">
-    <div class="v2-card-hd">
-      <div class="v2-card-title">🏡 <span data-fr="Villa & Pipeline" data-en="Villa & Pipeline">Villa & Pipeline</span></div>
-    </div>
-    <div class="v2-card-body" id="card50VillaSnapBody">
-      <div id="card33CurrentGuestBody" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-        <div style="color:var(--muted);font-style:italic" data-fr="Aucun client en cours" data-en="No guest currently">Aucun client en cours</div>
-      </div>
-      <div id="card33VillaBody" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+      <div class="v2-card-body" id="card50MorningBriefBody">
         <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
       </div>
-      <div id="card33PipelineBody">
-        <div style="color:var(--muted);font-style:italic" data-fr="Aucune demande en attente" data-en="No pending inquiries">Aucune demande en attente</div>
+    </div>
+  </div>
+  <div class="today-mainflex-right">
+    <div class="v2-card" id="heroAlertsToday">
+      <div class="v2-card-hd">
+        <div class="v2-card-title">💡 <span data-fr="Signaux" data-en="Signals">Signaux</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Opportunités" data-en="Opportunities">Opportunités</span></div>
+        <button class="v2-icon-btn" onclick="loadHomeData()" title="Refresh" aria-label="Refresh signals">↻</button>
+      </div>
+      <div class="v2-card-body" id="heroAlertsBody">
+        <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
+      </div>
+    </div>
+    <div class="v2-card" id="card50Calendar">
+      <div class="v2-card-hd">
+        <div class="v2-card-title">📅 <span data-fr="Calendrier" data-en="Calendar">Calendrier</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" id="calMonthLbl">—</span></div>
+        <div style="display:flex;gap:4px">
+          <button class="v2-icon-btn" onclick="staffloCal.toggleView()" title="Basculer mois / 90 jours" aria-label="Toggle view" id="calViewToggleBtn">▦</button>
+          <button class="v2-icon-btn" onclick="staffloCal.prev()" title="Mois précédent" aria-label="Previous month">‹</button>
+          <button class="v2-icon-btn" onclick="staffloCal.today()" title="Aujourd'hui" aria-label="Today">●</button>
+          <button class="v2-icon-btn" onclick="staffloCal.next()" title="Mois suivant" aria-label="Next month">›</button>
+        </div>
+      </div>
+      <div class="v2-card-body" id="calBody" style="padding:8px 4px 4px"></div>
+    </div>
+    <div class="v2-card" id="card50VillaSnap">
+      <div class="v2-card-hd">
+        <div class="v2-card-title">🏡 <span data-fr="Villa & Pipeline" data-en="Villa & Pipeline">Villa & Pipeline</span></div>
+      </div>
+      <div class="v2-card-body" id="card50VillaSnapBody">
+        <div id="card33CurrentGuestBody" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+          <div style="color:var(--muted);font-style:italic" data-fr="Aucun client en cours" data-en="No guest currently">Aucun client en cours</div>
+        </div>
+        <div id="card33VillaBody" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+          <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
+        </div>
+        <div id="card33PipelineBody">
+          <div style="color:var(--muted);font-style:italic" data-fr="Aucune demande en attente" data-en="No pending inquiries">Aucune demande en attente</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1470,8 +1488,24 @@ body.v2-active #chatPanel{display:none !important}
     <div class="field"><label data-fr="Votre prénom" data-en="Your first name">Votre prénom</label><input id="cfgOwner" placeholder="Jérémie"></div>
     <div class="field"><label data-fr="Ville" data-en="City">Ville</label><input id="cfgCity" placeholder="Marrakech"></div>
     <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
-    <div class="field"><label>WhatsApp villa</label><input id="cfgWa" placeholder="+212 6..."></div>
+    <div class="field"><label data-fr="WhatsApp villa" data-en="Villa WhatsApp">WhatsApp villa</label><input id="cfgWa" placeholder="+212 6..."></div>
     <div class="field"><label>GPS</label><input id="cfgGps" placeholder="31.6295, -7.9811"></div>
+  </div>
+
+  <!-- ARIA Memory: persistent reference info injected in every ARIA call -->
+  <div class="settings-section" style="border:1.5px solid rgba(201,150,58,.3);background:rgba(201,150,58,.04)">
+    <div class="settings-title" style="color:var(--gold);display:flex;align-items:center;justify-content:space-between">
+      <span data-fr="🧠 ARIA · MÉMOIRE" data-en="🧠 ARIA · MEMORY">🧠 ARIA · MÉMOIRE</span>
+      <button type="button" onclick="loadAriaMemoryTemplate()" style="background:var(--gold);color:var(--green3);border:none;border-radius:6px;padding:4px 10px;font-size:9px;font-weight:700;letter-spacing:1px;cursor:pointer;font-family:inherit" data-fr="CHARGER TEMPLATE" data-en="LOAD TEMPLATE">CHARGER TEMPLATE</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5" data-fr="Informations qu'ARIA connaîtra à chaque conversation : email type, tarifs, règles villa, codes wifi, contacts. Organisez en sections avec ===." data-en="Info ARIA will know in every conversation: email template, prices, villa rules, wifi codes, contacts. Organize with === sections.">Informations qu'ARIA connaîtra à chaque conversation : email type, tarifs, règles villa, codes wifi, contacts. Organisez en sections avec ===.</div>
+    <div class="field" style="margin-bottom:6px">
+      <textarea id="cfgAriaMemory" rows="14" placeholder="=== EMAIL DE BIENVENUE TYPE ===&#10;Bonjour [nom], merci d'avoir choisi Villa DarJ...&#10;&#10;=== TARIFS ===&#10;Basse saison: 2500€/sem&#10;Haute saison: 4500€/sem" style="font-family:'JetBrains Mono','Menlo',monospace;font-size:12px;line-height:1.5"></textarea>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted)">
+      <span id="ariaMemoryCount">0 / 3000 caractères</span>
+      <span data-fr="🔒 Stocké chez vous + envoyé à l'IA à chaque appel" data-en="🔒 Stored locally + sent to AI on each call">🔒 Stocké chez vous + envoyé à l'IA à chaque appel</span>
+    </div>
   </div>
 
   <div class="settings-section">
@@ -1716,11 +1750,17 @@ body.v2-active #chatPanel{display:none !important}
         </div>
       </div>
     </div>
-    <div style="padding:14px 24px 18px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0;background:var(--card)">
-      <button id="onbBackBtn" onclick="onbBack()" style="background:none;border:1.5px solid var(--border);color:var(--ink);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13px;cursor:pointer;visibility:hidden" data-fr="← Retour" data-en="← Back">← Retour</button>
-      <div style="flex:1"></div>
-      <button id="onbDemoBtn" onclick="onbStartDemo()" style="display:none;background:none;border:1.5px solid var(--gold);color:var(--gold);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer" data-fr="🎬 Voir un exemple" data-en="🎬 See example">🎬 Voir un exemple</button>
-      <button id="onbNextBtn" onclick="onbNext()" style="background:var(--gold);color:var(--green3);border:none;border-radius:10px;padding:10px 18px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer" data-fr="Suivant →" data-en="Next →">Suivant →</button>
+    <div style="padding:14px 24px 18px;border-top:1px solid var(--border);flex-shrink:0;background:var(--card)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <button id="onbBackBtn" onclick="onbBack()" style="background:none;border:1.5px solid var(--border);color:var(--ink);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13px;cursor:pointer;visibility:hidden" data-fr="← Retour" data-en="← Back">← Retour</button>
+        <div style="flex:1"></div>
+        <button id="onbDemoBtn" onclick="onbStartDemo()" style="display:none;background:none;border:1.5px solid var(--gold);color:var(--gold);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer" data-fr="🎬 Voir un exemple" data-en="🎬 See example">🎬 Voir un exemple</button>
+        <button id="onbNextBtn" onclick="onbNext()" style="background:var(--gold);color:var(--green3);border:none;border-radius:10px;padding:10px 18px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer" data-fr="Suivant →" data-en="Next →">Suivant →</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11px;color:var(--muted);justify-content:center">
+        <input type="checkbox" id="onbDontShow" style="width:14px;height:14px;cursor:pointer;accent-color:var(--gold)">
+        <span data-fr="Ne plus afficher cette découverte" data-en="Don't show this tour again">Ne plus afficher cette découverte</span>
+      </label>
     </div>
   </div>
 </div>
@@ -4148,6 +4188,63 @@ function emptyRoute(type){try{if(window.posthog)posthog.capture('empty_route_cli
 // ════════════════════════════════════════════
 
 // ─── Settings ───
+// ── ARIA Memory: char counter + template loader ──
+function updateAriaMemoryCount() {
+  var ta = document.getElementById('cfgAriaMemory');
+  var counter = document.getElementById('ariaMemoryCount');
+  if (!ta || !counter) return;
+  var len = (ta.value || '').length;
+  counter.textContent = len + ' / 3000 ' + (lang === 'fr' ? 'caractères' : 'chars');
+  counter.style.color = len > 3000 ? '#A32D2D' : (len > 2700 ? 'var(--gold)' : 'var(--muted)');
+  if (len > 3000) {
+    ta.value = ta.value.slice(0, 3000);
+    counter.textContent = '3000 / 3000 ' + (lang === 'fr' ? '· tronqué' : '· truncated');
+  }
+}
+function loadAriaMemoryTemplate() {
+  var ta = document.getElementById('cfgAriaMemory');
+  if (!ta) return;
+  if (ta.value.trim() && !confirm(lang==='fr' ? 'Remplacer le contenu actuel par le template ?' : 'Replace current content with template?')) return;
+  var cfg = getCfg();
+  var villa = cfg.villa || 'Villa DarJ';
+  var owner = cfg.owner || 'Jérémie';
+  var city = cfg.city || 'Marrakech';
+  ta.value =
+'=== EMAIL DE BIENVENUE TYPE ===\n' +
+'Bonjour [prénom],\n\n' +
+'C\'est avec plaisir que nous vous accueillons à ' + villa + '.\n' +
+'Said, notre majordome, sera à votre disposition dès votre arrivée.\n' +
+'Faiza prépare ses meilleurs plats traditionnels — n\'hésitez pas à lui partager vos préférences.\n\n' +
+'À très bientôt,\n' + owner + '\n\n' +
+'=== TARIFS ===\n' +
+'Basse saison (nov-mars) : 2 500€/sem\n' +
+'Moyenne saison : 3 200€/sem\n' +
+'Haute saison (juin-août, vacances) : 4 500€/sem\n' +
+'Mid-week 3 nuits min : 1 800€\n' +
+'Caution : 1 500€ remboursable\n\n' +
+'=== INFOS PRATIQUES VILLA ===\n' +
+'Wifi : DarJ_Guest / mdp à demander à Said\n' +
+'Code coffre : à confirmer lors du check-in\n' +
+'Piscine chauffée : 24-28°C selon saison\n' +
+'Climatisation : toutes les chambres\n\n' +
+'=== STAFF ===\n' +
+'Said (majordome) : disponible 8h-22h, parle FR/AR/EN\n' +
+'Faiza (cheffe) : cuisine marocaine + internationale, prévenir 24h pour menus spéciaux\n' +
+'Bouchra (ménage) : tous les matins\n\n' +
+'=== RÈGLES VILLA ===\n' +
+'Maximum 8 invités sans accord préalable\n' +
+'Pas de fumeurs à l\'intérieur (terrasses OK)\n' +
+'Pas de soirée bruyante après 23h (voisinage)\n' +
+'Animaux : sur demande uniquement\n\n' +
+'=== CONTACTS UTILES ' + city.toUpperCase() + ' ===\n' +
+'Driver privé : Hassan +212 ...\n' +
+'Fleuriste anniversaires : Florist Marrakech\n' +
+'Médecin urgence anglophone : Dr ...\n' +
+'Restaurant recommandé : ...';
+  updateAriaMemoryCount();
+  toast(lang === 'fr' ? '✓ Template chargé — éditez selon vos besoins' : '✓ Template loaded — edit as needed');
+}
+
 function loadSettingsUI() {
   var cfg = getCfg();
   var set = function(id, val) { var e = document.getElementById(id); if (e) e.value = val || ''; };
@@ -4156,6 +4253,14 @@ function loadSettingsUI() {
   set('cfgWa',    cfg.wa);      set('cfgGps',   cfg.gps);
   set('cfgGoogleClientId', cfg.googleClientId || '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com');
   set('cfgSbUrl', cfg.sbUrl);   set('cfgSbKey', cfg.sbKey);
+  // ARIA Memory + char counter
+  set('cfgAriaMemory', cfg.ariaMemory);
+  updateAriaMemoryCount();
+  var amTa = document.getElementById('cfgAriaMemory');
+  if (amTa && !amTa._wired) {
+    amTa.addEventListener('input', updateAriaMemoryCount);
+    amTa._wired = true;
+  }
   set('cfgGeminiKey',   cfg.geminiKey);   set('cfgGroqKey',    cfg.groqKey);
   set('cfgMistralKey',  cfg.mistralKey);  set('cfgDeepseekKey',cfg.deepseekKey);
   set('cfgAnthropicKey',cfg.anthropicKey);set('cfgOpenaiKey',  cfg.openaiKey);
@@ -4180,7 +4285,8 @@ function loadSettingsUI() {
 }
 
 async function saveSettings() {
-  const cfg = {
+  const oldCfg = getCfg();
+  const cfg = Object.assign({}, oldCfg, {
     villa: document.getElementById('cfgVilla').value.trim(),
     owner: document.getElementById('cfgOwner').value.trim(),
     city: document.getElementById('cfgCity').value.trim(),
@@ -4190,6 +4296,7 @@ async function saveSettings() {
     googleClientId: (document.getElementById('cfgGoogleClientId')?.value || '').trim(),
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
     sbKey: document.getElementById('cfgSbKey').value.trim(),
+    ariaMemory: (document.getElementById('cfgAriaMemory')?.value || '').slice(0, 3000),
     geminiKey: document.getElementById('cfgGeminiKey').value.trim(),
     deepseekKey: document.getElementById('cfgDeepseekKey').value.trim(),
     perplexityKey: document.getElementById('cfgPerplexityKey').value.trim(),
@@ -4200,7 +4307,7 @@ async function saveSettings() {
     publicSessionKey: (document.getElementById('cfgPublicSessionKey')?.value || '').trim(),
     clientMode: document.getElementById('cfgClientMode')?.value || 'public',
     aiProvider: document.getElementById('cfgAiProvider').value
-  };
+  });
   setCfg(cfg);
 
   const ok = document.getElementById('settingsOk');
@@ -4833,6 +4940,16 @@ async function handleChatQuestion(text) {
       'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
       'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
     ].join('\n');
+  }
+
+  // ── ARIA Memory injection: persistent reference info from settings ──
+  var ariaMem = (cfg.ariaMemory || '').trim();
+  if (ariaMem) {
+    var capped = ariaMem.length > 3000 ? ariaMem.slice(0, 3000) + '\n[...tronqué]' : ariaMem;
+    systemPrompt += '\n\n=== INFORMATIONS DE RÉFÉRENCE DE ' + (ownerName || 'L\'OWNER').toUpperCase() + ' ===\n' +
+      capped +
+      '\n=== FIN RÉFÉRENCE ===\n' +
+      'Utilise ces informations dans tes réponses quand pertinent (tarifs, règles, contacts, templates emails). N\'invente jamais de tarif ou de contact qui n\'est pas listé ci-dessus.';
   }
 
   var userCtx;
@@ -11439,9 +11556,12 @@ function onbStartDemo() {
   startDemo();
 }
 function checkOnboarding() {
-  // Show tour if v2 flag not set (v2 supersedes old stafflo_onboarded)
-  var done = localStorage.getItem('stafflo_tour_v1_done') || localStorage.getItem('stafflo_onboarded_v2');
-  if (!done) {
+  // Show tour at every login, unless user explicitly opted out via "don't show again"
+  if (typeof isDemoMode === 'function' && isDemoMode()) {
+    // In demo mode, show every time too — user is exploring
+  }
+  var optOut = localStorage.getItem('stafflo_tour_dismissed_forever');
+  if (!optOut) {
     var modal = document.getElementById('onboardingModal');
     if (modal) {
       modal.style.display = 'flex';
@@ -11453,9 +11573,15 @@ function checkOnboarding() {
 function finishOnboarding() {
   var modal = document.getElementById('onboardingModal');
   if (modal) modal.style.display = 'none';
-  localStorage.setItem('stafflo_tour_v1_done', '1');
+  // Check if user ticked the "don't show again" checkbox
+  var dontShowCb = document.getElementById('onbDontShow');
+  if (dontShowCb && dontShowCb.checked) {
+    localStorage.setItem('stafflo_tour_dismissed_forever', '1');
+  }
+  // Backward-compat flags
   localStorage.setItem('stafflo_onboarded', '1');
-  try { if (window.posthog) posthog.capture('onboarding_finished', {step: _onbStep}); } catch(e){}
+  localStorage.setItem('stafflo_tour_v1_done', '1');
+  try { if (window.posthog) posthog.capture('onboarding_finished', {step: _onbStep, dismissed_forever: !!(dontShowCb && dontShowCb.checked)}); } catch(e){}
 }
 function skipOnboarding() {
   finishOnboarding();
