@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -14585,6 +14586,80 @@ window.addEventListener('DOMContentLoaded', function() {
     return /^(\/?audit|v[ée]rifie(?:\s+crm)?|check\s+crm|sant[ée]\s+crm|sant[ée])$/i.test(t);
   }
 
+  function isDiagCommand(text){
+    var t = (text||'').trim().toLowerCase();
+    if (t.length > 30) return false;
+    return /^(\/?diag|diagnostic|test\s+sync|sync\s+test)$/i.test(t);
+  }
+
+  // Diagnostique complet : clé Supabase, connexion, RLS, push test
+  async function runDiagnostic(){
+    var f = fr();
+    var lines = [];
+    lines.push('**'+(f?'🔧 Diagnostic Stafflo':'🔧 Stafflo Diagnostic')+'**');
+    lines.push('');
+
+    // 1. Cfg de base
+    var cfg = (typeof getCfg==='function')?getCfg():{};
+    var sbUrl = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+    var key = cfg.sbKey || SB_ANON;
+    lines.push('Supabase URL: ' + (sbUrl ? '✓ '+sbUrl : '✗ NON CONFIGURÉE'));
+    lines.push('Clé Supabase: ' + (key ? '✓ '+key.slice(0,12)+'...' : '✗ AUCUNE'));
+
+    // 2. Session JWT
+    var hasSession = false;
+    try { hasSession = !!(_stafflo_session && _stafflo_session.access_token); } catch(e){}
+    lines.push('Session JWT: ' + (hasSession ? '✓ authentifié' : '⚠ non authentifié (mode anon — RLS peut bloquer)'));
+
+    // 3. Test SELECT
+    try {
+      var r = await fetch(sbUrl + '/rest/v1/crm_clients?select=id&limit=1', {
+        headers: { apikey:key, Authorization:'Bearer '+(hasSession?_stafflo_session.access_token:key) }
+      });
+      lines.push('Test SELECT: ' + (r.ok ? '✓ ('+r.status+')' : '✗ '+r.status+' — RLS bloque la lecture'));
+      if (!r.ok){
+        try { var err = await r.text(); lines.push('  → '+err.slice(0,200)); } catch(e){}
+      }
+    } catch(e){ lines.push('Test SELECT: ✗ '+e.message); }
+
+    // 4. Test INSERT (avec rollback)
+    var testId = 'diag_test_'+Date.now();
+    try {
+      var auth = hasSession?_stafflo_session.access_token:key;
+      var rIns = await fetch(sbUrl + '/rest/v1/crm_clients?on_conflict=id', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', apikey:key, Authorization:'Bearer '+auth, Prefer:'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ id:testId, name:'__DIAG_TEST__', booking_status:'inquiry' })
+      });
+      if (rIns.ok){
+        lines.push('Test INSERT: ✓ ('+rIns.status+')');
+        // Cleanup
+        await fetch(sbUrl + '/rest/v1/crm_clients?id=eq.'+testId, { method:'DELETE', headers:{ apikey:key, Authorization:'Bearer '+auth } }).catch(function(){});
+      } else {
+        var errIns = '';
+        try { errIns = await rIns.text(); } catch(e){}
+        lines.push('Test INSERT: ✗ '+rIns.status);
+        lines.push('  → '+errIns.slice(0,300));
+      }
+    } catch(e){ lines.push('Test INSERT: ✗ '+e.message); }
+
+    // 5. State local
+    lines.push('');
+    lines.push('**'+(f?'État local':'Local state')+'**');
+    lines.push('Clients en mémoire: ' + ((clients||[]).length));
+    try {
+      var localData = JSON.parse(localStorage.getItem('stafflo_clients')||'[]');
+      lines.push('Clients localStorage: ' + localData.length);
+    } catch(e){ lines.push('Clients localStorage: ⚠ erreur lecture'); }
+
+    // 6. Verdict
+    lines.push('');
+    if (!hasSession){
+      lines.push('💡 **'+(f?'Probable cause':'Likely cause')+'** : '+(f?'pas de session JWT, RLS rejette les INSERT en mode anon. Connectez-vous via le bouton login.':'no JWT session, RLS rejects anon INSERTs. Sign in via the login button.'));
+    }
+    return lines.join('\n');
+  }
+
   // Wrapper sur chatSend pour intercepter audit AVANT le pipeline
   var _origChatSend = window.chatSend;
   window.chatSend = async function(){
@@ -14596,6 +14671,19 @@ window.addEventListener('DOMContentLoaded', function() {
       addChatBubble('user', text);
       var report = runCrmAudit();
       addChatBubble('ai', report);
+      return;
+    }
+    if (text && isDiagCommand(text)){
+      inp.value = ''; inp.style.height = 'auto';
+      var btn2 = document.getElementById('chatSendBtn'); if (btn2) btn2.disabled = true;
+      addChatBubble('user', text);
+      addChatBubble('ai', '⏳ ' + (fr()?'Diagnostic en cours...':'Running diagnostic...'));
+      var diag = await runDiagnostic();
+      // Remplacer le dernier bubble (loading) par le résultat
+      var msgs = document.getElementById('chatMessages');
+      if (msgs && msgs.lastElementChild){
+        msgs.lastElementChild.innerHTML = diag.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>');
+      }
       return;
     }
     return _origChatSend ? _origChatSend.apply(this, arguments) : null;
@@ -14928,6 +15016,89 @@ window.addEventListener('DOMContentLoaded', function() {
      Nettoyer → Extraire → Auto-save → Actions contextuelles
      ══════════════════════════════════════════════════════════ */
 
+  // ──────────────── Extracteur sender + message humain ────────────────
+  // Pour la preview bubble : on veut juste "Massi · Paris, France" + son vrai message,
+  // pas le HTML Airbnb avec %opentrack% etc. Testé sur Airbnb FR/EN + Booking + cas sans message.
+  function extractHumanMessage(text){
+    if (!text) return { sender:'', message:'' };
+    var t = text;
+    var sender = '';
+    var message = '';
+    var SALUT = /^(Bonjour|Bonsoir|Hello|Hi|Hey|Salut|Coucou|Dear|Cher|Chère|My|Avec|We|Our|I)$/i;
+
+    // Pattern 1 (Airbnb) : Nom + "Identity verified" + City, Country
+    var senderMatch = t.match(/([A-ZÀ-Ü][a-zà-ÿ\-']+\s+[A-ZÀ-Ü][a-zà-ÿ\-']+(?:\s+[A-ZÀ-Ü][a-zà-ÿ\-']+)?)\s*(?:\[[^\]]+\])?\s*(?:Identity verified|Identité vérifiée)[^A-ZÀ-Ü]*?([A-ZÀ-Ü][a-zà-ÿ\-]+(?:\s+[A-ZÀ-Ü][a-zà-ÿ\-]+)?)\s*,\s*([A-ZÀ-Ü][a-zà-ÿ\-]+(?:\s+[A-ZÀ-Ü][a-zà-ÿ\-]+)?)/);
+    if (senderMatch){
+      var name = senderMatch[1];
+      var city = senderMatch[2];
+      var country = senderMatch[3];
+      // Couper le country dès qu'on tombe sur une salutation OU un nom propre suspect
+      var countryWords = country.split(/\s+/);
+      var cleanCountry = [];
+      for (var i=0; i<countryWords.length; i++){
+        if (SALUT.test(countryWords[i])) break;
+        // 2e mot accepté seulement si pays connu en 2 mots
+        if (i > 0 && !/^(States|Kingdom|Republic|Emirates|Arabia|Africa|Zealand|Korea|Netherlands)$/i.test(countryWords[i])) break;
+        cleanCountry.push(countryWords[i]);
+      }
+      country = cleanCountry.join(' ');
+      sender = name + (city && country ? ' · ' + city + ', ' + country : (city ? ' · ' + city : ''));
+    }
+    // Pattern 2 (Booking) : "Nom from City, Country"
+    if (!sender){
+      var bMatch = t.match(/\b([A-ZÀ-Ü][a-zà-ÿ\-']+\s+[A-ZÀ-Ü][a-zà-ÿ\-']+)\s+from\s+([A-ZÀ-Ü][a-zà-ÿ\-]+(?:\s+[A-ZÀ-Ü][a-zà-ÿ\-]+)?)\s*,\s*([A-ZÀ-Ü][a-zà-ÿ\-]+)/);
+      if (bMatch) sender = bMatch[1] + ' · ' + bMatch[2] + ', ' + bMatch[3];
+    }
+    // Pattern 3 (fallback) : nom seulement
+    if (!sender){
+      var nameOnly = t.match(/\b([A-ZÀ-Ü][a-zà-ÿ\-']+\s+[A-ZÀ-Ü][a-zà-ÿ\-']+)\b/);
+      if (nameOnly) sender = nameOnly[1];
+    }
+
+    // Message — on cherche après salutation, on coupe au premier marker de fin
+    // (pas de flag /i sur les markers en CAPS pour éviter "VILLA" → "villa with")
+    var startMatch = t.match(/(Bonjour|Bonsoir|Hello|Hi|Hey|Salut|Coucou|Dear|Cher|Chère)\s+\w+[,!]?\s/i);
+    if (startMatch){
+      var afterStart = t.slice(startMatch.index + startMatch[0].length);
+      var endRegexes = [
+        /Send\s+\w+\s+a\s+Message/i,
+        /GUEST\s+PAID/,
+        /HOST\s+PAYOUT/,
+        /CONFIRMATION\s+CODE/,
+        /Check-?in\s+Check/i,
+        /Reservation\s+code/i,
+        /Entire\s+home/i,
+        /\bView\s+earnings/i
+      ];
+      var endPos = afterStart.length;
+      endRegexes.forEach(function(rgx){
+        var m = afterStart.search(rgx);
+        if (m >= 0 && m < endPos) endPos = m;
+      });
+      message = afterStart.slice(0, endPos)
+        .replace(/https?:\/\/[^\s\)\]]+/g, '')
+        .replace(/\[[^\]]+\]/g, '')
+        .replace(/%[a-z]+%/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (message.length > 600) message = message.slice(0, 600).trim() + '...';
+    }
+    // Fallback : chercher un para "humain" si pas de salutation détectée
+    if (!message){
+      var paragraphs = t.split(/\n{2,}|Send\s+\w+\s+a\s+Message|CONFIRMATION CODE|GUEST PAID/);
+      for (var j=0; j<paragraphs.length; j++){
+        var p = paragraphs[j].replace(/\s+/g,' ').replace(/https?:\/\/[^\s]+/g,'').replace(/\[[^\]]+\]/g,'').replace(/%[a-z]+%/gi,'').trim();
+        if (p.length > 40 && p.length < 800 &&
+            /\b(je|nous|on|we|our|my|ma|mon|votre|hâte|looking|excited|booked|stay|love|forward)\b/i.test(p)){
+          message = p.length > 600 ? p.slice(0,600)+'...' : p;
+          break;
+        }
+      }
+    }
+
+    return { sender: sender.trim(), message: message.trim() };
+  }
+
   // ──────────────── Nettoyeur Airbnb / Booking ────────────────
   function cleanEmailBoilerplate(text){
     if (!text || text.length < 200) return text;
@@ -14993,7 +15164,7 @@ window.addEventListener('DOMContentLoaded', function() {
   };
 
   // ──────────────── Auto-save guest avec UNDO ────────────────
-  function autoSaveGuest(g, sourceText){
+  async function autoSaveGuest(g, sourceText){
     // Cherche duplicate
     var norm = function(s){ return (s||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,''); };
     var gN = norm(g.name);
@@ -15019,9 +15190,14 @@ window.addEventListener('DOMContentLoaded', function() {
       m.updatedAt = new Date().toISOString();
       clients[idx] = m;
       if (typeof saveLocal==='function') saveLocal();
-      if (typeof pushToSupabase==='function') pushToSupabase(m);
       if (typeof renderAll==='function') renderAll();
-      toast('🔄 ' + (existing.name||'').split(' ')[0] + (f?' · fiche mise à jour':' · record updated'));
+      // AWAIT le push pour vérifier la persistance
+      var ok = await safePushToSupabase(m);
+      if (ok) {
+        toast('🔄 ' + (existing.name||'').split(' ')[0] + (f?' · fiche mise à jour ✓ Supabase':' · record updated ✓ Supabase'));
+      } else {
+        toast('⚠ ' + (existing.name||'').split(' ')[0] + (f?' · sauvé local seulement (Supabase échec)':' · saved local only (Supabase failed)'));
+      }
       return m;
     }
 
@@ -15042,30 +15218,82 @@ window.addEventListener('DOMContentLoaded', function() {
     };
     clients.unshift(client);
     if (typeof saveLocal==='function') saveLocal();
-    if (typeof pushToSupabase==='function') pushToSupabase(client);
     if (typeof renderAll==='function') renderAll();
 
-    // Toast UNDO 8s
+    // AWAIT le push pour vérifier la persistance
+    var pushOk = await safePushToSupabase(client);
+
     var firstName = (client.name||'').split(' ')[0];
-    if (typeof showUndoToast === 'function'){
-      showUndoToast('✓ ' + firstName + (f?' · ajouté au CRM':' · added to CRM'), function(){
-        var i = clients.findIndex(function(c){ return c.id === id; });
-        if (i >= 0){
-          clients.splice(i, 1);
-          if (typeof saveLocal==='function') saveLocal();
-          if (typeof renderAll==='function') renderAll();
-          // Tente delete Supabase
-          try {
-            var cfg = getCfg(); var key = cfg.sbKey || SB_ANON;
-            fetch(SB_URL + '/rest/v1/clients?id=eq.'+id, { method:'DELETE', headers:{ apikey:key, Authorization:'Bearer '+key } }).catch(function(){});
-          } catch(e){}
-          toast(f?'✗ Annulé':'✗ Undone');
-        }
-      });
+    if (!pushOk){
+      // Échec Supabase — alerter l'user clairement
+      toast('⚠ ' + firstName + (f?' · sauvé en local seulement — Supabase échec':' · saved local only — Supabase failed'));
+      console.error('[stafflo] Supabase push failed for', firstName, 'data:', client);
     } else {
-      toast('✓ ' + firstName + (f?' · ajouté au CRM':' · added to CRM'));
+      // Toast UNDO 8s
+      if (typeof showUndoToast === 'function'){
+        showUndoToast('✓ ' + firstName + (f?' · ajouté au CRM':' · added to CRM'), function(){
+          var i = clients.findIndex(function(c){ return c.id === id; });
+          if (i >= 0){
+            clients.splice(i, 1);
+            if (typeof saveLocal==='function') saveLocal();
+            if (typeof renderAll==='function') renderAll();
+            // Tente delete Supabase
+            try {
+              var cfg = getCfg(); var key = cfg.sbKey || SB_ANON;
+              fetch(SB_URL + '/rest/v1/crm_clients?id=eq.'+id, { method:'DELETE', headers:{ apikey:key, Authorization:'Bearer '+key } }).catch(function(){});
+            } catch(e){}
+            toast(f?'✗ Annulé':'✗ Undone');
+          }
+        });
+      } else {
+        toast('✓ ' + firstName + (f?' · ajouté au CRM (Supabase ✓)':' · added to CRM (Supabase ✓)'));
+      }
     }
     return client;
+  }
+
+  // Push qui retourne true/false selon le succès — on attend la réponse réseau
+  async function safePushToSupabase(client){
+    try {
+      var cfg = (typeof getCfg==='function')?getCfg():{};
+      var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+      var key = cfg.sbKey || SB_ANON;
+      if (!key) { console.warn('[stafflo] no sb key'); return false; }
+      var payload = {
+        id: client.id, name: client.name||'', nat: client.nat||'', email: client.email||'',
+        phone: client.phone||'', arrival: client.arrival||null, departure: client.departure||null,
+        guests: client.guests||0, price: client.price||0, commission: client.commission||0,
+        comm_mode: client.commMode||'percent', source: client.source||'Direct',
+        notes: client.notes||'', pay_status: client.payStatus||'',
+        booking_status: client.bookingStatus||'confirmed',
+        messages: client.messages || null
+      };
+      // Token JWT prioritaire si user authentifié (RLS)
+      var auth = key;
+      try {
+        if (typeof _stafflo_session!=='undefined' && _stafflo_session && _stafflo_session.access_token){
+          auth = _stafflo_session.access_token;
+        }
+      } catch(e){}
+      var headers = { 'Content-Type':'application/json', apikey: key, Authorization: 'Bearer '+auth, Prefer:'resolution=merge-duplicates,return=minimal' };
+      if (typeof setSyncDot==='function') setSyncDot('busy');
+      var r = await fetch(url + '/rest/v1/crm_clients?on_conflict=id', {
+        method:'POST', headers: headers, body: JSON.stringify(payload)
+      });
+      if (!r.ok){
+        var errTxt = '';
+        try { errTxt = await r.text(); } catch(e){}
+        console.error('[stafflo] crm_clients push failed', r.status, errTxt);
+        if (typeof setSyncDot==='function') setSyncDot('err');
+        return false;
+      }
+      if (typeof setSyncDot==='function') setSyncDot('ok');
+      return true;
+    } catch(e){
+      console.error('[stafflo] safePushToSupabase exception:', e);
+      if (typeof setSyncDot==='function') setSyncDot('err');
+      return false;
+    }
   }
 
   // ──────────────── Générateur d'actions contextuelles ────────────────
@@ -15392,12 +15620,17 @@ window.addEventListener('DOMContentLoaded', function() {
 
     // Si c'est un email Airbnb FORT et pas de fichier joint → pipeline unifié
     if (text && !attach && isStrongAirbnbEmail(text)){
-      // Ajoute la bubble user (préviewée tronquée)
+      // Extrait sender + message humain pour la preview (pas le HTML brut)
+      var emailPreview = extractHumanMessage(text);
+      // Ajoute la bubble user (preview propre)
       var body = document.getElementById('ariaModalMessages');
       if (body){
         var u = document.createElement('div'); u.className = 'aria-modal-bubble user';
-        var preview = text.length > 200 ? text.slice(0,200) + '...' : text;
-        u.innerHTML = '<div style="font-size:11px;opacity:.85;margin-bottom:4px;display:flex;align-items:center;gap:6px"><span>📧</span><span>' + (fr()?'Email Airbnb collé':'Airbnb email pasted') + '</span></div><div style="font-size:11px;opacity:.7">' + preview.replace(/</g,'&lt;') + '</div>';
+        var senderLine = emailPreview.sender ? '<span>' + emailPreview.sender.replace(/</g,'&lt;') + '</span>' : '<span>' + (fr()?'Email Airbnb':'Airbnb email') + '</span>';
+        var bodyHtml = emailPreview.message
+          ? '<div style="font-size:12px;line-height:1.5;color:rgba(255,255,255,.95);font-style:italic">"' + emailPreview.message.replace(/</g,'&lt;').replace(/\n/g,'<br>') + '"</div>'
+          : '<div style="font-size:11px;opacity:.7;font-style:italic">' + (fr()?'(email Airbnb sans message texte)':'(Airbnb email without text message)') + '</div>';
+        u.innerHTML = '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:.7;margin-bottom:6px;display:flex;align-items:center;gap:6px"><span>📧</span>' + senderLine + '</div>' + bodyHtml;
         body.appendChild(u); body.scrollTop = body.scrollHeight;
       }
       input.value = ''; if (typeof onAriaModalInput==='function') onAriaModalInput(input);
@@ -15437,8 +15670,8 @@ window.addEventListener('DOMContentLoaded', function() {
           }
           g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
 
-          // AUTO-SAVE direct
-          var saved = autoSaveGuest(g, cleaned);
+          // AUTO-SAVE direct (await pour garantir persistance avant la suite)
+          var saved = await autoSaveGuest(g, cleaned);
 
           // Génère actions contextuelles (pas LLM, pure logique)
           var actions = generateContextualActions(saved, cleaned);
