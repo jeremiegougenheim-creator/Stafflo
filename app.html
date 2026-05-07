@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -14922,6 +14923,553 @@ window.addEventListener('DOMContentLoaded', function() {
     // restent en mode "prompt LLM" — c'est leur usage légitime
     if (_origCtxChip) return _origCtxChip(btn);
   };
+
+  /* ══════════════════════════════════════════════════════════
+     PHASE A — Pipeline email Airbnb intelligent
+     Nettoyer → Extraire → Auto-save → Actions contextuelles
+     ══════════════════════════════════════════════════════════ */
+
+  // ──────────────── Nettoyeur Airbnb / Booking ────────────────
+  function cleanEmailBoilerplate(text){
+    if (!text || text.length < 200) return text;
+    var t = text;
+    t = t.replace(/%opentrack%[^\n]*/gi, '');
+    t = t.replace(/https?:\/\/[^\s\)\]]*[?&](euid|c=\.|email_cta|src_section|thread_type)[^\s\)\]]*/gi, '');
+    t = t.replace(/\[([^\]]+)\]\([^\)]*airbnb[^\)]*\)/gi, '$1');
+    t = t.replace(/Send\s+\w+\s+a\s+Message[^\n]*/gi, '');
+    t = t.replace(/View\s+earnings[^\n]*/gi, '');
+    t = t.replace(/GET READY FOR[\s\S]+$/i, '');
+    t = t.replace(/CANCELLATIONS[\s\S]*?(Read cancellation penalties[^\n]*)?/i, '');
+    t = t.replace(/PROVIDE DIRECTIONS[\s\S]{0,400}/i, '');
+    t = t.replace(/Allow time for payment[^\n]*/gi, '');
+    t = t.replace(/Learn more[^\n]*/gi, '');
+    t = t.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim();
+    return t;
+  }
+
+  // ──────────────── Détecteur FORT email Airbnb/Booking ────────────────
+  function isStrongAirbnbEmail(text){
+    if (!text || text.length < 300) return false;
+    var t = text.toLowerCase();
+    var s = 0;
+    if (/noreply@airbnb|automated@airbnb|express@airbnb|airbnb\.co/i.test(t)) s += 3;
+    if (/noreply@booking|customer\.service@booking|booking\.com/i.test(t)) s += 3;
+    if (/confirmation code\s*[:\s]*[A-Z0-9]{6,}/i.test(t)) s += 2;
+    if (/host payout|guest paid|host service fee/i.test(t)) s += 2;
+    if (/check-?in[\s\S]{0,40}check-?out/i.test(t)) s += 1;
+    if (/reservation reminder|reservation confirmed|new booking|new inquiry|nouvelle réservation|nouvelle demande/i.test(t)) s += 2;
+    return s >= 3;
+  }
+
+  function detectGuestLang(text){
+    if (!text) return 'fr';
+    var f = (text.match(/\b(bonjour|merci|nous|pour|séjour|réservation|adultes|enfants|bébé|avec|notre|votre|hâte)\b/gi) || []).length;
+    var e = (text.match(/\b(hello|thanks|booking|stay|guests|adults|children|infant|with|our|your|looking forward)\b/gi) || []).length;
+    return f >= e ? 'fr' : 'en';
+  }
+
+  function detectFamily(text){
+    if (!text) return { hasInfant:false, hasChild:false, isFamily:false };
+    var t = text.toLowerCase();
+    var hasInfant = /\b(b[éeè]b[éeè]|infant|nourrisson|baby|newborn|0\s*[-–]\s*2\s*ans?|enfant\s+de\s+\d+\s*mois)\b/i.test(t);
+    var hasChild = /\b(enfant|child|kid|3\s+ans?|7\s+ans?|young)\b/i.test(t);
+    var isFamily = hasInfant || hasChild || /\b(famille|family|wife|femme|husband|mari)\b/i.test(t);
+    return { hasInfant:hasInfant, hasChild:hasChild, isFamily:isFamily };
+  }
+
+  // ──────────────── Multi-AI router (ajoute des routes write_guest, write_staff) ────────────────
+  // Wrap callBestAI pour ajouter les nouvelles routes en mappant vers les routes existantes du proxy
+  var _origCallBestAI = window.callBestAI;
+  window.callBestAI = async function(task, systemPrompt, userContent, maxTokens){
+    // Mapping vers les routes proxy existantes (extract/brief/write_fr/reason)
+    var routeMap = {
+      'write_guest_fr': 'write_fr',     // Mistral small (excellente FR) → fallbacks
+      'write_guest_en': 'brief',        // Groq 70b (bon EN) → fallbacks
+      'write_staff':    'extract',      // Court, factuel → Groq fast
+      'cleanup':        'extract'
+    };
+    var resolvedTask = routeMap[task] || task;
+    if (_origCallBestAI) return _origCallBestAI(resolvedTask, systemPrompt, userContent, maxTokens);
+    throw new Error('callBestAI not available');
+  };
+
+  // ──────────────── Auto-save guest avec UNDO ────────────────
+  function autoSaveGuest(g, sourceText){
+    // Cherche duplicate
+    var norm = function(s){ return (s||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,''); };
+    var gN = norm(g.name);
+    var existing = (clients||[]).find(function(c){ return norm(c.name) === gN; });
+    var f = fr();
+
+    if (existing){
+      // Smart merge silencieux
+      var idx = clients.indexOf(existing);
+      var m = Object.assign({}, existing);
+      ['nat','phone','source','arrival','departure'].forEach(function(k){
+        if (g[k] && !m[k]) m[k] = g[k];
+      });
+      if (g.guests && +g.guests > 0) m.guests = g.guests;
+      if (g.price && +g.price > 0) m.price = g.price;
+      if (g.commission != null) m.commission = g.commission;
+      if (g.bookingStatus === 'confirmed' && m.bookingStatus === 'inquiry') m.bookingStatus = 'confirmed';
+      // Append notes
+      var newNote = g.notes || '';
+      if (newNote && (!m.notes || m.notes.indexOf(newNote.slice(0,25)) < 0)){
+        m.notes = m.notes ? (m.notes + ' · ' + newNote) : newNote;
+      }
+      m.updatedAt = new Date().toISOString();
+      clients[idx] = m;
+      if (typeof saveLocal==='function') saveLocal();
+      if (typeof pushToSupabase==='function') pushToSupabase(m);
+      if (typeof renderAll==='function') renderAll();
+      toast('🔄 ' + (existing.name||'').split(' ')[0] + (f?' · fiche mise à jour':' · record updated'));
+      return m;
+    }
+
+    // Nouveau client
+    var id = Date.now().toString();
+    var client = {
+      id: id, name: g.name||'',
+      nat: g.nat||'', email: g.email||'', phone: g.phone||'',
+      arrival: g.arrival||'', departure: g.departure||'',
+      guests: g.guests||0, price: g.price||0,
+      commission: g.commission != null ? g.commission : 15.5,
+      commMode: 'percent', source: g.source||'Airbnb',
+      notes: g.notes||'', payStatus: '',
+      bookingStatus: g.bookingStatus||'confirmed',
+      lang: detectGuestLang(sourceText||''),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    clients.unshift(client);
+    if (typeof saveLocal==='function') saveLocal();
+    if (typeof pushToSupabase==='function') pushToSupabase(client);
+    if (typeof renderAll==='function') renderAll();
+
+    // Toast UNDO 8s
+    var firstName = (client.name||'').split(' ')[0];
+    if (typeof showUndoToast === 'function'){
+      showUndoToast('✓ ' + firstName + (f?' · ajouté au CRM':' · added to CRM'), function(){
+        var i = clients.findIndex(function(c){ return c.id === id; });
+        if (i >= 0){
+          clients.splice(i, 1);
+          if (typeof saveLocal==='function') saveLocal();
+          if (typeof renderAll==='function') renderAll();
+          // Tente delete Supabase
+          try {
+            var cfg = getCfg(); var key = cfg.sbKey || SB_ANON;
+            fetch(SB_URL + '/rest/v1/clients?id=eq.'+id, { method:'DELETE', headers:{ apikey:key, Authorization:'Bearer '+key } }).catch(function(){});
+          } catch(e){}
+          toast(f?'✗ Annulé':'✗ Undone');
+        }
+      });
+    } else {
+      toast('✓ ' + firstName + (f?' · ajouté au CRM':' · added to CRM'));
+    }
+    return client;
+  }
+
+  // ──────────────── Générateur d'actions contextuelles ────────────────
+  // Pas de LLM ici. Le LLM est appelé seulement quand l'user clique "Envoyer".
+  function generateContextualActions(g, sourceText){
+    var f = fr();
+    var fam = detectFamily(sourceText || '');
+    var guestLang = detectLang ? detectLang(sourceText||'') : detectGuestLang(sourceText||'');
+    var hasPhone = !!(g.phone && g.phone.trim());
+    var arrivalDays = null;
+    if (g.arrival){
+      var ar = new Date(g.arrival); ar.setHours(0,0,0,0);
+      var today = new Date(); today.setHours(0,0,0,0);
+      arrivalDays = Math.round((ar - today)/86400000);
+    }
+    var firstName = (g.name||'').split(' ')[0] || (f?'le guest':'guest');
+    var actions = [];
+
+    if (g.bookingStatus !== 'inquiry'){
+      // 1. Bienvenue
+      actions.push({
+        id:'welcome', icon:'💬',
+        label: f ? 'Message bienvenue à '+firstName : 'Welcome message to '+firstName,
+        target:'guest', kind:'whatsapp',
+        ai_task: 'write_guest_'+guestLang,
+        purpose:'welcome', guest:g, family:fam, lang:guestLang
+      });
+      // 2. Brief staff
+      actions.push({
+        id:'staff', icon:'📋',
+        label: f ? 'Brief Said + Faiza + Bouchra' : 'Brief Said + Faiza + Bouchra',
+        target:'staff', kind:'whatsapp',
+        ai_task: 'write_staff',
+        purpose:'staff_brief', guest:g, family:fam, lang:'fr'
+      });
+    } else {
+      // Inquiry → réponse à la demande
+      actions.push({
+        id:'reply_inquiry', icon:'✉️',
+        label: f ? 'Répondre à la demande de '+firstName : 'Reply to '+firstName+'\'s inquiry',
+        target:'guest', kind:'whatsapp',
+        ai_task:'write_guest_'+guestLang,
+        purpose:'reply_inquiry', guest:g, lang:guestLang
+      });
+    }
+
+    // 3. Demander téléphone si manquant et arrivée < 14j
+    if (!hasPhone && g.bookingStatus !== 'inquiry' && (arrivalDays === null || arrivalDays <= 14)){
+      actions.push({
+        id:'request_phone', icon:'📞',
+        label: f ? 'Demander téléphone à '+firstName : 'Request phone from '+firstName,
+        target:'guest', kind:'whatsapp',
+        ai_task:'write_guest_'+guestLang,
+        purpose:'request_phone', guest:g, lang:guestLang
+      });
+    }
+
+    // 4. Liste courses si famille / bébé
+    if (fam.isFamily || fam.hasInfant || fam.hasChild){
+      actions.push({
+        id:'shopping', icon:'🛒',
+        label: f ? 'Liste courses (famille avec '+(fam.hasInfant?'bébé':'enfants')+')' : 'Shopping list (family with '+(fam.hasInfant?'baby':'kids')+')',
+        target:'staff', kind:'whatsapp',
+        ai_task:'write_staff',
+        purpose:'shopping_list', guest:g, family:fam, lang:'fr'
+      });
+    }
+
+    // 5. Météo + recommandations activités (si arrivée < 7j)
+    if (arrivalDays !== null && arrivalDays >= 0 && arrivalDays <= 7){
+      actions.push({
+        id:'weather_brief', icon:'🌤',
+        label: f ? 'Météo séjour + activités à proposer' : 'Weather + activities to suggest',
+        target:'owner', kind:'internal_note',
+        ai_task:'reason',
+        purpose:'weather_activities', guest:g, lang:guestLang
+      });
+    }
+
+    return actions;
+  }
+
+  // ──────────────── Construit le prompt LLM par purpose ────────────────
+  function buildAiPrompt(action){
+    var g = action.guest || {};
+    var fam = action.family || {};
+    var lng = action.lang || 'fr';
+    var firstName = (g.name||'').split(' ')[0] || 'guest';
+    var dates = (g.arrival || '') + (g.departure ? ' → ' + g.departure : '');
+    var nights = (g.arrival && g.departure) ? Math.round((new Date(g.departure)-new Date(g.arrival))/86400000) : 0;
+    var ctx = (typeof getCfg==='function')?getCfg():{};
+    var owner = ctx.owner || 'Jérémie';
+    var villa = ctx.villa || 'Villa DarJ Marrakech';
+
+    var system, user;
+    switch(action.purpose){
+      case 'welcome':
+        system = lng === 'fr'
+          ? 'Tu rédiges un message WhatsApp de bienvenue chaleureux et personnel pour un guest qui a réservé une villa de luxe. 4-6 lignes max, ton chaleureux mais pas mielleux. Signe "'+owner+'". Pas d\'emojis excessifs (1-2 max).'
+          : 'You write a warm, personal WhatsApp welcome message for a guest who booked a luxury villa. 4-6 lines max, warm but not cheesy. Sign "'+owner+'". No excessive emojis (1-2 max).';
+        user = (lng==='fr'?'Guest: ':'Guest: ')+firstName+' ('+g.name+')\n'
+             + 'Dates: '+dates+' ('+nights+(lng==='fr'?' nuits':' nights')+')\n'
+             + 'Villa: '+villa+'\n'
+             + (g.guests ? (lng==='fr'?'Voyageurs: ':'Travelers: ')+g.guests+'\n' : '')
+             + (fam.hasInfant ? (lng==='fr'?'Note: famille avec bébé\n':'Note: family with baby\n') : '')
+             + (fam.hasChild ? (lng==='fr'?'Note: famille avec enfants\n':'Note: family with kids\n') : '')
+             + (g.notes ? (lng==='fr'?'Notes: ':'Notes: ')+g.notes+'\n' : '')
+             + '\n'+(lng==='fr'?'Rédige le message de bienvenue.':'Write the welcome message.');
+        break;
+      case 'request_phone':
+        system = lng === 'fr'
+          ? 'Tu rédiges un message WhatsApp court et chaleureux pour demander le numéro de téléphone à un guest qui arrive bientôt. 2-3 lignes. Signe "'+owner+'".'
+          : 'You write a short warm WhatsApp message asking a guest for their phone number before arrival. 2-3 lines. Sign "'+owner+'".';
+        user = 'Guest: '+firstName+'\nDates: '+dates+'\nVilla: '+villa;
+        break;
+      case 'reply_inquiry':
+        system = lng === 'fr'
+          ? 'Tu réponds à une demande de réservation de manière chaleureuse et professionnelle. Confirme la disponibilité, donne envie. 4-6 lignes. Signe "'+owner+'".'
+          : 'Reply to a booking inquiry warmly and professionally. Confirm availability, make them want it. 4-6 lines. Sign "'+owner+'".';
+        user = 'Guest: '+firstName+' ('+g.name+')\nDates demandées: '+dates+'\nVilla: '+villa+'\n'
+             + (g.notes ? 'Notes: '+g.notes : '');
+        break;
+      case 'staff_brief':
+        system = 'Tu rédiges un brief WhatsApp court et clair pour le staff de la villa : Said (majordome), Faiza (chef), Bouchra (housekeeping). Format ready-to-send WhatsApp, en français, ton direct et opérationnel. 6-10 lignes max avec des bullets. Pas de blabla.';
+        user = 'Guest qui arrive: '+firstName+' ('+g.name+')\n'
+             + 'Dates: '+dates+' · '+nights+' nuits\n'
+             + 'Voyageurs: '+(g.guests||'?')+'\n'
+             + (fam.hasInfant ? '⚠️ FAMILLE AVEC BÉBÉ — préparer chambre adaptée, lit bébé, lait infantile dispo\n' : '')
+             + (fam.hasChild ? '⚠️ FAMILLE AVEC ENFANTS — préparer goûters, vérifier sécurité piscine\n' : '')
+             + (g.nat ? 'Nationalité: '+g.nat+'\n' : '')
+             + (g.notes ? 'Notes: '+g.notes+'\n' : '')
+             + '\nFormat brief WhatsApp pour Said + Faiza + Bouchra, avec sections claires.';
+        break;
+      case 'shopping_list':
+        system = 'Tu génères une liste de courses pratique pour Faiza (chef) et Bouchra (housekeeping) en fonction du profil du guest. Format WhatsApp avec bullets. En français.';
+        user = 'Guest: '+firstName+'\nVoyageurs: '+(g.guests||'?')+'\n'
+             + 'Dates: '+dates+'\n'
+             + (fam.hasInfant ? '⚠️ Bébé présent — penser lait infantile, couches, eau minérale\n' : '')
+             + (fam.hasChild ? '⚠️ Enfants — goûters, jus, fruits faciles\n' : '')
+             + (g.notes ? 'Notes guest: '+g.notes+'\n' : '')
+             + (g.nat ? 'Nationalité: '+g.nat+' (adapter si préférences culinaires connues)\n' : '')
+             + '\nGénère la liste de courses prioritaire.';
+        break;
+      case 'weather_activities':
+        system = 'Tu donnes un brief court (5-7 lignes) sur la météo prévue pour les dates du séjour à Marrakech, et tu suggères 2-3 activités/recommandations à transmettre au guest selon la météo (piscine, hammam, sortie souks, médina, Atlas). Format pour le owner, pas pour le guest. En français.';
+        user = 'Guest: '+firstName+'\nDates Marrakech: '+dates+'\nVoyageurs: '+(g.guests||'?')+(fam.isFamily?' (famille)':'')+'\n'
+             + 'Donne le brief.';
+        break;
+      default:
+        system = 'Réponse courte et utile.';
+        user = JSON.stringify(action);
+    }
+    return { system: system, user: user };
+  }
+
+  // ──────────────── Affichage carte résultat (compact, design existant) ────────────────
+  function renderExtractedCard(g, actions, sourceText){
+    var f = fr();
+    var firstName = (g.name||'').split(' ')[0];
+    var nights = (g.arrival && g.departure) ? Math.round((new Date(g.departure)-new Date(g.arrival))/86400000) : 0;
+    var net = g.price ? Math.round(g.price * (1 - (g.commission||15.5)/100)) : 0;
+    var fmtMoney = function(n){ return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€'; };
+
+    // Stocker actions pour callback
+    window._ariaPendingActions = window._ariaPendingActions || {};
+    var groupId = 'ext_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+    window._ariaPendingActions[groupId] = actions;
+
+    var html = '<div style="background:rgba(255,255,255,.55);border:1px solid rgba(201,150,58,.3);border-radius:10px;padding:11px 13px;margin-top:8px">';
+    // Header guest
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(201,150,58,.2)">';
+    html += '<span style="font-size:18px">✓</span>';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="font-weight:700;color:#1A1208;font-size:13px">' + (g.name||'?') + (g.nat?' · '+g.nat:'') + '</div>';
+    html += '<div style="font-size:11px;color:#3a2f1f">';
+    if (g.arrival) html += '📅 ' + g.arrival + (g.departure?' → '+g.departure:'') + (nights?' · '+nights+(f?' nuits':' nights'):'');
+    html += '</div>';
+    html += '</div>';
+    html += '<span style="font-size:10px;background:'+(g.bookingStatus==='inquiry'?'rgba(201,150,58,.18);color:#7A5A1A':'rgba(27,67,50,.15);color:#1B4332')+';padding:3px 8px;border-radius:8px;font-weight:600">' + (g.bookingStatus==='inquiry'?(f?'DEMANDE':'INQUIRY'):(f?'CONFIRMÉ':'CONFIRMED')) + '</span>';
+    html += '</div>';
+    // Stats compactes
+    html += '<div style="display:flex;gap:12px;font-size:11px;color:#3a2f1f;margin-bottom:10px;flex-wrap:wrap">';
+    if (g.guests) html += '<span>👥 ' + g.guests + (f?' pers.':' guests') + '</span>';
+    if (g.price) html += '<span>💰 ' + fmtMoney(g.price) + (net?' → '+fmtMoney(net)+(f?' net':' net'):'') + '</span>';
+    if (g.source) html += '<span>🏷 ' + g.source + '</span>';
+    html += '</div>';
+    // Actions
+    if (actions.length){
+      html += '<div style="font-size:10px;letter-spacing:1px;color:#8A8070;text-transform:uppercase;margin-bottom:6px;font-weight:600">' + (f?'Actions suggérées':'Suggested actions') + '</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:6px">';
+      actions.forEach(function(a, idx){
+        var targetLbl = a.target ? '<span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#8A8070;margin-left:6px">→ ' + a.target + '</span>' : '';
+        html +=
+          '<div style="background:#fff;border:1px solid rgba(201,150,58,.25);border-radius:7px;padding:8px 10px">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">' +
+              '<div style="font-size:12px;font-weight:600;color:#1A1208;flex:1">' + a.icon + ' ' + a.label + targetLbl + '</div>' +
+            '</div>' +
+            '<div style="display:flex;gap:5px;flex-wrap:wrap">' +
+              '<button onclick="ariaSmartActionGenerate(\''+groupId+'\','+idx+',this)" style="flex:1;min-width:120px;background:#C9963A;color:#0F2318;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px">✨ ' + (f?'Générer':'Generate') + '</button>' +
+              '<button onclick="ariaSmartActionDismiss(this)" style="background:rgba(15,35,24,.06);color:#0F2318;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" title="'+(f?'Ignorer':'Dismiss')+'">✕</button>' +
+            '</div>' +
+            '<div class="aria-smart-result" data-group="'+groupId+'" data-idx="'+idx+'" style="display:none;margin-top:8px;background:rgba(255,255,255,.7);border-radius:6px;padding:8px 10px;border:1px dashed rgba(201,150,58,.3);font-size:11px;color:#3a2f1f;white-space:pre-wrap;line-height:1.45"></div>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // Dismiss une action card
+  window.ariaSmartActionDismiss = function(btn){
+    var card = btn.closest('div[style*="border:1px solid rgba(201,150,58,.25)"]');
+    if (card) card.style.display = 'none';
+  };
+
+  // Génère le contenu d'une action via LLM puis montre les boutons d'envoi
+  window.ariaSmartActionGenerate = async function(groupId, idx, btn){
+    var actions = (window._ariaPendingActions||{})[groupId];
+    if (!actions || !actions[idx]) return;
+    var a = actions[idx]; var f = fr();
+    btn.disabled = true; btn.textContent = '⏳ ' + (f?'Génération...':'Generating...');
+    try {
+      var p = buildAiPrompt(a);
+      var content = await window.callBestAI(a.ai_task, p.system, p.user, 600);
+      content = (content||'').trim();
+      // Affiche le résultat
+      var resEl = document.querySelector('.aria-smart-result[data-group="'+groupId+'"][data-idx="'+idx+'"]');
+      if (resEl){
+        resEl.style.display = 'block';
+        resEl.innerHTML = content.replace(/</g,'&lt;').replace(/\n/g,'<br>') +
+          '<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap">' +
+            '<button onclick="ariaSmartSend(\''+groupId+'\','+idx+',this)" style="flex:1;min-width:120px;background:#1B4332;color:#fff;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">' + (a.kind==='whatsapp'?'💬 '+(f?'Envoyer WhatsApp':'Send WhatsApp'):a.kind==='email'?'✉️ '+(f?'Envoyer email':'Send email'):'✓ '+(f?'Garder':'Keep')) + '</button>' +
+            '<button onclick="ariaSmartCopy(\''+groupId+'\','+idx+',this)" style="background:#0F2318;color:#fff;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">📋</button>' +
+            '<button onclick="ariaSmartRegen(\''+groupId+'\','+idx+',this)" style="background:rgba(201,150,58,.18);color:#7A5A1A;border:none;border-radius:5px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" title="'+(f?'Régénérer':'Regenerate')+'">🔄</button>' +
+          '</div>';
+      }
+      // Stocke le contenu généré
+      a.generated_content = content;
+      btn.textContent = '✓ ' + (f?'Généré':'Generated');
+      btn.style.opacity = '.7';
+    } catch(e){
+      btn.disabled = false;
+      btn.textContent = '✨ ' + (f?'Générer':'Generate');
+      toast('⚠ ' + (f?'Erreur génération':'Generation error') + ' · ' + (e.message||''));
+    }
+  };
+
+  window.ariaSmartSend = function(groupId, idx, btn){
+    var actions = (window._ariaPendingActions||{})[groupId]; if (!actions||!actions[idx]) return;
+    var a = actions[idx]; var f = fr();
+    var content = a.generated_content || '';
+    if (!content) return;
+
+    if (a.kind === 'whatsapp'){
+      var phone = '';
+      if (a.target === 'guest' && a.guest && a.guest.phone){
+        phone = (a.guest.phone||'').replace(/[\s\-+()]/g,'');
+      }
+      var url = phone ? 'https://wa.me/'+phone+'?text='+encodeURIComponent(content) : 'https://wa.me/?text='+encodeURIComponent(content);
+      window.open(url, '_blank');
+      logAriaActionToDb('whatsapp', content, a.label, a.target);
+      btn.textContent = f?'✓ OUVERT':'✓ OPENED';
+      btn.disabled = true;
+    } else if (a.kind === 'email'){
+      var subj = a.label || 'Stafflo';
+      window.location.href = 'mailto:?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(content);
+      logAriaActionToDb('email', content, a.label, a.target);
+      btn.textContent = f?'✓ OUVERT':'✓ OPENED';
+      btn.disabled = true;
+    } else {
+      // internal_note → copie + log
+      var ok = false;
+      try { if (navigator.clipboard) { navigator.clipboard.writeText(content); ok = true; } } catch(e){}
+      logAriaActionToDb('internal', content, a.label, a.target);
+      btn.textContent = ok ? (f?'✓ COPIÉ':'✓ COPIED') : (f?'✓ GARDÉ':'✓ KEPT');
+      btn.disabled = true;
+    }
+  };
+
+  window.ariaSmartCopy = function(groupId, idx, btn){
+    var actions = (window._ariaPendingActions||{})[groupId]; if (!actions||!actions[idx]) return;
+    var content = actions[idx].generated_content || '';
+    if (!content) return;
+    var ok = false;
+    try { if (navigator.clipboard){ navigator.clipboard.writeText(content); ok = true; } } catch(e){}
+    if (!ok){
+      try {
+        var ta = document.createElement('textarea'); ta.value=content; ta.style.position='fixed'; ta.style.opacity='0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); ok=true;
+      } catch(e){}
+    }
+    var orig = btn.textContent;
+    btn.textContent = ok?'✓':'⚠';
+    setTimeout(function(){ btn.textContent = orig; }, 1500);
+  };
+
+  window.ariaSmartRegen = async function(groupId, idx, btn){
+    var actions = (window._ariaPendingActions||{})[groupId]; if (!actions||!actions[idx]) return;
+    var a = actions[idx]; var f = fr();
+    btn.disabled = true; var orig = btn.textContent; btn.textContent = '⏳';
+    try {
+      var p = buildAiPrompt(a);
+      var content = await window.callBestAI(a.ai_task, p.system, p.user, 600);
+      a.generated_content = (content||'').trim();
+      // Re-render le résultat
+      var resEl = document.querySelector('.aria-smart-result[data-group="'+groupId+'"][data-idx="'+idx+'"]');
+      if (resEl){
+        var actionsHtml = resEl.querySelector('div[style*="display:flex"]');
+        var newHTML = a.generated_content.replace(/</g,'&lt;').replace(/\n/g,'<br>');
+        resEl.innerHTML = newHTML + (actionsHtml ? actionsHtml.outerHTML : '');
+      }
+      btn.disabled = false; btn.textContent = orig;
+    } catch(e){ btn.disabled = false; btn.textContent = orig; }
+  };
+
+  // ──────────────── Pipeline UNIFIÉ : email Airbnb collé ────────────────
+  // Override sendAriaModal en amont pour intercepter les emails Airbnb forts
+  var _origSendAriaModal = window.sendAriaModal;
+  window.sendAriaModal = function(){
+    var input = document.getElementById('ariaModalInput');
+    var text = (input && input.value || '').trim();
+    var attach = window._ariaAttachment || null;
+
+    // Si c'est un email Airbnb FORT et pas de fichier joint → pipeline unifié
+    if (text && !attach && isStrongAirbnbEmail(text)){
+      // Ajoute la bubble user (préviewée tronquée)
+      var body = document.getElementById('ariaModalMessages');
+      if (body){
+        var u = document.createElement('div'); u.className = 'aria-modal-bubble user';
+        var preview = text.length > 200 ? text.slice(0,200) + '...' : text;
+        u.innerHTML = '<div style="font-size:11px;opacity:.85;margin-bottom:4px;display:flex;align-items:center;gap:6px"><span>📧</span><span>' + (fr()?'Email Airbnb collé':'Airbnb email pasted') + '</span></div><div style="font-size:11px;opacity:.7">' + preview.replace(/</g,'&lt;') + '</div>';
+        body.appendChild(u); body.scrollTop = body.scrollHeight;
+      }
+      input.value = ''; if (typeof onAriaModalInput==='function') onAriaModalInput(input);
+
+      // Typing
+      var typing = null;
+      if (body){
+        typing = document.createElement('div');
+        typing.className = 'aria-modal-bubble aria';
+        typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--muted)">📨 ' + (fr()?'Lecture de l\'email...':'Reading email...') + '</span>';
+        body.appendChild(typing); body.scrollTop = body.scrollHeight;
+      }
+
+      // Pipeline async
+      (async function(){
+        try {
+          var cleaned = cleanEmailBoilerplate(text);
+          var today = new Date().toISOString().slice(0,10);
+          var p1 = [
+            'Extract from this Airbnb/Booking email. Return ONLY valid JSON, no markdown.',
+            '{"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","guests":0,"price":0,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"confirmed","notes":""}',
+            'Rules: bookingStatus="inquiry" if pending question, "confirmed" if booking done.',
+            'price = "Guest paid" total in EUR (number only, no currency).',
+            'commission: Airbnb=15.5, Booking=15, Direct=0.',
+            'notes: anything important about guest (children, infants, special requests, allergies). MAX 150 chars.',
+            'Today: ' + today
+          ].join('\n');
+          var raw = await window.callBestAI('extract', p1, cleaned, 500);
+          var g = {};
+          try {
+            var m = (raw||'').replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
+            if (m) g = JSON.parse(m[0]);
+          } catch(e){}
+          if (!g.name){
+            if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">⚠ ' + (fr()?'Extraction impossible — email incomplet ?':'Could not extract — incomplete email?') + '</span>';
+            return;
+          }
+          g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
+
+          // AUTO-SAVE direct
+          var saved = autoSaveGuest(g, cleaned);
+
+          // Génère actions contextuelles (pas LLM, pure logique)
+          var actions = generateContextualActions(saved, cleaned);
+
+          // Affiche la carte résultat dans la bubble
+          var cardHtml = renderExtractedCard(saved, actions, cleaned);
+          if (typing){
+            typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?'Email traité, fiche client ajoutée au CRM.':'Email processed, guest added to CRM.') + cardHtml;
+          }
+
+          // Persiste dans chat_history
+          try {
+            if (typeof saveChatMessage==='function'){
+              saveChatMessage('user', '[📧 Email Airbnb] ' + cleaned.slice(0,1000), saved.id, saved.name);
+              saveChatMessage('assistant', '[Auto-extract] '+saved.name+' · '+saved.arrival+'→'+saved.departure+' · '+saved.guests+' guests · '+saved.price+'€', saved.id, saved.name);
+            }
+          } catch(e){}
+        } catch(e){
+          if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">⚠ ' + (e.message||'Erreur') + '</span>';
+        }
+      })();
+      return;
+    }
+
+    // Sinon → pipeline normal
+    return _origSendAriaModal ? _origSendAriaModal.apply(this, arguments) : null;
+  };
+
+  // Helper detectLang utilisé par generateContextualActions
+  if (typeof window.detectLang !== 'function') window.detectLang = detectGuestLang;
 
 })();
 </script>
