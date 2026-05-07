@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -4859,13 +4860,29 @@ async function chatSend() {
     }
     
     // ARIA orchestrator prompts: skip email-extraction route, go straight to chat
-    var isAriaOrchestrator = /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]|donne-moi 2 ou 3 actions|2 or 3 concrete actions|JSON format/i.test(text);
+    // Broad detection — matches both hardcoded prompts AND user-typed action requests
+    var isAriaOrchestrator =
+      /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]/i.test(text) ||
+      /JSON format/i.test(text) ||
+      // Action request patterns (FR + EN)
+      /\b(donne[\-\s]?moi|give me|propose|suggest|recommend)\b[\s\S]{0,40}\b(\d+[\-\s]?(à\s+)?\d*\s+)?(actions?|étapes?|steps?|concrete|concrètes?|priorités?)/i.test(text) ||
+      // Marketing / pricing / staff brief triple combos = orchestrator territory
+      (/marketing|message/i.test(text) && /staff brief|brief staff/i.test(text)) ||
+      // Explicit "2-3 actions" patterns
+      /\b[2-5][\-–\s]?(à\s+)?[3-5]?\s+(actions?|étapes?|steps?|concrete|concrètes?)\b/i.test(text);
 
     // Check if it's a question about clients/villa
     var isQuestion = /qui|quand|combien|quel|comment|prochain|demain|aujourd|revenu|alerte|check/i.test(text);
+    // Tightened email detection: require STRONG signals, not just keyword matches.
+    // A prompt mentioning "airbnb" or "guests" in passing should NOT trigger extraction.
+    var hasEmailHeaders =
+      /(^|\n)\s*(de\s*\/\s*from|from)\s*:/i.test(text) &&
+      /(^|\n)\s*(sujet\s*\/\s*subject|subject)\s*:/i.test(text);
+    var hasStrongEmailPhrasing =
+      /new inquiry from|nouvelle demande de|new booking|nouvelle réservation|airbnb\.com|booking\.com|express@airbnb|noreply@booking/i.test(text);
+    var hasWATimestamp = /\[\d{1,2}\/\d{1,2}\/\d{4}[,\s]+\d{1,2}:\d{2}/.test(text);
     var isPastedEmail = !isAriaOrchestrator && text.length > 200 && (
-      /airbnb|booking|check.?in|checkout|guest|réservation|confirmation/i.test(text) ||
-      /\[\d{1,2}\/\d{1,2}\/\d{4}/.test(text) // WA timestamp
+      hasEmailHeaders || hasStrongEmailPhrasing || hasWATimestamp
     );
     
     if (isPastedEmail) {
@@ -4892,7 +4909,13 @@ async function handleChatQuestion(text) {
   var villaName = cfg.villa || 'Villa DarJ';
 
   // Detect ARIA orchestrator request → return JSON action array
-  var isOrchestrator = /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]|JSON format|2 or 3 concrete actions|donne-moi 2 ou 3 actions/i.test(text);
+  // Same broad detection as in chatSend()
+  var isOrchestrator =
+    /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]/i.test(text) ||
+    /JSON format/i.test(text) ||
+    /\b(donne[\-\s]?moi|give me|propose|suggest|recommend)\b[\s\S]{0,40}\b(\d+[\-\s]?(à\s+)?\d*\s+)?(actions?|étapes?|steps?|concrete|concrètes?|priorités?)/i.test(text) ||
+    (/marketing|message/i.test(text) && /staff brief|brief staff/i.test(text)) ||
+    /\b[2-5][\-–\s]?(à\s+)?[3-5]?\s+(actions?|étapes?|steps?|concrete|concrètes?)\b/i.test(text);
 
   // Load recent chat history from DB (includes previous sessions)
   var dbHistory = await loadRecentChatContext(12);
@@ -7709,6 +7732,223 @@ async function bootGmailSync() {
   } catch(e) { /* silent */ }
 }
 window.bootGmailSync = bootGmailSync;
+
+// ── Diagnostic: force-pull all emails with verbose output ────────────
+// Bypasses throttle, fetches last 30 days max 50, reports every step.
+// Run when normal sync is silent and user can't tell what's broken.
+async function forcePullAllEmails(btn) {
+  var fr = lang === 'fr';
+  var out = document.getElementById('forcePullResult');
+  if (!out) return;
+  out.style.display = 'block';
+  out.textContent = '';
+
+  function log(line) {
+    out.textContent += line + '\n';
+    out.scrollTop = out.scrollHeight;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ ' + (fr?'En cours...':'Running...'); }
+
+  try {
+    var cfg = getCfg();
+    var conn = cfg.email_connection || {};
+    var sbKey = cfg.sbKey || SB_ANON;
+
+    log('=== STEP 1: Check connection ===');
+    log('Provider: ' + (conn.provider || 'NONE'));
+    log('Has token: ' + (conn.access_token ? 'YES (length ' + conn.access_token.length + ')' : 'NO'));
+    log('Last error: ' + (conn.last_error || 'none'));
+    if (!conn.access_token) {
+      log('\n❌ STOP: No Gmail token. Reconnect Gmail in main Settings.');
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Pull NOW'; }
+      return;
+    }
+
+    log('\n=== STEP 2: Test Gmail API auth ===');
+    var profileRes = await fetch('https://www.googleapis.com/gmail/v1/users/me/profile', {
+      headers: { Authorization: 'Bearer ' + conn.access_token }
+    });
+    log('Profile status: ' + profileRes.status);
+    if (profileRes.status === 401) {
+      log('❌ Token EXPIRED or INVALID. Disconnect Gmail in Settings, then reconnect.');
+      conn.access_token = null;
+      conn.last_error = 'token_expired';
+      cfg.email_connection = conn;
+      setCfg(cfg);
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Pull NOW'; }
+      return;
+    }
+    if (!profileRes.ok) {
+      log('❌ Gmail API error: ' + profileRes.status);
+      var errText = await profileRes.text().catch(function(){return '';});
+      log('Body: ' + errText.slice(0, 200));
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Pull NOW'; }
+      return;
+    }
+    var profile = await profileRes.json();
+    log('✓ Connected as: ' + profile.emailAddress);
+    log('  Total messages in account: ' + profile.messagesTotal);
+
+    log('\n=== STEP 3: List last 30 days, max 50 ===');
+    var listRes = await fetch('https://www.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=newer_than:30d', {
+      headers: { Authorization: 'Bearer ' + conn.access_token }
+    });
+    log('List status: ' + listRes.status);
+    if (!listRes.ok) {
+      log('❌ List failed.');
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Pull NOW'; }
+      return;
+    }
+    var listData = await listRes.json();
+    var msgIds = (listData.messages || []).map(function(m){ return m.id; });
+    log('✓ Found ' + msgIds.length + ' messages in last 30 days.');
+    if (!msgIds.length) {
+      log('\n⚠ ZERO emails in the last 30 days. The connected account is empty,');
+      log('  or your test email went to a different Google account.');
+      log('  Connected account = ' + profile.emailAddress);
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Pull NOW'; }
+      return;
+    }
+
+    log('\n=== STEP 4: Check what is already in Supabase ===');
+    var existRes = await fetch(SB_URL + '/rest/v1/email_inbox?select=gmail_id&gmail_id=not.is.null&limit=200', {
+      headers: { apikey: sbKey, Authorization: 'Bearer ' + sbKey }
+    });
+    log('Supabase select status: ' + existRes.status);
+    if (!existRes.ok) {
+      var sbErr = await existRes.text().catch(function(){return '';});
+      log('❌ Supabase query failed: ' + sbErr.slice(0, 200));
+      log('  Likely RLS policy issue or missing table.');
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Pull NOW'; }
+      return;
+    }
+    var existRows = await existRes.json();
+    var existingIds = {};
+    (existRows || []).forEach(function(r){ if (r.gmail_id) existingIds[r.gmail_id] = true; });
+    log('✓ Supabase has ' + Object.keys(existingIds).length + ' emails with gmail_id.');
+    var newIds = msgIds.filter(function(id){ return !existingIds[id]; });
+    log('  → ' + newIds.length + ' new to insert.');
+
+    if (!newIds.length) {
+      log('\n✓ All Gmail messages already in Supabase. Nothing to do.');
+      log('  If you don\'t see them in the UI, it\'s a render/RLS issue, not a sync issue.');
+      // Try a SELECT to see what's there
+      var selRes = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=5', {
+        headers: { apikey: sbKey, Authorization: 'Bearer ' + sbKey }
+      });
+      var rows = await selRes.json();
+      log('\n=== Last 5 emails in Supabase ===');
+      (rows || []).forEach(function(r, i){
+        log((i+1) + '. ' + (r.subject || '(no subject)').slice(0, 50) + ' — ' + (r.from_email||'').slice(0, 30) + ' [' + (r.received_at||'').slice(0,10) + ']');
+      });
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Pull NOW'; }
+      return;
+    }
+
+    log('\n=== STEP 5: Fetch + insert each new email ===');
+    var inserted = 0, failed = 0;
+    var toFetch = newIds.slice(0, 50);
+    for (var i = 0; i < toFetch.length; i++) {
+      try {
+        var msgRes = await fetch('https://www.googleapis.com/gmail/v1/users/me/messages/' + toFetch[i] + '?format=full', {
+          headers: { Authorization: 'Bearer ' + conn.access_token }
+        });
+        if (!msgRes.ok) { failed++; log('  ❌ ' + toFetch[i].slice(0,8) + ' fetch failed: ' + msgRes.status); continue; }
+        var msg = await msgRes.json();
+        var headers = (msg.payload && msg.payload.headers) || [];
+        var getH = function(name){ var h = headers.find(function(x){ return x.name.toLowerCase() === name.toLowerCase(); }); return h ? h.value : ''; };
+        var subject = getH('Subject');
+        var from = getH('From');
+        var date = getH('Date');
+        var fromMatch = from.match(/^(.*?)\s*<([^>]+)>/);
+        var fromName = fromMatch ? fromMatch[1].replace(/"/g, '').trim() : from;
+        var fromEmail = fromMatch ? fromMatch[2] : from;
+        // Extract body (same logic as syncGmailDirect)
+        var extractBody = function(part){
+          if (!part) return '';
+          if (part.body && part.body.data) {
+            try { return atob(part.body.data.replace(/-/g,'+').replace(/_/g,'/')); } catch(e){ return ''; }
+          }
+          if (part.parts) {
+            var plain = part.parts.find(function(p){ return p.mimeType === 'text/plain'; });
+            var html = part.parts.find(function(p){ return p.mimeType === 'text/html'; });
+            var multi = part.parts.find(function(p){ return p.mimeType && p.mimeType.indexOf('multipart')===0; });
+            if (plain && plain.body && plain.body.data) { try { return atob(plain.body.data.replace(/-/g,'+').replace(/_/g,'/')); } catch(e){} }
+            if (html && html.body && html.body.data) { try { return atob(html.body.data.replace(/-/g,'+').replace(/_/g,'/')); } catch(e){} }
+            if (multi) return extractBody(multi);
+          }
+          return '';
+        };
+        var body = extractBody(msg.payload);
+        var bodyText = body.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+        if (bodyText.length > 10000) bodyText = bodyText.slice(0, 10000);
+
+        var row = {
+          gmail_id: toFetch[i],
+          from_name: fromName.slice(0, 200),
+          from_email: fromEmail.slice(0, 200),
+          subject: subject.slice(0, 500),
+          body: bodyText,
+          received_at: date ? new Date(date).toISOString() : new Date().toISOString(),
+          status: 'new',
+          source: 'gmail_force_pull'
+        };
+
+        var insRes = await fetch(SB_URL + '/rest/v1/email_inbox', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', apikey: sbKey, Authorization:'Bearer '+sbKey, Prefer:'return=representation' },
+          body: JSON.stringify(row)
+        });
+        if (insRes.ok) {
+          inserted++;
+          log('  ✓ ' + (subject || '(no subject)').slice(0, 50) + ' — ' + fromEmail.slice(0, 30));
+          // Fire extraction in bg
+          try {
+            var insertedRows = await insRes.json();
+            var newRow = Array.isArray(insertedRows) ? insertedRows[0] : insertedRows;
+            if (newRow && newRow.id) extractAndPersistEmail(newRow).catch(function(){});
+          } catch(e){}
+        } else {
+          failed++;
+          var errBody = await insRes.text().catch(function(){return '';});
+          log('  ❌ INSERT FAILED ' + insRes.status + ': ' + errBody.slice(0, 150));
+          if (insRes.status === 401 || insRes.status === 403) {
+            log('  → Supabase RLS blocking insert. Check policies on email_inbox.');
+            break;
+          }
+          if (insRes.status === 400 && errBody.indexOf('column') >= 0) {
+            log('  → Schema mismatch. Check email_inbox columns match the insert payload.');
+            break;
+          }
+        }
+      } catch(e) {
+        failed++;
+        log('  ❌ Error: ' + e.message);
+      }
+    }
+
+    log('\n=== RESULT ===');
+    log('Inserted: ' + inserted);
+    log('Failed: ' + failed);
+    if (inserted > 0) {
+      log('\n✓ Refreshing inbox UI...');
+      if (typeof loadInboxCount === 'function') loadInboxCount();
+      ['inboxRowToday','inboxRowGuests','inboxRowVilla'].forEach(function(rid){
+        var el = document.getElementById(rid);
+        if (el && el.classList && el.classList.contains('open') && typeof populateInboxRow === 'function') {
+          populateInboxRow(rid);
+        }
+      });
+    }
+  } catch(e) {
+    log('\n❌ FATAL: ' + e.message);
+    log(e.stack || '');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Pull NOW'; }
+  }
+}
+window.forcePullAllEmails = forcePullAllEmails;
 
 async function saveEmailConnection(conn) {
   // Save to localStorage
@@ -14080,6 +14320,14 @@ window.addEventListener('DOMContentLoaded', function() {
         </div>
         <button onclick="refreshInboxRow(document.querySelector('#inboxRowToday .inbox-refresh-btn'))" style="background:var(--gold);color:var(--green3);border:none;border-radius:8px;padding:7px 13px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">↻ <span data-fr="Sync" data-en="Sync">Sync</span></button>
       </div>
+      <div class="inbox-settings-row" style="border-top:2px solid var(--border);padding-top:14px;margin-top:6px">
+        <div style="flex:1">
+          <div class="inbox-settings-label" data-fr="Diagnostic — forcer le pull" data-en="Diagnostic — force pull">Diagnostic — forcer le pull</div>
+          <div class="inbox-settings-sub" data-fr="Bypass throttle. Récupère 30 derniers jours, max 50. Affiche les erreurs." data-en="Bypass throttle. Fetches last 30 days, max 50. Shows all errors.">Bypass throttle. Récupère 30 derniers jours, max 50. Affiche les erreurs.</div>
+        </div>
+        <button onclick="forcePullAllEmails(this)" style="background:var(--red);color:#fff;border:none;border-radius:8px;padding:7px 13px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0">⚡ <span data-fr="Pull NOW" data-en="Pull NOW">Pull NOW</span></button>
+      </div>
+      <div id="forcePullResult" style="display:none;background:#0F2318;color:#fff;border-radius:8px;padding:10px 12px;font-family:'SF Mono',Monaco,monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;max-height:240px;overflow-y:auto;margin-top:4px"></div>
     </div>
   </div>
 </div>
