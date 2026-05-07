@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -16859,6 +16860,438 @@ window.addEventListener('DOMContentLoaded', function() {
   } else {
     go();
   }
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   STAFFLO MINIMAL PATCH PACK — 2026-05-08
+   Scope: data fix + diagnostics + brief→ARIA UX clean.
+   Style/CSS/DOM: ZERO changes. All existing overrides preserved.
+   ═══════════════════════════════════════════════════════════════════ */
+(function staffloMinimalPatch(){
+  'use strict';
+
+  var _today = function(){ return new Date().toISOString().slice(0,10); };
+  var _stripDia = function(s){ return (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); };
+  var _daysBetween = function(a, b){
+    if (!a || !b) return null;
+    return Math.round((new Date(b) - new Date(a)) / 864e5);
+  };
+
+  /* ── #1 GROUNDING — fix Sophie hallucination ──
+     We override handleChatQuestion to inject departure + status into the
+     client list line. Everything else (orchestrator branch, system prompt,
+     ariaMemory, intent classification) is preserved 1:1.                */
+  function buildClientLines(question, max) {
+    if (!Array.isArray(window.clients) || !window.clients.length) return '0';
+    var today = _today();
+    var qNorm = _stripDia(question || '');
+    var scored = window.clients.map(function(cl){
+      var s = 0;
+      var n = _stripDia(cl.name || '');
+      if (n) {
+        var first = n.split(/\s+/)[0];
+        if (first && first.length >= 3 && qNorm.indexOf(first) >= 0) s += 100;
+        else if (qNorm.indexOf(n) >= 0) s += 100;
+      }
+      if (cl.arrival && cl.departure && cl.arrival <= today && cl.departure >= today) s += 50;
+      if (cl.arrival && cl.arrival > today) {
+        var d = _daysBetween(today, cl.arrival);
+        if (d != null && d <= 14) s += Math.max(0, 30 - d);
+      }
+      if (cl.departure && cl.departure < today) {
+        var dd = _daysBetween(cl.departure, today);
+        if (dd != null && dd <= 7) s += Math.max(0, 10 - dd);
+      }
+      return { cl: cl, s: s };
+    });
+    scored.sort(function(a,b){ return b.s - a.s; });
+    return scored.slice(0, max || 12).map(function(x){
+      var cl = x.cl;
+      var bits = [cl.name || '?'];
+      if (cl.arrival)   bits.push('arr ' + cl.arrival);
+      if (cl.departure) bits.push('dep ' + cl.departure);
+      var status;
+      if (cl.arrival && cl.departure && cl.arrival <= today && cl.departure >= today) status = 'en cours';
+      else if (cl.arrival && cl.arrival > today) status = 'à venir';
+      else if (cl.departure && cl.departure < today) status = 'parti';
+      if (status) bits.push(status);
+      return bits.join(' · ');
+    }).join(' | ');
+  }
+  window._staffloBuildClientLines = buildClientLines;
+
+  if (typeof window.handleChatQuestion === 'function') {
+    var _origHCQ = window.handleChatQuestion;
+    // Re-implement only the minimal substitution: replace the brittle
+    // "cl.name + arrival" line with the full line including departure.
+    // We accept that we duplicate the function body once, but we keep
+    // the EXACT same system prompt, intent routing, and parsing.
+    window.handleChatQuestion = async function(text){
+      var fr = lang === 'fr';
+      var today = _today();
+      var cfg = getCfg();
+      var ownerName = cfg.owner || 'Jérémie';
+      var villaName = cfg.villa || 'Villa DarJ';
+
+      var isOrchestrator =
+        /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]/i.test(text) ||
+        /JSON format/i.test(text) ||
+        /\b(donne[\-\s]?moi|give me|propose|suggest|recommend)\b[\s\S]{0,40}\b(\d+[\-\s]?(à\s+)?\d*\s+)?(actions?|étapes?|steps?|concrete|concrètes?|priorités?)/i.test(text) ||
+        (/marketing|message/i.test(text) && /staff brief|brief staff/i.test(text)) ||
+        /\b[2-5][\-–\s]?(à\s+)?[3-5]?\s+(actions?|étapes?|steps?|concrete|concrètes?)\b/i.test(text);
+
+      var dbHistory = await loadRecentChatContext(12);
+      var historyBlock = dbHistory || buildChatHistoryBlock(8);
+
+      var systemPrompt;
+      if (isOrchestrator) {
+        systemPrompt = [
+          'You are ARIA, the central nervous system for ' + ownerName + ' (owner of ' + villaName + ' Marrakech).',
+          'Your role: take a situation and propose 2-3 concrete, ready-to-execute actions.',
+          'Staff: Said (butler), Faiza (chef), Bouchra (housekeeping). Owner signs as ' + ownerName + '.',
+          '',
+          'CRITICAL OUTPUT FORMAT: Return ONLY a valid JSON array, no preamble, no markdown fences, no explanation.',
+          'Format: [{"label":"short label max 5 words","kind":"whatsapp|email|sms|internal_note|copy","target":"staff|guest|owner","content":"ready-to-send text"}]',
+          '',
+          'Rules:',
+          '- 2 or 3 actions max, sorted by priority',
+          '- "content" must be the FULL ready-to-send message (not a description)',
+          '- For staff WhatsApp: write in French, casual but professional, signed ' + ownerName,
+          '- For guest WhatsApp/email: warm, hospitable, signed ' + ownerName,
+          '- For internal_note: short reminder for ' + ownerName + ' himself',
+          '- Use guest/staff names when they appear in context'
+        ].join('\n');
+      } else {
+        systemPrompt = [
+          'Tu es l\'assistant personnel de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
+          'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
+          'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
+          'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
+          'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
+        ].join('\n');
+      }
+
+      var ariaMem = (cfg.ariaMemory || '').trim();
+      if (ariaMem) {
+        var capped = ariaMem.length > 3000 ? ariaMem.slice(0, 3000) + '\n[...tronqué]' : ariaMem;
+        systemPrompt += '\n\n=== INFORMATIONS DE RÉFÉRENCE DE ' + (ownerName || 'L\'OWNER').toUpperCase() + ' ===\n' +
+          capped +
+          '\n=== FIN RÉFÉRENCE ===\n' +
+          'Utilise ces informations dans tes réponses quand pertinent (tarifs, règles, contacts, templates emails). N\'invente jamais de tarif ou de contact qui n\'est pas listé ci-dessus.';
+      }
+
+      // ── THE ONLY DATA CHANGE: client list now has departure + status ──
+      var clientLine = buildClientLines(text, isOrchestrator ? 5 : 12);
+
+      var userCtx;
+      if (isOrchestrator) {
+        userCtx = [
+          'Today: ' + today,
+          'Active clients (' + window.clients.length + '): ' + clientLine,
+          '',
+          historyBlock,
+          '',
+          'Situation:',
+          text
+        ].join('\n');
+      } else {
+        userCtx = [
+          'Aujourd\'hui: ' + today,
+          'Clients (' + window.clients.length + '): ' + clientLine,
+          '',
+          historyBlock,
+          '',
+          'Message de ' + ownerName + ': "' + text + '"',
+          '',
+          'Instructions:',
+          '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}',
+          '- Si c\'est une question: réponds directement, max 2-3 phrases. Si la donnée n\'est pas dans la liste Clients ci-dessus, dis "je n\'ai pas cette info" au lieu d\'inventer.',
+          '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule sans répéter ta version précédente.'
+        ].join('\n');
+      }
+
+      var aiTask = 'chat_fr';
+      var aiMaxTokens = isOrchestrator ? 700 : 500;
+      if (!isOrchestrator) {
+        var lc = text.toLowerCase();
+        var wordCount = text.split(/\s+/).length;
+        if (/compare|analyse|stratégie|stratégies|optim|recommend|conseil|que dois-je|comment je|that should|why|pourquoi|expliqu/i.test(lc) && wordCount > 8) {
+          aiTask = 'reason'; aiMaxTokens = 800;
+        } else if (/écris|rédige|message|email|mail|réponse à|réponds à|draft|write|compose|texte pour/i.test(lc) && wordCount > 5) {
+          aiTask = 'write_fr'; aiMaxTokens = 700;
+        } else if (text.length > 400 && /check.?in|check.?out|arrival|departure|booking|reservation|airbnb|guest|night/i.test(lc)) {
+          aiTask = 'extract'; aiMaxTokens = 600;
+        } else if (wordCount < 8 && /\?$/.test(text.trim())) {
+          aiTask = 'fast_classify'; aiMaxTokens = 300;
+        }
+      }
+      if (/^\/deep\s|^\/approfondi/i.test(text)) { aiTask = 'reason'; aiMaxTokens = 1000; }
+
+      var raw = await callBestAI(aiTask, systemPrompt, userCtx, aiMaxTokens);
+      document.getElementById('chatTyping').style.display = 'none';
+
+      if (isOrchestrator) {
+        addChatBubble('ai', raw || '[]', []);
+        return;
+      }
+
+      var response = raw || '...';
+      var action = null;
+      var respMatch = raw.match(/R[ÉE]PONSE:\s*(.+?)(?=\nACTION:|$)/s);
+      var actionMatch = raw.match(/ACTION:\s*(\{.+?\})/s);
+      if (respMatch) response = respMatch[1].trim();
+      if (actionMatch) { try { action = JSON.parse(actionMatch[1]); } catch(e) {} }
+
+      var buttons = [];
+      if (action && action.type === 'send_wa') {
+        var cl = window.clients.find(function(c){
+          return c.id === action.clientId ||
+                 (c.name && action.clientId && c.name.toLowerCase().includes(String(action.clientId).toLowerCase()));
+        });
+        if (cl && cl.phone) {
+          buttons.push({
+            label: '📲 WhatsApp ' + cl.name.split(' ')[0],
+            onclick: 'sendWA(\'' + cl.phone + '\', ' + JSON.stringify(action.msg) + ')'
+          });
+        }
+      }
+      addChatBubble('ai', response, buttons);
+      try { saveChatMessage('user', text); saveChatMessage('assistant', response); } catch(e) {}
+    };
+    console.log('[stafflo-patch] ✓ handleChatQuestion grounded — departure + status in CRM context');
+  }
+
+  /* ── #2 AI-PROXY 400 — visible diagnostics, silent UX ── */
+  if (typeof window.callBestAI === 'function') {
+    var _origCall = window.callBestAI;
+    window._aiProxyDebug = { last400Body: null, last400Task: null };
+    window.callBestAI = async function(task, sys, user, maxTokens) {
+      var URL = 'https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/ai-proxy';
+      try {
+        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+        var sk = (typeof getSessionKeyFromUrl === 'function' ? getSessionKeyFromUrl() : '') || cfg.publicSessionKey || '';
+        var r = await fetch(URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            task: task, system: sys || '', user: user,
+            max_tokens: maxTokens || 1000,
+            session_key: sk, client_mode: cfg.clientMode || 'public'
+          })
+        });
+        if (r.ok) {
+          var d = await r.json();
+          if (d && d.text) return d.text;
+          console.warn('[ai-proxy] 200 but no text field:', d);
+        } else if (r.status === 429) {
+          if (typeof toast === 'function') toast(lang==='fr'?'⏳ Limite atteinte — réessayez':'⏳ Rate limit — retry');
+          throw new Error('rate_limit');
+        } else {
+          var body = '';
+          try { body = await r.text(); } catch(e) {}
+          window._aiProxyDebug = { last400Body: body, last400Task: task, last400Status: r.status };
+          console.error('[ai-proxy] HTTP ' + r.status + ' task=' + task + ' →', body.slice(0, 800));
+        }
+      } catch(e) {
+        if (e.message === 'rate_limit') throw e;
+        console.warn('[ai-proxy] error → fallback:', e.message);
+      }
+      return await _origCall.call(this, task, sys, user, maxTokens);
+    };
+    console.log('[stafflo-patch] ✓ callBestAI proxy errors visible (window._aiProxyDebug)');
+  }
+
+  /* ── #3 CORS gmail-pull — one-time console note ── */
+  var _corsToasted = false;
+  var _origFetch = window.fetch;
+  window.fetch = function(){
+    var url = arguments[0];
+    var p = _origFetch.apply(this, arguments);
+    if (typeof url === 'string' && url.indexOf('/functions/v1/gmail-pull') >= 0) {
+      p = p.catch(function(err){
+        if (!_corsToasted) {
+          _corsToasted = true;
+          console.warn('[stafflo-patch] gmail-pull blocked (CORS or down). ' +
+            'Fix: redeploy Edge Function with Access-Control-Allow-Origin: https://jeremiegougenheim-creator.github.io ' +
+            'and OPTIONS preflight handler returning 204.');
+        }
+        throw err;
+      });
+    }
+    return p;
+  };
+  console.log('[stafflo-patch] ✓ gmail-pull CORS detector active');
+
+  /* ── #4 BRIEF → ARIA UX — short user bubble, render JSON as buttons ──
+     The orchestrator prompts (with "Donne-moi 2-3 actions" + "Format JSON")
+     are sent into the ARIA modal as the user's message, which leaks the
+     prompt template into the chat. We intercept openAriaModal: when called
+     with such a prompt, we extract a short label, send the FULL prompt to
+     the AI invisibly, and render the JSON response as clickable buttons. */
+  function _isOrchestratorPrompt(text) {
+    if (!text || text.length < 60) return false;
+    var hits = 0;
+    if (/Centre nerveux ARIA|ARIA central nervous system|Signal d[ée]tect[ée]/i.test(text)) hits++;
+    if (/Format JSON|JSON format/i.test(text)) hits++;
+    if (/donne[\-\s]?moi 2|give me 2/i.test(text)) hits++;
+    if (/"kind"|"target"|"content"/.test(text)) hits++;
+    return hits >= 2;
+  }
+  function _extractSignalLabel(text, fr) {
+    var m = text.match(/🎯\s*(?:Sujet|Topic)\s*:\s*(.+?)(?:\n|$)/i);
+    if (m) return '🔔 ' + m[1].trim().slice(0, 80);
+    var s = text.match(/Signal\s*:\s*(.+?)(?:\n|$)/i) ||
+            text.match(/Signal:\s*(.+?)(?:\n|$)/i);
+    if (s) return '🔔 ' + s[1].trim().slice(0, 80);
+    return fr ? '🔔 Action depuis le brief' : '🔔 Action from brief';
+  }
+  function _renderJsonActions(jsonText, ariaLog) {
+    if (!ariaLog) return false;
+    var actions = null;
+    try {
+      var clean = jsonText.replace(/```json|```/g, '').trim();
+      var firstBracket = clean.indexOf('[');
+      var lastBracket = clean.lastIndexOf(']');
+      if (firstBracket >= 0 && lastBracket > firstBracket) {
+        actions = JSON.parse(clean.slice(firstBracket, lastBracket + 1));
+      }
+    } catch(e) { return false; }
+    if (!Array.isArray(actions) || !actions.length) return false;
+
+    var fr = lang === 'fr';
+    var idAttr = 'aria-actions-' + Date.now();
+    window['_staffloActions_' + idAttr] = actions;
+
+    var html = '<div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">';
+    actions.forEach(function(a, i){
+      var icon = a.kind === 'whatsapp' ? '💬' :
+                 a.kind === 'email' ? '✉️' :
+                 a.kind === 'sms' ? '📱' :
+                 a.kind === 'internal_note' ? '📝' : '📋';
+      var targetLabel = a.target === 'staff' ? (fr?'staff':'staff')
+                      : a.target === 'guest' ? (fr?'guest':'guest')
+                      : (fr?'owner':'owner');
+      html += '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--paper)">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+          '<span style="font-size:14px">' + icon + '</span>' +
+          '<span style="font-weight:600;font-size:12px;color:var(--ink)">' + (a.label || '') + '</span>' +
+          '<span style="font-size:10px;color:var(--muted);margin-left:auto">→ ' + targetLabel + '</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--ink);line-height:1.5;margin-bottom:6px;white-space:pre-wrap">' + (a.content || '').replace(/</g,'&lt;') + '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          (a.kind === 'whatsapp' || a.kind === 'sms'
+            ? '<button onclick="window._staffloDoAction(\'' + idAttr + '\',' + i + ',\'send\')" style="background:#25D366;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">' + (fr?'✓ Envoyer WhatsApp':'✓ Send WhatsApp') + '</button>'
+            : a.kind === 'email'
+            ? '<button onclick="window._staffloDoAction(\'' + idAttr + '\',' + i + ',\'email\')" style="background:var(--green3);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">' + (fr?'✓ Envoyer email':'✓ Send email') + '</button>'
+            : '') +
+          '<button onclick="window._staffloDoAction(\'' + idAttr + '\',' + i + ',\'copy\')" style="background:var(--paper);color:var(--ink);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">📋 ' + (fr?'Copier':'Copy') + '</button>' +
+        '</div>' +
+      '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+  window._staffloDoAction = function(idAttr, idx, what){
+    var actions = window['_staffloActions_' + idAttr];
+    if (!actions || !actions[idx]) return;
+    var a = actions[idx];
+    var content = a.content || '';
+    if (what === 'copy') {
+      navigator.clipboard.writeText(content).then(function(){
+        if (typeof toast === 'function') toast('📋 ' + (lang==='fr'?'Copié':'Copied'));
+      });
+    } else if (what === 'send' && (a.kind === 'whatsapp' || a.kind === 'sms')) {
+      window.open('https://wa.me/?text=' + encodeURIComponent(content), '_blank');
+    } else if (what === 'email') {
+      window.location.href = 'mailto:?body=' + encodeURIComponent(content);
+    }
+  };
+
+  if (typeof window.openAriaModal === 'function') {
+    var _origOpen = window.openAriaModal;
+    window.openAriaModal = function(prefill){
+      // Non-orchestrator prefill (or no prefill at all): keep original behavior
+      if (!prefill || !_isOrchestratorPrompt(prefill)) {
+        return _origOpen.apply(this, arguments);
+      }
+      // Orchestrator path: open modal first, then handle invisibly
+      var fr = lang === 'fr';
+      var fullPrompt = prefill;
+      var displayLabel = _extractSignalLabel(fullPrompt, fr);
+
+      // Open modal with NO prefill (so input stays empty)
+      _origOpen.call(this, '');
+
+      // Show short user bubble manually, then trigger AI with full prompt
+      setTimeout(function(){
+        try {
+          // 1. Visible user bubble: short label only
+          if (typeof addChatBubble === 'function') addChatBubble('user', displayLabel, []);
+
+          // 2. Show typing indicator
+          var typing = document.getElementById('chatTyping');
+          if (typing) typing.style.display = 'block';
+
+          // 3. Send full prompt to handleChatQuestion (which detects orchestrator → JSON)
+          //    But we want to render the JSON as buttons, not raw. So we call AI ourselves.
+          (async function(){
+            try {
+              var cfg = getCfg();
+              var ownerName = cfg.owner || 'Jérémie';
+              var villaName = cfg.villa || 'Villa DarJ';
+              var systemPrompt = [
+                'You are ARIA, the central nervous system for ' + ownerName + ' (owner of ' + villaName + ' Marrakech).',
+                'Your role: take a situation and propose 2-3 concrete, ready-to-execute actions.',
+                'Staff: Said (butler), Faiza (chef), Bouchra (housekeeping). Owner signs as ' + ownerName + '.',
+                '',
+                'CRITICAL OUTPUT FORMAT: Return ONLY a valid JSON array, no preamble, no markdown fences, no explanation.',
+                'Format: [{"label":"short label max 5 words","kind":"whatsapp|email|sms|internal_note|copy","target":"staff|guest|owner","content":"ready-to-send text"}]',
+                '',
+                'Rules:',
+                '- 2 or 3 actions max, sorted by priority',
+                '- "content" must be the FULL ready-to-send message (not a description)',
+                '- For staff WhatsApp: write in French, casual but professional, signed ' + ownerName,
+                '- For guest WhatsApp/email: warm, hospitable, signed ' + ownerName,
+                '- For internal_note: short reminder for ' + ownerName + ' himself'
+              ].join('\n');
+              var clientCtx = 'Active clients (' + (window.clients||[]).length + '): ' + buildClientLines(fullPrompt, 5);
+              var userCtx = 'Today: ' + _today() + '\n' + clientCtx + '\n\nSituation:\n' + fullPrompt;
+
+              var raw = await callBestAI('reason', systemPrompt, userCtx, 800);
+              if (typing) typing.style.display = 'none';
+
+              var rendered = _renderJsonActions(raw || '[]', true);
+              if (rendered) {
+                // Inject HTML directly as an AI bubble
+                if (typeof addChatBubble === 'function') {
+                  addChatBubble('ai', rendered, []);
+                  // Find the just-added bubble and replace its escaped content with raw HTML
+                  var pane = document.getElementById('ariaModalChat') ||
+                             document.getElementById('chatBubbles') ||
+                             document.querySelector('.chat-pane');
+                  if (pane) {
+                    var bubbles = pane.querySelectorAll('.chat-bubble.ai, .ai-msg, [class*="ai-bubble"]');
+                    var last = bubbles[bubbles.length - 1];
+                    if (last) last.innerHTML = rendered;
+                  }
+                }
+              } else {
+                // Fallback: show raw response
+                if (typeof addChatBubble === 'function') addChatBubble('ai', raw || (fr?'(pas de réponse)':'(no reply)'), []);
+              }
+              try { saveChatMessage('user', displayLabel); saveChatMessage('assistant', raw); } catch(e) {}
+            } catch(err) {
+              if (typing) typing.style.display = 'none';
+              if (typeof addChatBubble === 'function') addChatBubble('ai', '⚠ ' + (err.message || 'Erreur'), []);
+            }
+          })();
+        } catch(e) { console.error('[stafflo-patch] orchestrator path failed:', e); }
+      }, 80);
+    };
+    console.log('[stafflo-patch] ✓ openAriaModal intercepts orchestrator prompts');
+  }
+
+  console.log('[stafflo-patch] === minimal pack 2026-05-08 loaded ===');
 })();
 </script>
 
