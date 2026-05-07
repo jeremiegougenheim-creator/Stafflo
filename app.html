@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -12720,13 +12721,46 @@ function ariaExecuteAction(idx, btn) {
     var sms = 'sms:?body=' + encodeURIComponent(content);
     window.location.href = sms;
   } else if (a.kind === 'copy') {
-    try { navigator.clipboard.writeText(content); } catch(e){}
-    btn.textContent = (fr?'✓ COPIÉ':'✓ COPIED');
+    var copied = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(content);
+        copied = true;
+      }
+    } catch(e){}
+    if (!copied) {
+      // Fallback: textarea + execCommand
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = content; ta.style.position='fixed'; ta.style.opacity='0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        copied = true;
+      } catch(e){}
+    }
+    btn.textContent = copied ? (fr?'✓ COPIÉ':'✓ COPIED') : (fr?'⚠ ÉCHEC':'⚠ FAILED');
     setTimeout(function(){ btn.textContent = (fr?'EXÉCUTER':'EXECUTE'); }, 2000);
   } else {
-    // internal_note or unknown: just copy
-    try { navigator.clipboard.writeText(content); } catch(e){}
-    if (typeof toast === 'function') toast(fr?'📋 Copié':'📋 Copied');
+    // internal_note / unknown / target=owner → re-prompt ARIA pour qu'elle FASSE l'action
+    // (ex: "Comparer les tarifs", "Recherche villas similaires" → Aria génère le résultat)
+    var promptText = a.label || content;
+    if (a.content && a.content !== a.label) promptText = a.label + ' : ' + a.content;
+    var input = document.getElementById('ariaModalInput');
+    if (input && typeof sendAriaModal === 'function') {
+      input.value = promptText;
+      if (typeof onAriaModalInput === 'function') onAriaModalInput(input);
+      btn.textContent = (fr?'✓ ENVOYÉ':'✓ SENT');
+      setTimeout(function(){ btn.textContent = (fr?'EXÉCUTER':'EXECUTE'); }, 1500);
+      sendAriaModal();
+    } else {
+      // Fallback: copy
+      var copied2 = false;
+      try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(content); copied2 = true; } } catch(e){}
+      btn.textContent = copied2 ? (fr?'✓ COPIÉ':'✓ COPIED') : (fr?'⚠ ÉCHEC':'⚠ FAILED');
+      setTimeout(function(){ btn.textContent = (fr?'EXÉCUTER':'EXECUTE'); }, 2000);
+      if (typeof toast === 'function') toast(copied2 ? (fr?'📋 Copié':'📋 Copied') : (fr?'⚠ Action non gérée':'⚠ Action not handled'));
+    }
   }
 }
 window.ariaExecuteAction = ariaExecuteAction;
@@ -13003,16 +13037,8 @@ function sendAriaInline() {
   // Send immediately
   setTimeout(function(){ sendAriaModal(); }, 60);
 }
-function ariaQuickAction(kind) {
-  var prompts = {
-    brief:    { fr: 'brief staff pour aujourd\'hui', en: 'staff brief for today' },
-    arrivals: { fr: 'qui arrive demain ?',           en: 'who arrives tomorrow?' },
-    relance:  { fr: 'relance le dernier client',     en: 'follow up with the latest guest' }
-  };
-  var p = prompts[kind] || prompts.brief;
-  var text = (typeof lang !== 'undefined' && lang === 'en') ? p.en : p.fr;
-  openAriaModal(text);
-}
+// (note: la définition complète d'ariaQuickAction est plus haut, ligne ~12923,
+// avec les 6 keys utilisées par les chips du modal. La version courte legacy a été retirée.)
 
 // ── Inbox row collapsible ──
 function toggleInboxRow(rowId, evt) {
