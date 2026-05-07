@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -4772,6 +4773,8 @@ function chatInit() {
     document.getElementById('chatSendBtn').disabled = !inp.value.trim();
   });
   loadInboxCount();
+  // Background Gmail sync at boot (throttled, non-blocking, fires after UI is interactive)
+  setTimeout(function(){ if (typeof bootGmailSync === 'function') bootGmailSync(); }, 2000);
   setTimeout(renderChatClientChips, 1500);
   // Restore last session messages from DB
   setTimeout(restoreChatSession, 800);
@@ -7392,14 +7395,34 @@ async function syncGmailDirect(opts) {
     var listUrl = 'https://www.googleapis.com/gmail/v1/users/me/messages?maxResults=15&q=newer_than:7d';
     var listRes = await fetch(listUrl, { headers: { Authorization: 'Bearer ' + token } });
     if (listRes.status === 401) {
-      // Token expired — clear it and prompt re-auth
+      // Token expired — clear it, persist error flag, prompt re-auth
       conn.access_token = null;
+      conn.last_error = 'token_expired';
+      conn.last_error_at = new Date().toISOString();
       cfg.email_connection = conn;
       setCfg(cfg);
-      if (!opts.silent) toast(fr ? '⚠ Token Gmail expiré — reconnectez Gmail dans ⚙ Réglages' : '⚠ Gmail token expired — reconnect in ⚙ Settings');
+      // Always toast on token expired — even silent calls — because action is required
+      toast(fr ? '⚠ Token Gmail expiré — reconnectez Gmail dans ⚙ Réglages' : '⚠ Gmail token expired — reconnect in ⚙ Settings');
+      // Refresh inbox UI so the warning chip appears
+      try { renderInboxConnectionStatus(); } catch(e) {}
       return { error: 'token_expired' };
     }
-    if (!listRes.ok) return { error: 'gmail_list_' + listRes.status };
+    if (!listRes.ok) {
+      conn.last_error = 'gmail_list_' + listRes.status;
+      conn.last_error_at = new Date().toISOString();
+      cfg.email_connection = conn;
+      setCfg(cfg);
+      try { renderInboxConnectionStatus(); } catch(e) {}
+      return { error: 'gmail_list_' + listRes.status };
+    }
+    // Clear any previous error on success
+    if (conn.last_error) {
+      delete conn.last_error;
+      delete conn.last_error_at;
+      cfg.email_connection = conn;
+      setCfg(cfg);
+      try { renderInboxConnectionStatus(); } catch(e) {}
+    }
     var listData = await listRes.json();
     var msgIds = (listData.messages || []).map(function(m) { return m.id; });
     if (!msgIds.length) return { new_emails: 0 };
@@ -7490,11 +7513,23 @@ async function syncGmailDirect(opts) {
             'Content-Type': 'application/json',
             apikey: sbKey,
             Authorization: 'Bearer ' + sbKey,
-            Prefer: 'return=minimal'
+            Prefer: 'return=representation'
           },
           body: JSON.stringify(row)
         });
-        if (insRes.ok) inserted++;
+        if (insRes.ok) {
+          inserted++;
+          // Fire-and-forget extraction. Don't await — don't block sync.
+          try {
+            var insertedRows = await insRes.json();
+            var newRow = Array.isArray(insertedRows) ? insertedRows[0] : insertedRows;
+            if (newRow && newRow.id) {
+              extractAndPersistEmail(newRow).catch(function(e){
+                console.warn('extract bg error:', e);
+              });
+            }
+          } catch(e) { /* row id parse failed — extraction skipped, not fatal */ }
+        }
       } catch(e) {
         console.warn('Gmail msg fetch error:', e);
       }
@@ -7506,6 +7541,175 @@ async function syncGmailDirect(opts) {
     return { error: e.message };
   }
 }
+
+// ── Insert-time email extraction (Groq via callBestAI('extract')) ──────
+// Cheap, single-tier (no waterfall — see design notes).
+// Persists results into email_inbox.extracted (JSONB).
+// On failure: stores {extract_failed:true, extract_error:reason} so we can retry/debug later.
+async function extractAndPersistEmail(row) {
+  if (!row || !row.id) return;
+  var cfg = getCfg();
+  var sbKey = cfg.sbKey || SB_ANON;
+  var fr = lang === 'fr';
+
+  var subject = (row.subject || '').slice(0, 300);
+  var fromEmail = (row.from_email || '').toLowerCase();
+  var bodyText = (row.body || '').slice(0, 2500);
+
+  // Detect source from sender for the prompt + fallback
+  var detectedSource = 'Direct';
+  if (fromEmail.indexOf('airbnb') >= 0) detectedSource = 'Airbnb';
+  else if (fromEmail.indexOf('booking') >= 0) detectedSource = 'Booking';
+
+  var today = new Date().toISOString().slice(0, 10);
+  var prompt = [
+    'Extract structured data from this email. Return ONLY valid JSON, no markdown.',
+    '{"email_type":"inquiry|confirmation|message|cancellation|review|other","name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"phone":"","source":"' + detectedSource + '","summary":"1 short sentence"}',
+    'Rules: email_type=inquiry if guest is asking availability/info. confirmation if booking confirmed. message if existing guest writing. cancellation if cancelled. review if review/feedback. other otherwise.',
+    'Leave fields empty/0 if unknown. Today: ' + today,
+    '',
+    '=== EMAIL ===',
+    'From: ' + fromEmail,
+    'Subject: ' + subject,
+    'Body:',
+    bodyText
+  ].join('\n');
+
+  var extracted = null;
+  try {
+    var raw = await callBestAI('extract', '', prompt, 350);
+    var m = (raw || '').replace(/```json\n?/g, '').replace(/```/g, '').trim().match(/\{[\s\S]*\}/);
+    if (m) {
+      extracted = JSON.parse(m[0]);
+      // Clean common LLM noise on name
+      if (extracted.name) extracted.name = String(extracted.name).replace(/^[~@\-_*"']+/, '').replace(/["']$/, '').trim();
+    }
+  } catch(e) {
+    console.warn('extractAndPersistEmail Groq error:', e);
+  }
+
+  // Build payload — even on failure, store something so the card has context
+  var payload;
+  if (extracted && (extracted.email_type || extracted.name || extracted.summary)) {
+    payload = extracted;
+    payload.extracted_at = new Date().toISOString();
+  } else {
+    payload = {
+      email_type: 'other',
+      source: detectedSource,
+      extract_failed: true,
+      extract_error: 'no_parse',
+      extracted_at: new Date().toISOString()
+    };
+  }
+
+  // PATCH the row
+  try {
+    await fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + row.id, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: sbKey,
+        Authorization: 'Bearer ' + sbKey,
+        Prefer: 'return=minimal'
+      },
+      body: JSON.stringify({ extracted: payload })
+    });
+  } catch(e) {
+    console.warn('extractAndPersistEmail PATCH error:', e);
+  }
+}
+window.extractAndPersistEmail = extractAndPersistEmail;
+
+// Manual retry for a specific row (called from inbox card if extract_failed)
+async function retryEmailExtraction(rowId, btnEl) {
+  var fr = lang === 'fr';
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = fr ? '⏳' : '⏳'; }
+  var cfg = getCfg();
+  var sbKey = cfg.sbKey || SB_ANON;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + rowId + '&select=id,subject,from_email,body', {
+      headers: { apikey: sbKey, Authorization: 'Bearer ' + sbKey }
+    });
+    var rows = await r.json();
+    if (rows && rows[0]) {
+      await extractAndPersistEmail(rows[0]);
+      toast(fr ? '✓ Réextrait' : '✓ Re-extracted');
+      if (typeof refreshInboxRow === 'function') {
+        // Refresh whichever row contains it
+        document.querySelectorAll('.inbox-refresh-btn').forEach(function(b){
+          try { b.click(); } catch(e){}
+        });
+      }
+    }
+  } catch(e) {
+    toast(fr ? '⚠ Échec réextraction' : '⚠ Re-extract failed');
+  }
+}
+window.retryEmailExtraction = retryEmailExtraction;
+
+// Renders the inline connection-status warning chip in inbox row headers.
+// Idempotent — safe to call repeatedly.
+function renderInboxConnectionStatus() {
+  var cfg = getCfg();
+  var conn = cfg.email_connection || {};
+  var fr = lang === 'fr';
+  var hasError = !!conn.last_error;
+  var label = '';
+  if (hasError) {
+    if (conn.last_error === 'token_expired') {
+      label = fr ? '⚠ Reconnecter Gmail' : '⚠ Reconnect Gmail';
+    } else {
+      label = fr ? '⚠ Erreur Gmail' : '⚠ Gmail error';
+    }
+  }
+
+  // Place a compact chip at the top of every visible inbox row body
+  ['inboxRowListToday', 'inboxRowListGuests', 'inboxRowListVilla'].forEach(function(listId) {
+    var list = document.getElementById(listId);
+    if (!list) return;
+    // Remove any existing status chip
+    var existing = list.querySelector('.inbox-status-chip');
+    if (existing) existing.remove();
+    if (!hasError) return;
+    var chip = document.createElement('div');
+    chip.className = 'inbox-status-chip';
+    chip.style.cssText = 'background:rgba(192,57,43,.15);border:1px solid rgba(192,57,43,.4);color:#ff8a7a;border-radius:8px;padding:7px 11px;margin-bottom:8px;font-size:11px;font-weight:600;cursor:pointer;text-align:center;letter-spacing:.3px';
+    chip.textContent = label;
+    chip.onclick = function() { if (typeof openSettings === 'function') openSettings(); };
+    list.insertBefore(chip, list.firstChild);
+  });
+}
+window.renderInboxConnectionStatus = renderInboxConnectionStatus;
+
+// Background sync: called at app boot + throttled to 5 min
+async function bootGmailSync() {
+  var cfg = getCfg();
+  var conn = cfg.email_connection;
+  if (!conn || conn.provider !== 'Google' || !conn.access_token) return;
+  // Throttle: don't sync more than once per 5 min
+  var lastSync = parseInt(localStorage.getItem('stafflo_last_gmail_sync') || '0', 10);
+  var now = Date.now();
+  if (now - lastSync < 5 * 60 * 1000) return;
+  localStorage.setItem('stafflo_last_gmail_sync', String(now));
+  try {
+    var result = await syncGmailDirect({ silent: true });
+    if (result && result.new_emails > 0) {
+      // Refresh badges + visible inbox rows so new emails appear without manual click
+      if (typeof loadInboxCount === 'function') loadInboxCount();
+      ['inboxRowToday', 'inboxRowGuests', 'inboxRowVilla'].forEach(function(rid) {
+        var el = document.getElementById(rid);
+        // Only re-populate if row is currently expanded (has body content visible)
+        if (el && el.classList && el.classList.contains('open')) {
+          if (typeof populateInboxRow === 'function') populateInboxRow(rid);
+        }
+      });
+    }
+    // Always render connection status (covers case where token just expired silently)
+    renderInboxConnectionStatus();
+  } catch(e) { /* silent */ }
+}
+window.bootGmailSync = bootGmailSync;
 
 async function saveEmailConnection(conn) {
   // Save to localStorage
@@ -12576,8 +12780,15 @@ window.renderInboxCard = function(row) {
   if (fromEmail.indexOf('airbnb') >= 0) { src='airbnb'; srcLabel='Airbnb'; srcLetter='A'; }
   else if (fromEmail.indexOf('booking') >= 0) { src='booking'; srcLabel='Booking'; srcLetter='B'; }
   else if (fromEmail) { src='direct'; srcLabel='Direct'; srcLetter=(fromEmail.charAt(0)||'?').toUpperCase(); }
-  var typeChip = ex.email_type ? '<span class="ic-chip">'+ex.email_type+'</span>' : '';
+  var typeChip = ex.email_type && !ex.extract_failed ? '<span class="ic-chip">'+ex.email_type+'</span>' : '';
   var guestChip = ex.name ? '<span class="ic-chip guest">👤 '+ex.name+'</span>' : '';
+  // If we haven't extracted yet (or it failed), show a small status chip
+  var pendingChip = '';
+  if (!ex || (!ex.email_type && !ex.name && !ex.extract_failed)) {
+    pendingChip = '<span class="ic-chip" style="opacity:.5;font-style:italic">⏳ ' + (fr?'analyse...':'analyzing...') + '</span>';
+  } else if (ex.extract_failed) {
+    pendingChip = '<span class="ic-chip" style="background:rgba(192,57,43,.15);color:#c0392b;cursor:pointer" onclick="event.stopPropagation();retryEmailExtraction(\'' + row.id + '\', this)" title="' + (fr?'Réessayer l\'extraction':'Retry extraction') + '">⟳ ' + (fr?'réessayer':'retry') + '</span>';
+  }
   var body = row.body || '';
   var airbnbMatch = body.match(/https?:\/\/(?:www\.)?airbnb\.[a-z\.]+\/[^\s\)\]"<>]+/i);
   var bookingMatch = body.match(/https?:\/\/(?:admin\.)?booking\.com\/[^\s\)\]"<>]+/i);
@@ -12591,9 +12802,10 @@ window.renderInboxCard = function(row) {
   html += '<div class="ic-subject">' + (row.subject||'No subject') + '</div>';
   if (preview) html += '<div class="ic-preview">' + preview + '</div>';
   html += '<div class="ic-meta"><span>' + dateStr + '</span>';
-  if (typeChip || guestChip) html += '<span style="opacity:.4">·</span>';
+  if (typeChip || guestChip || pendingChip) html += '<span style="opacity:.4">·</span>';
   if (typeChip) html += typeChip;
   if (guestChip) html += guestChip;
+  if (pendingChip) html += pendingChip;
   html += '</div></div></div>';
   html += '<div class="ic-actions">';
   html += '<button class="ic-open-btn" data-email-id="' + row.id + '">📖 ' + (fr?'Analyser':'Analyze') + '</button>';
@@ -12659,6 +12871,8 @@ function populateInboxRow(rowId) {
         if (r && typeof openInboxEmail === 'function') openInboxEmail(r);
       });
     });
+    // Surface Gmail connection errors at the top of the row
+    if (typeof renderInboxConnectionStatus === 'function') renderInboxConnectionStatus();
   }).catch(function(e){
     console.warn('inbox row load:', e);
     list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted);font-style:italic" data-fr="Erreur de chargement" data-en="Load error">Erreur de chargement</div>';
