@@ -631,7 +631,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 }
 
 /* ARIA slim search bar (new — replaces big inline box) */
-.aria-searchbar{display:flex;align-items:center;gap:10px;background:var(--green3);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow-lg);border:1px solid rgba(201,150,58,.25);cursor:text;transition:border-color .15s,box-shadow .15s}
+.aria-searchbar{display:flex;align-items:center;gap:10px;background:var(--green3);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow-lg);border:1px solid rgba(201,150,58,.25);cursor:text;transition:border-color .15s,box-shadow .15s;width:80%;margin:0 auto}
 .aria-searchbar:hover{border-color:rgba(201,150,58,.5);box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .aria-searchbar:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,150,58,.18)}
 .aria-searchbar-left{display:flex;align-items:center;gap:8px;flex-shrink:0}
@@ -1170,6 +1170,29 @@ nav .nav-btn.on {
   .hstat-val { font-size: 15px; }
 }
 
+/* ── REDUCE WHITE in main / tabs background ── */
+body, main { background: var(--cream); }
+.app-shell, .row { background: transparent; }
+
+/* Aria search bar centered + 80% */
+.row > .aria-searchbar { margin: 0 auto; }
+
+/* ── Kebab menu button on each v2-card ── */
+.v2-card-more {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background .15s, color .15s;
+  margin-left: 4px;
+}
+.v2-card-more:hover { background: var(--paper); color: var(--ink); }
+.v2-card-hd .v2-card-actions { display: flex; align-items: center; gap: 4px; }
+
 </style>
 </head>
 <body>
@@ -1407,6 +1430,19 @@ nav .nav-btn.on {
   </div>
 </div>
 
+<!-- Aria Memory shortcut card (Today tab) -->
+<div class="row row-100">
+  <div class="v2-card" id="cardAriaMemoryShortcut" style="cursor:pointer" onclick="(function(){if(typeof openSettings==='function')openSettings();else document.getElementById('settingsPanel').classList.add('open');setTimeout(function(){var t=document.getElementById('cfgAriaMemory');if(t){t.scrollIntoView({behavior:'smooth',block:'center'});t.focus();}},250);})()">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-brain" style="color:var(--gold)"></i> <span data-fr="Aria Memory" data-en="Aria Memory">Aria Memory</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Contexte permanent" data-en="Persistent context">Contexte permanent</span></div>
+      <span style="font-size:11px;color:var(--gold);font-weight:600;letter-spacing:.5px" data-fr="Éditer →" data-en="Edit →">Éditer →</span>
+    </div>
+    <div class="v2-card-body" style="padding:10px 14px">
+      <div id="ariaMemoryPreview" style="font-size:12px;color:var(--muted);line-height:1.5;font-family:'JetBrains Mono','Menlo',monospace;max-height:60px;overflow:hidden;text-overflow:ellipsis;white-space:pre-wrap" data-fr="Aucune mémoire — clique pour configurer email type, tarifs, règles villa, codes wifi…" data-en="No memory yet — click to set up email template, prices, villa rules, wifi codes…">Aucune mémoire — clique pour configurer email type, tarifs, règles villa, codes wifi…</div>
+    </div>
+  </div>
+</div>
+
 <!-- Legacy 70/30 cols kept for compatibility (hidden when v2-active) -->
 <div class="today-cols">
 <div class="today-col-main">
@@ -1522,7 +1558,7 @@ nav .nav-btn.on {
 <div class="row row-50">
   <div class="v2-card">
     <div class="v2-card-hd">
-      <div class="v2-card-title">👤 <span data-fr="Client en cours" data-en="Current guest">Client en cours</span></div>
+      <div class="v2-card-title"><i class="ti ti-user-circle"></i> <span data-fr="Guest en cours" data-en="Current guest">Guest en cours</span></div>
     </div>
     <div class="v2-card-body" id="heroGuestsCurrentBody">
       <div style="color:var(--muted);font-style:italic" data-fr="Aucun client en cours" data-en="No guest currently">Aucun client en cours</div>
@@ -1530,7 +1566,7 @@ nav .nav-btn.on {
   </div>
   <div class="v2-card">
     <div class="v2-card-hd">
-      <div class="v2-card-title">🛬 <span data-fr="Prochaines arrivées" data-en="Upcoming arrivals">Prochaines arrivées</span></div>
+      <div class="v2-card-title"><i class="ti ti-plane-arrival"></i> <span data-fr="Prochaines arrivées" data-en="Upcoming arrivals">Prochaines arrivées</span></div>
     </div>
     <div class="v2-card-body" id="heroGuestsUpcomingBody">
       <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
@@ -18177,6 +18213,113 @@ window.addEventListener('DOMContentLoaded', function() {
     return '<i class="ti ti-' + name + '"></i>';
   }
   window.iconFor = iconFor;
+
+  /* ── Aria Memory preview on Today tab ── */
+  function refreshAriaMemoryPreview() {
+    try {
+      var prev = document.getElementById('ariaMemoryPreview');
+      if (!prev) return;
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      var mem = (cfg.ariaMemory || '').trim();
+      if (mem) {
+        prev.textContent = mem.slice(0, 280) + (mem.length > 280 ? '…' : '');
+        prev.style.fontStyle = 'normal';
+      }
+    } catch(e){}
+  }
+  window.refreshAriaMemoryPreview = refreshAriaMemoryPreview;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(refreshAriaMemoryPreview, 800); });
+  } else {
+    setTimeout(refreshAriaMemoryPreview, 800);
+  }
+
+  /* ── Generic "more options" kebab menu helper ── */
+  window.staffloMore = function(btn, items) {
+    var existing = document.getElementById('_staffloMore');
+    if (existing) existing.remove();
+    var menu = document.createElement('div');
+    menu.id = '_staffloMore';
+    menu.style.cssText = 'position:absolute;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:4px;min-width:160px;z-index:9999;font-family:DM Sans,sans-serif;font-size:12px';
+    items.forEach(function(it){
+      var a = document.createElement('div');
+      a.textContent = it.label;
+      a.style.cssText = 'padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--ink);transition:background .1s';
+      a.onmouseover = function(){a.style.background='var(--paper)';};
+      a.onmouseout = function(){a.style.background='';};
+      a.onclick = function(e){e.stopPropagation();menu.remove();try{it.fn();}catch(err){}};
+      menu.appendChild(a);
+    });
+    var r = btn.getBoundingClientRect();
+    menu.style.top = (r.bottom + window.scrollY + 4) + 'px';
+    menu.style.left = (r.right + window.scrollX - 160) + 'px';
+    document.body.appendChild(menu);
+    setTimeout(function(){
+      document.addEventListener('click', function close(){ menu.remove(); document.removeEventListener('click', close); });
+    }, 50);
+  };
+
+  /* ── Auto-inject "more options" kebab on every v2-card-hd ── */
+  function injectKebabs() {
+    try {
+      document.querySelectorAll('.v2-card').forEach(function(card){
+        var hd = card.querySelector('.v2-card-hd');
+        if (!hd || hd.querySelector('.v2-card-more')) return;
+        var cardId = card.id || '';
+        var btn = document.createElement('button');
+        btn.className = 'v2-card-more';
+        btn.title = 'More';
+        btn.innerHTML = '⋮';
+        btn.onclick = function(e){
+          e.stopPropagation();
+          var fr = (typeof lang !== 'undefined' && lang === 'fr');
+          var items = [];
+          items.push({ label: fr?'🔄 Rafraîchir':'🔄 Refresh', fn: function(){
+            var refreshBtn = hd.querySelector('.v2-icon-btn');
+            if (refreshBtn) refreshBtn.click();
+            else if (typeof loadHomeData === 'function') loadHomeData();
+          }});
+          if (cardId === 'card50MorningBrief') {
+            items.push({ label: fr?'📋 Générer checklist':'📋 Generate checklist', fn: function(){
+              if (typeof generateStaffChecklist === 'function') generateStaffChecklist();
+            }});
+          } else if (cardId === 'heroAlertsToday') {
+            items.push({ label: fr?'💡 Demander à ARIA':'💡 Ask ARIA', fn: function(){
+              if (typeof openAriaModal === 'function') openAriaModal('');
+            }});
+          } else if (cardId === 'card50VillaSnap') {
+            items.push({ label: fr?'💰 Voir pricing':'💰 View pricing', fn: function(){
+              if (typeof goTab === 'function') goTab('home');
+            }});
+          } else if (cardId === 'cardAriaMemoryShortcut') {
+            items.push({ label: fr?'📥 Charger template':'📥 Load template', fn: function(){
+              if (typeof openSettings === 'function') openSettings();
+              setTimeout(function(){ if (typeof loadAriaMemoryTemplate === 'function') loadAriaMemoryTemplate(); }, 300);
+            }});
+          }
+          items.push({ label: fr?'⚙ Paramètres':'⚙ Settings', fn: function(){
+            if (typeof openSettings === 'function') openSettings();
+          }});
+          window.staffloMore(btn, items);
+        };
+        var actions = hd.querySelector('.v2-card-actions');
+        if (!actions) {
+          actions = document.createElement('div');
+          actions.className = 'v2-card-actions';
+          var existingBtn = hd.querySelector('.v2-icon-btn');
+          if (existingBtn) actions.appendChild(existingBtn);
+          hd.appendChild(actions);
+        }
+        actions.appendChild(btn);
+      });
+    } catch(e){ console.warn('[stafflo] kebab inject failed', e); }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(injectKebabs, 600); });
+  } else {
+    setTimeout(injectKebabs, 600);
+  }
+  setInterval(injectKebabs, 3000);
 
   /* ── Disable gmail-pull endpoint (function not deployed on Supabase) ── */
   if (!window._stafflo_gmail_pull_disabled) {
