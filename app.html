@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -18180,7 +18181,1376 @@ window.addEventListener('DOMContentLoaded', function() {
   ].join('\n');
   document.head.appendChild(_styleEl);
 
-  console.log('[stafflo-v5] === pack v5.1 2026-05-08 loaded ===');
+  /* ════════════════════════════════════════════════════════════════════
+     v5.2 — Compact inbox display
+     Replace fat cards with 1-line rows: sender · subject · date
+     Only action: click row → opens in Aria + marks as read
+     ════════════════════════════════════════════════════════════════════ */
+  (function compactInbox() {
+    if (typeof window.loadInboxEmails !== 'function') {
+      console.warn('[stafflo-v5.2] loadInboxEmails not yet defined, will retry');
+      // Retry once on next tick
+      setTimeout(compactInbox, 500);
+      return;
+    }
+
+    var _origLoadInbox = window.loadInboxEmails;
+    window.loadInboxEmails = async function() {
+      var el = document.getElementById('inboxList');
+      if (!el) return;
+      var fr = (typeof lang !== 'undefined' && lang === 'fr');
+
+      el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:12px;text-align:center">' +
+        (fr ? 'Chargement…' : 'Loading…') + '</div>';
+
+      try {
+        // Reuse Gmail auto-sync logic from original if available
+        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+        if (cfg.email_connection && cfg.email_connection.provider === 'Google' && cfg.email_connection.access_token && typeof syncGmailDirect === 'function') {
+          try {
+            var syncResult = await syncGmailDirect({ silent: true });
+            if (syncResult && syncResult.new_emails > 0 && typeof toast === 'function') {
+              toast(fr ? '✓ ' + syncResult.new_emails + ' nouvel email' + (syncResult.new_emails>1?'s':'') + ' importé' + (syncResult.new_emails>1?'s':'')
+                       : '✓ ' + syncResult.new_emails + ' new email' + (syncResult.new_emails>1?'s':'') + ' imported');
+            }
+          } catch(e) {}
+        }
+
+        var key = cfg.sbKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
+        var authToken = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token)
+          ? _stafflo_session.access_token : key;
+
+        var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=50', {
+          headers: { apikey: key, Authorization: 'Bearer ' + authToken }
+        });
+        var rows = await r.json();
+
+        if (!rows || !rows.length) {
+          el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:24px 12px;text-align:center;line-height:1.6">' +
+            (fr ? '📭 Aucun email reçu pour le moment.' : '📭 No emails yet.') +
+            '<br><span style="opacity:.7">' + (fr ? 'Configurez le transfert depuis Gmail / Outlook' : 'Set up forwarding from Gmail / Outlook') + '</span>' +
+            '</div>';
+          return;
+        }
+
+        // Cache for click handlers
+        window._inboxEmails = {};
+        rows.forEach(function(row) { window._inboxEmails[row.id] = row; });
+
+        // Compact relative time
+        var relTime = function(d) {
+          var now = new Date();
+          var diffMs = now - d;
+          var diffMin = Math.floor(diffMs / 60000);
+          if (diffMin < 1) return fr ? "à l'instant" : 'just now';
+          if (diffMin < 60) return diffMin + (fr ? 'min' : 'm');
+          var diffHr = Math.floor(diffMin / 60);
+          if (diffHr < 24) return diffHr + 'h';
+          var sameDate = function(a, b) { return a.toDateString() === b.toDateString(); };
+          var yesterday = new Date(now); yesterday.setDate(yesterday.getDate()-1);
+          if (sameDate(d, yesterday)) return fr ? 'hier' : 'yest.';
+          var diffDays = Math.floor(diffHr / 24);
+          if (diffDays < 7) return diffDays + (fr ? 'j' : 'd');
+          return d.getDate() + '/' + (d.getMonth()+1);
+        };
+
+        // Source detection (just for the colored dot)
+        var sourceDot = function(fromEmail) {
+          var f = (fromEmail||'').toLowerCase();
+          if (f.indexOf('airbnb') >= 0)  return { color: '#FF5A5F', title: 'Airbnb' };
+          if (f.indexOf('booking') >= 0) return { color: '#003580', title: 'Booking' };
+          if (f.indexOf('vrbo') >= 0)    return { color: '#0073D9', title: 'Vrbo' };
+          return { color: 'var(--muted)', title: 'Direct' };
+        };
+
+        // Extract sender name (strip email part)
+        var cleanSender = function(fromEmail) {
+          if (!fromEmail) return '?';
+          var name = fromEmail.split('<')[0].trim().replace(/^"|"$/g, '');
+          if (!name) name = fromEmail.split('<').pop().replace(/>/g,'').split('@')[0].trim();
+          // Truncate
+          if (name.length > 22) name = name.slice(0, 22) + '…';
+          return name;
+        };
+
+        var renderRow = function(row) {
+          var d = new Date(row.received_at);
+          var dateStr = relTime(d);
+          var dot = sourceDot(row.from_email);
+          var sender = cleanSender(row.from_email);
+          var subject = row.subject || (fr ? '(sans sujet)' : '(no subject)');
+          var isNew = row.status === 'new';
+          var unreadDot = isNew ? '<span class="cmp-unread-dot"></span>' : '<span style="display:inline-block;width:6px"></span>';
+
+          return (
+            '<div class="cmp-inbox-row' + (isNew ? ' cmp-new' : '') + '" data-email-id="' + row.id + '">' +
+              unreadDot +
+              '<span class="cmp-source-dot" style="background:' + dot.color + '" title="' + dot.title + '"></span>' +
+              '<span class="cmp-sender">' + _esc(sender) + '</span>' +
+              '<span class="cmp-subject">' + _esc(subject) + '</span>' +
+              '<span class="cmp-date">' + _esc(dateStr) + '</span>' +
+            '</div>'
+          );
+        };
+
+        el.innerHTML = rows.map(renderRow).join('');
+
+        // Click handler — opens Aria + marks as read
+        el.querySelectorAll('.cmp-inbox-row').forEach(function(rowEl) {
+          rowEl.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var id = rowEl.getAttribute('data-email-id');
+            var row = window._inboxEmails[id];
+            if (!row) return;
+
+            // Visual feedback: mark as read immediately
+            rowEl.classList.remove('cmp-new');
+            var dotEl = rowEl.querySelector('.cmp-unread-dot');
+            if (dotEl) {
+              dotEl.style.opacity = '0';
+              setTimeout(function() { dotEl.style.display = 'none'; }, 200);
+            }
+
+            if (typeof openInboxEmail === 'function') openInboxEmail(row);
+          });
+        });
+
+      } catch(e) {
+        console.error('[stafflo-v5.2] loadInboxEmails error:', e);
+        el.innerHTML = '<div style="color:var(--red);font-size:12px;padding:12px;text-align:center">' +
+          (fr ? '⚠ Erreur de chargement' : '⚠ Loading error') +
+          '</div>';
+      }
+    };
+
+    console.log('[stafflo-v5.2] ✓ Inbox compact rows — 1 line per email, click opens Aria');
+  })();
+
+  /* CSS for compact inbox rows */
+  var _styleInbox = document.createElement('style');
+  _styleInbox.textContent = [
+    /* Compact inbox rows */
+    '.cmp-inbox-row {',
+    '  display: flex; align-items: center; gap: 8px;',
+    '  padding: 8px 10px;',
+    '  border-bottom: 1px solid var(--border);',
+    '  font-size: 12px; line-height: 1.4;',
+    '  cursor: pointer;',
+    '  transition: background .12s;',
+    '  color: var(--muted);',
+    '  user-select: none;',
+    '}',
+    '.cmp-inbox-row:last-child { border-bottom: none; }',
+    '.cmp-inbox-row:hover { background: rgba(201,150,58,0.06); }',
+    '.cmp-inbox-row.cmp-new { color: var(--ink); font-weight: 500; }',
+    '.cmp-unread-dot {',
+    '  display: inline-block; width: 6px; height: 6px;',
+    '  border-radius: 50%; background: var(--gold);',
+    '  flex-shrink: 0;',
+    '  transition: opacity .2s;',
+    '}',
+    '.cmp-source-dot {',
+    '  display: inline-block; width: 6px; height: 6px;',
+    '  border-radius: 50%;',
+    '  flex-shrink: 0;',
+    '}',
+    '.cmp-sender {',
+    '  flex-shrink: 0;',
+    '  font-weight: 600;',
+    '  min-width: 90px; max-width: 130px;',
+    '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+    '}',
+    '.cmp-inbox-row.cmp-new .cmp-sender { color: var(--ink); }',
+    '.cmp-subject {',
+    '  flex: 1;',
+    '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+    '  min-width: 0;',
+    '  color: var(--muted);',
+    '}',
+    '.cmp-inbox-row.cmp-new .cmp-subject { color: var(--ink); }',
+    '.cmp-date {',
+    '  flex-shrink: 0;',
+    '  font-size: 11px;',
+    '  color: var(--muted);',
+    '  font-variant-numeric: tabular-nums;',
+    '  min-width: 32px; text-align: right;',
+    '}'
+  ].join('\n');
+  document.head.appendChild(_styleInbox);
+
+  console.log('[stafflo-v5] === pack v5.2 2026-05-08 loaded ===');
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STAFFLO PATCH v6 — 2026-05-08
+     Clean redesign: card hierarchy, LEAD button in header, no ghost chips.
+     This OVERRIDES v5.x for the email handling pipeline.
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function staffloPatchV6(){
+  'use strict';
+
+  /* ── Block ghost contextual chips on Stafflo email bubbles ── */
+  if (typeof window.appendContextualChips === 'function') {
+    var _origChips = window.appendContextualChips;
+    window.appendContextualChips = function(bubble) {
+      // Don't add chips to Stafflo email bubbles — they have their own actions
+      if (bubble && bubble.classList && (
+        bubble.classList.contains('stafflo-email-card') ||
+        bubble.classList.contains('stafflo-email-header') ||
+        bubble.classList.contains('stafflo-lead-card') ||
+        bubble.dataset && bubble.dataset.staffloEmail === '1'
+      )) return;
+      return _origChips.apply(this, arguments);
+    };
+    console.log('[stafflo-v6] ✓ blocked ghost chips on stafflo bubbles');
+  }
+
+  /* ── Helpers ── */
+  function _esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function _fmtSentDate(row, fr) {
+    var d = row.created_at || row.received_at || row.date || row.sent_at;
+    if (!d) return '';
+    try {
+      var dt = new Date(d);
+      if (isNaN(dt.getTime())) return '';
+      return dt.toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return ''; }
+  }
+
+  function _intentColor(category) {
+    switch ((category || '').toLowerCase()) {
+      case 'opportunity':   return '#1B4332';
+      case 'clarification': return '#BA7517';
+      case 'sensitive':     return '#C0392B';
+      default:              return '#C9963A';
+    }
+  }
+
+  function _isLeadEmail(parsed, row) {
+    var subj = (row.subject || '').toLowerCase();
+    var cat = (parsed.intent_category || '').toLowerCase();
+    var type = (parsed.email_type || '').toLowerCase();
+    if (/confirmed reservation|réservation confirmée|booking confirmed/i.test(subj)) return false;
+    if (/enquiry|pre-approval|pré-approval|preapproval|demande|devis|quote/i.test(subj)) return true;
+    if (/devis|enquiry|pre-approval|pré-approval|demande/i.test(type)) return true;
+    if (cat === 'opportunity' || cat === 'clarification') return true;
+    return false;
+  }
+
+  function _filterKeyFacts(facts, hasGuest) {
+    if (!Array.isArray(facts)) return [];
+    facts = facts.filter(function(f) { return f && f.label && f.value; });
+    if (!hasGuest) return facts;
+    var redundant = /^(date d['']arriv|date d['']arr|date arriv|arriv|date d['']actuel|date d['']entr|date d['']entrée|date dépar|départ|date de départ|nombre de personnes|personnes|guests|nuits|nights|source|prix net|net|montant net|prix initial|prix de base|destination|villa|adresse villa)/i;
+    return facts.filter(function(f) { return !redundant.test(f.label.trim()); });
+  }
+
+  /* ── Toast helper (uses existing toast() if available) ── */
+  function _toast(msg, type) {
+    if (typeof toast === 'function') { toast(msg); return; }
+    // Fallback inline toast
+    var t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:' +
+      (type==='success'?'#1B4332':'#1F2937') +
+      ';color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.15);font-family:DM Sans,sans-serif';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function() { t.style.transition = 'opacity .3s'; t.style.opacity = '0'; setTimeout(function(){t.remove();}, 300); }, 2400);
+  }
+
+  /* ── Build the analysis prompt (same as v5, kept stable) ── */
+  function buildEmailAnalysisPromptV6(row, owner, villa, fr) {
+    var memBlock = '';
+    try {
+      var memo = (typeof getCfg === 'function' ? (getCfg().ariaMemory || '') : '').trim();
+      if (memo) memBlock = '\n\n=== INFOS RÉFÉRENCE ===\n' + memo.slice(0, 2500) + '\n=== FIN ===\n';
+    } catch(e){}
+    return [
+      'Tu analyses un email reçu pour ' + villa + ' à Marrakech (propriétaire: ' + owner + ').',
+      memBlock,
+      '=== EMAIL ===',
+      'De: ' + (row.from_email || ''),
+      'Sujet: ' + (row.subject || ''),
+      'Contenu:',
+      (row.body || '').slice(0, 2500),
+      '',
+      '=== TÂCHE ===',
+      'Retourne UNIQUEMENT un JSON valide :',
+      '{',
+      '  "summary": "1-2 phrases",',
+      '  "email_type": "libellé court 1-3 mots",',
+      '  "intent_category": "opportunity | clarification | sensitive | informational",',
+      '  "urgency": "low | medium | high",',
+      '  "tone_for_reply": "warm | professional | apologetic | firm | reassuring",',
+      '  "key_facts": [{"label":"...","value":"..."}],',
+      '  "guest": {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"phone":"","notes":"","lang":"fr|en"},',
+      '  "context": [{"category":"flight|meals|transport|arrival|preferences|general","key":"...","value":"..."}],',
+      '  "responses": [',
+      '    {"label":"3-5 mots","tone":"...","text":"Message complet en ' + (fr ? 'français' : 'English') + ', signé ' + owner + '"},',
+      '    {"label":"...","tone":"...","text":"Variante angle différent"},',
+      '    {"label":"...","tone":"...","text":"Troisième angle"}',
+      '  ],',
+      '  "missing": ["infos manquantes"],',
+      '  "alerts": ["alertes critiques"]',
+      '}',
+      '',
+      'Règles key_facts : JAMAIS date arrivée, départ, nuits, personnes, source, prix net, nom guest (déjà dans guest). Inclus UNIQUEMENT prix delta, deadlines, allergies, vols, paiement, raisons d\'annulation, demandes spéciales. max 5. Vide [] si rien.',
+      'Règles responses : 3 angles distincts. Adapte langue à guest.lang. Signé ' + owner + '.',
+      'Règles alerts : vide [] si rien de critique.'
+    ].join('\n');
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     v6 openInboxEmail — single bubble with proper card hierarchy
+     No more separate "header bubble" + "summary bubble" floating apart.
+     One contained card visually anchored.
+     ════════════════════════════════════════════════════════════════════ */
+  if (typeof window.openInboxEmail === 'function') {
+    var _origOpenEmailV6 = window.openInboxEmail;
+    window.openInboxEmail = function(row) {
+      try {
+        if (!row) return _origOpenEmailV6.apply(this, arguments);
+        var fr = (typeof lang !== 'undefined' && lang === 'fr');
+        var fixMojibake = window.fixMojibake || function(s){return s;};
+        var cleanRow = Object.assign({}, row);
+        cleanRow.subject = fixMojibake(row.subject || '');
+        cleanRow.body = fixMojibake(row.body || '');
+        cleanRow.from_email = row.from_email || '';
+
+        // Mark processed silently
+        try {
+          if (typeof getCfg === 'function' && typeof SB_URL !== 'undefined' && typeof SB_ANON !== 'undefined') {
+            var cfg = getCfg();
+            fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + cleanRow.id, {
+              method: 'PATCH',
+              headers: { 'Content-Type':'application/json', apikey: cfg.sbKey||SB_ANON, Authorization:'Bearer '+(cfg.sbKey||SB_ANON) },
+              body: JSON.stringify({ status: 'processed' })
+            }).catch(function(){});
+          }
+          if (typeof loadInboxCount === 'function') loadInboxCount();
+        } catch(e){}
+
+        if (typeof closeInbox === 'function') closeInbox();
+        if (typeof openAriaModal === 'function') openAriaModal('');
+
+        setTimeout(function(){
+          try {
+            var fromShort = (cleanRow.from_email || '').split('<').pop().replace(/>/g,'').trim();
+            var senderName = (cleanRow.from_email || '').split('<')[0].trim().replace(/^"|"$/g, '') || fromShort.split('@')[0];
+            var sentDate = _fmtSentDate(cleanRow, fr);
+            var bodyText = (cleanRow.body || '').trim();
+            var subjectShort = (cleanRow.subject || (fr?'(sans sujet)':'(no subject)'));
+            var subjectTrunc = subjectShort.length > 50 ? subjectShort.slice(0, 50) + '…' : subjectShort;
+
+            var msgs = document.getElementById('chatMessages');
+            if (!msgs) return;
+
+            // Build the email "header card" — compact, shows source/date/subject, expandable
+            var headerCard = document.createElement('div');
+            headerCard.className = 'stafflo-email-header';
+            headerCard.dataset.staffloEmail = '1';
+            headerCard.innerHTML =
+              '<details>' +
+                '<summary>' +
+                  '<span class="seh-label">📧 ' + (fr?'EMAIL REÇU':'EMAIL') + '</span>' +
+                  '<span class="seh-sender">' + _esc(senderName) + '</span>' +
+                  (sentDate ? '<span class="seh-sep">·</span><span class="seh-date">' + _esc(sentDate) + '</span>' : '') +
+                  '<span class="seh-sep">·</span>' +
+                  '<span class="seh-subject">' + _esc(subjectTrunc) + '</span>' +
+                  '<span class="seh-chev">▾</span>' +
+                '</summary>' +
+                '<div class="seh-body">' +
+                  '<div class="seh-meta-row"><span class="seh-meta-label">' + (fr?'De':'From') + '</span><span class="seh-meta-val">' + _esc(senderName) +
+                    (fromShort && fromShort !== senderName ? ' <span style="opacity:.6">&lt;' + _esc(fromShort) + '&gt;</span>' : '') + '</span></div>' +
+                  (sentDate ? '<div class="seh-meta-row"><span class="seh-meta-label">' + (fr?'Date':'Date') + '</span><span class="seh-meta-val">' + _esc(sentDate) + '</span></div>' : '') +
+                  '<div class="seh-meta-row"><span class="seh-meta-label">' + (fr?'Sujet':'Subject') + '</span><span class="seh-meta-val seh-meta-strong">' + _esc(subjectShort) + '</span></div>' +
+                  (bodyText ? '<div class="seh-original">' + _esc(bodyText) + '</div>' : '') +
+                '</div>' +
+              '</details>';
+            msgs.appendChild(headerCard);
+
+            // Show typing indicator
+            var typing = document.getElementById('chatTyping');
+            if (typing) typing.style.display = 'block';
+            if (typeof scrollChat === 'function') scrollChat();
+
+            window.handleInboxEmailFull(cleanRow, cleanRow.extracted || {}).catch(function(e) {
+              if (typing) typing.style.display = 'none';
+              console.error('[stafflo-v6] handleInboxEmailFull error:', e);
+              var errEl = document.createElement('div');
+              errEl.className = 'stafflo-error-card';
+              errEl.dataset.staffloEmail = '1';
+              errEl.textContent = (fr ? '⚠ Erreur d\'analyse : ' : '⚠ Analysis error: ') + (e.message || 'unknown');
+              if (msgs) msgs.appendChild(errEl);
+            });
+          } catch(e) { console.error('[stafflo-v6] inbox header inject failed:', e); }
+        }, 100);
+      } catch(err) {
+        console.error('[stafflo-v6] openInboxEmail crashed, falling back:', err);
+        return _origOpenEmailV6.apply(this, arguments);
+      }
+    };
+    console.log('[stafflo-v6] ✓ openInboxEmail v6 — clean header card');
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     v6 handleInboxEmailFull — single contained analysis card with
+     LEAD button INSIDE the guest sub-card (always visible, always works)
+     ════════════════════════════════════════════════════════════════════ */
+  if (typeof window.handleInboxEmailFull === 'function') {
+    window.handleInboxEmailFull = async function(row, ex) {
+      var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      try {
+        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+        var owner = cfg.owner || 'Jérémie';
+        var villa = cfg.villa || 'Villa DarJ';
+        var fixMojibake = window.fixMojibake || function(s){return s;};
+
+        var cleanRow = Object.assign({}, row);
+        cleanRow.subject = fixMojibake(row.subject || '');
+        cleanRow.body    = fixMojibake(row.body || '');
+
+        var prompt = buildEmailAnalysisPromptV6(cleanRow, owner, villa, fr);
+        var raw = await callBestAI('reason', '', prompt, 1500);
+
+        var typing = document.getElementById('chatTyping');
+        if (typing) typing.style.display = 'none';
+
+        var parsed = (typeof parseAIJson === 'function') ? parseAIJson(raw) : null;
+        if (!parsed) {
+          try {
+            var c = (raw||'').replace(/```json|```/g,'').trim();
+            var fb = c.indexOf('{'), lb = c.lastIndexOf('}');
+            if (fb >= 0 && lb > fb) parsed = JSON.parse(c.slice(fb, lb+1));
+          } catch(e) {}
+        }
+        if (!parsed) {
+          var msgsErr = document.getElementById('chatMessages');
+          if (msgsErr) {
+            var errCard = document.createElement('div');
+            errCard.className = 'stafflo-error-card';
+            errCard.dataset.staffloEmail = '1';
+            errCard.textContent = (fr ? 'Email reçu mais format AI inattendu.' : 'Email received but AI returned unexpected format.');
+            msgsErr.appendChild(errCard);
+          }
+          return;
+        }
+
+        var g = parsed.guest || {};
+        var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
+        var commissionPct = (cleanRow.from_email||'').match(/airbnb/i) ? 3.6 : (cleanRow.from_email||'').match(/booking/i) ? 15 : 0;
+        var net = g.price ? Math.round(g.price * (1 - commissionPct/100)) : 0;
+
+        var clientList = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+        var existing = g.name ? clientList.find(function(cl){
+          return (cl.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);
+        }) : null;
+
+        var category = parsed.intent_category || 'informational';
+        var color = _intentColor(category);
+        var emailType = parsed.email_type || (fr?'Email':'Email');
+        var urgency = parsed.urgency || 'low';
+        var isLead = !existing && _isLeadEmail(parsed, cleanRow);
+
+        // ── Build the analysis card (single contained element) ──
+        var card = document.createElement('div');
+        card.className = 'stafflo-email-card';
+        card.dataset.staffloEmail = '1';
+        card.style.borderLeftColor = color;
+
+        // Section 1: Type + Urgency badge
+        var section1 = document.createElement('div');
+        section1.className = 'sec-type';
+        var urgencyHtml = '';
+        if (urgency === 'high')        urgencyHtml = '<span class="sec-badge sec-badge-urgent">⚡ ' + (fr?'URGENT':'URGENT') + '</span>';
+        else if (urgency === 'medium') urgencyHtml = '<span class="sec-badge sec-badge-attention">⚠ ' + (fr?'ATTENTION':'ATTENTION') + '</span>';
+        section1.innerHTML =
+          '<span class="sec-type-label" style="color:' + color + '">' + _esc(emailType.toUpperCase()) + '</span>' +
+          urgencyHtml;
+        card.appendChild(section1);
+
+        // Section 2: Summary
+        if (parsed.summary) {
+          var section2 = document.createElement('div');
+          section2.className = 'sec-summary';
+          section2.textContent = parsed.summary;
+          card.appendChild(section2);
+        }
+
+        // Section 3: Guest sub-card with LEAD button INSIDE
+        if (g.name) {
+          var guestCard = document.createElement('div');
+          guestCard.className = 'sec-guest';
+          guestCard.dataset.staffloEmail = '1';
+          if (isLead) guestCard.classList.add('is-lead');
+          if (existing) guestCard.classList.add('is-existing');
+
+          var guestStatus, statusColor;
+          if (existing) { guestStatus = (fr ? 'CLIENT EXISTANT' : 'EXISTING'); statusColor = '#C9963A'; }
+          else if (isLead) { guestStatus = (fr ? 'NOUVEAU LEAD' : 'NEW LEAD'); statusColor = '#BA7517'; }
+          else { guestStatus = (fr ? 'NOUVEAU CLIENT' : 'NEW GUEST'); statusColor = '#1B4332'; }
+
+          // Top row: status badge + save button
+          var topRow = document.createElement('div');
+          topRow.className = 'sec-guest-top';
+          topRow.innerHTML =
+            '<span class="sec-guest-status" style="color:' + statusColor + '">' +
+              (existing ? '⚠️ ' : (isLead ? '🎯 ' : '🆕 ')) + guestStatus +
+              (existing ? ' — ' + _esc(existing.name) : '') +
+            '</span>';
+
+          // Save button (the one that broke before)
+          var saveBtn = document.createElement('button');
+          saveBtn.type = 'button';
+          saveBtn.className = 'sec-save-btn';
+          if (existing) {
+            saveBtn.textContent = (fr?'🔄 Mettre à jour':'🔄 Update');
+            saveBtn.classList.add('is-update');
+          } else if (isLead) {
+            saveBtn.textContent = (fr?'🎯 Sauvegarder Lead':'🎯 Save Lead');
+            saveBtn.classList.add('is-lead-btn');
+          } else {
+            saveBtn.textContent = (fr?'💾 Sauvegarder':'💾 Save');
+          }
+
+          // BULLETPROOF click handler — uses pointerdown for max compatibility
+          var saveClicked = false;
+          var doSave = function(ev) {
+            if (saveClicked) return;
+            if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+            saveClicked = true;
+            console.log('[stafflo-v6] save clicked', { isLead: isLead, existing: !!existing, guest: g.name });
+
+            try {
+              if (existing) {
+                var merged = Object.assign({}, existing, {
+                  arrival: g.arrival || existing.arrival,
+                  departure: g.departure || existing.departure,
+                  guests: g.guests || existing.guests,
+                  notes: ((existing.notes||'') + (g.notes?' · '+g.notes:'')).trim()
+                });
+                if (typeof pushToSupabase === 'function') pushToSupabase(merged);
+                var idx = clientList.findIndex(function(x){return x.id===existing.id;});
+                if (idx>=0) clientList[idx] = merged;
+                if (typeof saveLocal === 'function') saveLocal();
+                if (typeof renderAll === 'function') renderAll();
+                _toast(fr ? '✓ ' + existing.name + ' mis à jour' : '✓ ' + existing.name + ' updated', 'success');
+                saveBtn.textContent = fr?'✅ À jour':'✅ Updated';
+                saveBtn.classList.add('is-saved');
+              } else {
+                var gWithStatus = Object.assign({}, g, {
+                  bookingStatus: isLead ? 'lead' : 'confirmed',
+                  source: g.source || ((cleanRow.from_email||'').match(/airbnb/i) ? 'Airbnb' : (cleanRow.from_email||'').match(/booking/i) ? 'Booking' : 'Direct')
+                });
+                if (typeof saveFromResult === 'function') saveFromResult(gWithStatus);
+                _toast(isLead ? (fr?'🎯 Lead ' + g.name + ' créé':'🎯 Lead ' + g.name + ' created')
+                              : (fr?'✓ ' + g.name + ' sauvegardé':'✓ ' + g.name + ' saved'), 'success');
+
+                // Transform button into "Voir dans CRM"
+                saveBtn.textContent = fr?'→ Voir dans CRM':'→ View in CRM';
+                saveBtn.classList.add('is-saved');
+                saveBtn.classList.add('is-cta');
+                saveClicked = false; // allow re-click to navigate
+                saveBtn.removeEventListener('click', doSave);
+                saveBtn.removeEventListener('pointerdown', doSave);
+                saveBtn.addEventListener('click', function(e2) {
+                  e2.stopPropagation(); e2.preventDefault();
+                  // Close Aria + scroll to CRM
+                  var ariaClose = document.querySelector('#ariaModal .aria-modal-close, .aria-modal-close');
+                  if (ariaClose && typeof ariaClose.click === 'function') ariaClose.click();
+                  else if (typeof closeAriaModal === 'function') closeAriaModal();
+                  setTimeout(function() {
+                    // Scroll the new client into view
+                    var newClient = clientList.find(function(x) {
+                      return (x.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);
+                    });
+                    if (newClient) {
+                      var cardEl = document.querySelector('[data-client-id="' + newClient.id + '"]');
+                      if (cardEl) {
+                        cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        cardEl.style.transition = 'box-shadow .3s';
+                        cardEl.style.boxShadow = '0 0 0 3px ' + statusColor;
+                        setTimeout(function() { cardEl.style.boxShadow = ''; }, 1500);
+                      }
+                    }
+                  }, 300);
+                });
+              }
+
+              // Save context if present
+              if (parsed.context && parsed.context.length) {
+                var targetId = existing ? existing.id : null;
+                if (!targetId) {
+                  var newCl = clientList.find(function(x){return (x.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);});
+                  if (newCl) targetId = newCl.id;
+                }
+                if (targetId && typeof saveClientContext === 'function') saveClientContext(targetId, parsed.context);
+              }
+            } catch(e) {
+              console.error('[stafflo-v6] save failed:', e);
+              _toast(fr ? '⚠ Erreur sauvegarde' : '⚠ Save error', 'error');
+              saveClicked = false; // allow retry
+            }
+          };
+          saveBtn.addEventListener('pointerdown', doSave, false);
+          saveBtn.addEventListener('click', doSave, false);
+
+          topRow.appendChild(saveBtn);
+          guestCard.appendChild(topRow);
+
+          // Guest details below
+          var details = document.createElement('div');
+          details.className = 'sec-guest-details';
+          var detailsHtml = '<div class="sgd-name">' + _esc(g.name) + (g.nat ? ' <span class="sgd-nat">' + _esc(g.nat) + '</span>' : '') + '</div>';
+          var stats = [];
+          if (g.arrival) {
+            var arrStr = (typeof fmtDate==='function' ? fmtDate(g.arrival, true) : g.arrival);
+            var depStr = g.departure ? (typeof fmtDate==='function' ? fmtDate(g.departure, true) : g.departure) : '';
+            stats.push('<span class="sgd-stat">📅 ' + _esc(arrStr) + (depStr ? ' → ' + _esc(depStr) : '') + (nights ? ' · <strong>' + nights + (fr?' nuits':' nights') + '</strong>' : '') + '</span>');
+          }
+          if (g.guests) stats.push('<span class="sgd-stat">👥 <strong>' + g.guests + '</strong>' + (fr?' pers.':' people') + '</span>');
+          if (net) stats.push('<span class="sgd-stat sgd-money">💰 ' + (fr?'Net':'Net') + ' <strong>~' + net + '€</strong></span>');
+          if (stats.length) detailsHtml += '<div class="sgd-stats">' + stats.join('') + '</div>';
+          details.innerHTML = detailsHtml;
+          guestCard.appendChild(details);
+
+          card.appendChild(guestCard);
+        }
+
+        // Section 4: Key facts (filtered)
+        var hasGuest = !!g.name;
+        var facts = _filterKeyFacts(parsed.key_facts, hasGuest);
+        if (facts.length) {
+          var factsCard = document.createElement('div');
+          factsCard.className = 'sec-facts';
+          factsCard.style.borderLeftColor = color;
+          var factsHtml = '<div class="sec-facts-title" style="color:' + color + '">🧾 ' + (fr?'FAITS-CLÉS':'KEY FACTS') + '</div>';
+          factsHtml += '<div class="sec-facts-list">';
+          facts.forEach(function(f) {
+            factsHtml += '<div class="sec-fact-row"><span class="sec-fact-label">' + _esc(f.label) + '</span><span class="sec-fact-value">' + _esc(f.value) + '</span></div>';
+          });
+          factsHtml += '</div>';
+          factsCard.innerHTML = factsHtml;
+          card.appendChild(factsCard);
+        }
+
+        // Section 5: Alerts
+        var alerts = Array.isArray(parsed.alerts) ? parsed.alerts.filter(Boolean) : [];
+        if (alerts.length) {
+          var alertCard = document.createElement('div');
+          alertCard.className = 'sec-alerts';
+          alertCard.innerHTML = '<span class="sec-alert-icon">⚠️</span><span class="sec-alert-text">' + alerts.map(_esc).join(' · ') + '</span>';
+          card.appendChild(alertCard);
+        }
+
+        // Section 6: Missing
+        var missing = Array.isArray(parsed.missing) ? parsed.missing.filter(Boolean) : [];
+        if (missing.length) {
+          var missCard = document.createElement('div');
+          missCard.className = 'sec-missing';
+          missCard.innerHTML = '<span class="sec-missing-icon">❓</span><span class="sec-missing-label">' + (fr?'Manquant :':'Missing:') + '</span><span class="sec-missing-text">' + missing.map(_esc).join(', ') + '</span>';
+          card.appendChild(missCard);
+        }
+
+        var msgsEl = document.getElementById('chatMessages');
+        if (msgsEl) msgsEl.appendChild(card);
+
+        // ── Reply options as separate accordion ──
+        var responses = Array.isArray(parsed.responses) ? parsed.responses.filter(function(r){ return r && r.text; }) : [];
+        if (responses.length) {
+          var optsCard = document.createElement('div');
+          optsCard.className = 'stafflo-replies-card';
+          optsCard.dataset.staffloEmail = '1';
+          var optsTitle = document.createElement('div');
+          optsTitle.className = 'sr-title';
+          optsTitle.innerHTML = '✍️ <strong>' + responses.length + '</strong> ' + (fr?'options de réponse':'reply options') + ' <span class="sr-hint">— ' + (fr?'cliquez pour ouvrir':'click to open') + '</span>';
+          optsCard.appendChild(optsTitle);
+
+          responses.forEach(function(resp, i) {
+            var clientPhone = existing ? existing.phone : g.phone;
+            var clientId = existing ? existing.id : null;
+            var waKey = (typeof storePendingWA === 'function') ? storePendingWA(clientId, resp.text) : null;
+            if (waKey && clientPhone && typeof _pendingWA !== 'undefined' && _pendingWA[waKey]) {
+              _pendingWA[waKey].phone = (clientPhone||'').replace(/[\s\-+()]/g,'');
+            }
+            var toneEmoji = { warm:'🌟', professional:'💼', apologetic:'🙏', firm:'⚖️', reassuring:'🤝' }[(resp.tone||'').toLowerCase()] || '';
+
+            var details = document.createElement('details');
+            details.className = 'sr-option';
+            details.style.borderLeftColor = color;
+
+            var summary = document.createElement('summary');
+            summary.innerHTML =
+              '<span class="sr-opt-num" style="color:' + color + '">OPT ' + (i+1) + '</span>' +
+              '<span class="sr-opt-label">' + _esc(resp.label || (fr?'Option':'Option')) + '</span>' +
+              (toneEmoji ? '<span class="sr-opt-tone">' + toneEmoji + '</span>' : '') +
+              '<span class="sr-opt-chev">▾</span>';
+
+            var expanded = document.createElement('div');
+            expanded.className = 'sr-opt-body';
+            var txt = document.createElement('div');
+            txt.className = 'sr-opt-text';
+            txt.textContent = resp.text;
+            var actions = document.createElement('div');
+            actions.className = 'sr-opt-actions';
+
+            var sendBtn = document.createElement('button');
+            sendBtn.type = 'button';
+            sendBtn.className = 'sr-btn sr-btn-send';
+            sendBtn.textContent = fr?'💬 Envoyer WhatsApp':'💬 Send WhatsApp';
+            sendBtn.addEventListener('click', function(e) {
+              e.stopPropagation(); e.preventDefault();
+              if (typeof sendPendingWA === 'function' && waKey) sendPendingWA(waKey);
+            });
+
+            var editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'sr-btn sr-btn-edit';
+            editBtn.textContent = fr?'✏️ Éditer':'✏️ Edit';
+            editBtn.addEventListener('click', function(e) {
+              e.stopPropagation(); e.preventDefault();
+              if (typeof editPendingWA === 'function' && waKey) editPendingWA(waKey, editBtn);
+            });
+
+            var copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.className = 'sr-btn sr-btn-copy';
+            copyBtn.textContent = fr?'📋 Copier':'📋 Copy';
+            copyBtn.addEventListener('click', function(e) {
+              e.stopPropagation(); e.preventDefault();
+              navigator.clipboard.writeText(resp.text).then(function() {
+                _toast('📋 ' + (fr?'Copié':'Copied'));
+              });
+            });
+
+            actions.appendChild(sendBtn);
+            actions.appendChild(editBtn);
+            actions.appendChild(copyBtn);
+            expanded.appendChild(txt);
+            expanded.appendChild(actions);
+            details.appendChild(summary);
+            details.appendChild(expanded);
+
+            details.addEventListener('toggle', function() {
+              if (details.open) {
+                optsCard.querySelectorAll('details.sr-option').forEach(function(d) {
+                  if (d !== details && d.open) d.open = false;
+                });
+              }
+            });
+
+            optsCard.appendChild(details);
+          });
+
+          if (msgsEl) msgsEl.appendChild(optsCard);
+        }
+
+        if (typeof scrollChat === 'function') scrollChat();
+
+      } catch(err) {
+        console.error('[stafflo-v6] handleInboxEmailFull crashed:', err);
+        var typing2 = document.getElementById('chatTyping');
+        if (typing2) typing2.style.display = 'none';
+        var msgsErr = document.getElementById('chatMessages');
+        if (msgsErr) {
+          var errCard = document.createElement('div');
+          errCard.className = 'stafflo-error-card';
+          errCard.dataset.staffloEmail = '1';
+          errCard.textContent = '⚠ ' + (err.message || 'Erreur');
+          msgsErr.appendChild(errCard);
+        }
+      }
+    };
+    console.log('[stafflo-v6] ✓ handleInboxEmailFull v6 — clean card hierarchy + working LEAD button');
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     v6 STYLES — proper card design, real visual hierarchy
+     ════════════════════════════════════════════════════════════════════ */
+  var styleV6 = document.createElement('style');
+  styleV6.textContent = `
+    /* ── Email header card (compact, expandable) ── */
+    .stafflo-email-header {
+      max-width: 100%;
+      margin: 8px 0;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--gold);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(0,0,0,.03);
+    }
+    .stafflo-email-header details > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      line-height: 1.4;
+      user-select: none;
+    }
+    .stafflo-email-header details > summary::-webkit-details-marker { display: none; }
+    .seh-label {
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      font-weight: 700;
+      color: var(--gold);
+      flex-shrink: 0;
+    }
+    .seh-sender {
+      font-weight: 600;
+      color: var(--ink);
+      flex-shrink: 0;
+      max-width: 130px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .seh-sep { color: var(--muted); opacity: .5; flex-shrink: 0; }
+    .seh-date { color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .seh-subject {
+      color: var(--ink);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .seh-chev {
+      color: var(--muted);
+      flex-shrink: 0;
+      transition: transform .2s;
+      font-size: 11px;
+    }
+    .stafflo-email-header details[open] .seh-chev { transform: rotate(180deg); }
+
+    .seh-body {
+      padding: 0 14px 14px;
+      border-top: 1px solid var(--border);
+      margin-top: 6px;
+    }
+    .seh-meta-row {
+      display: flex;
+      gap: 12px;
+      padding: 6px 0;
+      font-size: 12px;
+      align-items: baseline;
+    }
+    .seh-meta-label {
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 1px;
+      font-weight: 600;
+      width: 50px;
+      flex-shrink: 0;
+    }
+    .seh-meta-val {
+      color: var(--ink);
+      flex: 1;
+      word-break: break-word;
+    }
+    .seh-meta-strong {
+      font-weight: 600;
+    }
+    .seh-original {
+      margin-top: 10px;
+      padding: 12px;
+      background: #FAF7F0;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--ink);
+      white-space: pre-wrap;
+      max-height: 280px;
+      overflow-y: auto;
+      border: 1px solid rgba(201, 150, 58, .15);
+    }
+
+    /* ── Main analysis card ── */
+    .stafflo-email-card {
+      max-width: 100%;
+      margin: 12px 0;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--gold);
+      border-radius: 10px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.03);
+    }
+
+    /* Section: Type label + urgency badge */
+    .sec-type {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .sec-type-label {
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      font-weight: 700;
+    }
+    .sec-badge {
+      font-size: 9px;
+      letter-spacing: 1px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .sec-badge-urgent { color: #fff; background: #C0392B; }
+    .sec-badge-attention { color: #fff; background: #BA7517; }
+
+    /* Section: Summary */
+    .sec-summary {
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: var(--ink);
+      margin-bottom: 14px;
+    }
+
+    /* Section: Guest sub-card with LEAD button */
+    .sec-guest {
+      background: #FAFAF7;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--green);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+    }
+    .sec-guest.is-lead { border-left-color: #BA7517; background: rgba(186,117,23,.04); }
+    .sec-guest.is-existing { border-left-color: var(--gold); background: rgba(201,150,58,.04); }
+    .sec-guest-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .sec-guest-status {
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      font-weight: 700;
+    }
+    .sec-save-btn {
+      background: var(--green);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      pointer-events: auto;
+      position: relative;
+      z-index: 5;
+      box-shadow: 0 1px 3px rgba(0,0,0,.1);
+      transition: transform .1s, box-shadow .15s;
+      flex-shrink: 0;
+    }
+    .sec-save-btn.is-lead-btn { background: #BA7517; }
+    .sec-save-btn.is-update { background: var(--gold); color: var(--ink); }
+    .sec-save-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 6px rgba(0,0,0,.15);
+    }
+    .sec-save-btn:active {
+      transform: translateY(0);
+    }
+    .sec-save-btn.is-saved {
+      background: #1B4332;
+      cursor: default;
+    }
+    .sec-save-btn.is-cta {
+      background: #fff;
+      color: var(--green);
+      border: 1px solid var(--green);
+      cursor: pointer;
+    }
+    .sec-save-btn.is-cta:hover {
+      background: var(--green);
+      color: #fff;
+    }
+    .sgd-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+    .sgd-nat {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+    .sgd-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .sgd-stat strong { color: var(--ink); }
+    .sgd-money { color: var(--green); }
+    .sgd-money strong { color: var(--green); }
+
+    /* Section: Key facts */
+    .sec-facts {
+      background: #FBF9F4;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--gold);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+    }
+    .sec-facts-title {
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .sec-fact-row {
+      display: flex;
+      gap: 10px;
+      font-size: 12px;
+      line-height: 1.6;
+      padding: 3px 0;
+    }
+    .sec-fact-label {
+      color: var(--muted);
+      flex-shrink: 0;
+      min-width: 100px;
+    }
+    .sec-fact-value {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    /* Section: Alerts */
+    .sec-alerts {
+      background: rgba(192, 57, 43, .05);
+      border: 1px solid rgba(192, 57, 43, .15);
+      border-left: 3px solid #C0392B;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: #C0392B;
+      line-height: 1.5;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .sec-alert-icon { flex-shrink: 0; }
+
+    /* Section: Missing */
+    .sec-missing {
+      font-size: 12px;
+      color: var(--muted);
+      font-style: italic;
+      padding: 4px 0;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .sec-missing-icon { flex-shrink: 0; }
+    .sec-missing-label { font-weight: 600; flex-shrink: 0; }
+
+    /* ── Replies card ── */
+    .stafflo-replies-card {
+      max-width: 100%;
+      margin: 12px 0;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.03);
+    }
+    .sr-title {
+      font-size: 12px;
+      color: var(--ink);
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sr-hint { color: var(--muted); font-style: italic; }
+    .sr-option {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--gold);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      overflow: hidden;
+      transition: box-shadow .15s, border-color .15s;
+    }
+    .sr-option:hover { border-color: var(--gold); }
+    .sr-option[open] {
+      border-color: var(--gold);
+      box-shadow: 0 2px 6px rgba(0,0,0,.04);
+    }
+    .sr-option > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      user-select: none;
+      font-size: 13px;
+    }
+    .sr-option > summary::-webkit-details-marker { display: none; }
+    .sr-opt-num {
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .sr-opt-label {
+      color: var(--ink);
+      font-weight: 500;
+      flex: 1;
+    }
+    .sr-opt-tone { font-size: 14px; flex-shrink: 0; }
+    .sr-opt-chev {
+      color: var(--muted);
+      flex-shrink: 0;
+      transition: transform .2s;
+      font-size: 12px;
+    }
+    .sr-option[open] .sr-opt-chev { transform: rotate(180deg); }
+    .sr-opt-body {
+      padding: 4px 14px 14px;
+      border-top: 1px solid var(--border);
+      background: rgba(0,0,0,.01);
+    }
+    .sr-opt-text {
+      margin: 10px 0 12px;
+      white-space: pre-wrap;
+      line-height: 1.6;
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .sr-opt-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .sr-btn {
+      border: none;
+      border-radius: 6px;
+      padding: 7px 13px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      pointer-events: auto;
+    }
+    .sr-btn-send { background: #25D366; color: #fff; }
+    .sr-btn-edit, .sr-btn-copy {
+      background: #fff;
+      border: 1px solid var(--border);
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .sr-btn:hover { filter: brightness(1.05); }
+    .sr-btn:active { transform: translateY(1px); }
+
+    /* Error card */
+    .stafflo-error-card {
+      max-width: 100%;
+      margin: 8px 0;
+      padding: 12px 14px;
+      background: rgba(192, 57, 43, .05);
+      border: 1px solid rgba(192, 57, 43, .15);
+      border-left: 3px solid #C0392B;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #C0392B;
+    }
+  `;
+  document.head.appendChild(styleV6);
+
+  console.log('[stafflo-v6] === pack v6 2026-05-08 loaded ===');
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     STAFFLO PATCH v7 — 2026-05-08
+     Mobile portrait fixes:
+     • Force Today layout to clean column on ≤768px (no overlap, no overflow)
+     • Brief cards: 1 line for explanation + 1 line for CTA (compact mobile)
+     • Remove v6 debug log to clean console
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function staffloPatchV7(){
+  'use strict';
+
+  /* CSS-only fix for mobile layout + brief card compaction.
+     Pure CSS overrides — no JS surgery, low risk. */
+  var style = document.createElement('style');
+  style.id = 'stafflo-v7-mobile-fix';
+  style.textContent = `
+    /* ── iOS PORTRAIT FIX — Today tab layout ─────────────────────────── */
+    @media (max-width: 768px) {
+      /* Force every container into single-column flow.
+         No grid, no sticky, no absolute positioning. */
+      .today-cols,
+      .today-col-main,
+      .today-col-side {
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        grid-template-columns: none !important;
+        margin-top: 0 !important;
+        top: auto !important;
+      }
+      .today-col-main { margin-bottom: 12px !important; }
+      .today-col-side { margin-top: 12px !important; }
+
+      /* Calendar must clip itself, not bleed into siblings */
+      [id*="calendar"], [class*="calendar"], [class*="cal-month"], [class*="month-grid"] {
+        overflow: hidden !important;
+        max-width: 100% !important;
+      }
+
+      /* Stafflo cards/sections always have an opaque background and contain themselves */
+      .brief-card,
+      .hm-card,
+      .hm-body,
+      .home-card,
+      .home-section,
+      .signal-card,
+      .alert-card,
+      .villa-pipeline,
+      .villa-card,
+      [class*="signal"],
+      [class*="brief"] {
+        background: #FFFFFF !important;
+        position: relative !important;
+        z-index: 2 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      /* Container around the calendar: belt + braces */
+      #todayTab, #todayTab > * {
+        position: relative !important;
+        z-index: auto !important;
+      }
+
+      /* Aria FAB badge stays on top of everything else */
+      .aria-fab,
+      .aria-fab-badge {
+        z-index: 100 !important;
+      }
+    }
+
+    /* ── BRIEF CARDS — 1 line explanation + 1 line CTA ────────────── */
+    /* Apply on ALL viewports for consistency (per user request) */
+
+    .brief-card {
+      align-items: stretch !important;
+      padding: 0 !important;
+    }
+    .brief-card .brief-card-inner {
+      padding: 10px 12px !important;
+    }
+
+    /* Title: single line, truncated */
+    .brief-card-title {
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      line-height: 1.35 !important;
+      margin-bottom: 0 !important;
+      display: block !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+
+    /* Sub-text: single line, truncated, smaller */
+    .brief-card-sub {
+      font-size: 11px !important;
+      line-height: 1.4 !important;
+      color: var(--muted) !important;
+      display: block !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+      margin-top: 2px !important;
+      margin-bottom: 0 !important;
+    }
+
+    /* The action button stays inline, compact */
+    .brief-card-action,
+    .brief-card .brief-content > button {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 4px !important;
+      margin-top: 6px !important;
+      font-size: 11px !important;
+      padding: 5px 10px !important;
+      border-radius: 6px !important;
+      line-height: 1.3 !important;
+      white-space: nowrap !important;
+    }
+
+    /* The brief-content column allows both lines + CTA to flow naturally */
+    .brief-content {
+      flex: 1 !important;
+      min-width: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 1px !important;
+    }
+
+    /* On mobile: tighten more, hide WHY tooltip icon to save space */
+    @media (max-width: 480px) {
+      .brief-card-inner { padding: 9px 10px !important; gap: 8px !important; }
+      .brief-card-title { font-size: 12.5px !important; }
+      .brief-card-sub { font-size: 10.5px !important; }
+      .brief-card .tooltip-wrap { display: none !important; }
+      .brief-score { font-size: 11px !important; min-width: 22px !important; }
+    }
+
+    /* ── Stafflo email cards: ensure they always have white opaque bg too ── */
+    @media (max-width: 768px) {
+      .stafflo-email-header,
+      .stafflo-email-card,
+      .stafflo-replies-card,
+      .stafflo-error-card {
+        background: #FFFFFF !important;
+        position: relative !important;
+        z-index: 3 !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+
+  /* Suppress the v6 debug log to clean up console (button still works) */
+  if (typeof console !== 'undefined' && console.log) {
+    var _origLog = console.log;
+    console.log = function() {
+      // Filter out the [stafflo-v6] save clicked debug message
+      if (arguments.length && typeof arguments[0] === 'string' && arguments[0].indexOf('[stafflo-v6] save clicked') === 0) {
+        return; // silent
+      }
+      return _origLog.apply(console, arguments);
+    };
+  }
+
+  console.log('[stafflo-v7] ✓ Mobile portrait fix + compact brief cards loaded');
 })();
 </script>
 
