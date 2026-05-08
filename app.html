@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1234,7 +1235,11 @@ body, main { background: var(--cream); }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  cursor: pointer;
+  transition: background .12s;
 }
+.v2-card-hd:hover { background: rgba(201,150,58,.04); }
+.v2-card-hd .v2-card-title { cursor: pointer; }
 
 /* Inbox header reuse same style */
 .inbox-row-hd {
@@ -1517,33 +1522,32 @@ body, main { background: var(--cream); }
   </div>
 </div>
 
-<!-- Compact Calendar bar -->
-<div class="row row-100" style="margin-bottom:12px">
-  <div class="v2-card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 18px" onclick="(function(){var c=document.getElementById('card50Calendar');if(c)c.scrollIntoView({behavior:'smooth',block:'center'});})()">
-    <div style="display:flex;align-items:center;gap:10px">
-      <i class="ti ti-calendar" style="font-size:18px;color:var(--gold)"></i>
-      <div>
-        <div style="font-family:'Fraunces',serif;font-size:14px;color:var(--ink);font-weight:500" data-fr="Calendrier" data-en="Calendar">Calendrier</div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:1px" id="calTodayPreview" data-fr="Voir mai 2026" data-en="View May 2026">Voir mai 2026</div>
+<!-- Compact Calendar + Inbox (50/50, retractable) -->
+<div class="row row-50">
+  <div class="v2-card" id="cardCalendarMini">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-calendar"></i> <span data-fr="Calendrier" data-en="Calendar">Calendrier</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" id="calMonthLbl">—</span></div>
+      <div class="v2-card-actions" style="display:flex;gap:4px">
+        <button class="v2-icon-btn" onclick="event.stopPropagation();staffloCal.toggleView()" title="Basculer mois / 90 jours" aria-label="Toggle view" id="calViewToggleBtn">▦</button>
+        <button class="v2-icon-btn" onclick="event.stopPropagation();staffloCal.prev()" title="Précédent" aria-label="Previous">‹</button>
+        <button class="v2-icon-btn" onclick="event.stopPropagation();staffloCal.today()" title="Aujourd'hui" aria-label="Today">●</button>
+        <button class="v2-icon-btn" onclick="event.stopPropagation();staffloCal.next()" title="Suivant" aria-label="Next">›</button>
       </div>
     </div>
-    <i class="ti ti-arrow-down" style="font-size:16px;color:var(--muted)"></i>
+    <div class="v2-card-body" id="calBody" style="padding:8px 4px 4px"></div>
   </div>
-</div>
-
-<!-- Compact Inbox bar under Aria (collapsed, with counter) -->
-<div class="row row-100" id="inboxCompactRow" style="margin-bottom:12px">
-  <div class="v2-card" id="inboxCompactToggle" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 18px" onclick="(function(){var ic=document.getElementById('inboxDetailRow');var ch=document.getElementById('_inboxChev');if(!ic)return;var collapsed=ic.style.display==='none';ic.style.display=collapsed?'':'none';if(ch)ch.style.transform=collapsed?'rotate(180deg)':'rotate(0)';if(collapsed){setTimeout(function(){ic.scrollIntoView({behavior:'smooth',block:'nearest'})},100);}})()">
-    <div style="display:flex;align-items:center;gap:10px">
-      <i class="ti ti-inbox" style="font-size:18px;color:var(--gold)"></i>
-      <div>
-        <div style="font-family:'Fraunces',serif;font-size:14px;color:var(--ink);font-weight:500" data-fr="Inbox" data-en="Inbox">Inbox</div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:1px" data-fr="Messages reçus" data-en="Incoming messages">Messages reçus</div>
+  <div class="v2-card" id="cardInboxMini">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-inbox"></i> <span data-fr="Inbox" data-en="Inbox">Inbox</span></div>
+      <div class="v2-card-actions" style="display:flex;gap:4px">
+        <button class="v2-icon-btn" onclick="event.stopPropagation();if(typeof loadInboxEmails==='function')loadInboxEmails()" title="Refresh">↻</button>
+        <button class="v2-icon-btn" onclick="event.stopPropagation();if(typeof openInboxSettings==='function')openInboxSettings()" title="Settings">⚙</button>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <span id="inboxCompactCount" style="background:var(--gold-light);color:var(--gold);font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;font-family:var(--sans)">—</span>
-      <i id="_inboxChev" class="ti ti-chevron-down" style="font-size:16px;color:var(--muted);transition:transform .2s"></i>
+    <div class="v2-card-body" id="cardInboxMiniBody" style="padding:0">
+      <div id="inboxList" style="font-size:13px;color:var(--muted);max-height:300px;overflow-y:auto">
+        <div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic" data-fr="Chargement…" data-en="Loading…">Chargement…</div>
+      </div>
     </div>
   </div>
 </div>
@@ -1581,20 +1585,8 @@ body, main { background: var(--cream); }
 
 <!-- Row 2: Today actions 50% + Signals 50% -->
 
-<!-- Row 3: Calendar 50% + Villa snap 50% -->
-<div class="row row-50">
-  <div class="v2-card" id="card50Calendar">
-    <div class="v2-card-hd">
-      <div class="v2-card-title"><i class="ti ti-calendar"></i> <span data-fr="Calendrier" data-en="Calendar">Calendrier</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" id="calMonthLbl">—</span></div>
-      <div style="display:flex;gap:4px">
-        <button class="v2-icon-btn" onclick="staffloCal.toggleView()" title="Basculer mois / 90 jours" aria-label="Toggle view" id="calViewToggleBtn">▦</button>
-        <button class="v2-icon-btn" onclick="staffloCal.prev()" title="Mois précédent" aria-label="Previous month">‹</button>
-        <button class="v2-icon-btn" onclick="staffloCal.today()" title="Aujourd'hui" aria-label="Today">●</button>
-        <button class="v2-icon-btn" onclick="staffloCal.next()" title="Mois suivant" aria-label="Next month">›</button>
-      </div>
-    </div>
-    <div class="v2-card-body" id="calBody" style="padding:8px 4px 4px"></div>
-  </div>
+<!-- Row 3: Villa snap (row 100% — Calendar moved to top compact row) -->
+<div class="row row-100">
   <div class="v2-card" id="card50VillaSnap">
     <div class="v2-card-hd">
       <div class="v2-card-title"><i class="ti ti-home"></i> <span data-fr="Villa & Pipeline" data-en="Villa & Pipeline">Villa & Pipeline</span></div>
@@ -1772,33 +1764,24 @@ body, main { background: var(--cream); }
   </div>
 </div>
 
-<!-- Compact Calendar bar (collapsed by default, click to expand into modal) -->
-<div class="row row-100" style="margin-bottom:12px">
-  <div class="v2-card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 18px" onclick="goTab('today');setTimeout(function(){var c=document.getElementById('card50Calendar');if(c)c.scrollIntoView({behavior:'smooth',block:'center'});},150)">
-    <div style="display:flex;align-items:center;gap:10px">
-      <i class="ti ti-calendar" style="font-size:18px;color:var(--gold)"></i>
-      <div>
-        <div style="font-family:'Fraunces',serif;font-size:14px;color:var(--ink);font-weight:500" data-fr="Calendrier" data-en="Calendar">Calendrier</div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:1px" id="calClientsPreview" data-fr="Voir le calendrier complet" data-en="View full calendar">Voir le calendrier complet</div>
-      </div>
+<!-- Compact Calendar + Inbox 50/50 (retractable, auto-mirror) -->
+<div class="row row-50">
+  <div class="v2-card cardCalendarMiniMirror">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-calendar"></i> <span data-fr="Calendrier" data-en="Calendar">Calendrier</span></div>
     </div>
-    <i class="ti ti-arrow-right" style="font-size:16px;color:var(--muted)"></i>
+    <div class="v2-card-body" style="padding:14px 18px">
+      <div class="miniCalMirror" style="font-size:12px;color:var(--muted);font-style:italic" data-fr="Chargement…" data-en="Loading…">Chargement…</div>
+    </div>
   </div>
-</div>
-
-<!-- Compact Inbox bar -->
-<div class="row row-100" style="margin-bottom:12px">
-  <div class="v2-card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 18px" onclick="(function(){var ic=document.getElementById('_inboxClientsDetail');var ch=document.getElementById('_inboxChevClients');if(!ic)return;var collapsed=ic.style.display==='none';ic.style.display=collapsed?'':'none';if(ch)ch.style.transform=collapsed?'rotate(180deg)':'rotate(0)';})()">
-    <div style="display:flex;align-items:center;gap:10px">
-      <i class="ti ti-inbox" style="font-size:18px;color:var(--gold)"></i>
-      <div>
-        <div style="font-family:'Fraunces',serif;font-size:14px;color:var(--ink);font-weight:500" data-fr="Inbox" data-en="Inbox">Inbox</div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:1px" data-fr="Messages reçus" data-en="Incoming messages">Messages reçus</div>
-      </div>
+  <div class="v2-card cardInboxMiniMirror">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-inbox"></i> <span data-fr="Inbox" data-en="Inbox">Inbox</span></div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <span id="inboxCompactCountClients" style="background:var(--gold-light);color:var(--gold);font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;font-family:var(--sans)">—</span>
-      <i id="_inboxChevClients" class="ti ti-chevron-down" style="font-size:16px;color:var(--muted);transition:transform .2s"></i>
+    <div class="v2-card-body" style="padding:0">
+      <div class="miniInboxMirror">
+        <div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic" data-fr="Chargement…" data-en="Loading…">Chargement…</div>
+      </div>
     </div>
   </div>
 </div>
@@ -1901,33 +1884,24 @@ body, main { background: var(--cream); }
   </div>
 </div>
 
-<!-- Compact Calendar bar -->
-<div class="row row-100" style="margin-bottom:12px">
-  <div class="v2-card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 18px" onclick="goTab('today');setTimeout(function(){var c=document.getElementById('card50Calendar');if(c)c.scrollIntoView({behavior:'smooth',block:'center'});},150)">
-    <div style="display:flex;align-items:center;gap:10px">
-      <i class="ti ti-calendar" style="font-size:18px;color:var(--gold)"></i>
-      <div>
-        <div style="font-family:'Fraunces',serif;font-size:14px;color:var(--ink);font-weight:500" data-fr="Calendrier" data-en="Calendar">Calendrier</div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:1px" data-fr="Voir le calendrier complet" data-en="View full calendar">Voir le calendrier complet</div>
-      </div>
+<!-- Compact Calendar + Inbox 50/50 (retractable) -->
+<div class="row row-50">
+  <div class="v2-card cardCalendarMiniMirror">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-calendar"></i> <span data-fr="Calendrier" data-en="Calendar">Calendrier</span></div>
     </div>
-    <i class="ti ti-arrow-right" style="font-size:16px;color:var(--muted)"></i>
+    <div class="v2-card-body" style="padding:14px 18px">
+      <div class="miniCalMirror" style="font-size:12px;color:var(--muted);font-style:italic" data-fr="Chargement…" data-en="Loading…">Chargement…</div>
+    </div>
   </div>
-</div>
-
-<!-- Compact Inbox bar -->
-<div class="row row-100" style="margin-bottom:12px">
-  <div class="v2-card" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 18px" onclick="(function(){var ic=document.getElementById('_inboxVillaDetail');var ch=document.getElementById('_inboxChevVilla');if(!ic)return;var collapsed=ic.style.display==='none';ic.style.display=collapsed?'':'none';if(ch)ch.style.transform=collapsed?'rotate(180deg)':'rotate(0)';})()">
-    <div style="display:flex;align-items:center;gap:10px">
-      <i class="ti ti-inbox" style="font-size:18px;color:var(--gold)"></i>
-      <div>
-        <div style="font-family:'Fraunces',serif;font-size:14px;color:var(--ink);font-weight:500" data-fr="Inbox" data-en="Inbox">Inbox</div>
-        <div style="font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-top:1px" data-fr="Messages reçus" data-en="Incoming messages">Messages reçus</div>
-      </div>
+  <div class="v2-card cardInboxMiniMirror">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-inbox"></i> <span data-fr="Inbox" data-en="Inbox">Inbox</span></div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <span id="inboxCompactCountVilla" style="background:var(--gold-light);color:var(--gold);font-size:11px;font-weight:700;padding:3px 10px;border-radius:99px;font-family:var(--sans)">—</span>
-      <i id="_inboxChevVilla" class="ti ti-chevron-down" style="font-size:16px;color:var(--muted);transition:transform .2s"></i>
+    <div class="v2-card-body" style="padding:0">
+      <div class="miniInboxMirror">
+        <div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic" data-fr="Chargement…" data-en="Loading…">Chargement…</div>
+      </div>
     </div>
   </div>
 </div>
@@ -17470,7 +17444,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
     <!-- Email list -->
     <div style="padding:0 16px">
-      <div id="inboxList" style="font-size:13px;color:var(--muted)">Chargement...</div>
+      <div id="inboxListLegacy" style="font-size:13px;color:var(--muted)">Chargement...</div>
     </div>
   </div>
 </div>
@@ -18681,6 +18655,154 @@ window.addEventListener('DOMContentLoaded', function() {
   }
   setTimeout(setupCalendarCollapse, 700);
   setInterval(setupCalendarCollapse, 4000);
+
+  /* ── Mini Calendar + Mini Inbox content updaters (across all tabs) ── */
+  function fmtDay(d){ return d.getDate()+'/'+(d.getMonth()+1); }
+  function refreshMiniCalendar() {
+    try {
+      var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      var clients = (typeof window.clients !== 'undefined') ? window.clients : [];
+      var today = new Date(); today.setHours(0,0,0,0);
+      var arrivals = clients.filter(function(c){ if(!c.arrival)return false; var d=new Date(c.arrival);d.setHours(0,0,0,0); var dd=Math.round((d-today)/86400000); return dd>=0 && dd<=30; }).sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);}).slice(0,4);
+      var html = '';
+      if (arrivals.length) {
+        html = '<div style="display:flex;flex-direction:column;gap:6px">' + arrivals.map(function(c){
+          var d = new Date(c.arrival);
+          var dd = Math.round((d-today)/86400000);
+          var lbl = dd===0 ? (fr?'Aujourd\'hui':'Today') : dd===1 ? (fr?'Demain':'Tomorrow') : ('J+'+dd);
+          return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-family:var(--sans)"><span style="color:var(--ink);font-weight:500">'+(c.name||'?').split(' ')[0]+'</span><span style="color:var(--muted);font-size:11px">'+fmtDay(d)+' · <strong style="color:var(--gold);font-weight:600">'+lbl+'</strong></span></div>';
+        }).join('') + '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);text-align:center"><a onclick="event.stopPropagation();goTab(\'today\')" style="font-size:11px;color:var(--gold);font-weight:600;cursor:pointer">'+(fr?'Voir le calendrier complet →':'View full calendar →')+'</a></div>';
+      } else {
+        html = '<div style="font-size:12px;color:var(--muted);font-style:italic">'+(fr?'Aucune arrivée prochaine':'No upcoming arrivals')+'</div>';
+      }
+      var els = document.querySelectorAll('.miniCalMirror');
+      els.forEach(function(el){ el.innerHTML = html; });
+    } catch(e){}
+  }
+  function refreshMiniInbox() {
+    try {
+      var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      var rows = (window._inboxEmails && Object.values(window._inboxEmails)) || [];
+      rows = rows.sort(function(a,b){return new Date(b.received_at||0)-new Date(a.received_at||0);}).slice(0,4);
+      var html = '';
+      if (rows.length) {
+        html = rows.map(function(r){
+          var sender = ((r.from_name || r.from_email || '?').split('<')[0].trim()).slice(0,18);
+          var subj = (r.subject||'(no subject)').slice(0,40);
+          var isNew = !r.read_at;
+          return '<div style="padding:8px 18px;border-bottom:1px solid rgba(0,0,0,.04);font-size:11px;display:flex;align-items:center;gap:8px;cursor:pointer;font-family:var(--sans)" onclick="event.stopPropagation();goTab(\'today\')"><span style="width:6px;height:6px;border-radius:50%;background:'+(isNew?'var(--gold)':'transparent')+';flex-shrink:0"></span><span style="font-weight:'+(isNew?'600':'500')+';color:var(--ink);min-width:70px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+sender+'</span><span style="flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+subj+'</span></div>';
+        }).join('');
+      } else {
+        html = '<div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic">'+(fr?'Aucun message':'No messages')+'</div>';
+      }
+      var els = document.querySelectorAll('.miniInboxMirror');
+      els.forEach(function(el){ el.innerHTML = html; });
+    } catch(e){}
+  }
+  setTimeout(refreshMiniCalendar, 1200);
+  setTimeout(refreshMiniInbox, 1500);
+  setInterval(refreshMiniCalendar, 6000);
+  setInterval(refreshMiniInbox, 6000);
+
+  /* ── All v2-card headers: click = collapse/expand + show preview ── */
+  function buildPreview(cardId, card) {
+    try {
+      var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      var clients = (typeof window.clients !== 'undefined') ? window.clients : [];
+      if (cardId === 'card50MorningBrief' || cardId === 'card50MorningBrief') {
+        var n = (window._briefCards||[]).length || (card.querySelectorAll('.brief-card').length || 0);
+        return n ? (n + (fr?' priorités':' priorities')) : (fr?'Brief vide':'Empty');
+      }
+      if (cardId === 'heroAlertsToday') {
+        var n = card.querySelectorAll('.alert-hm').length;
+        return n ? (n + (fr?' signaux':' signals')) : (fr?'Aucun signal':'No signals');
+      }
+      if (cardId === 'card50Calendar') {
+        var today = new Date(); today.setHours(0,0,0,0);
+        var soon = clients.filter(function(c){ if(!c.arrival)return false; var d=new Date(c.arrival);d.setHours(0,0,0,0); var dd=Math.round((d-today)/86400000); return dd>=0 && dd<=14;});
+        return soon.length ? (soon.length + (fr?' arrivée(s) ≤14j':' arrivals ≤14d')) : (fr?'Aucune arrivée':'No arrivals');
+      }
+      if (cardId === 'card50VillaSnap') {
+        var inHouse = clients.find(function(c){ if(!c.arrival||!c.departure)return false; var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;});
+        return inHouse ? (inHouse.name||'').split(' ')[0] + (fr?' en cours':' in stay') : (fr?'Personne':'Empty');
+      }
+      if (cardId === 'cardAriaMemoryShortcut') {
+        var cfg = (typeof getCfg==='function')?getCfg():{};
+        var len = (cfg.ariaMemory||'').length;
+        return len ? (len + (fr?' chars stockés':' chars stored')) : (fr?'Vide':'Empty');
+      }
+      if (cardId === 'heroActionBoardToday') {
+        var checked = card.querySelectorAll('input[type=checkbox]:checked').length;
+        var total = card.querySelectorAll('input[type=checkbox]').length;
+        return total ? (checked + '/' + total + (fr?' faits':' done')) : (fr?'Aucune tâche':'No tasks');
+      }
+      if (cardId === 'inboxCardToday') {
+        var unread = (window._inboxEmails && Object.values(window._inboxEmails).filter(function(r){return !r.read_at;}).length) || 0;
+        return unread ? (unread + ' new') : (fr?'À jour':'Up to date');
+      }
+      var titleSpan = card.querySelector('.v2-card-title span');
+      if (titleSpan && titleSpan.textContent.toLowerCase().indexOf('marché') !== -1) {
+        var compsCount = (typeof loadSavedCompetitors==='function') ? (loadSavedCompetitors()||[]).length : 0;
+        return compsCount ? (compsCount + ' villas') : (fr?'Aucun concurrent':'No competitors');
+      }
+      if (titleSpan && titleSpan.textContent.toLowerCase().indexOf('recommandé') !== -1) {
+        var p = (typeof getPrice==='function')?getPrice():null;
+        return p ? (p.pricePN + '€/nuit') : '—';
+      }
+      return '';
+    } catch(e){ return ''; }
+  }
+
+  function bindHeaderClicks() {
+    document.querySelectorAll('.v2-card').forEach(function(card){
+      var hd = card.querySelector('.v2-card-hd');
+      if (!hd || hd.dataset.hdCollapseReady) return;
+      hd.dataset.hdCollapseReady = '1';
+      var cardId = card.id || '';
+      // Skip cards that already have their own toggle (compact bars)
+      if (cardId === 'inboxCompactToggle') return;
+      var body = card.querySelector('.v2-card-body, .inbox-row-body');
+      if (!body) return;
+      // Build preview span
+      var prev = document.createElement('span');
+      prev.className = 'v2-card-preview';
+      prev.style.cssText = 'display:none;font-size:11px;color:var(--gold);font-weight:500;letter-spacing:.3px;margin-left:10px;font-family:var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      var titleEl = hd.querySelector('.v2-card-title');
+      if (titleEl) titleEl.parentNode.insertBefore(prev, titleEl.nextSibling);
+      // Chevron
+      var chev = document.createElement('button');
+      chev.className = 'v2-icon-btn _hdChev';
+      chev.style.cssText = 'background:transparent;border:none;color:var(--muted);width:24px;height:24px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:4px';
+      chev.innerHTML = '<i class="ti ti-chevron-up" style="font-size:14px"></i>';
+      var actions = hd.querySelector('.v2-card-actions');
+      if (!actions) {
+        actions = document.createElement('div');
+        actions.className = 'v2-card-actions';
+        actions.style.cssText = 'display:flex;align-items:center;gap:4px;flex-shrink:0';
+        hd.appendChild(actions);
+      }
+      actions.appendChild(chev);
+      hd.addEventListener('click', function(e){
+        if (e.target.closest('.v2-icon-btn:not(._hdChev),.v2-card-more,button:not(._hdChev),input,a')) return;
+        var collapsed = body.style.display === 'none';
+        body.style.display = collapsed ? '' : 'none';
+        prev.style.display = collapsed ? 'none' : 'inline-block';
+        var i = chev.querySelector('i');
+        if (i) i.className = collapsed ? 'ti ti-chevron-up' : 'ti ti-chevron-down';
+        i.style.fontSize = '14px';
+        if (!collapsed) prev.textContent = '· ' + buildPreview(cardId, card);
+      });
+    });
+    // Refresh previews on cards already collapsed
+    document.querySelectorAll('.v2-card-preview').forEach(function(p){
+      if (p.style.display === 'inline-block') {
+        var card = p.closest('.v2-card');
+        if (card) p.textContent = '· ' + buildPreview(card.id||'', card);
+      }
+    });
+  }
+  setTimeout(bindHeaderClicks, 800);
+  setInterval(bindHeaderClicks, 4000);
 
   /* ── Generic confirm popup ── */
   window.staffloConfirm = function(opts) {
