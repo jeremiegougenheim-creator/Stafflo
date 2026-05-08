@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -976,6 +977,7 @@ header {
   letter-spacing: 1.5px !important;
   opacity: .55;
   transition: opacity .15s;
+  display: none; /* mockup-aligned: hide WHY text, score pill is enough */
 }
 .brief-card:hover .brief-content + div button { opacity: 1; }
 
@@ -1198,7 +1200,7 @@ header {
 }
 #card50MorningBriefBody .brief-card.p2,
 #briefCards.brief-cards .brief-card.p2 {
-  border-left-color: #BA7517;
+  border-left-color: transparent;
 }
 /* Calendar/villa snap bodies keep their own padding */
 #calBody, #card50VillaSnap .v2-card-body {
@@ -10015,7 +10017,7 @@ async function generateAlerts(weatherTemp) {
     const route = routeAlert(a);
     return `
     <div class="alert-hm ${a.type}" data-alert-idx="${idx}" onclick="handleAlertClick('${route.action}', this)" style="cursor:pointer;transition:background .15s" onmouseenter="this.style.background='rgba(60,108,17,.04)'" onmouseleave="this.style.background=''">
-      <span style="flex-shrink:0;font-size:14px">${a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡'}</span>
+      <span style="flex-shrink:0;font-size:14px">${typeof iconFor === 'function' ? iconFor(a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡', a) : (a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡')}</span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:12px;margin-bottom:2px">${a.title}</div>
         <div style="font-size:11px;opacity:.85;line-height:1.4">${a.sub}</div>
@@ -11502,7 +11504,7 @@ function renderBriefCards(el, cards) {
       '</span>' : '';
 
     return '<div class="brief-card ' + pClass + '" onclick="showWhyModal(' + idx + ')" style="cursor:pointer" data-idx="' + idx + '">' +
-      '<div class="brief-icon">' + (card.icon||'💡') + '</div>' +
+      '<div class="brief-icon">' + (typeof iconFor === 'function' ? iconFor(card.icon, card) : (card.icon||'💡')) + '</div>' +
       '<div class="brief-content">' +
         '<div class="brief-card-title">' + (card.title||'') + whyHtml + '</div>' +
         '<div class="brief-card-sub">' + (card.detail||'') + '</div>' +
@@ -11515,7 +11517,7 @@ function renderBriefCards(el, cards) {
     '</div>';
   };
 
-  const SHOW_FIRST = 2;
+  const SHOW_FIRST = 3;
   const visibleCards = cardsToRender.slice(0, SHOW_FIRST);
   const hiddenCards = cardsToRender.slice(SHOW_FIRST);
 
@@ -18169,6 +18171,55 @@ window.addEventListener('DOMContentLoaded', function() {
 <script>
 (function staffloBridge(){
   'use strict';
+
+  /* ── iconFor() — emoji → Tabler outline mapping (used by brief & signals) ── */
+  var ICON_MAP = {
+    '🛂':'passport','🛃':'passport',
+    '☀':'sun','☀️':'sun','🌞':'sun',
+    '💡':'bulb','🔆':'bulb',
+    '⚠':'alert-triangle','⚠️':'alert-triangle',
+    '🚨':'alert-octagon',
+    '✅':'check','✔':'check','☑':'check','✓':'check',
+    '❌':'x','✖':'x',
+    '📅':'calendar-event','🗓':'calendar-event','🗓️':'calendar-event',
+    '📆':'calendar',
+    '📧':'mail','📨':'mail','✉':'mail','✉️':'mail',
+    '📬':'inbox','📭':'inbox','📥':'inbox',
+    '💰':'currency-euro','💶':'currency-euro','💵':'cash','💸':'cash',
+    '€':'currency-euro','$':'currency-dollar',
+    '📊':'chart-bar','📈':'trending-up','📉':'trending-down',
+    '⭐':'star','🌟':'star','✨':'sparkles',
+    '🏡':'home','🏠':'home','🏖':'beach','🏖️':'beach',
+    '🧳':'luggage','👜':'briefcase',
+    '🎯':'target','🎁':'gift','🎉':'confetti',
+    '🔥':'flame','💧':'droplet',
+    '🏊':'pool','🏊‍♂️':'pool','🏊‍♀️':'pool',
+    '🍽':'tools-kitchen-2','🍽️':'tools-kitchen-2','🍴':'tools-kitchen-2',
+    '🛏':'bed','🛏️':'bed',
+    '🧹':'broom','🧼':'spray',
+    '👤':'user','👥':'users','🧑':'user','👨':'user','👩':'user',
+    '📱':'device-mobile','💬':'message-circle','📞':'phone',
+    '🔑':'key','🔒':'lock','🔓':'lock-open',
+    '📝':'pencil','📋':'clipboard-list','📌':'pin',
+    '⏰':'clock','⏳':'hourglass','🕐':'clock',
+    '🌍':'world','🌐':'world',
+    '🤖':'robot','🧠':'brain'
+  };
+  function iconFor(emojiOrName, ctx) {
+    if (!emojiOrName) return '<i class="ti ti-bulb"></i>';
+    var key = String(emojiOrName).trim();
+    // strip variation selectors that sometimes break lookups
+    var stripped = key.replace(/[\uFE0E\uFE0F]/g, '');
+    var name = ICON_MAP[key] || ICON_MAP[stripped];
+    if (!name && /^[a-z][a-z0-9-]+$/.test(key)) name = key; // already a tabler name
+    if (!name) {
+      // fallback: try first char if it's an emoji prefix
+      var first = Array.from(stripped)[0];
+      name = ICON_MAP[first] || 'bulb';
+    }
+    return '<i class="ti ti-' + name + '"></i>';
+  }
+  window.iconFor = iconFor;
 
   /* ── Disable gmail-pull endpoint (function not deployed on Supabase) ── */
   if (!window._stafflo_gmail_pull_disabled) {
