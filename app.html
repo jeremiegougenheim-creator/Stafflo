@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -18759,34 +18760,40 @@ window.addEventListener('DOMContentLoaded', function() {
     try {
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
       var clients = (typeof window.clients !== 'undefined') ? window.clients : [];
-      // Calendar: compact ribbon 30 days preview
+      // Calendar: compact ribbon 14 days with guest names (rich preview)
       if (cardId === 'cardCalendarMini' || (card.classList && card.classList.contains('cardCalendarMiniMirror'))) {
         var todayD = new Date(); todayD.setHours(0,0,0,0);
         var occ = (typeof buildOccupancyMap==='function')?buildOccupancyMap():{};
         var startD = new Date(todayD); startD.setDate(startD.getDate()-3);
+        var dayInit = fr ? ['D','L','M','M','J','V','S'] : ['S','M','T','W','T','F','S'];
+        var monthShort = fr?['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc']:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         var lastMonth = -1;
-        var html = '<div style="overflow-x:auto;padding:8px 12px 10px;-webkit-overflow-scrolling:touch"><div style="display:flex;gap:2px;min-width:max-content">';
-        for (var i=0; i<30; i++){
+        var html = '<div style="overflow-x:auto;padding:14px 14px 12px;-webkit-overflow-scrolling:touch"><div style="display:flex;gap:3px;min-width:max-content">';
+        for (var i=0; i<14; i++){
           var d = new Date(startD); d.setDate(startD.getDate()+i);
           var key = d.toISOString().slice(0,10);
           var info = occ[key];
           var isToday = d.getTime()===todayD.getTime();
-          var bg='#fff', fg='var(--ink)', border='1px solid var(--border)';
-          if (info){
-            if (info.type==='arrival'){ bg='#3B6D11'; fg='#fff'; border='1px solid #3B6D11'; }
-            else if (info.type==='departure'){ bg='#C0392B'; fg='#fff'; border='1px solid #C0392B'; }
+          var bg='#fff', fg='var(--ink)', border='1px solid var(--border)', arrow='', nm='';
+          if (info && info.guest){
+            nm = (info.guest.name||'').split(' ')[0].slice(0,7);
+            if (info.type==='arrival'){ bg='#3B6D11'; fg='#fff'; border='1px solid #3B6D11'; arrow='<span style="position:absolute;top:2px;right:3px;font-size:9px;color:#fff;opacity:.85">→</span>'; }
+            else if (info.type==='departure'){ bg='#C0392B'; fg='#fff'; border='1px solid #C0392B'; arrow='<span style="position:absolute;top:2px;right:3px;font-size:9px;color:#fff;opacity:.85">←</span>'; }
             else { bg='#D8E4CC'; fg='#1d4d3a'; border='1px solid #C8D8B8'; }
           }
           if (isToday) border = '2px solid var(--gold)';
           var monthLbl = '';
           if (d.getMonth() !== lastMonth){
             lastMonth = d.getMonth();
-            var mn = ['J','F','M','A','M','J','J','A','S','O','N','D'][d.getMonth()];
-            monthLbl = '<div style="position:absolute;top:-12px;left:0;font-size:8px;color:var(--gold);font-weight:700;letter-spacing:1px">'+mn+'</div>';
+            monthLbl = '<div style="position:absolute;top:-13px;left:0;font-size:9px;color:var(--gold);font-weight:700;letter-spacing:1px">'+monthShort[d.getMonth()]+'</div>';
           }
-          html += '<div style="position:relative;width:26px;height:34px;background:'+bg+';color:'+fg+';border:'+border+';border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:'+(isToday?'700':'500')+';flex-shrink:0;font-family:var(--sans)">'+monthLbl+d.getDate()+'</div>';
+          var dInit = dayInit[d.getDay()];
+          html += '<div style="position:relative;width:42px;height:62px;background:'+bg+';color:'+fg+';border:'+border+';border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3px;flex-shrink:0;font-family:var(--sans)">'+monthLbl+arrow+'<div style="font-size:9px;font-weight:600;opacity:.7;line-height:1">'+dInit+'</div><div style="font-size:14px;font-weight:'+(isToday?'700':'600')+';line-height:1.1;margin-top:1px">'+d.getDate()+'</div>'+(nm?'<div style="font-size:8px;font-weight:500;opacity:.85;line-height:1;margin-top:2px;max-width:38px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</div>':'')+'</div>';
         }
-        html += '</div></div>';
+        html += '</div>';
+        // Legend
+        html += '<div style="display:flex;gap:10px;margin-top:10px;font-size:9px;color:var(--muted);font-family:var(--sans);letter-spacing:.3px;flex-wrap:wrap"><span><span style="display:inline-block;width:10px;height:10px;background:#3B6D11;border-radius:2px;vertical-align:-1px"></span> '+(fr?'Arrivée':'Arrival')+'</span><span><span style="display:inline-block;width:10px;height:10px;background:#D8E4CC;border:1px solid #C8D8B8;border-radius:2px;vertical-align:-1px"></span> '+(fr?'Séjour':'Stay')+'</span><span><span style="display:inline-block;width:10px;height:10px;background:#C0392B;border-radius:2px;vertical-align:-1px"></span> '+(fr?'Départ':'Depart')+'</span></div>';
+        html += '</div>';
         return html;
       }
       // Inbox: list 3 last
