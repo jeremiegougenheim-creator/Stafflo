@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1704,7 +1705,6 @@ body, main { background: var(--cream); }
     <div class="v2-card-hd">
       <div class="v2-card-title" style="min-width:0;flex-shrink:1;overflow:hidden"><i class="ti ti-calendar"></i> <span data-fr="Calendrier" data-en="Calendar" style="white-space:nowrap">Calendrier</span><span class="cal-month-lbl" style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="calMonthLbl"></span></div>
       <div class="v2-card-actions" style="display:flex;gap:4px">
-        <button class="v2-icon-btn" onclick="event.stopPropagation();staffloCal.toggleView()" title="Mois / 90 jours" id="calViewToggleBtn">▦</button>
         <button class="v2-icon-btn" onclick="event.stopPropagation();staffloCal.prev()" title="Précédent">‹</button>
         <button class="v2-icon-btn" onclick="event.stopPropagation();staffloCal.today()" title="Aujourd'hui">●</button>
         <button class="v2-icon-btn" onclick="event.stopPropagation();staffloCal.next()" title="Suivant">›</button>
@@ -19944,9 +19944,9 @@ window.addEventListener('DOMContentLoaded', function() {
           return '<div style="padding:14px 18px;text-align:center"><div style="font-size:13px;color:var(--muted);font-style:italic;line-height:1.5">'+(fr?'Le calendrier est libre.':'Your calendar is free.')+'</div><div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button onclick="event.stopPropagation();if(typeof openForm===\'function\')openForm()" style="background:var(--gold);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)">'+(fr?'+ Ajouter un séjour':'+ Add a stay')+'</button><button onclick="event.stopPropagation();if(typeof goTab===\'function\')goTab(\'today\')" style="background:transparent;color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans)">'+(fr?'Voir le calendrier':'View calendar')+'</button></div></div>';
         }
         var startD = new Date(todayD); startD.setDate(startD.getDate()-1);
-        // Smart start: si rien dans la fenêtre 7j courante, glisse jusqu'à la prochaine arrivée
+        // Smart start: si rien dans la fenêtre 14j courante, glisse jusqu'à la prochaine arrivée
         var hasInWindow = false;
-        for (var ck=0; ck<7; ck++){
+        for (var ck=0; ck<14; ck++){
           var dCk = new Date(startD); dCk.setDate(startD.getDate()+ck);
           if (occ[dCk.toISOString().slice(0,10)]) { hasInWindow = true; break; }
         }
@@ -19958,11 +19958,12 @@ window.addEventListener('DOMContentLoaded', function() {
             startD.setDate(startD.getDate()-1);
           }
         }
-        var dayInit = fr ? ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'] : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        var dayInit = fr ? ['D','L','M','M','J','V','S'] : ['S','M','T','W','T','F','S'];
         var monthShort = fr?['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc']:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         var lastMonth = -1;
-        var html = '<div style="overflow-x:auto;padding:18px 18px 14px;-webkit-overflow-scrolling:touch"><div style="display:flex;gap:6px;min-width:max-content">';
-        for (var i=0; i<7; i++){
+        var DAYS = 14;
+        var html = '<div style="overflow-x:auto;padding:22px 18px 10px;-webkit-overflow-scrolling:touch;scrollbar-width:thin"><div style="display:flex;gap:5px;min-width:max-content;padding-top:4px">';
+        for (var i=0; i<DAYS; i++){
           var d = new Date(startD); d.setDate(startD.getDate()+i);
           var key = d.toISOString().slice(0,10);
           var info = occ[key];
@@ -19978,13 +19979,20 @@ window.addEventListener('DOMContentLoaded', function() {
           var monthLbl = '';
           if (d.getMonth() !== lastMonth){
             lastMonth = d.getMonth();
-            monthLbl = '<div style="position:absolute;top:-15px;left:2px;font-size:10px;color:var(--gold);font-weight:700;letter-spacing:1.2px;text-transform:uppercase">'+monthShort[d.getMonth()]+'</div>';
+            monthLbl = '<div style="position:absolute;top:-18px;left:2px;font-size:9.5px;color:var(--gold);font-weight:700;letter-spacing:1.2px;text-transform:uppercase">'+monthShort[d.getMonth()]+'</div>';
           }
-          html += '<div style="position:relative;flex:1;min-width:64px;height:88px;background:'+bg+';color:'+fg+';border:'+border+';border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px;font-family:var(--sans)">'+monthLbl+arrow+'<div style="font-size:10px;font-weight:600;opacity:.7;line-height:1;letter-spacing:.5px">'+dayInit[d.getDay()]+'</div><div style="font-size:22px;font-weight:'+(isToday?'700':'600')+';line-height:1;margin-top:4px">'+d.getDate()+'</div>'+(nm?'<div style="font-size:11px;font-weight:500;line-height:1;margin-top:5px;max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</div>':'')+'</div>';
+          html += '<div style="position:relative;flex-shrink:0;width:54px;height:78px;background:'+bg+';color:'+fg+';border:'+border+';border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5px;font-family:var(--sans)">'+monthLbl+arrow+'<div style="font-size:9.5px;font-weight:600;opacity:.7;line-height:1;letter-spacing:.5px">'+dayInit[d.getDay()]+'</div><div style="font-size:19px;font-weight:'+(isToday?'700':'600')+';line-height:1;margin-top:3px">'+d.getDate()+'</div>'+(nm?'<div style="font-size:10px;font-weight:500;line-height:1;margin-top:4px;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</div>':'')+'</div>';
         }
-        html += '</div>';
-        html += '<div style="display:flex;gap:14px;margin-top:14px;font-size:11px;color:var(--muted);font-family:var(--sans);flex-wrap:wrap"><span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;background:#3B6D11;border-radius:3px"></span>'+(fr?'Arrivée':'Arrival')+'</span><span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;background:#D8E4CC;border:1px solid #C8D8B8;border-radius:3px"></span>'+(fr?'Séjour':'Stay')+'</span><span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:12px;height:12px;background:#C0392B;border-radius:3px"></span>'+(fr?'Départ':'Depart')+'</span></div>';
-        html += '</div>';
+        html += '</div></div>';
+        // Legend with Event color too
+        html += '<div style="display:flex;gap:14px;padding:6px 18px 14px;font-size:10.5px;color:var(--muted);font-family:var(--sans);flex-wrap:wrap;align-items:center;justify-content:space-between">'
+              + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">'
+              + '<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:11px;height:11px;background:#3B6D11;border-radius:3px"></span>'+(fr?'Arrivée':'Arrival')+'</span>'
+              + '<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:11px;height:11px;background:#D8E4CC;border:1px solid #C8D8B8;border-radius:3px"></span>'+(fr?'Séjour':'Stay')+'</span>'
+              + '<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:11px;height:11px;background:#C0392B;border-radius:3px"></span>'+(fr?'Départ':'Depart')+'</span>'
+              + '</div>'
+              + '<span style="font-size:10px;color:var(--muted);font-style:italic;opacity:.7">'+(fr?'← scroll':'← scroll')+'</span>'
+              + '</div>';
         return html;
       }
       // Inbox: list 3 last with timestamp + source
