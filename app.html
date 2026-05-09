@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -18486,7 +18487,19 @@ window.addEventListener('DOMContentLoaded', function() {
     menu.style.left = (r.right + window.scrollX - 160) + 'px';
     document.body.appendChild(menu);
     setTimeout(function(){
-      document.addEventListener('click', function close(){ menu.remove(); document.removeEventListener('click', close); });
+      function close(e){
+        if (e && e.target && menu.contains(e.target)) return;
+        menu.remove();
+        document.removeEventListener('click', close);
+        document.removeEventListener('keydown', escClose);
+        window.removeEventListener('scroll', close, true);
+        window.removeEventListener('resize', close);
+      }
+      function escClose(e){ if (e.key === 'Escape') close(); }
+      document.addEventListener('click', close);
+      document.addEventListener('keydown', escClose);
+      window.addEventListener('scroll', close, true);
+      window.addEventListener('resize', close);
     }, 50);
   };
 
@@ -19003,6 +19016,11 @@ window.addEventListener('DOMContentLoaded', function() {
         var total = card.querySelectorAll('input[type=checkbox]').length;
         var done = card.querySelectorAll('input[type=checkbox]:checked').length;
         if (total > 0 && done === total) applyState(true);
+        else applyState(true);
+      }
+      // Default: all cards collapsed on session open
+      else {
+        applyState(true);
       }
     });
     // Refresh summaries already shown
