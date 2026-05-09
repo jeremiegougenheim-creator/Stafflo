@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -700,10 +701,10 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .aria-hero-counter-lbl{font-size:9px;color:rgba(201,150,58,.9);letter-spacing:1.4px;font-weight:700;font-family:'DM Sans',sans-serif;text-transform:uppercase}
 
 /* Big input row */
-.aria-hero-input-row{width:100%;display:flex;align-items:center;gap:10px;background:rgba(8,29,18,.45);border:none;border-radius:12px;padding:6px 10px 6px 16px;transition:background .15s,box-shadow .15s;cursor:text;position:relative;z-index:1;box-sizing:border-box}
+.aria-hero-input-row{width:100%;display:flex;align-items:center;gap:10px;background:rgba(8,29,18,.45);border:none;border-radius:12px;padding:6px 10px 6px 22px;transition:background .15s,box-shadow .15s;cursor:text;position:relative;z-index:1;box-sizing:border-box}
 .aria-hero-input-row:hover{background:rgba(8,29,18,.6)}
 .aria-hero-input-row:focus-within{background:rgba(8,29,18,.75);box-shadow:0 0 0 2px rgba(201,150,58,.45)}
-.aria-hero-input{flex:1;min-width:0;background:transparent;border:none;color:#fff;font-family:'DM Sans',sans-serif;font-size:15.5px;outline:none;padding:13px 0;font-weight:400;text-align:center}
+.aria-hero-input{flex:1;min-width:0;background:transparent;border:none;color:#fff;font-family:'DM Sans',sans-serif;font-size:15.5px;outline:none;padding:13px 8px 13px 4px;font-weight:400;text-align:left}
 .aria-hero-input::placeholder{color:rgba(255,255,255,.5)}
 .aria-hero-go{background:linear-gradient(135deg, var(--gold) 0%, #B8862E 100%);color:#fff;border:none;border-radius:10px;width:42px;height:42px;font-weight:700;font-size:18px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;transition:filter .15s,transform .1s;box-shadow:0 4px 12px rgba(201,150,58,.35)}
 .aria-hero-go:hover{filter:brightness(1.12);transform:translateY(-1px)}
@@ -738,8 +739,8 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   .aria-hero-counter{padding:7px 10px;min-width:54px}
   .aria-hero-counter-num{font-size:18px}
   .aria-hero-counter-lbl{font-size:8.5px;letter-spacing:1px}
-  .aria-hero-input{font-size:14.5px;padding:11px 0;text-align:center}
-  .aria-hero-input-row{padding:6px 8px 6px 12px;gap:8px}
+  .aria-hero-input{font-size:14.5px;padding:11px 6px 11px 4px;text-align:left}
+  .aria-hero-input-row{padding:6px 8px 6px 16px;gap:8px}
   .aria-hero-go{width:38px;height:38px;font-size:16px}
   .aria-hero-chips{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:2px;-ms-overflow-style:none;scrollbar-width:none;margin:0 -18px;padding:0 18px 4px}
   .aria-hero-chips::-webkit-scrollbar{display:none}
@@ -6438,6 +6439,71 @@ async function chatSend() {
   }
 }
 
+// Build a rich CRM context for ARIA: today's status, upcoming bookings, prices, net.
+// Returns a multi-line string suitable for inclusion in the user message context.
+function buildClientsContextRich(maxItems) {
+  if (typeof clients === 'undefined' || !Array.isArray(clients) || clients.length === 0) {
+    return 'CRM: aucun client enregistré.';
+  }
+  var today = new Date();
+  var todayISO = today.toISOString().slice(0,10);
+  var inHouse = [], upcoming = [], past = [];
+  clients.forEach(function(c){
+    if (!c.arrival && !c.departure) { past.push(c); return; }
+    var arr = c.arrival || '';
+    var dep = c.departure || '';
+    if (arr <= todayISO && dep >= todayISO) inHouse.push(c);
+    else if (arr > todayISO) upcoming.push(c);
+    else past.push(c);
+  });
+  // Sort upcoming by arrival ascending
+  upcoming.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
+  // Sort past by departure descending
+  past.sort(function(a,b){ return (b.departure||'').localeCompare(a.departure||''); });
+
+  function fmtClient(c) {
+    var bits = [c.name || 'sans nom'];
+    if (c.nat) bits.push(c.nat);
+    if (c.arrival && c.departure) {
+      bits.push('séjour ' + c.arrival + '→' + c.departure);
+      // Days until / days remaining
+      var arrDate = new Date(c.arrival), depDate = new Date(c.departure);
+      var diffArr = Math.round((arrDate - today)/86400000);
+      var diffDep = Math.round((depDate - today)/86400000);
+      if (diffArr > 0) bits.push('arrive J+' + diffArr);
+      else if (diffDep >= 0) bits.push('reste ' + diffDep + 'j');
+      else bits.push('parti J' + diffDep);
+    } else if (c.arrival) bits.push('arrivée ' + c.arrival);
+    if (c.guests) bits.push(c.guests + 'p');
+    if (c.nights) bits.push(c.nights + 'n');
+    if (c.price) bits.push(c.price + '€');
+    if (c.net) bits.push('net ' + c.net + '€');
+    if (c.source) bits.push(c.source);
+    if (c.notes) bits.push('notes: ' + (c.notes.length > 80 ? c.notes.slice(0,80) + '…' : c.notes));
+    return bits.join(' · ');
+  }
+
+  var lines = [];
+  lines.push('CRM Villa (' + clients.length + ' total) — date: ' + todayISO);
+  if (inHouse.length) {
+    lines.push('SUR PLACE actuellement (' + inHouse.length + '):');
+    inHouse.forEach(function(c){ lines.push('  • ' + fmtClient(c)); });
+  } else {
+    lines.push('SUR PLACE: aucun client actuellement.');
+  }
+  if (upcoming.length) {
+    lines.push('À VENIR (' + upcoming.length + '):');
+    upcoming.slice(0, maxItems || 5).forEach(function(c){ lines.push('  • ' + fmtClient(c)); });
+  } else {
+    lines.push('À VENIR: aucune réservation prévue.');
+  }
+  if (past.length) {
+    lines.push('RÉCENTS (' + Math.min(past.length, 3) + '/' + past.length + '):');
+    past.slice(0, 3).forEach(function(c){ lines.push('  • ' + fmtClient(c)); });
+  }
+  return lines.join('\n');
+}
+
 async function handleChatQuestion(text) {
   var fr = lang === 'fr';
   var today = new Date().toISOString().slice(0,10);
@@ -6477,12 +6543,34 @@ async function handleChatQuestion(text) {
       '- Use guest/staff names when they appear in context'
     ].join('\n');
   } else {
+    // ── REFINED SYSTEM PROMPT: 3 distinct response modes ──
     systemPrompt = [
-      'Tu es l\'assistant personnel de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
-      'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
-      'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
-      'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
-      'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
+      'Tu es ARIA, l\'assistant personnel intelligent de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
+      'Tu réponds en ' + (fr ? 'français' : 'anglais') + '.',
+      '',
+      '════ TES 3 MODES DE RÉPONSE ════',
+      '',
+      '【MODE 1 — INFO CRM】 Quand ' + ownerName + ' te pose une question sur SON business (clients, séjours, dates, prix, stats) :',
+      '  → Tu RÉPONDS DIRECTEMENT à ' + ownerName + ' avec les infos du CRM ci-dessous.',
+      '  → Tu ne génères AUCUN message à un client.',
+      '  → Tu cites les noms, dates, montants présents dans le CRM.',
+      '  → Si l\'info n\'est pas dans le CRM, tu dis honnêtement "Aucun client correspondant" ou "Données non disponibles dans le CRM".',
+      '  → Exemples : "qui arrive demain", "combien de bookings ce mois", "quel est le NET sur Sophie", "le prochain séjour", "qui est sur place".',
+      '',
+      '【MODE 2 — RÉDACTION MESSAGE】 Quand ' + ownerName + ' te demande EXPLICITEMENT d\'écrire un message à quelqu\'un :',
+      '  → Verbes-clés : "écris", "rédige", "prépare un message", "réponds à", "draft", "envoie".',
+      '  → Tu rédiges un message au nom de ' + ownerName + ', signé "' + ownerName + '".',
+      '  → Tu utilises le ton chaleureux/professionnel selon le destinataire.',
+      '  → Tu mets le message entre guillemets et signé proprement.',
+      '',
+      '【MODE 3 — CONVERSATION/CONSEIL】 Quand ' + ownerName + ' te pose une question générale (météo, heure, conseil business, idée) :',
+      '  → Tu réponds en 2-3 phrases max, directement, comme un assistant.',
+      '  → Pas de message client. Pas de formule de politesse exagérée.',
+      '',
+      '════ RÈGLE D\'OR ════',
+      'Par défaut, tu es en MODE 1 ou 3 (info / conversation). Tu passes en MODE 2 SEULEMENT si ' + ownerName + ' te demande explicitement de rédiger.',
+      'JAMAIS tu n\'écris "Bonjour, je suis ' + ownerName + '..." sauf en MODE 2.',
+      'JAMAIS tu n\'inventes une info qui n\'est pas dans le CRM.'
     ].join('\n');
   }
 
@@ -6511,47 +6599,66 @@ async function handleChatQuestion(text) {
       text
     ].join('\n');
   } else {
+    var crmCtx = (typeof buildClientsContextRich === 'function')
+      ? buildClientsContextRich(8)
+      : 'Clients: ' + clients.slice(0,8).map(function(cl){ return cl.name + (cl.arrival?' →'+cl.arrival:''); }).join(', ');
+
     userCtx = [
-      'Aujourd\'hui: ' + today,
-      'Clients (' + clients.length + '): ' + clients.slice(0,8).map(function(cl) {
-        return cl.name + (cl.arrival?' →'+cl.arrival:'');
-      }).join(', '),
+      '════ DATA CONTEXT ════',
+      'Date du jour : ' + today,
+      'Heure locale Marrakech : à calculer (GMT+1, ou GMT+0 hiver — vérifier mois courant).',
+      '',
+      crmCtx,
       '',
       historyBlock,
       '',
-      'Message de ' + ownerName + ': "' + text + '"',
+      '════ MESSAGE DE ' + ownerName.toUpperCase() + ' ════',
+      '"' + text + '"',
       '',
-      'Instructions:',
-      '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}',
-      '- Si c\'est une question: réponds directement, max 2-3 phrases',
-      '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule'
+      '════ INSTRUCTIONS ════',
+      '1. Identifie le MODE de réponse (1=info CRM, 2=rédaction message, 3=conversation/conseil).',
+      '2. Si MODE 2 (rédaction explicitement demandée) : écris le message au nom de ' + ownerName + ', entre guillemets.',
+      '3. Si MODE 1 ou 3 : réponds DIRECTEMENT à ' + ownerName + ' avec les données du CRM ou un conseil. PAS de message client.',
+      '4. Sois concis (2-4 phrases sauf si rédaction longue).',
+      '5. Si l\'info demandée n\'est pas dans le CRM, dis-le clairement sans inventer.'
     ].join('\n');
   }
 
-  // ── Patch 4: Intent classification → choose best AI task route ──
-  // Heuristics on the message text decide which task to call.
-  // Tasks defined in proxy: extract / brief / chat_fr / write_fr / reason / fast_classify / vision
+  // ── REFINED Intent classification → choose best AI task route ──
+  // Priority order: INFO query → REASON → WRITE (only on explicit verbs) → EXTRACT → fast.
+  // The system prompt now also handles mode selection, this just picks the right model.
   var aiTask = 'chat_fr'; // default
   var aiMaxTokens = isOrchestrator ? 700 : 500;
   if (!isOrchestrator) {
     var lc = text.toLowerCase();
     var wordCount = text.split(/\s+/).length;
-    // Reasoning needed: comparative analysis, complex strategy, multi-step decision
-    if (/compare|analyse|stratégie|stratégies|optim|recommend|conseil|que dois-je|comment je|that should|why|pourquoi|expliqu/i.test(lc) && wordCount > 8) {
+
+    // INFO CRM query — high priority, must NOT route to write_fr
+    // Detects questions about bookings, dates, prices, status, who, when, how much.
+    var isInfoQuery = /\b(qui|when|combien|quand|quel|quelle|quels|quelles|where|où|how (many|much)|status|statut|prochain|next|reste|left|encore|aujourd|today|demain|tomorrow|cette semaine|ce mois|montant|prix|net|total|booking|réservation|reservation|séjour|stay|client|guest|arrive|depart|sur place|présent)/i.test(lc)
+      && !/^(écris|rédige|prépare un message|réponds à|envoie|draft|write|compose)/i.test(lc.trim());
+
+    if (isInfoQuery) {
+      aiTask = 'chat_fr';
+      aiMaxTokens = 400;
+    }
+    // Reasoning: comparative analysis, complex strategy
+    else if (/compare|analyse|stratégie|stratégies|optim|recommend|conseil|que dois-je|comment je|why|pourquoi|expliqu/i.test(lc) && wordCount > 8) {
       aiTask = 'reason';
       aiMaxTokens = 800;
     }
-    // Writing: drafting messages, emails, formal text
-    else if (/écris|rédige|message|email|mail|réponse à|réponds à|draft|write|compose|texte pour/i.test(lc) && wordCount > 5) {
+    // Writing: ONLY on explicit imperative verbs at start
+    else if (/^(écris|rédige|prépare un message|prepare un message|réponds à|reponds à|draft|write|compose|envoie un (message|email|wa))/i.test(text.trim()) ||
+             /\b(écris|rédige|réponds à)\b.{0,50}\b(message|email|wa|whatsapp|sms)/i.test(lc)) {
       aiTask = 'write_fr';
       aiMaxTokens = 700;
     }
-    // Extraction: pasting raw email/booking data
+    // Extraction: pasting raw email/booking data (>400 chars)
     else if (text.length > 400 && /check.?in|check.?out|arrival|departure|booking|reservation|airbnb|guest|night/i.test(lc)) {
       aiTask = 'extract';
       aiMaxTokens = 600;
     }
-    // Quick factual: short message, simple question
+    // Quick factual: very short message, simple question
     else if (wordCount < 8 && /\?$/.test(text.trim())) {
       aiTask = 'fast_classify';
       aiMaxTokens = 300;
@@ -14294,34 +14401,40 @@ function appendContextualChips(bubble) {
   if (!text || text.length < 30) return;
   var fr = (typeof lang !== 'undefined' && lang === 'fr');
 
+  // Detect if reply is an actual DRAFTED MESSAGE (vs an info response).
+  // A drafted message typically contains: quotes, "Bonjour"/"Hello", a signature pattern.
+  var isDraftedMessage = /["«][\s\S]{30,}["»]/.test(bubble.textContent || '') // contains quoted block
+    || /^["«]?(Bonjour|Hello|Hi|Salut|Cher|Dear)/im.test(bubble.textContent || '') // starts with greeting
+    || /(Cordialement|Bien à vous|À bientôt|Best regards|Sincerely)[\s,]+\w+/i.test(bubble.textContent || ''); // ends with signoff
+
   // Detect topic
   var chips = [];
-  // Pricing context
-  if (/\d+\s*€|prix|price|tarif|nuit|night|airbnb|booking/i.test(text) && /strat|recommand|optim|ajust/i.test(text)) {
+  // Pricing context — show only when reply is an analysis (not a written message)
+  if (/\d+\s*€|prix|price|tarif|nuit|night|airbnb|booking/i.test(text) && /strat|recommand|optim|ajust/i.test(text) && !isDraftedMessage) {
     chips.push({ label: fr?'💰 Appliquer ce prix':'💰 Apply this price', prompt: fr?'Mets à jour mes settings de pricing avec le prix recommandé ci-dessus.':'Update my pricing settings with the recommended price above.' });
     chips.push({ label: fr?'📊 Comparer marché':'📊 Compare market', prompt: fr?'Compare ce prix avec le marché Marrakech actuel : villas 5★ similaires.':'Compare this price with current Marrakech market: similar 5-star villas.' });
     chips.push({ label: fr?'📈 Scénarios revenus':'📈 Revenue scenarios', prompt: fr?'Donne-moi 3 scénarios de revenus mensuels selon ce prix (occupation 50%/70%/90%).':'Give me 3 monthly revenue scenarios at this price (50%/70%/90% occupancy).' });
   }
-  // Email/message context
-  else if (/email|message|wa|whatsapp|envo|réponse|reply/i.test(text)) {
+  // Email/message context — ONLY if ARIA actually drafted a message
+  else if (isDraftedMessage && /email|message|wa|whatsapp|envo|réponse|reply/i.test(text)) {
     chips.push({ label: fr?'📋 Brief staff':'📋 Staff brief', prompt: fr?'Crée le brief staff lié à cette conversation.':'Create the staff brief linked to this conversation.' });
     chips.push({ label: fr?'📅 Bloquer les dates':'📅 Block dates', prompt: fr?'Aide-moi à bloquer les dates mentionnées si nécessaire.':'Help me block the dates mentioned if needed.' });
     chips.push({ label: fr?'➕ Ajouter au CRM':'➕ Add to CRM', prompt: fr?'Crée la fiche client à partir des infos ci-dessus.':'Create the client record from the info above.' });
   }
-  // Guest/arrival context
-  else if (/guest|client|arriv|départ|séjour|stay/i.test(text)) {
+  // Guest/arrival context — ONLY when ARIA drafted a guest message (not when she answered an info query)
+  else if (isDraftedMessage && /guest|client|arriv|départ|séjour|stay/i.test(text)) {
     chips.push({ label: fr?'📋 Brief staff':'📋 Staff brief', prompt: fr?'Brief staff pour ce séjour : Said, Faiza, Bouchra.':'Staff brief for this stay: Said, Faiza, Bouchra.' });
     chips.push({ label: fr?'💬 Message guest':'💬 Guest message', prompt: fr?'Rédige un message WhatsApp chaleureux pour ce client.':'Write a warm WhatsApp message for this guest.' });
     chips.push({ label: fr?'🛒 Liste courses':'🛒 Shopping list', prompt: fr?'Liste de courses pour ce séjour selon les notes guest.':'Shopping list for this stay based on guest notes.' });
   }
   // Event context
-  else if (/event|festival|marathon|noël|christmas/i.test(text)) {
+  else if (/event|festival|marathon|noël|christmas/i.test(text) && !isDraftedMessage) {
     chips.push({ label: fr?'💰 Pricing premium':'💰 Premium pricing', prompt: fr?'Quel prix premium appliquer pour cet événement ?':'What premium price for this event?' });
     chips.push({ label: fr?'📣 Marketing':'📣 Marketing', prompt: fr?'Rédige un message marketing pour mes contacts intéressés.':'Write a marketing message for my interested contacts.' });
   }
-  // Generic: always offer "deeper" and "next action"
+  // Generic info response: no chips
   else {
-    return; // don't pollute generic replies
+    return;
   }
 
   if (!chips.length) return;
@@ -14341,15 +14454,130 @@ function appendContextualChips(bubble) {
 window.appendContextualChips = appendContextualChips;
 
 function ariaContextChip(btn) {
-  var prompt = btn.getAttribute('data-prompt');
-  if (!prompt) return;
+  var prompt = btn.getAttribute('data-prompt') || '';
+  var label = (btn.textContent || '').trim();
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+
+  // Try to extract context from the previous AI bubble (the one this chip belongs to)
+  var bubble = btn.closest('.bubble.ai') || btn.closest('[data-role="ai"]');
+  if (!bubble) {
+    // Fallback: find any AI bubble before the chip
+    var allBubbles = document.querySelectorAll('.bubble.ai, [data-role="ai"]');
+    bubble = allBubbles[allBubbles.length - 1];
+  }
+  var bubbleText = bubble ? (bubble.textContent || '') : '';
+
+  // Helper: extract a name from "Bonjour Sophie" or "Sophie arrive..." patterns in bubbleText
+  function extractGuestName() {
+    var m = bubbleText.match(/Bonjour\s+([A-ZÀ-Ü][a-zà-ü]+(?:\s+[A-ZÀ-Ü][a-zà-ü]+)?)/);
+    if (m) return m[1];
+    m = bubbleText.match(/(?:pour|à)\s+([A-ZÀ-Ü][a-zà-ü]+(?:\s+[A-ZÀ-Ü][a-zà-ü]+)?)/);
+    if (m) return m[1];
+    return '';
+  }
+
+  // Helper: extract first ISO/short date in bubble
+  function extractDates() {
+    var arr = '', dep = '';
+    var iso = bubbleText.match(/\b(20\d{2}-\d{2}-\d{2})\b/g);
+    if (iso && iso.length >= 1) arr = iso[0];
+    if (iso && iso.length >= 2) dep = iso[1];
+    if (!arr) {
+      // Try DD/MM or DD-MM-YYYY
+      var fr1 = bubbleText.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+      if (fr1) {
+        var y = fr1[3] || new Date().getFullYear();
+        if (y.length === 2) y = '20' + y;
+        arr = y + '-' + String(fr1[2]).padStart(2,'0') + '-' + String(fr1[1]).padStart(2,'0');
+      }
+    }
+    return { arr: arr, dep: dep };
+  }
+
+  // ── Route based on label ──
+  // Brief staff → trigger the brief generation
+  if (/brief\s*staff/i.test(label) || /staff\s*brief/i.test(label)) {
+    if (typeof window.ariaQuickAction === 'function') {
+      window.ariaQuickAction('brief');
+    } else if (typeof loadMorningBrief === 'function') {
+      loadMorningBrief(true);
+      if (typeof goTab === 'function') goTab('today');
+    }
+    showToast(fr?'📋 Brief staff généré':'📋 Staff brief generated');
+    return;
+  }
+
+  // Add to CRM → open new client form, prefilled
+  if (/ajouter\s*au\s*crm|add\s*to\s*crm|cr[ée]er\s*la\s*fiche|cr[ée]er\s*le\s*client/i.test(label) ||
+      /ajouter\s*au\s*crm|add\s*to\s*crm/i.test(prompt)) {
+    if (typeof goTab === 'function') goTab('clients');
+    setTimeout(function(){
+      if (typeof openForm === 'function') {
+        openForm();
+        setTimeout(function(){
+          var name = extractGuestName();
+          var dates = extractDates();
+          if (name) { var f = document.getElementById('fName'); if (f) f.value = name; }
+          if (dates.arr) { var fa = document.getElementById('fArr'); if (fa) fa.value = dates.arr; }
+          if (dates.dep) { var fd = document.getElementById('fDep'); if (fd) fd.value = dates.dep; }
+        }, 80);
+      }
+    }, 150);
+    return;
+  }
+
+  // Block dates → open new "stay" with name = "Bloqué" + dates
+  if (/bloquer\s*les?\s*dates|block\s*dates/i.test(label)) {
+    if (typeof goTab === 'function') goTab('clients');
+    setTimeout(function(){
+      if (typeof openForm === 'function') {
+        openForm();
+        setTimeout(function(){
+          var dates = extractDates();
+          var f = document.getElementById('fName'); if (f) f.value = fr?'Bloqué (indisponible)':'Blocked (unavailable)';
+          if (dates.arr) { var fa = document.getElementById('fArr'); if (fa) fa.value = dates.arr; }
+          if (dates.dep) { var fd = document.getElementById('fDep'); if (fd) fd.value = dates.dep; }
+          var src = document.getElementById('fSource'); if (src) { src.value = 'Direct'; if (typeof autoComm === 'function') autoComm(); }
+          var notes = document.getElementById('fNotes'); if (notes) notes.value = fr?'Dates bloquées (non louées)':'Blocked dates (not rented)';
+        }, 80);
+      }
+    }, 150);
+    return;
+  }
+
+  // Apply this price → open Settings on pricing
+  if (/appliquer\s*ce\s*prix|apply\s*this\s*price/i.test(label)) {
+    if (typeof openSettings === 'function') openSettings();
+    setTimeout(function(){
+      var pricingSection = document.getElementById('cfgBasePrice') || document.querySelector('[data-fr*="prix"]');
+      if (pricingSection && pricingSection.scrollIntoView) pricingSection.scrollIntoView({behavior:'smooth', block:'center'});
+    }, 200);
+    return;
+  }
+
+  // Compare market / Revenue scenarios / Marketing / Premium pricing → re-prompt ARIA (these need analysis)
+  // Guest message / Shopping list → re-prompt ARIA (these need generation)
+  // Default fallback: re-prompt ARIA in modal
   var input = document.getElementById('ariaModalInput');
-  if (!input) return;
-  input.value = prompt;
-  onAriaModalInput(input);
-  setTimeout(function(){ sendAriaModal(); }, 50);
+  if (input && prompt) {
+    input.value = prompt;
+    if (typeof onAriaModalInput === 'function') onAriaModalInput(input);
+    setTimeout(function(){ if (typeof sendAriaModal === 'function') sendAriaModal(); }, 50);
+  }
 }
 window.ariaContextChip = ariaContextChip;
+
+// Tiny toast helper if not defined
+if (typeof window.showToast !== 'function') {
+  window.showToast = function(msg){
+    var t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#0F2318;color:#fff;padding:10px 18px;border-radius:8px;font-family:DM Sans,sans-serif;font-size:13px;font-weight:500;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:80vw;text-align:center';
+    document.body.appendChild(t);
+    setTimeout(function(){ t.style.transition='opacity .3s'; t.style.opacity='0'; }, 1800);
+    setTimeout(function(){ if (t.parentNode) t.remove(); }, 2200);
+  };
+}
 
 // Execute an action proposed by ARIA — opens the right channel (WhatsApp/email/copy)
 function ariaExecuteAction(idx, btn) {
@@ -19634,16 +19862,20 @@ window.addEventListener('DOMContentLoaded', function() {
       // Calendar (any: today + mirrors)
       if (cardId === 'cardCalendarMini' || (card.classList && card.classList.contains('cardCalendarMiniMirror'))) {
         var today = new Date(); today.setHours(0,0,0,0);
-        var soon = clients.filter(function(c){ if(!c.arrival)return false; var d=new Date(c.arrival);d.setHours(0,0,0,0); var dd=Math.round((d-today)/86400000); return dd>=0 && dd<=14;});
+        var soon = clients.filter(function(c){ if(!c.arrival)return false; var d=new Date(c.arrival);d.setHours(0,0,0,0); var dd=Math.round((d-today)/86400000); return dd>=0 && dd<=30;});
         soon.sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);});
         if (!soon.length) return pill(fr?'Aucune arrivée':'No arrivals', '#7a8a7a', 'rgba(120,140,120,.12)');
-        var next = soon[0];
-        var d = new Date(next.arrival);
-        var dd = Math.round((d-today)/86400000);
-        var lbl = dd===0 ? (fr?'auj.':'today') : dd===1 ? (fr?'demain':'tomorrow') : ('J+'+dd);
-        var urgency = dd<=2 ? '#C0392B' : dd<=7 ? '#C9963A' : '#3B6D11';
-        var bg = dd<=2 ? 'rgba(192,57,43,.1)' : dd<=7 ? 'rgba(201,150,58,.12)' : 'rgba(59,109,17,.1)';
-        return pill(soon.length+(fr?' arrivée(s)':' arrivals'), '#1d4d3a', 'rgba(29,77,58,.1)') + ' ' + pill((next.name||'?').split(' ')[0]+' '+lbl, urgency, bg);
+        // Show up to 3 inline timeline
+        var inline = soon.slice(0, 3).map(function(g){
+          var d = new Date(g.arrival);
+          var dd = Math.round((d-today)/86400000);
+          var lbl = dd===0 ? (fr?'auj.':'today') : dd===1 ? (fr?'dem.':'tom.') : ('J+'+dd);
+          var urgency = dd<=2 ? '#C0392B' : dd<=7 ? '#C9963A' : '#3B6D11';
+          var bg = dd<=2 ? 'rgba(192,57,43,.1)' : dd<=7 ? 'rgba(201,150,58,.12)' : 'rgba(59,109,17,.1)';
+          return pill((g.name||'?').split(' ')[0]+' '+lbl, urgency, bg);
+        }).join(' ');
+        var prefix = soon.length > 3 ? pill('+'+(soon.length-3), '#7a8a7a', 'rgba(120,140,120,.12)') + ' ' : '';
+        return inline + (prefix ? ' ' + prefix : '');
       }
       // Inbox
       if (cardId === 'cardInboxMini' || (card.classList && card.classList.contains('cardInboxMiniMirror')) || cardId === 'inboxCardToday') {
@@ -19710,7 +19942,7 @@ window.addEventListener('DOMContentLoaded', function() {
         var occ = (typeof buildOccupancyMap==='function')?buildOccupancyMap():{};
         var hasAnyData = clients && clients.some(function(c){return c.arrival;});
         if (!hasAnyData) {
-          return '<div style="padding:32px 22px;text-align:center"><div style="font-size:13px;color:var(--muted);font-style:italic;line-height:1.5">'+(fr?'Aucune réservation pour le moment':'No bookings yet')+'</div><div style="font-size:11px;color:var(--gold);margin-top:8px;font-weight:500">'+(fr?'Cliquez pour voir le calendrier':'Tap to view calendar')+'</div></div>';
+          return '<div style="padding:14px 18px;text-align:center"><div style="font-size:13px;color:var(--muted);font-style:italic;line-height:1.5">'+(fr?'Aucune réservation pour le moment.':'No bookings yet.')+'</div><div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button onclick="event.stopPropagation();if(typeof openForm===\'function\')openForm()" style="background:var(--gold);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)">'+(fr?'+ Ajouter un séjour':'+ Add a stay')+'</button><button onclick="event.stopPropagation();if(typeof goTab===\'function\')goTab(\'today\')" style="background:transparent;color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans)">'+(fr?'Voir le calendrier':'View calendar')+'</button></div></div>';
         }
         var startD = new Date(todayD); startD.setDate(startD.getDate()-1);
         // Smart start: si rien dans la fenêtre 7j courante, glisse jusqu'à la prochaine arrivée
@@ -21810,6 +22042,26 @@ window.addEventListener('DOMContentLoaded', function() {
     updateAriaCounter();
   }
   window.trackAriaAction = trackAriaAction;
+
+  /* Counter click → open ARIA panel with this-week actions request */
+  document.addEventListener('click', function(ev){
+    var counter = ev.target.closest('.aria-hero-counter');
+    if (!counter) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (typeof openAriaModal === 'function') {
+      var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      var prefill = fr
+        ? 'Liste-moi les 10 actions prioritaires à faire cette semaine pour la villa, classées par urgence. Pour chacune : staff concerné, deadline, et action concrète à exécuter.'
+        : 'List the top 10 priority actions for the villa this week, sorted by urgency. For each: staff involved, deadline, and concrete action to execute.';
+      openAriaModal(prefill);
+      // Fire send after modal is open
+      setTimeout(function(){
+        if (typeof sendAriaModal === 'function') sendAriaModal();
+      }, 120);
+      trackAriaAction('counter_open');
+    }
+  });
 
   /* Update counter UI (7-day rolling window) — all 3 tabs */
   function updateAriaCounter(){
