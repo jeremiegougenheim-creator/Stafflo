@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -1656,7 +1657,7 @@ body, main { background: var(--cream); }
 
 <!-- Aria Memory shortcut card (Today tab) -->
 <div class="row row-100">
-  <div class="v2-card" id="cardAriaMemoryShortcut" style="cursor:pointer" onclick="openAriaMemoryEditor()">
+  <div class="v2-card" id="cardAriaMemoryShortcut" data-collapsed="1" style="cursor:pointer" onclick="openAriaMemoryEditor()">
     <div class="v2-card-hd">
       <div class="v2-card-title"><i class="ti ti-brain" style="color:var(--gold)"></i> <span data-fr="Aria Memory" data-en="Aria Memory">Aria Memory</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Contexte permanent" data-en="Persistent context">Contexte permanent</span></div>
       <span style="font-size:11px;color:var(--gold);font-weight:600;letter-spacing:.5px" data-fr="Éditer →" data-en="Edit →">Éditer →</span>
@@ -18759,17 +18760,35 @@ window.addEventListener('DOMContentLoaded', function() {
     try {
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
       var clients = (typeof window.clients !== 'undefined') ? window.clients : [];
-      // Calendar: list 3 next arrivals
+      // Calendar: compact ribbon 30 days preview
       if (cardId === 'cardCalendarMini' || (card.classList && card.classList.contains('cardCalendarMiniMirror'))) {
-        var today = new Date(); today.setHours(0,0,0,0);
-        var soon = clients.filter(function(c){ if(!c.arrival)return false; var d=new Date(c.arrival);d.setHours(0,0,0,0); var dd=Math.round((d-today)/86400000); return dd>=0 && dd<=60;}).sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);}).slice(0,3);
-        if (!soon.length) return '<div style="padding:14px 18px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Aucune arrivée prochaine':'No upcoming arrivals')+'</div>';
-        return '<div style="padding:10px 18px 12px;display:flex;flex-direction:column;gap:6px">'+soon.map(function(c){
-          var d = new Date(c.arrival); var dd = Math.round((d-today)/86400000);
-          var lbl = dd===0?(fr?'auj.':'today'):dd===1?(fr?'demain':'tmrw'):('J+'+dd);
-          var col = dd<=2?'#C0392B':dd<=7?'#C9963A':'#3B6D11';
-          return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px"><span style="color:var(--ink);font-weight:500">'+(c.name||'?').split(' ')[0]+'</span><span style="color:'+col+';font-size:11px;font-weight:600;font-family:var(--sans)">'+d.getDate()+'/'+(d.getMonth()+1)+' · '+lbl+'</span></div>';
-        }).join('')+'</div>';
+        var todayD = new Date(); todayD.setHours(0,0,0,0);
+        var occ = (typeof buildOccupancyMap==='function')?buildOccupancyMap():{};
+        var startD = new Date(todayD); startD.setDate(startD.getDate()-3);
+        var lastMonth = -1;
+        var html = '<div style="overflow-x:auto;padding:8px 12px 10px;-webkit-overflow-scrolling:touch"><div style="display:flex;gap:2px;min-width:max-content">';
+        for (var i=0; i<30; i++){
+          var d = new Date(startD); d.setDate(startD.getDate()+i);
+          var key = d.toISOString().slice(0,10);
+          var info = occ[key];
+          var isToday = d.getTime()===todayD.getTime();
+          var bg='#fff', fg='var(--ink)', border='1px solid var(--border)';
+          if (info){
+            if (info.type==='arrival'){ bg='#3B6D11'; fg='#fff'; border='1px solid #3B6D11'; }
+            else if (info.type==='departure'){ bg='#C0392B'; fg='#fff'; border='1px solid #C0392B'; }
+            else { bg='#D8E4CC'; fg='#1d4d3a'; border='1px solid #C8D8B8'; }
+          }
+          if (isToday) border = '2px solid var(--gold)';
+          var monthLbl = '';
+          if (d.getMonth() !== lastMonth){
+            lastMonth = d.getMonth();
+            var mn = ['J','F','M','A','M','J','J','A','S','O','N','D'][d.getMonth()];
+            monthLbl = '<div style="position:absolute;top:-12px;left:0;font-size:8px;color:var(--gold);font-weight:700;letter-spacing:1px">'+mn+'</div>';
+          }
+          html += '<div style="position:relative;width:26px;height:34px;background:'+bg+';color:'+fg+';border:'+border+';border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:'+(isToday?'700':'500')+';flex-shrink:0;font-family:var(--sans)">'+monthLbl+d.getDate()+'</div>';
+        }
+        html += '</div></div>';
+        return html;
       }
       // Inbox: list 3 last
       if (cardId === 'cardInboxMini' || (card.classList && card.classList.contains('cardInboxMiniMirror')) || cardId === 'inboxCardToday') {
@@ -18899,6 +18918,12 @@ window.addEventListener('DOMContentLoaded', function() {
         applyState(body.style.display !== 'none');
       });
       if (card.dataset.collapsed === '1') applyState(true);
+      // Smart auto-collapse: To-do all done
+      else if (cardId === 'heroActionBoardToday') {
+        var total = card.querySelectorAll('input[type=checkbox]').length;
+        var done = card.querySelectorAll('input[type=checkbox]:checked').length;
+        if (total > 0 && done === total) applyState(true);
+      }
     });
     // Refresh summaries already shown
     document.querySelectorAll('.v2-card-summary').forEach(function(s){
@@ -18917,6 +18942,41 @@ window.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
+  
+  /* ── Same collapse system for legacy .hm-card (Villa tab: Concurrents, Météo, Vols, Scénarios, Checklist) ── */
+  function bindHmCardClicks() {
+    document.querySelectorAll('.hm-card').forEach(function(card){
+      var hd = card.querySelector('.hm-hdr');
+      if (!hd || hd.dataset.hmCollapseReady) return;
+      hd.dataset.hmCollapseReady = '1';
+      var body = card.querySelector('.hm-body');
+      if (!body) return;
+      hd.style.cursor = 'pointer';
+      // Chevron
+      var chev = document.createElement('button');
+      chev.style.cssText = 'background:transparent;border:none;color:var(--muted);width:24px;height:24px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0';
+      chev.innerHTML = '<i class="ti ti-chevron-down" style="font-size:14px"></i>';
+      hd.appendChild(chev);
+      function applyState(collapsed){
+        body.style.display = collapsed ? 'none' : '';
+        var i = chev.querySelector('i');
+        if (i){ i.className = collapsed ? 'ti ti-chevron-down' : 'ti ti-chevron-up'; i.style.fontSize = '14px'; }
+      }
+      hd.addEventListener('click', function(e){
+        if (e.target.closest('button:not(:scope > button:last-child),input,a')) return;
+        if (e.target === chev || chev.contains(e.target)) {
+          applyState(body.style.display !== 'none');
+          return;
+        }
+        if (e.target.closest('.hm-refresh,.mod-pill,button,input')) return;
+        applyState(body.style.display !== 'none');
+      });
+      // Default collapsed for Villa secondary cards
+      applyState(true);
+    });
+  }
+  setTimeout(bindHmCardClicks, 1000);
+  setInterval(bindHmCardClicks, 4000);
   setTimeout(bindHeaderClicks, 800);
   setInterval(bindHeaderClicks, 4000);
 
