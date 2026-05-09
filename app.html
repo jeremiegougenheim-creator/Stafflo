@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -18848,6 +18849,36 @@ window.addEventListener('DOMContentLoaded', function() {
         if (!m) return '<div style="padding:14px 18px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Vide. Cliquez pour ajouter du contexte permanent.':'Empty. Click to add permanent context.')+'</div>';
         return '<div style="padding:12px 18px;font-size:11px;color:var(--muted);font-style:italic;line-height:1.5">"'+m.slice(0,140)+(m.length>140?'…':'')+'"</div>';
       }
+      // Detect by body id (Guests tab)
+      var bodyEl = card.querySelector('.v2-card-body');
+      var bodyId = bodyEl ? bodyEl.id : '';
+      // Upcoming arrivals
+      if (bodyId === 'heroGuestsUpcomingBody') {
+        var todayG = new Date(); todayG.setHours(0,0,0,0);
+        var upcoming = clients.filter(function(c){if(!c.arrival)return false;var d=new Date(c.arrival);d.setHours(0,0,0,0);return d>=todayG;}).sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);}).slice(0,3);
+        if (!upcoming.length) return '<div style="padding:14px 18px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Aucune arrivée à venir':'No upcoming arrivals')+'</div>';
+        return upcoming.map(function(c){
+          var d=new Date(c.arrival);
+          var dd=Math.round((d-todayG)/86400000);
+          var lbl = dd===0?(fr?'AUJ.':'TODAY'):dd===1?(fr?'DEMAIN':'TOMORROW'):(fr?'DANS '+dd+'J':'IN '+dd+'D');
+          return '<div style="padding:9px 18px;border-top:1px solid rgba(0,0,0,.04);display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div style="min-width:0;flex:1;overflow:hidden"><div style="font-weight:600;color:var(--ink);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(c.name||'?')+(c.nat?' <span style="font-weight:400;font-size:11px;color:var(--muted)">'+c.nat+'</span>':'')+'</div></div><div style="font-size:10px;color:var(--gold);font-weight:700;letter-spacing:.5px;white-space:nowrap;flex-shrink:0">'+lbl+'</div></div>';
+        }).join('');
+      }
+      // Current guest
+      if (bodyId === 'heroGuestsCurrentBody') {
+        var inH = clients.find(function(c){if(!c.arrival||!c.departure)return false;var t=Date.now();return new Date(c.arrival).getTime()<=t&&new Date(c.departure).getTime()>=t;});
+        if (!inH) return '<div style="padding:14px 18px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Aucun guest en cours':'No guest currently')+'</div>';
+        var dep=new Date(inH.departure);var nights=Math.max(0,Math.round((dep-Date.now())/86400000));
+        return '<div style="padding:12px 18px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div style="min-width:0;flex:1;overflow:hidden"><div style="font-weight:600;color:var(--ink);font-size:14px">'+(inH.name||'?')+'</div><div style="font-size:11px;color:var(--muted);margin-top:2px">'+(inH.guests||0)+(fr?' pers · ':' guests · ')+(inH.source||'')+'</div></div><div style="font-size:11px;color:#3B6D11;font-weight:600;font-family:var(--sans);white-space:nowrap">'+nights+(fr?' nuit(s)':' night(s))')+'</div></div></div>';
+      }
+      // Stats clients
+      if (titleSpan && titleSpan.textContent.toLowerCase().indexOf('stat') !== -1) {
+        var n=clients.length;
+        var net=clients.reduce(function(s,c){var p=Number(c.price||0);var cm=Number(c.commission||0);return s+(p*(1-cm/100));},0);
+        var nights2=clients.reduce(function(s,c){if(!c.arrival||!c.departure)return s;return s+Math.max(1,Math.round((new Date(c.departure)-new Date(c.arrival))/86400000));},0);
+        var avg=nights2?Math.round(net/nights2):0;
+        return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:12px 8px"><div style="text-align:center;padding:6px;border-right:1px solid var(--border)"><div style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--ink);line-height:1">'+n+'</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-top:3px">GUESTS</div></div><div style="text-align:center;padding:6px;border-right:1px solid var(--border)"><div style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--gold);line-height:1">'+Math.round(net)+'€</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-top:3px">NET</div></div><div style="text-align:center;padding:6px"><div style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--ink);line-height:1">'+avg+'€</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-top:3px">/NUIT</div></div></div>';
+      }
       // Tonight price
       var titleSpan = card.querySelector('.v2-card-title span');
       if (titleSpan && titleSpan.textContent.toLowerCase().indexOf('recommandé') !== -1) {
@@ -18949,6 +18980,45 @@ window.addEventListener('DOMContentLoaded', function() {
   }
   
   /* ── Same collapse system for legacy .hm-card (Villa tab: Concurrents, Météo, Vols, Scénarios, Checklist) ── */
+  function buildHmRichSummary(card) {
+    try {
+      var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      var lbl = (card.querySelector('.hm-hdr-lbl')||{}).textContent || '';
+      lbl = lbl.toLowerCase();
+      // Concurrents
+      if (lbl.indexOf('concurrent') !== -1 || lbl.indexOf('competitor') !== -1) {
+        var comps = (typeof loadSavedCompetitors==='function')?(loadSavedCompetitors()||[]):[];
+        if (!comps.length) return '<div style="padding:12px 16px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Aucun concurrent enregistré':'No competitors')+'</div>';
+        var top3 = comps.slice().sort(function(a,b){return a.price-b.price;}).slice(0,3);
+        return top3.map(function(x){return '<div style="padding:7px 16px;border-top:1px solid rgba(0,0,0,.04);display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--ink);font-weight:500">'+(x.name||'').split('—')[0].trim().slice(0,22)+'</span><span style="color:var(--gold);font-weight:600;font-family:Fraunces,serif">'+x.price+'€</span></div>';}).join('');
+      }
+      // Météo
+      if (lbl.indexOf('météo') !== -1 || lbl.indexOf('weather') !== -1) {
+        var wxEl = document.getElementById('weatherContent');
+        var temp = wxEl ? (wxEl.querySelector('.wx-temp,.wx-now,[class*="temp"]')||{}).textContent : '';
+        return '<div style="padding:12px 16px;font-size:12px;color:var(--muted);text-align:center">'+(temp ? '<span style="font-family:Fraunces,serif;font-size:22px;color:var(--gold);font-weight:500">'+(temp||'').trim()+'</span>' : (fr?'Marrakech · cliquez pour ouvrir':'Marrakech · tap to open'))+'</div>';
+      }
+      // Vols
+      if (lbl.indexOf('vol') !== -1 || lbl.indexOf('flight') !== -1) {
+        return '<div style="padding:12px 16px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Vols RAK · cliquez pour voir':'RAK flights · tap to view')+'</div>';
+      }
+      // Scénarios
+      if (lbl.indexOf('scénario') !== -1 || lbl.indexOf('scenario') !== -1) {
+        return '<div style="padding:12px 16px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Projections revenus mensuels':'Monthly revenue projections')+'</div>';
+      }
+      // Checklist
+      if (lbl.indexOf('checklist') !== -1) {
+        var checks = card.querySelectorAll('input[type=checkbox]');
+        var done = card.querySelectorAll('input[type=checkbox]:checked').length;
+        var total = checks.length;
+        if (!total) return '<div style="padding:12px 16px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Aucune tâche':'No tasks')+'</div>';
+        var pct = Math.round(done*100/total);
+        var col = pct===100?'#3B6D11':pct>=50?'#C9963A':'#C0392B';
+        return '<div style="padding:12px 16px;display:flex;align-items:center;gap:10px"><div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+col+';transition:width .3s"></div></div><span style="font-family:Fraunces,serif;font-size:14px;color:'+col+';font-weight:600;white-space:nowrap">'+done+'/'+total+'</span></div>';
+      }
+      return '';
+    } catch(e){ return ''; }
+  }
   function bindHmCardClicks() {
     document.querySelectorAll('.hm-card').forEach(function(card){
       var hd = card.querySelector('.hm-hdr');
@@ -18957,6 +19027,11 @@ window.addEventListener('DOMContentLoaded', function() {
       var body = card.querySelector('.hm-body');
       if (!body) return;
       hd.style.cursor = 'pointer';
+      // Rich summary
+      var summary = document.createElement('div');
+      summary.className = 'hm-card-summary';
+      summary.style.cssText = 'display:none';
+      body.parentNode.insertBefore(summary, body.nextSibling);
       // Chevron
       var chev = document.createElement('button');
       chev.style.cssText = 'background:transparent;border:none;color:var(--muted);width:24px;height:24px;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0';
@@ -18964,28 +19039,37 @@ window.addEventListener('DOMContentLoaded', function() {
       hd.appendChild(chev);
       function applyState(collapsed){
         body.style.display = collapsed ? 'none' : '';
+        var rich = collapsed ? buildHmRichSummary(card) : '';
+        if (rich){ summary.innerHTML = rich; summary.style.display = collapsed ? '' : 'none'; }
+        else summary.style.display = 'none';
         var i = chev.querySelector('i');
         if (i){ i.className = collapsed ? 'ti ti-chevron-down' : 'ti ti-chevron-up'; i.style.fontSize = '14px'; }
       }
       hd.addEventListener('click', function(e){
-        if (e.target.closest('button:not(:scope > button:last-child),input,a')) return;
-        if (e.target === chev || chev.contains(e.target)) {
-          applyState(body.style.display !== 'none');
+        if (e.target.closest('.hm-refresh,.mod-pill,button:not(:scope > button:last-child),input,a')) {
+          if (e.target === chev || chev.contains(e.target)) {
+            applyState(body.style.display !== 'none');
+          }
           return;
         }
-        if (e.target.closest('.hm-refresh,.mod-pill,button,input')) return;
         applyState(body.style.display !== 'none');
       });
-      // Click anywhere on collapsed card → expand
       card.addEventListener('click', function(e){
         if (body.style.display !== 'none') return;
         if (hd.contains(e.target)) return;
         if (e.target.closest('button,input,a')) return;
         applyState(false);
       });
+      summary.style.cursor = 'pointer';
       card.style.cursor = 'pointer';
-      // Default collapsed for Villa secondary cards
       applyState(true);
+    });
+    // Refresh visible summaries
+    document.querySelectorAll('.hm-card-summary').forEach(function(s){
+      if (s.style.display !== 'none') {
+        var card = s.closest('.hm-card');
+        if (card){ var rich = buildHmRichSummary(card); if (rich) s.innerHTML = rich; }
+      }
     });
   }
   setTimeout(bindHmCardClicks, 1000);
