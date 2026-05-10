@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -16965,102 +16966,11 @@ window.addEventListener('DOMContentLoaded', function() {
     return hasDates || hasPrice || hasNotes || hasPhone || hasGuests;
   }
 
-  // Override le pipeline email Airbnb pour utiliser le nouveau prompt + isWorthSaving
-  // NOTE : ce pipeline a été remplacé par le pipeline universel plus bas dans ce fichier.
-  // On le désactive ici pour éviter le double-traitement. Le code reste pour référence.
-  var _origSendAriaModal2 = window.sendAriaModal;
-  window.sendAriaModal = function(){
-    return _origSendAriaModal2 ? _origSendAriaModal2.apply(this, arguments) : null;
-  };
-  // Stub conservé (jamais appelé) pour ne rien casser
-  var _phaseA1Pipeline = function(){
-    var input = document.getElementById('ariaModalInput');
-    var text = (input && input.value || '').trim();
-    var attach = window._ariaAttachment || null;
-
-    if (text && !attach && isStrongAirbnbEmail(text)){
-      // Vire le préfixe parasite "Analyze this incoming email..." si présent (vient d'Inbox)
-      text = stripParasitePrompt(text);
-      var emailPreview = extractHumanMessage(text);
-      var body = document.getElementById('ariaModalMessages');
-      if (body){
-        var u = document.createElement('div'); u.className = 'aria-modal-bubble user';
-        var senderLine = emailPreview.sender
-          ? '<span>' + emailPreview.sender.replace(/</g,'&lt;') + '</span>'
-          : '<span>' + (fr()?'Email Airbnb':'Airbnb email') + '</span>';
-        var bodyHtml = emailPreview.message
-          ? '<div style="font-size:12px;line-height:1.5;color:rgba(255,255,255,.95);font-style:italic">"' + emailPreview.message.replace(/</g,'&lt;').replace(/\n/g,'<br>') + '"</div>'
-          : '<div style="font-size:11px;opacity:.7;font-style:italic">' + (fr()?'(email Airbnb sans message texte)':'(Airbnb email without text message)') + '</div>';
-        u.innerHTML = '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:.7;margin-bottom:6px;display:flex;align-items:center;gap:6px"><span>📧</span>' + senderLine + '</div>' + bodyHtml;
-        body.appendChild(u); body.scrollTop = body.scrollHeight;
-      }
-      input.value = ''; if (typeof onAriaModalInput==='function') onAriaModalInput(input);
-
-      var typing = null;
-      if (body){
-        typing = document.createElement('div');
-        typing.className = 'aria-modal-bubble aria';
-        typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--muted)">📨 ' + (fr()?'Lecture de l\'email...':'Reading email...') + '</span>';
-        body.appendChild(typing); body.scrollTop = body.scrollHeight;
-      }
-
-      (async function(){
-        try {
-          var cleaned = cleanEmailBoilerplate(text);
-          var today = new Date().toISOString().slice(0,10);
-          var systemPrompt = buildExtractPrompt(today);
-          var raw = await window.callBestAI('extract', systemPrompt, cleaned, 600);
-          var g = {};
-          try {
-            var m = (raw||'').replace(/```json\n?/gi,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
-            if (m) g = JSON.parse(m[0]);
-          } catch(e){}
-
-          // Si name vide → tente extraction depuis sender preview (fallback)
-          if (!g.name && emailPreview.sender){
-            var nm = emailPreview.sender.split('·')[0].trim();
-            if (nm) g.name = nm;
-          }
-          if (g.name) g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
-
-          // Fix 2 : décide si on save ou pas
-          var worth = isWorthSaving(g);
-          if (!worth){
-            // Pas assez d'info — affiche juste un résumé sans créer de fiche
-            if (typing){
-              var resumeHtml = '<strong>ARIA</strong> · ' + (fr()?'Email lu, mais trop peu d\'infos pour créer une fiche client.':'Email read, but not enough info to create a client record.');
-              if (g.name){
-                resumeHtml += '<div style="margin-top:6px;font-size:11px;color:#3a2f1f">→ '+(fr()?'Nom détecté':'Name detected')+' : <strong>'+g.name+'</strong>'+(g.notes?(' · '+g.notes):'')+'</div>';
-                resumeHtml += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">';
-                resumeHtml += '<button onclick="ariaForceCreateCrm(\''+groupIdForce+'\')" style="background:#C9963A;color:#0F2318;border:none;border-radius:5px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">➕ '+(fr()?'Créer quand même':'Create anyway')+'</button>';
-                resumeHtml += '</div>';
-              }
-              typing.innerHTML = resumeHtml;
-            }
-            return;
-          }
-
-          // Auto-save
-          var saved = await autoSaveGuest(g, cleaned);
-          var actions = generateContextualActions(saved, cleaned);
-          var cardHtml = renderExtractedCard(saved, actions, cleaned);
-          if (typing){
-            typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?'Email traité, fiche ajoutée au CRM.':'Email processed, record added to CRM.') + cardHtml;
-          }
-          try {
-            if (typeof saveChatMessage==='function'){
-              saveChatMessage('user', '[📧 Email Airbnb] ' + cleaned.slice(0,1000), saved.id, saved.name);
-              saveChatMessage('assistant', '[Auto-extract] '+saved.name+' · '+(saved.arrival||'?')+'→'+(saved.departure||'?')+' · '+(saved.guests||0)+' guests · '+(saved.price||0)+'€', saved.id, saved.name);
-            }
-          } catch(e){}
-        } catch(e){
-          if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">⚠ ' + (e.message||'Erreur') + '</span>';
-        }
-      })();
-      return;
-    }
-    return _origSendAriaModal2 ? _origSendAriaModal2.apply(this, arguments) : null;
-  };
+  // Phase 1 cleanup (2026-05-10): removed dead pass-through wrapper + 88-line
+  // _phaseA1Pipeline stub (Airbnb extraction). The wrapper called the original
+  // unchanged; the stub was defined but never invoked. Real Airbnb extraction
+  // lives in the consolidated sendAriaModal wrapper further below (classifier
+  // → processAriaInput).
 
   // ──────────────── Fix 3 : header Aria — bandeau "X emails non lus → Inbox" ────────────────
   // S'affiche quand on ouvre Aria s'il y a des emails non lus
@@ -17335,21 +17245,10 @@ window.addEventListener('DOMContentLoaded', function() {
     return { hasInfant:hasInfant, hasChild:hasChild, isFamily:isFamily };
   }
 
-  // ──────────────── Multi-AI router (ajoute des routes write_guest, write_staff) ────────────────
-  // Wrap callBestAI pour ajouter les nouvelles routes en mappant vers les routes existantes du proxy
-  var _origCallBestAI = window.callBestAI;
-  window.callBestAI = async function(task, systemPrompt, userContent, maxTokens){
-    // Mapping vers les routes proxy existantes (extract/brief/write_fr/reason)
-    var routeMap = {
-      'write_guest_fr': 'write_fr',     // Mistral small (excellente FR) → fallbacks
-      'write_guest_en': 'brief',        // Groq 70b (bon EN) → fallbacks
-      'write_staff':    'extract',      // Court, factuel → Groq fast
-      'cleanup':        'extract'
-    };
-    var resolvedTask = routeMap[task] || task;
-    if (_origCallBestAI) return _origCallBestAI(resolvedTask, systemPrompt, userContent, maxTokens);
-    throw new Error('callBestAI not available');
-  };
+  // Phase 1 cleanup (2026-05-10): removed dead callBestAI task-remapping wrapper.
+  // It mapped write_guest_fr → write_fr, write_guest_en → brief, etc., but was
+  // shadowed by the scoring wrapper further below which never delegates back.
+  // The scoring wrapper's AI_ROUTES handles those task names natively.
 
   // ──────────────── Auto-save guest avec UNDO ────────────────
   async function autoSaveGuest(g, sourceText){
@@ -17798,15 +17697,9 @@ window.addEventListener('DOMContentLoaded', function() {
     } catch(e){ btn.disabled = false; btn.textContent = orig; }
   };
 
-  // ──────────────── Pipeline UNIFIÉ : email Airbnb collé ────────────────
-  // NOTE : cet override est désormais un simple pass-through.
-  // Le vrai pipeline email Airbnb est dans Phase A.1 (plus haut dans ce fichier),
-  // qui utilise le nouveau prompt few-shot + isWorthSaving + stripParasitePrompt.
-  // On laisse cet override pour ne rien casser, mais il ne fait plus rien.
-  var _origSendAriaModal = window.sendAriaModal;
-  window.sendAriaModal = function(){
-    return _origSendAriaModal ? _origSendAriaModal.apply(this, arguments) : null;
-  };
+  // Phase 1 cleanup (2026-05-10): removed dead pass-through wrapper of sendAriaModal.
+  // Original comment: "cet override est désormais un simple pass-through... il ne fait plus rien."
+  // The real classifier router lives in the consolidated wrapper further below.
 
   // Helper detectLang utilisé par generateContextualActions
   if (typeof window.detectLang !== 'function') window.detectLang = detectGuestLang;
@@ -18062,26 +17955,37 @@ window.addEventListener('DOMContentLoaded', function() {
     }
   }
 
-  // Override final sendAriaModal — délègue au pipeline universel pour tous types détectés
-  // Si pipeline universel ne gère pas (free text, image/doc) → fallback chat normal
-  var _finalOrigSendAriaModal = window.sendAriaModal;
+  // ════════════════════════════════════════════════════════════════
+  // ARIA SEND — single canonical wrapper (Phase 1 consolidation, 2026-05-10)
+  // Replaces W1 (dead pass-through), W2 (dead pass-through), W3 (classifier),
+  // W4 (analytics) — was a 4-layer onion of monkey-patches. Now ONE layer.
+  // ════════════════════════════════════════════════════════════════
+  // Flow:
+  //   1) Track interaction (analytics)
+  //   2) Classify input (email_platform / whatsapp / sms / email_other / image / document / text)
+  //   3) Structured text  → universal extraction pipeline (processAriaInput)
+  //   4) Free text / vision → fall through to base sendAriaModal (vision proxy or chatSend bridge)
+  var _baseSendAriaModal = window.sendAriaModal;
   window.sendAriaModal = async function(){
+    // Step 1 — analytics (was W4, line ~22136)
+    try { if (typeof trackAriaAction === 'function') trackAriaAction('chat'); } catch(_){}
+
     var input = document.getElementById('ariaModalInput');
     var text = (input && input.value || '').trim();
     var attach = window._ariaAttachment || null;
     if (!text && !attach) return;
 
-    // Classifier d'abord
+    // Step 2 — classify
     var classification = classifyAriaInput(text, attach);
 
-    // Pour text structuré (email, WA, SMS) → pipeline universel
+    // Step 3 — structured text → universal extraction
     if (classification.type === 'email_platform' || classification.type === 'whatsapp' || classification.type === 'sms' || classification.type === 'email_other'){
       var handled = await processAriaInput(text, null);
       if (handled) return;
     }
 
-    // Sinon (free text, image, doc) → pipeline normal existant
-    return _finalOrigSendAriaModal ? _finalOrigSendAriaModal.apply(this, arguments) : null;
+    // Step 4 — free text / image / doc → base pipeline (vision proxy OR chatSend bridge)
+    return _baseSendAriaModal ? _baseSendAriaModal.apply(this, arguments) : null;
   };
 
   /* ══════════════════════════════════════════════════════════════════
@@ -22132,14 +22036,9 @@ window.addEventListener('DOMContentLoaded', function() {
     }
   };
 
-  /* Hook into existing Aria send to track every interaction */
-  var origSend = window.sendAriaModal;
-  if (typeof origSend === 'function') {
-    window.sendAriaModal = function(){
-      trackAriaAction('chat');
-      return origSend.apply(this, arguments);
-    };
-  }
+  /* Aria-send analytics tracking now lives inside the consolidated wrapper
+     defined ~4000 lines earlier (Phase 1 cleanup, 2026-05-10).
+     This block previously double-wrapped sendAriaModal just to call trackAriaAction('chat'). */
 
   /* Init */
   setTimeout(updateAriaCounter, 1000);
