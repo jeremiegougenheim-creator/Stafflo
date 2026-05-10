@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -19972,24 +19973,10 @@ window.addEventListener('DOMContentLoaded', function() {
           });
         } catch(e) {}
         var hasAnyData = clients && clients.some(function(c){return c.arrival;});
-        if (!hasAnyData) {
-          return '<div style="padding:14px 18px;text-align:center"><div style="font-size:13px;color:var(--muted);font-style:italic;line-height:1.5">'+(fr?'Le calendrier est libre.':'Your calendar is free.')+'</div><div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button onclick="event.stopPropagation();if(typeof openForm===\'function\')openForm()" style="background:var(--gold);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)">'+(fr?'+ Ajouter un séjour':'+ Add a stay')+'</button><button onclick="event.stopPropagation();if(typeof goTab===\'function\')goTab(\'today\')" style="background:transparent;color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans)">'+(fr?'Voir le calendrier':'View calendar')+'</button></div></div>';
-        }
+        // No empty fallback — always render the 14-day horizontal timeline.
+        // If no clients at all, the strip just shows empty cells starting from today.
+        // Always start from yesterday (today on day 2) for consistent strip
         var startD = new Date(todayD); startD.setDate(startD.getDate()-1);
-        // Smart start: if nothing in current 14d window, slide to next arrival
-        var hasInWindow = false;
-        for (var ck=0; ck<14; ck++){
-          var dCk = new Date(startD); dCk.setDate(startD.getDate()+ck);
-          if (occ[dCk.toISOString().slice(0,10)]) { hasInWindow = true; break; }
-        }
-        if (!hasInWindow) {
-          var nextArrCal = clients.filter(function(c){if(!c.arrival)return false;var d=new Date(c.arrival);d.setHours(0,0,0,0);return d>=todayD;}).sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);})[0];
-          if (nextArrCal) {
-            startD = new Date(nextArrCal.arrival);
-            startD.setHours(0,0,0,0);
-            startD.setDate(startD.getDate()-1);
-          }
-        }
         var dayInit = fr ? ['D','L','M','M','J','V','S'] : ['S','M','T','W','T','F','S'];
         var monthShort = fr?['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc']:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         var lastMonth = -1;
