@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -2300,6 +2301,13 @@ body, main { background: var(--cream); }
     <button onclick="closeSettings()" style="background:none;border:none;color:rgba(255,255,255,.6);font-size:22px;cursor:pointer;line-height:1">✕</button>
   </div>
   <div style="padding:16px">
+  <!-- ── AUTH SECTION (2026-05-10) — actionable login/logout at the top of Settings ── -->
+  <div class="settings-section" id="settingsAuthSection" style="border:1.5px solid rgba(15,35,24,.15);background:#fff;margin-bottom:14px">
+    <div class="settings-title" data-fr="🔐 COMPTE" data-en="🔐 ACCOUNT">🔐 COMPTE</div>
+    <div id="settingsAuthBody" style="font-size:13px;color:#3a4a3a;padding:6px 0">
+      <div style="color:var(--muted)">Chargement…</div>
+    </div>
+  </div>
   <div class="settings-section" style="border:1.5px solid rgba(201,150,58,.3);background:rgba(201,150,58,.04)">
     <div class="settings-title" style="color:var(--gold)" data-fr="🤖 INTELLIGENCE ARTIFICIELLE" data-en="🤖 ARTIFICIAL INTELLIGENCE">🤖 INTELLIGENCE ARTIFICIELLE</div>
     <div style="background:var(--green-xl);border-radius:10px;padding:14px 16px">
@@ -3187,13 +3195,17 @@ async function authMagicLink(email, opts) {
   var url = sb.replace(/\/$/,'') + '/auth/v1/otp';
   // The redirect URL where the magic link will land. Must match an entry in
   // Supabase Dashboard → Authentication → URL Configuration → Redirect URLs.
+  // CRITICAL: Supabase /auth/v1/otp expects email_redirect_to at TOP LEVEL,
+  // not nested in `options` (that's the supabase-js client shape, not REST).
+  // Previously nested → ignored → link redirected to project default Site URL.
   var redirectTo = location.origin + location.pathname;
   var body = {
     email: email,
     create_user: opts.allowSignup !== false,
-    options: { email_redirect_to: redirectTo }
+    email_redirect_to: redirectTo
   };
   if (opts.metadata) body.data = opts.metadata;
+  console.log('[stafflo-auth] sending magic link to', email, '· redirect:', redirectTo);
   var res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type':'application/json', apikey: anon, Authorization: 'Bearer ' + anon },
@@ -3235,6 +3247,8 @@ function enterDemoMode() {
 window.enterDemoMode = enterDemoMode;
 
 // Initialize auth state on app load
+// 2026-05-10: now syncs BOTH state holders (STAFFLO_AUTH + _stafflo_user/_stafflo_session)
+// and accepts a session even if user is null (refetches in background).
 async function initAuth() {
   if (STAFFLO_AUTH.initialized) return;
   STAFFLO_AUTH.initialized = true;
@@ -3248,13 +3262,79 @@ async function initAuth() {
   } catch(e){}
   // Then check saved session
   var s = loadSessionLocal();
-  if (s && s.access_token && s.user) {
+  // Auto-refresh expired access_tokens (Supabase JWT expires after 1h by default).
+  // Without this, the user was effectively logged out 1h after sign-in until
+  // they manually re-logged. 2026-05-10 fix.
+  if (s && s.access_token && s.expires_at && (s.expires_at * 1000) < Date.now() + 30000) {
+    if (s.refresh_token) {
+      console.log('[stafflo-auth] access_token expired/expiring, refreshing…');
+      try {
+        var refreshed = (typeof refreshSession === 'function') ? await refreshSession(s.refresh_token) : null;
+        if (refreshed && refreshed.access_token) {
+          s = refreshed;
+          // saveSession() inside refreshSession already wrote localStorage + legacy state
+          console.log('[stafflo-auth] refresh ok, new expiry in', Math.round((s.expires_at*1000-Date.now())/60000), 'min');
+        } else {
+          console.warn('[stafflo-auth] refresh failed — clearing session, user must re-login');
+          saveSessionLocal(null);
+          s = null;
+        }
+      } catch(e) {
+        console.warn('[stafflo-auth] refresh error:', e.message);
+        s = null;
+      }
+    } else {
+      // Expired and no refresh_token → can't recover
+      saveSessionLocal(null);
+      s = null;
+    }
+  }
+  if (s && s.access_token) {
+    // Authoritative: both state holders point at the same session object.
+    // This was the root cause of "header shows username but mode=guest" — two
+    // separate stores populated from the same localStorage key but never synced.
     STAFFLO_AUTH.session = s;
-    STAFFLO_AUTH.user = s.user;
+    STAFFLO_AUTH.user = s.user || null;
     STAFFLO_AUTH.mode = 'authed';
+    try {
+      window._stafflo_session = s;
+      window._stafflo_user    = s.user || null;
+    } catch(_){}
+    // If user was lost (magic-link race where /auth/v1/user fetch failed), refetch.
+    if (!s.user) {
+      console.log('[stafflo-auth] session has no user — refetching from /auth/v1/user');
+      try {
+        var sb = (typeof SB_URL !== 'undefined') ? SB_URL : '';
+        var anon = (typeof SB_ANON !== 'undefined') ? SB_ANON : '';
+        var ur = await fetch(sb + '/auth/v1/user', {
+          headers: { apikey: anon, Authorization: 'Bearer ' + s.access_token }
+        });
+        if (ur.ok) {
+          var u = await ur.json();
+          if (u && u.id) {
+            s.user = u;
+            STAFFLO_AUTH.user = u;
+            try { window._stafflo_user = u; } catch(_){}
+            saveSessionLocal(s);
+            console.log('[stafflo-auth] user hydrated:', u.email);
+          }
+        } else if (ur.status === 401 || ur.status === 403) {
+          // Token invalid/expired — drop session and force re-login
+          console.warn('[stafflo-auth] token rejected (' + ur.status + '), clearing session');
+          saveSessionLocal(null);
+          STAFFLO_AUTH.session = null;
+          STAFFLO_AUTH.user = null;
+          STAFFLO_AUTH.mode = 'guest';
+          try { window._stafflo_session = null; window._stafflo_user = null; } catch(_){}
+        }
+      } catch(e) {
+        console.warn('[stafflo-auth] user refetch failed:', e.message);
+      }
+    }
     return;
   }
   STAFFLO_AUTH.mode = 'guest';
+  try { window._stafflo_session = null; window._stafflo_user = null; } catch(_){}
 }
 window.initAuth = initAuth;
 
@@ -22725,6 +22805,171 @@ window.addEventListener('DOMContentLoaded', function() {
   }
 
   console.log('[stafflo-intent-v2] step 1 loaded — classifyIntent() exposed. Run tests with the dedicated smoke test.');
+})();
+</script>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     AUTH SECTION populator + debug helper — 2026-05-10
+     Wires the new "🔐 COMPTE" section in Settings to current auth
+     state. Provides actionable login/logout. Adds staffloAuthDebug()
+     for console troubleshooting.
+     ════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  function $(id){ return document.getElementById(id); }
+  function fr(){ return (typeof lang !== 'undefined' && lang === 'fr'); }
+
+  // Render the auth section based on current state
+  function renderAuthSection(){
+    var body = $('settingsAuthBody');
+    if (!body) return;
+    var f = fr();
+    var auth = (typeof STAFFLO_AUTH !== 'undefined') ? STAFFLO_AUTH : null;
+    var authed = !!(auth && auth.mode === 'authed' && auth.session && auth.session.access_token);
+    var user = auth && auth.user;
+    var email = user && user.email;
+
+    if (authed) {
+      // Logged in — show user info + sign out
+      var expAt = auth.session.expires_at;
+      var minsLeft = expAt ? Math.round((expAt*1000 - Date.now())/60000) : null;
+      var expLabel = '';
+      if (minsLeft !== null) {
+        if (minsLeft < 0) expLabel = f?'⚠ Session expirée':'⚠ Session expired';
+        else if (minsLeft < 60) expLabel = f?('Session expire dans '+minsLeft+'min'):('Session expires in '+minsLeft+'min');
+        else expLabel = f?('Session valide '+Math.round(minsLeft/60)+'h'):('Session valid '+Math.round(minsLeft/60)+'h');
+      }
+      body.innerHTML =
+        '<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">' +
+          '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#1a3a1a,#3B6D11);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;flex-shrink:0">' + (email?email[0].toUpperCase():'?') + '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:13px;font-weight:600;color:#1a3a1a;overflow:hidden;text-overflow:ellipsis">' + (email||'?') + '</div>' +
+            '<div style="font-size:11px;color:#3B6D11;margin-top:2px">✓ ' + (f?'Connecté':'Signed in') + '</div>' +
+            (expLabel ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + expLabel + '</div>' : '') +
+          '</div>' +
+        '</div>' +
+        '<button id="settingsAuthSignout" style="width:100%;background:none;border:1.5px solid #C0392B;color:#C0392B;border-radius:8px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">' + (f?'Se déconnecter':'Sign out') + '</button>';
+      var btn = $('settingsAuthSignout');
+      if (btn) btn.onclick = function(){
+        if (!confirm(f?'Se déconnecter ?':'Sign out?')) return;
+        if (typeof authSignOut === 'function') authSignOut();
+        else if (typeof doSignOut === 'function') doSignOut();
+      };
+    } else {
+      // Not logged in — magic-link form inline
+      body.innerHTML =
+        '<div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:10px">' +
+          (f?'Pas connecté. Entre ton email pour recevoir un lien magique de connexion.':'Not signed in. Enter your email to receive a magic sign-in link.') +
+        '</div>' +
+        '<input type="email" id="settingsAuthEmail" placeholder="' + (f?'votre@email.com':'your@email.com') + '" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--ink);box-sizing:border-box;margin-bottom:8px">' +
+        '<button id="settingsAuthSendLink" style="width:100%;background:#C9963A;color:#fff;border:none;border-radius:8px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">' +
+          '✉ ' + (f?'Recevoir un lien magique':'Send magic link') +
+        '</button>' +
+        '<div id="settingsAuthMsg" style="font-size:11px;margin-top:8px;text-align:center;min-height:14px"></div>';
+      var send = $('settingsAuthSendLink');
+      var input = $('settingsAuthEmail');
+      var msg = $('settingsAuthMsg');
+      if (send) send.onclick = async function(){
+        var email = (input.value || '').trim();
+        if (!email || !/.+@.+\..+/.test(email)) {
+          msg.textContent = f?'Email invalide':'Invalid email';
+          msg.style.color = '#C0392B';
+          return;
+        }
+        send.disabled = true;
+        send.textContent = f?'Envoi…':'Sending…';
+        msg.textContent = '';
+        try {
+          if (typeof authMagicLink !== 'function') throw new Error('authMagicLink not available');
+          await authMagicLink(email, { allowSignup: true });
+          msg.textContent = '✓ ' + (f?('Lien envoyé à '+email+'. Vérifie ta boîte (et spam).'):('Link sent to '+email+'. Check inbox (and spam).'));
+          msg.style.color = '#3B6D11';
+          send.textContent = '✓ ' + (f?'Envoyé':'Sent');
+        } catch(e) {
+          msg.textContent = '⚠ ' + e.message;
+          msg.style.color = '#C0392B';
+          send.disabled = false;
+          send.textContent = '✉ ' + (f?'Recevoir un lien magique':'Send magic link');
+        }
+      };
+      // Also send on Enter
+      if (input) input.onkeydown = function(e){ if (e.key === 'Enter') { e.preventDefault(); send && send.click(); } };
+    }
+  }
+  window.renderAuthSection = renderAuthSection;
+
+  // Hook openSettings to refresh auth section every time it opens.
+  // Defer to next tick so openSettings has finished its own DOM manipulation.
+  var _origOpenSettings = window.openSettings;
+  if (typeof _origOpenSettings === 'function') {
+    window.openSettings = function(){
+      var r = _origOpenSettings.apply(this, arguments);
+      setTimeout(renderAuthSection, 30);
+      return r;
+    };
+  } else {
+    // openSettings not yet defined when this script runs — wait
+    document.addEventListener('DOMContentLoaded', function(){
+      var fn = window.openSettings;
+      if (typeof fn === 'function') {
+        window.openSettings = function(){
+          var r = fn.apply(this, arguments);
+          setTimeout(renderAuthSection, 30);
+          return r;
+        };
+      }
+    });
+  }
+
+  // Also render when settings is already open (e.g. on hot reload)
+  if (document.getElementById('settingsModal') && document.getElementById('settingsModal').style.display === 'flex') {
+    renderAuthSection();
+  }
+
+  // ── Console diagnostic helper ──────────────────────────────
+  // Run window.staffloAuthDebug() to dump full auth state to console.
+  window.staffloAuthDebug = function(){
+    var auth = (typeof STAFFLO_AUTH !== 'undefined') ? STAFFLO_AUTH : null;
+    var legacy = {
+      _stafflo_user:    (typeof window._stafflo_user    !== 'undefined') ? window._stafflo_user    : '(undefined)',
+      _stafflo_session: (typeof window._stafflo_session !== 'undefined') ? !!window._stafflo_session : '(undefined)'
+    };
+    var ls = null;
+    try { ls = JSON.parse(localStorage.getItem('stafflo_session') || 'null'); } catch(e){}
+    var out = {
+      'STAFFLO_AUTH.mode':           auth ? auth.mode : '(undefined)',
+      'STAFFLO_AUTH.user.email':     auth && auth.user ? auth.user.email : null,
+      'STAFFLO_AUTH.user.id':        auth && auth.user ? auth.user.id : null,
+      'STAFFLO_AUTH.has_token':      !!(auth && auth.session && auth.session.access_token),
+      'STAFFLO_AUTH.expires_in_min': auth && auth.session && auth.session.expires_at
+        ? Math.round((auth.session.expires_at*1000 - Date.now())/60000) : null,
+      'legacy._stafflo_user':        legacy._stafflo_user && legacy._stafflo_user.email,
+      'legacy._stafflo_session':     legacy._stafflo_session,
+      'localStorage.has_session':    !!ls,
+      'localStorage.token_match':    !!(ls && auth && auth.session && ls.access_token === auth.session.access_token),
+      'sync_ok': (function(){
+        if (!auth) return false;
+        var aHas = !!(auth.session && auth.session.access_token);
+        var lHas = !!window._stafflo_session;
+        return aHas === lHas;
+      })()
+    };
+    console.table(out);
+    if (!out.sync_ok) {
+      console.warn('%c⚠ STAFFLO_AUTH and legacy _stafflo_session are out of sync — fix in initAuth not applied yet?',
+        'color:#C0392B;font-weight:700');
+    }
+    if (out['STAFFLO_AUTH.mode'] === 'authed' && !out['STAFFLO_AUTH.user.id']) {
+      console.warn('%c⚠ Authed but no user.id — RLS will reject inserts. Re-login needed.',
+        'color:#C0392B;font-weight:700');
+    }
+    return out;
+  };
+
+  console.log('[stafflo-auth] settings auth section + staffloAuthDebug() helper loaded');
 })();
 </script>
 
