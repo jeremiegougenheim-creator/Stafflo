@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -4342,6 +4343,20 @@ async function loadFromSupabase() {
         createdAt: r.created_at||new Date().toISOString()
       }; });
       saveLocal(); renderAll(); setSyncDot('ok');
+      // Refresh all collapsed v2-card summaries with new data (calendar timeline, etc)
+      setTimeout(function(){
+        try {
+          document.querySelectorAll('.v2-card-summary').forEach(function(s){
+            if (s.style.display !== 'none') {
+              var card = s.closest('.v2-card');
+              if (card && typeof window._buildRichSummary === 'function') {
+                var rich = window._buildRichSummary(card.id||'', card);
+                if (rich) s.innerHTML = rich;
+              }
+            }
+          });
+        } catch(e) {}
+      }, 100);
     } else { loadLocal(); setSyncDot('err'); }
   } catch(e) { loadLocal(); setSyncDot('err'); }
 }
@@ -19937,13 +19952,32 @@ window.addEventListener('DOMContentLoaded', function() {
       var titleSpan = card.querySelector('.v2-card-title span');
       if (cardId === 'cardCalendarMini' || (card.classList && card.classList.contains('cardCalendarMiniMirror'))) {
         var todayD = new Date(); todayD.setHours(0,0,0,0);
-        var occ = (typeof buildOccupancyMap==='function')?buildOccupancyMap():{};
+        // Build occupancy map inline (don't depend on closure-scoped buildOccupancyMap)
+        var occ = {};
+        try {
+          (clients || []).forEach(function(c){
+            if (c.deleted_at) return;
+            if (!c.arrival || !c.departure) return;
+            var aD = new Date(c.arrival); aD.setHours(0,0,0,0);
+            var dD = new Date(c.departure); dD.setHours(0,0,0,0);
+            for (var t = aD.getTime(); t <= dD.getTime(); t += 86400000) {
+              var dt = new Date(t);
+              var k = dt.toISOString().slice(0,10);
+              var isArr = (t === aD.getTime());
+              var isDep = (t === dD.getTime());
+              var type = isArr ? 'arrival' : isDep ? 'departure' : 'stay';
+              if (!occ[k] || (occ[k].type === 'stay' && type !== 'stay')) {
+                occ[k] = { type: type, guest: c };
+              }
+            }
+          });
+        } catch(e) {}
         var hasAnyData = clients && clients.some(function(c){return c.arrival;});
         if (!hasAnyData) {
           return '<div style="padding:14px 18px;text-align:center"><div style="font-size:13px;color:var(--muted);font-style:italic;line-height:1.5">'+(fr?'Le calendrier est libre.':'Your calendar is free.')+'</div><div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button onclick="event.stopPropagation();if(typeof openForm===\'function\')openForm()" style="background:var(--gold);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)">'+(fr?'+ Ajouter un séjour':'+ Add a stay')+'</button><button onclick="event.stopPropagation();if(typeof goTab===\'function\')goTab(\'today\')" style="background:transparent;color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--sans)">'+(fr?'Voir le calendrier':'View calendar')+'</button></div></div>';
         }
         var startD = new Date(todayD); startD.setDate(startD.getDate()-1);
-        // Smart start: si rien dans la fenêtre 14j courante, glisse jusqu'à la prochaine arrivée
+        // Smart start: if nothing in current 14d window, slide to next arrival
         var hasInWindow = false;
         for (var ck=0; ck<14; ck++){
           var dCk = new Date(startD); dCk.setDate(startD.getDate()+ck);
@@ -19983,7 +20017,7 @@ window.addEventListener('DOMContentLoaded', function() {
           html += '<div style="position:relative;flex-shrink:0;width:54px;height:78px;background:'+bg+';color:'+fg+';border:'+border+';border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5px;font-family:var(--sans)">'+monthLbl+arrow+'<div style="font-size:9.5px;font-weight:600;opacity:.7;line-height:1;letter-spacing:.5px">'+dayInit[d.getDay()]+'</div><div style="font-size:19px;font-weight:'+(isToday?'700':'600')+';line-height:1;margin-top:3px">'+d.getDate()+'</div>'+(nm?'<div style="font-size:10px;font-weight:500;line-height:1;margin-top:4px;max-width:48px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</div>':'')+'</div>';
         }
         html += '</div></div>';
-        // Legend with Event color too
+        // Legend
         html += '<div style="display:flex;gap:14px;padding:6px 18px 14px;font-size:10.5px;color:var(--muted);font-family:var(--sans);flex-wrap:wrap;align-items:center;justify-content:space-between">'
               + '<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">'
               + '<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:11px;height:11px;background:#3B6D11;border-radius:3px"></span>'+(fr?'Arrivée':'Arrival')+'</span>'
