@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -8808,13 +8809,15 @@ function showEmailConnectModal() {
     html += '<button onclick="disconnectEmail()" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:inherit">'+ (fr?'Déconnecter':'Disconnect') +'</button>';
     html += '</div>';
   } else if (conn.provider && !conn.access_token) {
-    // Token was cleared (expired or revoked) — needs reconnect
+    // 2026-05-10 beta UX: instead of pushing users into the broken Gmail OAuth
+    // reconnect (which dead-ended in Settings), surface iCal as the easy path.
+    // Power users can still use the Gmail option from the Advanced details below.
     var providerLower = (conn.provider || 'google').toLowerCase();
-    html += '<div style="background:rgba(192,57,43,.08);border:1px solid rgba(192,57,43,.4);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">';
-    html += '<span style="font-size:18px">⚠️</span>';
-    html += '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--red)">'+ (fr?'Token expiré':'Token expired') +'</div>';
-    html += '<div style="font-size:11px;color:var(--muted)">'+ (conn.provider||'—') + (conn.email ? ' · '+conn.email : '') + ' — ' + (fr?'reconnexion requise':'reconnection required') +'</div></div>';
-    html += '<button onclick="connectEmailProvider(\'' + providerLower + '\')" style="background:var(--gold);border:none;color:var(--green3);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px">'+ (fr?'🔄 RECONNECTER':'🔄 RECONNECT') +'</button>';
+    html += '<div style="background:rgba(201,150,58,.08);border:1px solid rgba(201,150,58,.35);border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;gap:10px">';
+    html += '<span style="font-size:18px">⏱</span>';
+    html += '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:#7A5A1A">'+ (fr?'Connexion ' + (conn.provider||'?') + ' à renouveler':'Renew ' + (conn.provider||'?') + ' connection') +'</div>';
+    html += '<div style="font-size:11px;color:var(--muted);line-height:1.4;margin-top:2px">'+ (conn.email ? String(conn.email).replace(/[<>&"]/g,'') + ' · ' : '') + (fr?'le plus simple : passe à iCal sync (30s, pas d\'OAuth) →':'simplest: switch to iCal sync (30s, no OAuth) →') +'</div></div>';
+    html += '<button onclick="document.getElementById(\'emailConnectModal\').remove();if(typeof openIcalSettings===\'function\')openIcalSettings()" style="background:var(--gold);border:none;color:var(--green3);border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.3px;flex-shrink:0">↻ '+ (fr?'iCal':'iCal') +'</button>';
     html += '</div>';
   }
 
@@ -8945,7 +8948,9 @@ async function connectEmailProvider(kind) {
         if (act === 'setup') {
           infoModal.remove();
           if (existing) existing.remove();
-          if (typeof openSettings === 'function') openSettings();
+          // 2026-05-10: replaced dead-end openSettings() with the real 3-step wizard
+          if (typeof showGmailSetupWizard === 'function') showGmailSetupWizard();
+          else if (typeof openSettings === 'function') openSettings();
         }
       });
       return;
@@ -22969,6 +22974,340 @@ window.addEventListener('DOMContentLoaded', function() {
   };
 
   console.log('[stafflo-auth] settings auth section + staffloAuthDebug() helper loaded');
+})();
+</script>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     GMAIL SETUP WIZARD — 2026-05-10
+     Replaces the dead-end "Setup OAuth → openSettings" loop with a
+     real 3-step inline wizard. User pastes Client ID, validates,
+     tests the OAuth flow. No more bouncing modals.
+     ════════════════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+
+  function fr(){ return (typeof lang !== 'undefined' && lang === 'fr'); }
+  function _esc(s){ return String(s||'').replace(/[<>&"]/g, function(c){ return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]; }); }
+
+  // Step state — kept inside the modal closure
+  function showGmailSetupWizard(opts){
+    opts = opts || {};
+    var f = fr();
+
+    // Remove any existing wizard
+    var existing = document.getElementById('gmailSetupWizard');
+    if (existing) existing.remove();
+
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var currentClientId = (cfg.googleClientId || cfg.google_client_id || '').trim();
+
+    // ── Modal scaffold ────────────────────────────────────────
+    var modal = document.createElement('div');
+    modal.id = 'gmailSetupWizard';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.78);z-index:99997;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px);font-family:DM Sans,sans-serif';
+    modal.onclick = function(e){ if (e.target === modal) close(); };
+
+    function close(){ try { modal.remove(); } catch(_){} }
+
+    // Inner card with 3-step layout
+    var card = document.createElement('div');
+    card.style.cssText = 'background:#fff;border-radius:18px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;box-shadow:0 24px 64px rgba(0,0,0,.4);display:flex;flex-direction:column';
+
+    // ── Header ────────────────────────────────────────────────
+    var head = document.createElement('div');
+    head.style.cssText = 'background:linear-gradient(135deg,#0F2318,#1d4d3a);padding:18px 22px;color:#fff;border-radius:18px 18px 0 0;display:flex;align-items:center;justify-content:space-between';
+    head.innerHTML =
+      '<div>' +
+        '<div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.45);margin-bottom:3px">' + (f?'CONFIGURATION':'SETUP') + '</div>' +
+        '<div style="font-family:Fraunces,serif;font-size:18px;font-weight:300">' + (f?'Connecter Gmail à Stafflo':'Connect Gmail to Stafflo') + '</div>' +
+      '</div>' +
+      '<button id="gswClose" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer;line-height:1">×</button>';
+
+    // ── Step indicator ────────────────────────────────────────
+    var steps = document.createElement('div');
+    steps.style.cssText = 'display:flex;gap:6px;padding:14px 22px;background:#FAF6EE;border-bottom:1px solid #E8E2D8';
+    function renderSteps(active){
+      var labels = f
+        ? ['1 · Créer l\'app','2 · Coller le Client ID','3 · Tester la connexion']
+        : ['1 · Create app','2 · Paste Client ID','3 · Test connection'];
+      steps.innerHTML = labels.map(function(lbl, i){
+        var on = (i+1) === active;
+        var done = (i+1) < active;
+        var color = on ? '#C9963A' : (done ? '#3B6D11' : '#8A8070');
+        var bg = on ? 'rgba(201,150,58,.14)' : (done ? 'rgba(59,109,17,.10)' : 'transparent');
+        var icon = done ? '✓ ' : '';
+        return '<div style="flex:1;padding:7px 9px;border-radius:7px;background:' + bg + ';color:' + color + ';font-size:11px;font-weight:600;letter-spacing:.3px;text-align:center">' + icon + lbl + '</div>';
+      }).join('');
+    }
+
+    // ── Body — content per step ───────────────────────────────
+    var body = document.createElement('div');
+    body.style.cssText = 'padding:22px;flex:1;overflow-y:auto';
+
+    var state = {
+      step: currentClientId ? 2 : 1, // skip welcome if Client ID already saved
+      clientId: currentClientId,
+      testInFlight: false
+    };
+
+    function renderStep(){
+      renderSteps(state.step);
+      if (state.step === 1) renderStep1();
+      else if (state.step === 2) renderStep2();
+      else if (state.step === 3) renderStep3();
+    }
+
+    function renderStep1(){
+      body.innerHTML =
+        '<div style="font-size:14px;line-height:1.6;color:#3a4a3a;margin-bottom:18px">' +
+          (f
+            ? 'Pour que Stafflo lise tes emails Airbnb/Booking depuis Gmail, il faut un identifiant <strong>OAuth Client ID</strong> de Google (gratuit, lié à ton compte). Ça prend ~5 minutes la première fois.'
+            : 'For Stafflo to read your Airbnb/Booking emails from Gmail, we need a Google <strong>OAuth Client ID</strong> (free, tied to your account). Takes ~5 min the first time.') +
+        '</div>' +
+        '<div style="background:#FAF6EE;border-radius:10px;padding:16px;margin-bottom:18px">' +
+          '<div style="font-size:12px;font-weight:700;color:#1a3a1a;margin-bottom:8px;letter-spacing:.5px">' + (f?'EN BREF :':'IN SHORT:') + '</div>' +
+          '<ol style="font-size:13px;line-height:1.7;color:#3a4a3a;margin:0;padding-left:20px">' +
+            '<li>' + (f?'Ouvre Google Cloud Console (bouton ci-dessous)':'Open Google Cloud Console (button below)') + '</li>' +
+            '<li>' + (f?'Crée un projet (ou choisis-en un)':'Create a project (or pick one)') + '</li>' +
+            '<li>' + (f?'APIs & Services → Credentials → Create OAuth Client ID':'APIs & Services → Credentials → Create OAuth Client ID') + '</li>' +
+            '<li>' + (f?'Type : Application Web':'Type: Web application') + '</li>' +
+            '<li>' + (f?'Origines JS autorisées : <code style="background:#fff;padding:1px 5px;border-radius:3px;font-size:11px">' + _esc(location.origin) + '</code>':'Authorized JS origins: <code style="background:#fff;padding:1px 5px;border-radius:3px;font-size:11px">' + _esc(location.origin) + '</code>') + '</li>' +
+            '<li>' + (f?'URIs de redirection : <code style="background:#fff;padding:1px 5px;border-radius:3px;font-size:11px">' + _esc(location.origin + location.pathname) + '?oauth_callback=1</code>':'Redirect URIs: <code style="background:#fff;padding:1px 5px;border-radius:3px;font-size:11px">' + _esc(location.origin + location.pathname) + '?oauth_callback=1</code>') + '</li>' +
+            '<li>' + (f?'Copie le <strong>Client ID</strong> (finit par <code>.apps.googleusercontent.com</code>)':'Copy the <strong>Client ID</strong> (ends with <code>.apps.googleusercontent.com</code>)') + '</li>' +
+          '</ol>' +
+        '</div>' +
+        '<div style="display:flex;gap:10px">' +
+          '<button id="gswOpenConsole" style="flex:1;background:linear-gradient(135deg,#4285F4,#1a73e8);color:#fff;border:none;border-radius:10px;padding:13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' +
+            '↗ ' + (f?'Ouvrir Google Cloud Console':'Open Google Cloud Console') +
+          '</button>' +
+          '<button id="gswNext1" style="background:#1a3a1a;color:#fff;border:none;border-radius:10px;padding:13px 22px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' +
+            (f?'J\'ai mon Client ID →':'I have my Client ID →') +
+          '</button>' +
+        '</div>';
+      document.getElementById('gswOpenConsole').onclick = function(){
+        window.open('https://console.cloud.google.com/apis/credentials', '_blank', 'noopener');
+      };
+      document.getElementById('gswNext1').onclick = function(){
+        state.step = 2;
+        renderStep();
+      };
+    }
+
+    function renderStep2(){
+      body.innerHTML =
+        '<div style="font-size:14px;line-height:1.6;color:#3a4a3a;margin-bottom:14px">' +
+          (f?'Colle ton <strong>Client ID</strong> Google ci-dessous :':'Paste your Google <strong>Client ID</strong> below:') +
+        '</div>' +
+        '<input type="text" id="gswClientIdInput" placeholder="123456789-abc...apps.googleusercontent.com" value="' + _esc(state.clientId) + '" ' +
+          'style="width:100%;padding:13px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:13px;font-family:Monaco,monospace;color:#1a3a1a;box-sizing:border-box;background:#FAF6EE;margin-bottom:8px">' +
+        '<div id="gswValidationMsg" style="font-size:11px;min-height:14px;margin-bottom:14px"></div>' +
+        '<div style="background:rgba(201,150,58,.06);border:1px solid rgba(201,150,58,.25);border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:12px;line-height:1.5;color:#7A5A1A">' +
+          '<strong>' + (f?'Vérifie avant de sauver :':'Verify before saving:') + '</strong> ' +
+          (f
+            ? 'le Client ID doit finir par <code style="background:#fff;padding:1px 4px;border-radius:3px">.apps.googleusercontent.com</code>. Si ça ne match pas, c\'est probablement le Client Secret (qu\'on n\'utilise PAS).'
+            : 'Client ID must end with <code style="background:#fff;padding:1px 4px;border-radius:3px">.apps.googleusercontent.com</code>. If it doesn\'t, you probably copied the Client Secret (we don\'t use that).') +
+        '</div>' +
+        '<div style="display:flex;gap:10px">' +
+          '<button id="gswBack2" style="background:none;border:1.5px solid #E8E2D8;color:#8A8070;border-radius:10px;padding:13px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">' +
+            '← ' + (f?'Retour':'Back') +
+          '</button>' +
+          '<button id="gswSave" style="flex:1;background:#1a3a1a;color:#fff;border:none;border-radius:10px;padding:13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' +
+            (f?'Sauver et tester →':'Save and test →') +
+          '</button>' +
+        '</div>';
+
+      var input = document.getElementById('gswClientIdInput');
+      var validMsg = document.getElementById('gswValidationMsg');
+      var saveBtn = document.getElementById('gswSave');
+
+      function validate(){
+        var v = (input.value || '').trim();
+        if (!v) { validMsg.textContent = ''; saveBtn.disabled = true; saveBtn.style.opacity = '.5'; return false; }
+        if (!/\.apps\.googleusercontent\.com$/.test(v)) {
+          validMsg.style.color = '#C0392B';
+          validMsg.textContent = '✗ ' + (f?'Format invalide — doit finir par .apps.googleusercontent.com':'Invalid format — must end with .apps.googleusercontent.com');
+          saveBtn.disabled = true; saveBtn.style.opacity = '.5';
+          return false;
+        }
+        if (v.length < 30) {
+          validMsg.style.color = '#C0392B';
+          validMsg.textContent = '✗ ' + (f?'Trop court':'Too short');
+          saveBtn.disabled = true; saveBtn.style.opacity = '.5';
+          return false;
+        }
+        validMsg.style.color = '#3B6D11';
+        validMsg.textContent = '✓ ' + (f?'Format OK':'Format OK');
+        saveBtn.disabled = false; saveBtn.style.opacity = '1';
+        return true;
+      }
+
+      input.oninput = validate;
+      validate();
+
+      document.getElementById('gswBack2').onclick = function(){ state.step = 1; renderStep(); };
+      saveBtn.onclick = function(){
+        if (!validate()) return;
+        var v = input.value.trim();
+        try {
+          var cfg2 = (typeof getCfg === 'function') ? getCfg() : {};
+          cfg2.googleClientId = v;
+          if (typeof setCfg === 'function') setCfg(cfg2);
+          state.clientId = v;
+          state.step = 3;
+          renderStep();
+        } catch(e){
+          validMsg.style.color = '#C0392B';
+          validMsg.textContent = '✗ ' + e.message;
+        }
+      };
+    }
+
+    function renderStep3(){
+      body.innerHTML =
+        '<div style="font-size:14px;line-height:1.6;color:#3a4a3a;margin-bottom:18px">' +
+          (f?'Client ID enregistré localement. On lance maintenant le flow OAuth Google pour vérifier que tout marche.':'Client ID saved locally. Now we run the Google OAuth flow to verify everything works.') +
+        '</div>' +
+        '<div id="gswTestStatus" style="background:#FAF6EE;border-radius:10px;padding:16px;margin-bottom:18px;font-size:13px;color:#3a4a3a;line-height:1.6;min-height:80px">' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+            '<span style="font-size:22px">⏳</span>' +
+            '<div>' +
+              '<div style="font-weight:600;color:#1a3a1a">' + (f?'Prêt à tester':'Ready to test') + '</div>' +
+              '<div style="font-size:11px;color:#8A8070;margin-top:2px">' + (f?'Une popup Google va s\'ouvrir. Autorise les popups si nécessaire.':'A Google popup will open. Allow popups if needed.') + '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:10px">' +
+          '<button id="gswBack3" style="background:none;border:1.5px solid #E8E2D8;color:#8A8070;border-radius:10px;padding:13px 16px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">' +
+            '← ' + (f?'Retour':'Back') +
+          '</button>' +
+          '<button id="gswTest" style="flex:1;background:linear-gradient(135deg,#4285F4,#1a73e8);color:#fff;border:none;border-radius:10px;padding:13px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' +
+            '🚀 ' + (f?'Lancer le test':'Run test') +
+          '</button>' +
+        '</div>';
+
+      document.getElementById('gswBack3').onclick = function(){ state.step = 2; renderStep(); };
+
+      document.getElementById('gswTest').onclick = function(){
+        if (state.testInFlight) return;
+        state.testInFlight = true;
+        var btn = document.getElementById('gswTest');
+        var status = document.getElementById('gswTestStatus');
+        btn.disabled = true;
+        btn.textContent = '⏳ ' + (f?'Test en cours...':'Testing...');
+        status.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">⏳</span><div><div style="font-weight:600;color:#1a3a1a">' + (f?'Ouverture popup Google...':'Opening Google popup...') + '</div></div></div>';
+
+        // Build OAuth URL — same logic as connectEmailProvider but inline so we own success/fail UI
+        var redirectUri = location.origin + location.pathname + '?oauth_callback=1';
+        var scope = encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly email profile');
+        var oauthUrl = 'https://accounts.google.com/o/oauth2/v2/auth' +
+          '?client_id=' + encodeURIComponent(state.clientId) +
+          '&redirect_uri=' + encodeURIComponent(redirectUri) +
+          '&response_type=token' +
+          '&scope=' + scope +
+          '&prompt=consent' +
+          '&state=gmail_setup_wizard';
+        var popup = window.open(oauthUrl, 'stafflo_gsw_oauth', 'width=520,height=640');
+
+        if (!popup) {
+          state.testInFlight = false;
+          btn.disabled = false;
+          btn.textContent = '🚀 ' + (f?'Lancer le test':'Run test');
+          status.innerHTML = '<div style="display:flex;align-items:center;gap:10px;color:#C0392B"><span style="font-size:22px">⚠</span><div><div style="font-weight:600">' + (f?'Popup bloquée':'Popup blocked') + '</div><div style="font-size:11px;margin-top:2px">' + (f?'Autorise les popups dans ton navigateur et réessaie.':'Allow popups in your browser and retry.') + '</div></div></div>';
+          return;
+        }
+
+        var done = false;
+        var handler = async function(event){
+          if (done) return;
+          if (!event.data || event.data.type !== 'stafflo_oauth_token') return;
+          done = true;
+          window.removeEventListener('message', handler);
+          var token = event.data.access_token;
+
+          status.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">⏳</span><div><div style="font-weight:600;color:#1a3a1a">' + (f?'Récupération du profil Gmail...':'Fetching Gmail profile...') + '</div></div></div>';
+
+          try {
+            var pr = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+              headers: { Authorization: 'Bearer ' + token }
+            });
+            if (!pr.ok) throw new Error('userinfo ' + pr.status);
+            var prof = await pr.json();
+            // Save the connection
+            if (typeof saveEmailConnection === 'function') {
+              await saveEmailConnection({
+                provider: 'Google',
+                email: prof.email,
+                access_token: token,
+                connected_at: new Date().toISOString()
+              });
+            }
+            // Success state
+            status.innerHTML =
+              '<div style="display:flex;align-items:center;gap:10px;color:#3B6D11">' +
+                '<span style="font-size:22px">✅</span>' +
+                '<div>' +
+                  '<div style="font-weight:600">' + (f?'Connexion réussie':'Connection successful') + '</div>' +
+                  '<div style="font-size:12px;color:#1a3a1a;margin-top:3px">' + _esc(prof.email) + '</div>' +
+                '</div>' +
+              '</div>';
+            btn.style.background = '#3B6D11';
+            btn.textContent = '✓ ' + (f?'Terminer':'Done');
+            btn.disabled = false;
+            btn.onclick = function(){
+              close();
+              if (typeof toast === 'function') toast(f?'✅ Gmail connecté · ' + prof.email:'✅ Gmail connected · ' + prof.email);
+            };
+            state.testInFlight = false;
+          } catch(e){
+            state.testInFlight = false;
+            btn.disabled = false;
+            btn.textContent = '🚀 ' + (f?'Réessayer':'Retry');
+            status.innerHTML =
+              '<div style="display:flex;align-items:flex-start;gap:10px;color:#C0392B">' +
+                '<span style="font-size:22px">✗</span>' +
+                '<div>' +
+                  '<div style="font-weight:600">' + (f?'Échec de connexion':'Connection failed') + '</div>' +
+                  '<div style="font-size:11px;margin-top:3px;color:#8A4A3F">' + _esc(e.message) + '</div>' +
+                  '<div style="font-size:11px;margin-top:6px;color:#8A8070">' + (f?'Vérifie que tu as bien autorisé le scope Gmail dans la popup.':'Verify you authorized the Gmail scope in the popup.') + '</div>' +
+                '</div>' +
+              '</div>';
+          }
+        };
+        window.addEventListener('message', handler);
+
+        // Timeout after 3 min — popup probably closed without authorizing
+        setTimeout(function(){
+          if (done) return;
+          done = true;
+          window.removeEventListener('message', handler);
+          state.testInFlight = false;
+          btn.disabled = false;
+          btn.textContent = '🚀 ' + (f?'Réessayer':'Retry');
+          status.innerHTML =
+            '<div style="display:flex;align-items:center;gap:10px;color:#C9963A">' +
+              '<span style="font-size:22px">⏱</span>' +
+              '<div>' +
+                '<div style="font-weight:600">' + (f?'Délai dépassé':'Timed out') + '</div>' +
+                '<div style="font-size:11px;margin-top:2px;color:#8A8070">' + (f?'Tu as fermé la popup sans autoriser ? Réessaie.':'You closed the popup without authorizing? Try again.') + '</div>' +
+              '</div>' +
+            '</div>';
+        }, 180000);
+      };
+    }
+
+    card.appendChild(head);
+    card.appendChild(steps);
+    card.appendChild(body);
+    modal.appendChild(card);
+    document.body.appendChild(modal);
+    document.getElementById('gswClose').onclick = close;
+    renderStep();
+  }
+
+  window.showGmailSetupWizard = showGmailSetupWizard;
+  console.log('[stafflo] Gmail setup wizard loaded — call showGmailSetupWizard() to open.');
 })();
 </script>
 
