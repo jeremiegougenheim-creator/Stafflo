@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -22534,7 +22535,7 @@ window.addEventListener('DOMContentLoaded', function() {
 </script>
 
 
-<!-- ════ ARIA_FIX Phase A.1 — injected dimanche 10 mai 2026 ════ -->
+<!-- ════ ARIA_FIX Phase A.2 + B.1.1 + B.2 Editor — injected lundi 11 mai 2026 ════ -->
 <script>
 /* ════════════════════════════════════════════════════════════════════
    ARIA_FIX — Phase A patches (Stafflo)
@@ -22555,17 +22556,30 @@ window.addEventListener('DOMContentLoaded', function() {
   var DAYS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   var MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   var MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  
+  /** Returns the LOCAL date as ISO YYYY-MM-DD (not UTC). Critical for timezone-correct relative computations. */
+  function localDateISO(date){
+    var d = date || new Date();
+    return d.getFullYear() + '-' +
+           String(d.getMonth() + 1).padStart(2, '0') + '-' +
+           String(d.getDate()).padStart(2, '0');
+  }
 
   function formatDateHuman(iso, opts){
     if (!iso) return '';
     opts = opts || {};
     var lang = opts.lang || (typeof window.lang !== 'undefined' ? window.lang : 'fr');
     var includeRelative = opts.includeRelative !== false;
-    var d = new Date(iso + 'T12:00:00');
+    // Parse YYYY-MM-DD as a local date by passing year/month/day separately (avoids UTC misinterpretation)
+    var parts = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!parts) return iso;
+    var d = new Date(parseInt(parts[1]), parseInt(parts[2])-1, parseInt(parts[3]), 12, 0, 0);
     if (isNaN(d.getTime())) return iso;
-    var today = new Date(); today.setHours(0,0,0,0);
-    d.setHours(0,0,0,0);
-    var diffDays = Math.round((d - today) / 86400000);
+    // "Today" must also be local (midnight local)
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var dMidnight = new Date(d); dMidnight.setHours(0, 0, 0, 0);
+    var diffDays = Math.round((dMidnight - today) / 86400000);
     var nowYear = today.getFullYear();
     var dYear = d.getFullYear();
     var months = lang==='fr' ? MONTHS_FR : MONTHS_EN;
@@ -22586,7 +22600,7 @@ window.addEventListener('DOMContentLoaded', function() {
   }
 
   function todayHuman(lang){
-    return formatDateHuman(new Date().toISOString().slice(0,10), {lang: lang||'fr', includeRelative: true});
+    return formatDateHuman(localDateISO(), {lang: lang||'fr', includeRelative: true});
   }
 
   // ── 2. CLIENT NAME DETECTION ──────────────────────────────────────
@@ -22745,8 +22759,8 @@ window.addEventListener('DOMContentLoaded', function() {
       var day = parseInt(m1[1]);
       var mon = monthMap[m1[2]];
       var year = m1[3] ? parseInt(m1[3]) : (new Date()).getFullYear();
-      var d = new Date(year, mon, day);
-      return d.toISOString().slice(0,10);
+      // Build ISO string directly to avoid timezone interpretation issues
+      return year + '-' + String(mon+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
     }
     return null;
   }
@@ -22754,7 +22768,7 @@ window.addEventListener('DOMContentLoaded', function() {
   function answerAggregateLocally(query, lang){
     var clients = getClients();
     var fr = lang === 'fr' || (typeof window.lang !== 'undefined' && window.lang === 'fr');
-    var todayISO = new Date().toISOString().slice(0,10);
+    var todayISO = localDateISO();
     var L = function(f, e){ return fr ? f : e; };
 
     // Filter helpers
@@ -22873,7 +22887,7 @@ window.addEventListener('DOMContentLoaded', function() {
     if (query.kind === 'arriving_on') {
       var target = new Date();
       target.setDate(target.getDate() + (query.offset || 0));
-      var targetISO = target.toISOString().slice(0,10);
+      var targetISO = localDateISO(target);
       var arr = confirmed.filter(function(c){ return c.arrival === targetISO; });
       if (arr.length === 0) {
         return L('Personne n\'arrive ' + (query.offset===1?'demain':query.offset===0?'aujourd\'hui':'à cette date') + '.',
@@ -22885,7 +22899,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
     if (query.kind === 'arriving_within') {
       var until = new Date(); until.setDate(until.getDate() + query.days);
-      var untilISO = until.toISOString().slice(0,10);
+      var untilISO = localDateISO(until);
       var win = confirmed.filter(function(c){ return c.arrival && c.arrival >= todayISO && c.arrival <= untilISO; });
       win.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
       if (win.length === 0) return L('Aucune arrivée dans les ' + query.days + ' prochains jours.', 'No arrivals in the next ' + query.days + ' days.');
@@ -23023,6 +23037,7 @@ window.addEventListener('DOMContentLoaded', function() {
   window.ARIA_FIX = {
     formatDateHuman: formatDateHuman,
     todayHuman: todayHuman,
+    localDateISO: localDateISO,
     detectClientByName: detectClientByName,
     detectMultipleClients: detectMultipleClients,
     parseFrenchDate: parseFrenchDate,
@@ -23030,11 +23045,820 @@ window.addEventListener('DOMContentLoaded', function() {
     detectAggregateQuery: detectAggregateQuery,
     answerAggregateLocally: answerAggregateLocally,
     enrichTextForARIA: enrichTextForARIA,
-    version: '0.2-phase-A.1',
+    version: '0.4-phase-A.2-timezone-fix',
     loaded_at: new Date().toISOString()
   };
 
-  console.log('[ARIA_FIX] Phase A.1 loaded — version', window.ARIA_FIX.version, '— today:', todayHuman('fr'));
+  console.log('[ARIA_FIX] Phase A.2 loaded — version', window.ARIA_FIX.version, '— today:', todayHuman('fr'));
+})();
+
+</script>
+<script>
+/* ════ ARIA_FIX — Phase B.1 additions ════
+   Templates loading + lookup + slot-fill + stage detection
+   Loaded after Phase A.1
+*/
+(function(){
+  if (!window.ARIA_FIX) {
+    console.warn('[ARIA_FIX B] Phase A not loaded — aborting');
+    return;
+  }
+  if (window.ARIA_FIX_B_LOADED) return;
+  window.ARIA_FIX_B_LOADED = true;
+  
+  var F = window.ARIA_FIX;
+  
+  // ── Supabase client helper (uses existing cfg) ───────────────────
+  function getSbConfig(){
+    if (typeof getCfg !== 'function') return null;
+    var cfg = getCfg();
+    var url = (cfg.sbUrl || cfg.supabaseUrl || (typeof SB_URL !== 'undefined' ? SB_URL : null));
+    var key = (cfg.sbKey || cfg.supabaseKey || cfg.supabaseAnonKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : null));
+    if (!url || !key) return null;
+    return { url: url, key: key };
+  }
+  
+  async function sbGet(table, query){
+    var cfg = getSbConfig();
+    if (!cfg) throw new Error('Supabase config missing');
+    var url = cfg.url + '/rest/v1/' + table + (query ? '?' + query : '');
+    var headers = { apikey: cfg.key, Authorization: 'Bearer ' + cfg.key };
+    // If user JWT session exists, prefer it for RLS
+    try {
+      var sess = JSON.parse(localStorage.getItem('sb-auth-session') || localStorage.getItem('supabase.auth.token') || 'null');
+      if (sess && sess.access_token) headers.Authorization = 'Bearer ' + sess.access_token;
+    } catch(e){}
+    var r = await fetch(url, { headers: headers });
+    if (!r.ok) throw new Error('SB fetch failed: ' + r.status);
+    return await r.json();
+  }
+  
+  // ── 1. LOAD TEMPLATES ────────────────────────────────────────────
+  window.templates = window.templates || [];
+  
+  async function loadTemplates(){
+    try {
+      var rows = await sbGet('templates', 'select=*&active=eq.true&order=trigger_intent.asc');
+      window.templates = rows;
+      console.log('[ARIA_FIX B] Loaded', rows.length, 'templates from Supabase');
+      return rows;
+    } catch(e) {
+      console.warn('[ARIA_FIX B] loadTemplates failed:', e.message);
+      return [];
+    }
+  }
+  
+  // ── 2. INTENT DETECTION FOR TEMPLATE MATCHING ───────────────────
+  // Maps user input → trigger_intent (string)
+  var INTENT_PATTERNS = [
+    // Meals (FR + EN)
+    { intent: 'inquiry_response_meals', re: /\b(repas|meals?|dinner|lunch|breakfast|chef|cuisine|tarif.{1,15}repas|prix.{1,15}repas|cooking|food)\b/i },
+    // Transfer / driver
+    { intent: 'transfer_pricing', re: /\b(transfer|transferts?|driver|chauffeur|pickup|airport.{1,15}(taxi|car|transport)|navette)\b/i },
+    // Pre-arrival welcome
+    { intent: 'pre_arrival_welcome', re: /\b(welcome.{1,15}(message|booklet)|pre[\-\s]?arrival|envoi.{1,15}(welcome|booklet|info)|10.{0,5}jours.{0,5}avant)\b/i },
+    // Passport request
+    { intent: 'passport_request', re: /\b(passport|passeport|copie.{1,15}(passeport|identite)|moroccan law|loi marocaine)\b/i },
+    // Customs / address tip
+    { intent: 'customs_tip', re: /\b(customs|douane|atlas widan|adresse.{1,15}(douane|hotel)|landmark)\b/i },
+    // Decline (dates unavailable)
+    { intent: 'decline_unavailable_dates', re: /\b(decline|refuser|d[ée]cliner|dates? (?:not |non |un)available|complet|fully booked|villa.{1,15}(complete|booked))\b/i },
+    // Booking confirmation thanks
+    { intent: 'booking_confirmation', re: /\b(merci.{1,15}(booking|reservation)|thanks?.{1,15}booking|after.{1,15}confirm|apres.{1,15}confirmation)\b/i },
+    // Pre-arrival qualifying
+    { intent: 'pre_arrival_qualifying', re: /\b(qualifying|qualif|vol|flight|preferences?.{1,15}(repas|meal|chef)|composition.{1,15}groupe|special.{1,15}(occasion|event))\b/i },
+    // FAQ short
+    { intent: 'faq_short', re: /\b(piscine.{1,15}chauff|heated.{1,15}pool|bedroom|chambre.{1,15}(layout|configuration)|lits)\b/i },
+    // Final billing
+    { intent: 'final_billing', re: /\b(final billing|recap|r[ée]capitulatif|facture.{1,15}fin|extras|cout.{1,15}sejour|courses.{1,15}repas)\b/i },
+    // Staff brief
+    { intent: 'staff_brief', re: /\b(staff brief|brief.{1,15}(faiza|said|equipe|staff)|menu.{1,15}groupe|preparer.{1,15}arrivee)\b/i },
+  ];
+  
+  function detectIntentForTemplate(text){
+    if (!text) return null;
+    for (var i = 0; i < INTENT_PATTERNS.length; i++) {
+      if (INTENT_PATTERNS[i].re.test(text)) return INTENT_PATTERNS[i].intent;
+    }
+    return null;
+  }
+  
+  // ── 3. FIND BEST TEMPLATE FOR INTENT + LANG ──────────────────────
+  function findTemplate(intent, lang){
+    if (!intent) return null;
+    lang = lang || (typeof window.lang !== 'undefined' ? window.lang : 'fr');
+    var tmpls = window.templates || [];
+    // Prefer exact lang match
+    var exact = tmpls.filter(function(t){
+      return t.trigger_intent === intent && t.lang === lang && t.active !== false;
+    });
+    if (exact.length) return exact[0];
+    // Fall back to other lang
+    var any = tmpls.filter(function(t){ return t.trigger_intent === intent && t.active !== false; });
+    return any.length ? any[0] : null;
+  }
+  
+  // ── 4. SLOT FILL ─────────────────────────────────────────────────
+  function fillTemplate(tmpl, ctx){
+    if (!tmpl) return null;
+    var body = tmpl.body || '';
+    ctx = ctx || {};
+    return body.replace(/\{([a-z_][a-z_0-9]*)\}/g, function(m, slot){
+      if (slot in ctx && ctx[slot] != null) return String(ctx[slot]);
+      return '{' + slot + '}'; // leave unfilled, marked
+    });
+  }
+  
+  function buildContextFromClient(client, lang){
+    if (!client) return {};
+    lang = lang || 'fr';
+    var ctx = {
+      guest_first_name: (client.name || '').split(/\s+/)[0] || '',
+      guest_full_name: client.name || '',
+      villa_name: 'Villa DarJ',
+      owner_name: 'Jérémie',
+      owner_whatsapp: '+852 67684852',
+    };
+    if (client.arrival) {
+      ctx.arrival_date = F.formatDateHuman(client.arrival, {lang:lang, includeRelative:false});
+      var d = new Date(client.arrival + 'T12:00:00');
+      var monthsFr = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+      var monthsEn = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      ctx.arrival_month = (lang==='fr' ? monthsFr : monthsEn)[d.getMonth()];
+    }
+    if (client.departure) {
+      ctx.departure_date = F.formatDateHuman(client.departure, {lang:lang, includeRelative:false});
+    }
+    if (client.arrival && client.departure) {
+      var arr = new Date(client.arrival), dep = new Date(client.departure);
+      ctx.nights = Math.round((dep - arr) / 86400000);
+    }
+    if (client.guests) ctx.group_size = client.guests;
+    return ctx;
+  }
+  
+  // ── 5. STAGE DETECTION ───────────────────────────────────────────
+  function detectStage(client){
+    if (!client) return 'unknown';
+    // Local date (Phase A helper, fallback to UTC if not present)
+    var todayISO = (F.localDateISO ? F.localDateISO() : new Date().toISOString().slice(0,10));
+    var status = client.booking_status || client.bookingStatus || 'confirmed';
+    
+    if (status === 'declined' || status === 'cancelled') return 'terminated';
+    if (status === 'inquiry') return 'stage_0_inquiry';
+    if (!client.arrival) return 'stage_1_confirmed_no_dates';
+    
+    var today = new Date(); today.setHours(0,0,0,0);
+    var arr = new Date(client.arrival + 'T12:00:00');
+    var dep = client.departure ? new Date(client.departure + 'T12:00:00') : null;
+    var daysToArrival = Math.round((arr - today) / 86400000);
+    var daysSinceDeparture = dep ? Math.round((today - dep) / 86400000) : -999;
+    
+    if (daysToArrival > 15) return 'stage_1_confirmed_idle';
+    if (daysToArrival >= 10) return 'stage_2_pre_arrival_welcome';
+    if (daysToArrival >= 3) return 'stage_3_pre_arrival_qualifying';
+    if (daysToArrival >= 1) return 'stage_3b_final_logistics';
+    if (dep && client.arrival <= todayISO && client.departure >= todayISO) return 'stage_4_in_house';
+    if (daysSinceDeparture >= 0 && daysSinceDeparture <= 2) return 'stage_5_billing';
+    if (daysSinceDeparture > 2 && daysSinceDeparture <= 14) return 'stage_6_post_stay';
+    return 'terminated';
+  }
+  
+  function suggestTemplateForStage(client, lang){
+    var stage = detectStage(client);
+    var stageMap = {
+      'stage_2_pre_arrival_welcome': 'pre_arrival_welcome',
+      'stage_3_pre_arrival_qualifying': 'pre_arrival_qualifying',
+      'stage_3b_final_logistics': 'customs_tip',
+      'stage_5_billing': 'final_billing',
+    };
+    var intent = stageMap[stage];
+    if (!intent) return null;
+    var tmpl = findTemplate(intent, lang);
+    if (!tmpl) return null;
+    var ctx = buildContextFromClient(client, lang);
+    return {
+      template: tmpl,
+      filled: fillTemplate(tmpl, ctx),
+      stage: stage,
+      intent: intent,
+      missing_slots: (function(){
+        var filled = fillTemplate(tmpl, ctx);
+        var unfilled = filled.match(/\{[a-z_]+\}/g) || [];
+        return unfilled.map(function(s){ return s.slice(1, -1); });
+      })()
+    };
+  }
+  
+  // ── 6. SLASH COMMAND: /template <key> [client_first_name] ───────
+  function handleTemplateCommand(text){
+    var m = text.match(/^\/template\s+(\S+)(?:\s+(.+))?/i);
+    if (!m) return null;
+    var key = m[1].toLowerCase();
+    var clientName = m[2] ? m[2].trim() : null;
+    var lang = window.lang || 'fr';
+    
+    var tmpl = (window.templates || []).find(function(t){
+      return t.key === key && t.lang === lang;
+    }) || (window.templates || []).find(function(t){ return t.key === key; });
+    
+    if (!tmpl) {
+      var available = (window.templates || []).map(function(t){ return t.key + '[' + t.lang + ']'; }).join(', ');
+      return 'Template `' + key + '` introuvable.\n\nDisponibles : ' + (available || '(aucun chargé — try await loadTemplates())');
+    }
+    
+    var ctx = {};
+    if (clientName) {
+      var client = F.detectClientByName(clientName);
+      if (client) ctx = buildContextFromClient(client, lang);
+    }
+    var filled = fillTemplate(tmpl, ctx);
+    var missing = (filled.match(/\{[a-z_]+\}/g) || []);
+    
+    var header = '**Template `' + tmpl.key + '` [' + tmpl.lang + ']**' +
+      (tmpl.needs_review ? ' ⚠ À VALIDER' : '') +
+      (missing.length ? '\n_' + missing.length + ' slots non remplis : ' + missing.join(', ') + '_' : '') +
+      '\n\n';
+    return header + filled;
+  }
+  
+  // ── 7. EXTEND THE WRAPPER WITH TEMPLATE COMMAND HANDLING ────────
+  var _origHandler = window.handleChatQuestion;
+  window.handleChatQuestion = async function(text){
+    try {
+      var trimmed = (text || '').trim();
+      // /template slash command
+      if (/^\/template/i.test(trimmed)) {
+        var resp = handleTemplateCommand(trimmed);
+        if (typeof window.addChatBubble === 'function') {
+          var typing = document.getElementById('chatTyping');
+          if (typing) typing.style.display = 'none';
+          window.addChatBubble('ai', resp || 'Erreur template.', [{ label:'👍 OK', cls:'yes', fn:'dismissChatAction(this)' }]);
+        }
+        return;
+      }
+      // /list-templates slash command
+      if (/^\/(list[\-\s]?templates|templates|list)$/i.test(trimmed)) {
+        var ts = window.templates || [];
+        var grouped = {};
+        ts.forEach(function(t){
+          if (!grouped[t.trigger_intent]) grouped[t.trigger_intent] = [];
+          grouped[t.trigger_intent].push(t.key + '[' + t.lang + ']');
+        });
+        var lines = ['**' + ts.length + ' templates chargés** :'];
+        Object.keys(grouped).sort().forEach(function(k){
+          lines.push('• ' + k + ' → ' + grouped[k].join(', '));
+        });
+        if (typeof window.addChatBubble === 'function') {
+          var typing2 = document.getElementById('chatTyping');
+          if (typing2) typing2.style.display = 'none';
+          window.addChatBubble('ai', lines.join('\n'), [{ label:'👍 OK', cls:'yes', fn:'dismissChatAction(this)' }]);
+        }
+        return;
+      }
+      
+      // ── B.1.1 AUTO-SUGGEST: detect intent + show template chip BEFORE LLM ──
+      var intent = detectIntentForTemplate(trimmed);
+      if (intent && (window.templates || []).length) {
+        var lang = window.lang || 'fr';
+        var tmpl = findTemplate(intent, lang);
+        if (tmpl) {
+          // Determine context: any client mentioned in text?
+          var clientCtx = F.detectClientByName ? F.detectClientByName(trimmed) : null;
+          var ctx = clientCtx ? buildContextFromClient(clientCtx, lang) : {
+            owner_name: 'Jérémie', villa_name: 'Villa DarJ', owner_whatsapp: '+852 67684852'
+          };
+          var preview = fillTemplate(tmpl, ctx);
+          var missing = (preview.match(/\{[a-z_]+\}/g) || []);
+          var chipLabel = lang === 'fr'
+            ? '💡 Template suggéré : **' + tmpl.key + '**' + (tmpl.needs_review ? ' ⚠ à valider' : '') + 
+              (missing.length ? ' (' + missing.length + ' info' + (missing.length>1?'s':'') + ' à compléter)' : '')
+            : '💡 Suggested template: **' + tmpl.key + '**';
+          var hint = lang === 'fr'
+            ? '\n\n_Pour utiliser : tape_ `/template ' + tmpl.key + (clientCtx ? ' ' + (clientCtx.name||'').split(' ')[0] : '') + '` _ou continue ta question pour une réponse libre._'
+            : '\n\n_To use: type_ `/template ' + tmpl.key + '`';
+          // Add as a NON-blocking suggestion (ARIA still processes the question normally)
+          if (typeof window.addChatBubble === 'function') {
+            setTimeout(function(){
+              window.addChatBubble('ai', chipLabel + hint, []);
+            }, 100);
+          }
+          // Don't return — let the legacy handler also respond normally
+        }
+      }
+      
+      return _origHandler.call(this, text);
+    } catch(e) {
+      console.error('[ARIA_FIX B] error:', e);
+      return _origHandler.call(this, text);
+    }
+  };
+  
+  // ── 8. AUTO-LOAD TEMPLATES ON STARTUP ────────────────────────────
+  function tryLoadTemplates(){
+    if ((window.templates || []).length > 0) return;
+    if (typeof getCfg !== 'function') {
+      setTimeout(tryLoadTemplates, 500);
+      return;
+    }
+    loadTemplates();
+  }
+  setTimeout(tryLoadTemplates, 1500);  // wait for app to init
+  
+  // ── 9. EXPOSE NEW API ────────────────────────────────────────────
+  Object.assign(F, {
+    loadTemplates: loadTemplates,
+    findTemplate: findTemplate,
+    fillTemplate: fillTemplate,
+    detectIntentForTemplate: detectIntentForTemplate,
+    detectStage: detectStage,
+    suggestTemplateForStage: suggestTemplateForStage,
+    buildContextFromClient: buildContextFromClient,
+    handleTemplateCommand: handleTemplateCommand,
+    version_b: '0.1-phase-B.1'
+  });
+  F.version = '0.3-phase-A.1+B.1';
+  
+  console.log('[ARIA_FIX B.1] templates module loaded — slash commands /template <key> and /list-templates available');
+})();
+
+</script>
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   ARIA_FIX — Phase B.2: Templates Editor UI
+   Date: lundi 11 mai 2026
+   Goal: edit the 21 templates inline without touching Supabase Dashboard
+   ════════════════════════════════════════════════════════════════════ */
+
+(function(){
+  'use strict';
+  if (window.ARIA_TEMPLATES_EDITOR_LOADED) return;
+  window.ARIA_TEMPLATES_EDITOR_LOADED = true;
+  
+  if (!window.ARIA_FIX) {
+    console.warn('[ARIA Templates Editor] Phase A/B not loaded — skipping');
+    return;
+  }
+  
+  // ── Style injection (scoped to editor) ───────────────────────────
+  function injectStyles(){
+    if (document.getElementById('aria-templates-editor-styles')) return;
+    var css = `
+      .ate-overlay {
+        position: fixed; inset: 0; background: rgba(15,35,24,0.85);
+        backdrop-filter: blur(6px); z-index: 9999;
+        display: flex; align-items: stretch; justify-content: center;
+        padding: 0; font-family: 'Inter', system-ui, sans-serif;
+      }
+      .ate-modal {
+        background: #FAF6EE; width: 100%; max-width: 880px;
+        max-height: 100vh; display: flex; flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      }
+      .ate-header {
+        background: #0F2318; color: #FAF6EE; padding: 18px 24px;
+        display: flex; align-items: center; justify-content: space-between;
+        border-bottom: 2px solid #C9963A;
+      }
+      .ate-header h2 {
+        font-family: 'Cormorant Garamond', serif; font-weight: 500;
+        font-size: 22px; margin: 0; letter-spacing: 0.5px;
+      }
+      .ate-close {
+        background: none; border: 1px solid #C9963A; color: #C9963A;
+        width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+        font-size: 18px; display: flex; align-items: center; justify-content: center;
+        transition: background 0.15s;
+      }
+      .ate-close:hover { background: #C9963A; color: #0F2318; }
+      .ate-stats {
+        padding: 12px 24px; background: #f3ecdb; color: #1d4d3a;
+        font-size: 13px; border-bottom: 1px solid #e0d5b8;
+        display: flex; gap: 16px; align-items: center;
+      }
+      .ate-stats strong { color: #0F2318; font-weight: 600; }
+      .ate-filter {
+        padding: 12px 24px; background: #FAF6EE; border-bottom: 1px solid #e0d5b8;
+        display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      }
+      .ate-filter input {
+        flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid #d4c8a4;
+        background: white; border-radius: 4px; font-size: 14px; color: #0F2318;
+      }
+      .ate-filter input:focus { outline: 2px solid #C9963A; outline-offset: 1px; border-color: #C9963A; }
+      .ate-filter select {
+        padding: 8px 12px; border: 1px solid #d4c8a4; background: white;
+        border-radius: 4px; font-size: 14px; color: #0F2318; cursor: pointer;
+      }
+      .ate-list {
+        flex: 1; overflow-y: auto; padding: 16px 24px 80px; background: #FAF6EE;
+      }
+      .ate-card {
+        background: white; border: 1px solid #e0d5b8; border-radius: 6px;
+        margin-bottom: 14px; transition: box-shadow 0.15s;
+      }
+      .ate-card.dirty {
+        border-color: #C9963A; box-shadow: 0 2px 8px rgba(201,150,58,0.2);
+      }
+      .ate-card-head {
+        padding: 12px 16px; border-bottom: 1px solid #f3ecdb;
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      }
+      .ate-key {
+        font-family: 'Cormorant Garamond', serif; font-size: 18px;
+        color: #0F2318; font-weight: 600;
+      }
+      .ate-lang {
+        background: #1d4d3a; color: #FAF6EE; padding: 2px 8px;
+        border-radius: 3px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+      }
+      .ate-intent {
+        background: #f3ecdb; color: #1d4d3a; padding: 2px 8px;
+        border-radius: 3px; font-size: 11px; font-family: monospace;
+      }
+      .ate-flag {
+        background: #fff3d6; color: #8a5e15; padding: 2px 8px;
+        border-radius: 3px; font-size: 11px; font-weight: 600;
+        margin-left: auto;
+      }
+      .ate-flag.validated { background: #d9f0e0; color: #1d4d3a; }
+      .ate-body-wrap { padding: 12px 16px; }
+      .ate-body {
+        width: 100%; min-height: 100px; padding: 10px 12px;
+        font-family: 'Inter', system-ui, sans-serif; font-size: 13px;
+        line-height: 1.5; color: #0F2318;
+        border: 1px solid #d4c8a4; border-radius: 4px; resize: vertical;
+        background: #fafaf5;
+      }
+      .ate-body:focus { outline: 2px solid #C9963A; outline-offset: 1px; border-color: #C9963A; }
+      .ate-slots {
+        margin-top: 8px; font-size: 11px; color: #6b6b6b;
+        font-family: monospace;
+      }
+      .ate-actions {
+        padding: 10px 16px; background: #fafaf5; border-top: 1px solid #f3ecdb;
+        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      }
+      .ate-toggle {
+        display: flex; align-items: center; gap: 8px; cursor: pointer;
+        font-size: 13px; color: #1d4d3a;
+      }
+      .ate-toggle input[type="checkbox"] { cursor: pointer; }
+      .ate-btn {
+        padding: 7px 14px; border-radius: 4px; font-size: 13px;
+        font-weight: 500; cursor: pointer; border: 1px solid transparent;
+        font-family: inherit; transition: all 0.15s;
+      }
+      .ate-btn-primary {
+        background: #C9963A; color: #0F2318; border-color: #C9963A;
+        margin-left: auto;
+      }
+      .ate-btn-primary:hover:not(:disabled) { background: #b1812c; }
+      .ate-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+      .ate-btn-secondary {
+        background: transparent; color: #1d4d3a; border-color: #d4c8a4;
+      }
+      .ate-btn-secondary:hover { background: #f3ecdb; }
+      .ate-toast {
+        position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+        background: #0F2318; color: #FAF6EE; padding: 12px 20px;
+        border-radius: 4px; font-size: 13px; z-index: 10000;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        border-left: 4px solid #C9963A;
+        opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      }
+      .ate-toast.show { opacity: 1; }
+      .ate-empty {
+        padding: 60px 24px; text-align: center; color: #6b6b6b;
+        font-family: 'Cormorant Garamond', serif; font-size: 18px;
+      }
+      .ate-loading { padding: 40px; text-align: center; color: #6b6b6b; }
+      @media (max-width: 600px) {
+        .ate-modal { max-width: 100%; }
+        .ate-header h2 { font-size: 18px; }
+      }
+    `;
+    var style = document.createElement('style');
+    style.id = 'aria-templates-editor-styles';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+  
+  // ── Supabase config (uses existing app config) ───────────────────
+  function getSbConfig(){
+    if (typeof getCfg !== 'function') return null;
+    var cfg = getCfg();
+    var url = (cfg.sbUrl || cfg.supabaseUrl || (typeof SB_URL !== 'undefined' ? SB_URL : null));
+    var key = (cfg.sbKey || cfg.supabaseKey || cfg.supabaseAnonKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : null));
+    if (!url || !key) return null;
+    return { url: url, key: key };
+  }
+  
+  function getAuthHeaders(){
+    var cfg = getSbConfig();
+    if (!cfg) throw new Error('Supabase config missing');
+    var headers = {
+      apikey: cfg.key,
+      Authorization: 'Bearer ' + cfg.key,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation'
+    };
+    try {
+      var keys = ['sb-auth-session','supabase.auth.token'];
+      for (var i = 0; i < keys.length; i++){
+        var s = localStorage.getItem(keys[i]);
+        if (s){
+          var p = JSON.parse(s);
+          if (p && p.access_token){ headers.Authorization = 'Bearer ' + p.access_token; break; }
+          if (p && p.currentSession && p.currentSession.access_token){
+            headers.Authorization = 'Bearer ' + p.currentSession.access_token; break;
+          }
+        }
+      }
+    } catch(e){}
+    return { cfg: cfg, headers: headers };
+  }
+  
+  async function patchTemplate(id, fields){
+    var auth = getAuthHeaders();
+    var url = auth.cfg.url + '/rest/v1/templates?id=eq.' + encodeURIComponent(id);
+    var body = JSON.stringify(Object.assign({}, fields, { updated_at: new Date().toISOString() }));
+    var r = await fetch(url, { method: 'PATCH', headers: auth.headers, body: body });
+    if (!r.ok) {
+      var txt = await r.text().catch(function(){return '';});
+      throw new Error('PATCH failed ' + r.status + ': ' + txt);
+    }
+    var rows = await r.json();
+    return rows && rows[0];
+  }
+  
+  // ── State ─────────────────────────────────────────────────────────
+  var state = {
+    templates: [],   // working copy
+    original: {},    // id → original body+needs_review for dirty detection
+    filter: '',
+    langFilter: 'all'
+  };
+  
+  function showToast(msg, type){
+    var existing = document.getElementById('ate-toast');
+    if (existing) existing.remove();
+    var t = document.createElement('div');
+    t.id = 'ate-toast';
+    t.className = 'ate-toast';
+    t.textContent = msg;
+    if (type === 'error') t.style.borderLeftColor = '#c0392b';
+    document.body.appendChild(t);
+    setTimeout(function(){ t.classList.add('show'); }, 10);
+    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 300); }, 2800);
+  }
+  
+  function isDirty(t){
+    var orig = state.original[t.id];
+    if (!orig) return false;
+    return t.body !== orig.body || t.needs_review !== orig.needs_review;
+  }
+  
+  // ── Rendering ────────────────────────────────────────────────────
+  function renderStats(){
+    var ts = state.templates;
+    var fr = ts.filter(function(t){return t.lang==='fr';}).length;
+    var en = ts.filter(function(t){return t.lang==='en';}).length;
+    var review = ts.filter(function(t){return t.needs_review;}).length;
+    return '<strong>' + ts.length + '</strong> templates · ' +
+           '<strong>' + fr + '</strong> FR · <strong>' + en + '</strong> EN · ' +
+           '<strong>' + review + '</strong> à valider';
+  }
+  
+  function escape(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  
+  function renderCard(t){
+    var dirty = isDirty(t);
+    var slotsList = (t.slots_used || []).map(function(s){return '{' + s + '}';}).join(' ');
+    return '<div class="ate-card' + (dirty ? ' dirty' : '') + '" data-id="' + escape(t.id) + '">' +
+      '<div class="ate-card-head">' +
+        '<span class="ate-key">' + escape(t.key) + '</span>' +
+        '<span class="ate-lang">' + escape(t.lang) + '</span>' +
+        '<span class="ate-intent">' + escape(t.trigger_intent || 'no_intent') + '</span>' +
+        '<span class="ate-flag' + (t.needs_review ? '' : ' validated') + '">' +
+          (t.needs_review ? '⚠ à valider' : '✓ validé') + '</span>' +
+      '</div>' +
+      '<div class="ate-body-wrap">' +
+        '<textarea class="ate-body" data-field="body">' + escape(t.body || '') + '</textarea>' +
+        (slotsList ? '<div class="ate-slots">Slots disponibles : ' + escape(slotsList) + '</div>' : '') +
+      '</div>' +
+      '<div class="ate-actions">' +
+        '<label class="ate-toggle">' +
+          '<input type="checkbox" data-field="validated" ' + (t.needs_review ? '' : 'checked') + '> ' +
+          'Marquer comme validé' +
+        '</label>' +
+        '<button class="ate-btn ate-btn-secondary" data-action="reset" ' + (dirty ? '' : 'disabled') + '>Annuler</button>' +
+        '<button class="ate-btn ate-btn-primary" data-action="save" ' + (dirty ? '' : 'disabled') + '>Sauvegarder</button>' +
+      '</div>' +
+    '</div>';
+  }
+  
+  function getFilteredTemplates(){
+    var f = state.filter.toLowerCase().trim();
+    var lf = state.langFilter;
+    return state.templates.filter(function(t){
+      if (lf !== 'all' && t.lang !== lf) return false;
+      if (!f) return true;
+      return (t.key||'').toLowerCase().includes(f) ||
+             (t.trigger_intent||'').toLowerCase().includes(f) ||
+             (t.body||'').toLowerCase().includes(f);
+    });
+  }
+  
+  function rerenderList(){
+    var list = document.getElementById('ate-list');
+    if (!list) return;
+    var filtered = getFilteredTemplates();
+    if (filtered.length === 0){
+      list.innerHTML = '<div class="ate-empty">Aucun template ne correspond à ce filtre.</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(renderCard).join('');
+    
+    // Wire events on cards
+    list.querySelectorAll('.ate-card').forEach(function(card){
+      var id = card.dataset.id;
+      var t = state.templates.find(function(x){ return x.id === id; });
+      if (!t) return;
+      
+      // Body textarea
+      var bodyEl = card.querySelector('[data-field="body"]');
+      bodyEl.addEventListener('input', function(){
+        t.body = bodyEl.value;
+        updateCardDirtyState(card, t);
+      });
+      
+      // Validated toggle (inverse of needs_review)
+      var toggleEl = card.querySelector('[data-field="validated"]');
+      toggleEl.addEventListener('change', function(){
+        t.needs_review = !toggleEl.checked;
+        // Update flag visual
+        var flag = card.querySelector('.ate-flag');
+        flag.className = 'ate-flag' + (t.needs_review ? '' : ' validated');
+        flag.textContent = t.needs_review ? '⚠ à valider' : '✓ validé';
+        updateCardDirtyState(card, t);
+      });
+      
+      // Reset button
+      card.querySelector('[data-action="reset"]').addEventListener('click', function(){
+        var orig = state.original[t.id];
+        if (!orig) return;
+        t.body = orig.body;
+        t.needs_review = orig.needs_review;
+        rerenderList();
+      });
+      
+      // Save button
+      card.querySelector('[data-action="save"]').addEventListener('click', async function(e){
+        var btn = e.target;
+        btn.disabled = true;
+        btn.textContent = '…';
+        try {
+          await patchTemplate(t.id, { body: t.body, needs_review: t.needs_review });
+          state.original[t.id] = { body: t.body, needs_review: t.needs_review };
+          // Update the cached templates on window too
+          var wt = (window.templates || []).find(function(x){ return x.id === t.id; });
+          if (wt){ wt.body = t.body; wt.needs_review = t.needs_review; }
+          showToast('✓ ' + t.key + '[' + t.lang + '] sauvegardé');
+          updateCardDirtyState(card, t);
+          document.getElementById('ate-stats').innerHTML = renderStats();
+          btn.textContent = 'Sauvegarder';
+        } catch(err){
+          console.error('[ATE] save failed:', err);
+          showToast('✗ Erreur : ' + err.message, 'error');
+          btn.textContent = 'Sauvegarder';
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+  
+  function updateCardDirtyState(card, t){
+    var dirty = isDirty(t);
+    card.classList.toggle('dirty', dirty);
+    card.querySelector('[data-action="save"]').disabled = !dirty;
+    card.querySelector('[data-action="reset"]').disabled = !dirty;
+  }
+  
+  // ── Open / close ──────────────────────────────────────────────────
+  async function openEditor(){
+    injectStyles();
+    
+    // Ensure templates are loaded
+    if (!window.templates || window.templates.length === 0){
+      if (typeof window.ARIA_FIX.loadTemplates === 'function'){
+        await window.ARIA_FIX.loadTemplates();
+      }
+    }
+    
+    // Working copy + snapshot for dirty detection
+    state.templates = (window.templates || []).map(function(t){ return Object.assign({}, t); });
+    state.original = {};
+    state.templates.forEach(function(t){
+      state.original[t.id] = { body: t.body, needs_review: t.needs_review };
+    });
+    
+    var existing = document.getElementById('ate-overlay');
+    if (existing) existing.remove();
+    
+    var overlay = document.createElement('div');
+    overlay.id = 'ate-overlay';
+    overlay.className = 'ate-overlay';
+    overlay.innerHTML =
+      '<div class="ate-modal" role="dialog" aria-label="Templates Editor">' +
+        '<div class="ate-header">' +
+          '<h2>Templates Editor</h2>' +
+          '<button class="ate-close" data-action="close" aria-label="Fermer">✕</button>' +
+        '</div>' +
+        '<div class="ate-stats" id="ate-stats">' + renderStats() + '</div>' +
+        '<div class="ate-filter">' +
+          '<input type="search" id="ate-search" placeholder="Filtrer par nom, intent ou texte…">' +
+          '<select id="ate-lang-filter">' +
+            '<option value="all">Toutes langues</option>' +
+            '<option value="fr">Français</option>' +
+            '<option value="en">English</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="ate-list" id="ate-list">' +
+          '<div class="ate-loading">Chargement…</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    
+    // Wire events
+    overlay.querySelector('[data-action="close"]').addEventListener('click', closeEditor);
+    overlay.addEventListener('click', function(e){
+      if (e.target === overlay) closeEditor();
+    });
+    document.addEventListener('keydown', escClose);
+    
+    document.getElementById('ate-search').addEventListener('input', function(e){
+      state.filter = e.target.value;
+      rerenderList();
+    });
+    document.getElementById('ate-lang-filter').addEventListener('change', function(e){
+      state.langFilter = e.target.value;
+      rerenderList();
+    });
+    
+    rerenderList();
+  }
+  
+  function escClose(e){
+    if (e.key === 'Escape') closeEditor();
+  }
+  
+  function closeEditor(){
+    var el = document.getElementById('ate-overlay');
+    if (el) el.remove();
+    document.removeEventListener('keydown', escClose);
+  }
+  
+  // ── Hook into chat: /editor and /templates-editor slash commands ─
+  var _origHandler = window.handleChatQuestion;
+  window.handleChatQuestion = async function(text){
+    var trimmed = (text || '').trim();
+    if (/^\/(editor|templates-editor|edit-templates)$/i.test(trimmed)){
+      try { await openEditor(); }
+      catch(e){ console.error('[ATE]', e); showToast('Erreur ouverture éditeur', 'error'); }
+      if (typeof window.addChatBubble === 'function'){
+        var typing = document.getElementById('chatTyping');
+        if (typing) typing.style.display = 'none';
+        window.addChatBubble('ai', 'Éditeur de templates ouvert ↑', []);
+      }
+      return;
+    }
+    return _origHandler.call(this, text);
+  };
+  
+  // ── Floating button in Settings (if Settings tab exists) ─────────
+  function tryAddSettingsButton(){
+    // Best-effort placement: look for a Settings section header
+    if (document.getElementById('ate-settings-btn')) return;
+    var settingsContainer = document.querySelector('[data-tab="settings"], #settings, .settings-section');
+    if (!settingsContainer) return;
+    var btn = document.createElement('button');
+    btn.id = 'ate-settings-btn';
+    btn.textContent = '⚙ Éditer les templates ARIA';
+    btn.style.cssText = 'padding:10px 18px;background:#C9963A;color:#0F2318;border:none;border-radius:4px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;margin:12px 0;';
+    btn.addEventListener('click', openEditor);
+    settingsContainer.appendChild(btn);
+  }
+  setTimeout(tryAddSettingsButton, 2000);
+  
+  // ── Expose API ───────────────────────────────────────────────────
+  window.ARIA_FIX.openTemplatesEditor = openEditor;
+  window.ARIA_FIX.version_editor = '0.1-phase-B.2';
+  
+  console.log('[ARIA Templates Editor] loaded — type /editor in ARIA chat or run window.ARIA_FIX.openTemplatesEditor()');
 })();
 
 </script>
