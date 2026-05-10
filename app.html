@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -22534,7 +22535,7 @@ window.addEventListener('DOMContentLoaded', function() {
 </script>
 
 
-<!-- ════ ARIA_FIX Phase A.2 + B.1.1 + B.2 Editor — injected lundi 11 mai 2026 ════ -->
+<!-- ════ ARIA_FIX A.2 + B.1.1 + B.2 Editor + Option3 Steps 1-2 (clients/leads split) — injected lundi 11 mai 2026 ════ -->
 <script>
 /* ════════════════════════════════════════════════════════════════════
    ARIA_FIX — Phase A patches (Stafflo)
@@ -22668,12 +22669,18 @@ window.addEventListener('DOMContentLoaded', function() {
     var t = ' ' + normName(text) + ' ';
     
     // Domain-relevant nouns (with plural support via s?)
-    var BOOKING_NOUN = /\b(locations?|reservations?|reservations?|bookings?|sejours?|sejours?|stays?|stay|clients?|guests?|hotes?|invites?|arriv)\b/;
+    var BOOKING_NOUN = /\b(locations?|reservations?|reservations?|bookings?|sejours?|sejours?|stays?|stay|clients?|guests?|hotes?|invites?|contacts?|arriv)\b/;
     var TIME_FUTURE = /\b(prochain|prochaine|prochains|prochaines|next|a venir|upcoming|futurs?)\b/;
     var TIME_INHOUSE = /\b(sur place|on site|present|presents|currently|actuellement|aujourdhui|today|right now|maintenant|en ce moment|in house|inhouse)\b/;
     var TIME_PAST = /\b(passes?|past|recents?|derniers?|dernieres?|completes?)\b/;
-    var STATUS_INQUIRY = /\b(potentiels?|potentielles?|en attente|pending|inquiry|inquiries|demandes?|prospects?|pipeline|en discussion)\b/;
+    var STATUS_INQUIRY = /\b(potentiels?|potentielles?|en attente|pending|inquiry|inquiries|prospects?|pipeline|en discussion)\b/;
     var QUANTIFIER_ALL = /\b(tous|toutes|all|liste|list|complete|recap|recapitulatif|combien|how many|how much)\b/;
+    
+    // NEW (Option 3 Step 2): explicit lead vs client vocabulary
+    // "demandes" alone is a strong lead signal (note: apostrophes already normalized to spaces)
+    var EXPLICIT_LEAD = /\b(leads?|prospects?|demandes?|renseignements?)\b/;
+    var POSSESSIVE_CLIENT = /\b(mes|my|tous mes|all my|liste des|list of|combien de|how many) (clients?|guests?|invites?|hotes?)\b/;
+    var POSSESSIVE_CONTACTS = /\b(mes|my|tous mes|all my|liste des|list of) contacts?\b/;
     
     var hasFuture = TIME_FUTURE.test(t);
     var hasInquiry = STATUS_INQUIRY.test(t);
@@ -22681,13 +22688,29 @@ window.addEventListener('DOMContentLoaded', function() {
     var hasInhouse = TIME_INHOUSE.test(t);
     var hasPast = TIME_PAST.test(t);
     var hasAll = QUANTIFIER_ALL.test(t);
+    var hasExplicitLead = EXPLICIT_LEAD.test(t);
+    var hasPossessiveClient = POSSESSIVE_CLIENT.test(t);
+    var hasPossessiveContacts = POSSESSIVE_CONTACTS.test(t);
+    
+    // ─── EXPLICIT lead queries take priority ────────────────────────
+    // "mes leads", "mes prospects", "demandes d'info", "leads"
+    if (hasExplicitLead) {
+      return { kind: 'leads_only' };
+    }
+    // ─── "mes contacts" / "tous mes contacts" → combined recap ──────
+    if (hasPossessiveContacts) {
+      return { kind: 'all' };
+    }
+    // ─── EXPLICIT client queries (with possessive) ──────────────────
+    // "mes clients", "tous mes clients", "liste des clients"
+    // BUT NOT "qui arrive demain" (no possessive)
+    if (hasPossessiveClient && !hasFuture && !hasPast && !hasInhouse && !hasInquiry) {
+      return { kind: 'clients_only' };
+    }
     
     // ─── Acronymes business : RSA / RSV / RES = Réservations ─────
-    // Exemple : "donne moi les prochaines RSA" → upcoming bookings
     if (/\b(rsa|rsv|res|resa|resas)\b/i.test(text)) {
-      // Specifically look for plural / future intent
       if (/\b(prochain|prochaines?|next|a venir|upcoming|toutes?|all|liste|combien)\b/i.test(text)) {
-        // Inquiry signal takes priority over upcoming when both present
         if (hasInquiry || /\b(potentiel|en attente|inquiry|inquiries|pending)\b/i.test(text)) {
           return { kind: 'inquiries' };
         }
@@ -22737,7 +22760,6 @@ window.addEventListener('DOMContentLoaded', function() {
       }
       if (/\b(ce mois|this month)\b/.test(t)) return { kind: 'arriving_within', days: 30 };
       
-      // Specific date: "qui arrive le 15 mai" / "qui arrive en juin"
       var dateM = parseFrenchDate(text);
       if (dateM) return { kind: 'arriving_on_iso', iso: dateM };
       
@@ -22770,15 +22792,32 @@ window.addEventListener('DOMContentLoaded', function() {
     var todayISO = localDateISO();
     var L = function(f, e){ return fr ? f : e; };
 
-    // Filter helpers
-    var confirmed = clients.filter(function(c){ return (c.booking_status||'confirmed') === 'confirmed'; });
-    var inquiry = clients.filter(function(c){ return (c.booking_status||'') === 'inquiry'; });
-    var declined = clients.filter(function(c){ return ['declined','cancelled'].indexOf(c.booking_status||'') >= 0; });
-    var past_status = clients.filter(function(c){ return (c.booking_status||'') === 'past'; });
+    // ── Helpers respecting contact_type (Option 3 Step 2) ──
+    function isClient(c){
+      // Primary: contact_type column (new). Fallback: derive from booking_status.
+      if (c.contact_type) return c.contact_type === 'client';
+      return ['confirmed','past','cancelled'].indexOf(c.booking_status||'') >= 0;
+    }
+    function isLead(c){
+      if (c.contact_type) return c.contact_type === 'lead';
+      return ['inquiry','declined'].indexOf(c.booking_status||'') >= 0;
+    }
+    
+    // Filter helpers (only TRUE clients, no leads pollution)
+    var trueClients = clients.filter(isClient);
+    var trueLeads = clients.filter(isLead);
+    var confirmed = trueClients.filter(function(c){ return (c.booking_status||'confirmed') === 'confirmed'; });
+    var inquiry = trueLeads.filter(function(c){ return (c.booking_status||'') === 'inquiry'; });
+    var declined = trueLeads.filter(function(c){ return (c.booking_status||'') === 'declined'; });
+    var past_status = trueClients.filter(function(c){ return (c.booking_status||'') === 'past'; });
 
     function fmtClient(c, opts){
       opts = opts || {};
       var bits = [c.name];
+      // Add type badge for clarity
+      if (opts.showType !== false) {
+        if (isLead(c)) bits.push(L('Lead', 'Lead'));
+      }
       if (c.arrival && c.departure) {
         if (opts.dateMode === 'short') {
           bits.push(formatDateHuman(c.arrival, {lang: fr?'fr':'en', includeRelative:true}) + ' → ' + (c.departure ? formatDateHuman(c.departure, {lang: fr?'fr':'en', includeRelative:false}) : ''));
@@ -22794,6 +22833,63 @@ window.addEventListener('DOMContentLoaded', function() {
       return bits.join(' · ');
     }
 
+    // ─── NEW: clients_only ───────────────────────────────────────
+    if (query.kind === 'clients_only') {
+      if (trueClients.length === 0) {
+        return L('Aucun client dans le CRM.', 'No clients in CRM.');
+      }
+      var upcoming = trueClients.filter(function(c){ return c.arrival && c.arrival > todayISO; });
+      var inhouse = trueClients.filter(function(c){ return c.arrival && c.departure && c.arrival <= todayISO && c.departure >= todayISO; });
+      var past = trueClients.filter(function(c){ return c.departure && c.departure < todayISO; });
+      
+      var lines = [L('**' + trueClients.length + ' clients** (séjours bookés)', '**' + trueClients.length + ' clients** (booked stays)')];
+      if (inhouse.length) {
+        lines.push('\n_' + L('Sur place', 'On site') + ' :_');
+        inhouse.forEach(function(c){ lines.push('• ' + fmtClient(c, {showType:false})); });
+      }
+      if (upcoming.length) {
+        upcoming.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
+        lines.push('\n_' + L('À venir', 'Upcoming') + ' :_');
+        upcoming.slice(0, 10).forEach(function(c){ lines.push('• ' + fmtClient(c, {showType:false})); });
+        if (upcoming.length > 10) lines.push('  _… +' + (upcoming.length-10) + ' ' + L('autres','more') + '_');
+      }
+      if (past.length) {
+        past.sort(function(a,b){ return (b.departure||'').localeCompare(a.departure||''); });
+        lines.push('\n_' + L('Passés (5 derniers)', 'Past (last 5)') + ' :_');
+        past.slice(0, 5).forEach(function(c){ lines.push('• ' + fmtClient(c, {showType:false})); });
+      }
+      return lines.join('\n');
+    }
+    
+    // ─── NEW: leads_only ─────────────────────────────────────────
+    if (query.kind === 'leads_only') {
+      if (trueLeads.length === 0) {
+        return L('Aucun lead dans le pipeline.', 'No leads in pipeline.');
+      }
+      var active = inquiry.filter(function(c){ return !c.arrival || c.arrival >= todayISO; });
+      var lost = declined;
+      var converted = inquiry.filter(function(c){ return c.arrival && c.arrival < todayISO; });
+      
+      var ll = [L('**' + trueLeads.length + ' leads** dans le pipeline', '**' + trueLeads.length + ' leads** in pipeline')];
+      if (active.length) {
+        active.sort(function(a,b){ return (a.arrival||'9999').localeCompare(b.arrival||'9999'); });
+        ll.push('\n_' + active.length + ' ' + L('actifs (en attente)', 'active (pending)') + ' :_');
+        active.forEach(function(c){ ll.push('• ' + fmtClient(c, {showType:false})); });
+      }
+      if (lost.length) {
+        ll.push('\n_' + lost.length + ' ' + L('refusés/expirés', 'declined/expired') + ' :_');
+        ll.push('  ' + lost.slice(0, 8).map(function(c){return c.name;}).join(', ') + (lost.length > 8 ? '…' : ''));
+      }
+      // Conversion rate hint
+      var convRate = trueClients.length > 0 && trueLeads.length > 0
+        ? Math.round((trueClients.length / (trueClients.length + trueLeads.length)) * 100)
+        : null;
+      if (convRate !== null) {
+        ll.push('\n_' + L('Taux de conversion historique : ', 'Historical conversion rate: ') + convRate + '%_');
+      }
+      return ll.join('\n');
+    }
+    
     if (query.kind === 'both') {
       var upBoth = confirmed.filter(function(c){ return c.arrival && c.arrival > todayISO; });
       upBoth.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
@@ -22860,26 +22956,35 @@ window.addEventListener('DOMContentLoaded', function() {
 
     if (query.kind === 'all') {
       var stats = {
+        // CLIENTS (real bookings)
+        n_clients: trueClients.length,
+        inhouse: trueClients.filter(function(c){return c.arrival&&c.departure&&c.arrival<=todayISO&&c.departure>=todayISO;}).length,
         confirmed: confirmed.filter(function(c){return c.arrival && c.arrival>=todayISO;}).length,
-        inhouse: clients.filter(function(c){return c.arrival&&c.departure&&c.arrival<=todayISO&&c.departure>=todayISO;}).length,
-        inquiries: inquiry.length,
         past: past_status.length,
-        declined: declined.length,
+        // LEADS (pipeline)
+        n_leads: trueLeads.length,
+        inquiries_active: inquiry.filter(function(c){return !c.arrival || c.arrival>=todayISO;}).length,
+        lost: declined.length,
+        // Overall
         total: clients.length
       };
       return L(
-        '**Récap CRM** (' + stats.total + ' clients au total)\n' +
+        '**Récap CRM** (' + stats.total + ' contacts au total)\n\n' +
+        '**🟢 Clients : ' + stats.n_clients + '**\n' +
         '• ' + stats.inhouse + ' sur place\n' +
-        '• ' + stats.confirmed + ' confirmées à venir\n' +
-        '• ' + stats.inquiries + ' inquiries actives\n' +
-        '• ' + stats.past + ' séjours passés\n' +
-        '• ' + stats.declined + ' declined/cancelled',
-        '**CRM summary** (' + stats.total + ' clients total)\n' +
+        '• ' + stats.confirmed + ' confirmés à venir\n' +
+        '• ' + stats.past + ' séjours passés\n\n' +
+        '**🟡 Leads (pipeline) : ' + stats.n_leads + '**\n' +
+        '• ' + stats.inquiries_active + ' inquiries actives\n' +
+        '• ' + stats.lost + ' refusés / expirés',
+        '**CRM summary** (' + stats.total + ' contacts total)\n\n' +
+        '**🟢 Clients: ' + stats.n_clients + '**\n' +
         '• ' + stats.inhouse + ' on site\n' +
-        '• ' + stats.confirmed + ' upcoming confirmed\n' +
-        '• ' + stats.inquiries + ' active inquiries\n' +
-        '• ' + stats.past + ' past stays\n' +
-        '• ' + stats.declined + ' declined/cancelled'
+        '• ' + stats.confirmed + ' upcoming\n' +
+        '• ' + stats.past + ' past stays\n\n' +
+        '**🟡 Leads (pipeline): ' + stats.n_leads + '**\n' +
+        '• ' + stats.inquiries_active + ' active inquiries\n' +
+        '• ' + stats.lost + ' declined / expired'
       );
     }
 
@@ -23044,7 +23149,7 @@ window.addEventListener('DOMContentLoaded', function() {
     detectAggregateQuery: detectAggregateQuery,
     answerAggregateLocally: answerAggregateLocally,
     enrichTextForARIA: enrichTextForARIA,
-    version: '0.4-phase-A.2-timezone-fix',
+    version: '0.5-phase-A.2+B.1.1+option3-step1-2',
     loaded_at: new Date().toISOString()
   };
 
