@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -17004,7 +17005,23 @@ window.addEventListener('DOMContentLoaded', function() {
       '<span style="font-size:11px;font-weight:600">'+(f?'Voir Inbox →':'Open Inbox →')+'</span>';
     banner.onclick = function(){
       if (typeof closeAriaModal==='function') closeAriaModal();
-      if (typeof showInbox==='function') showInbox();
+      // The legacy showInbox() modal is broken (targets #inboxList but DOM has
+      // #inboxListLegacy — rename never propagated). The real inbox is already
+      // rendered in the dashboard at #inboxRowToday, so just scroll there and
+      // skip the redundant modal. 2026-05-10 fix.
+      setTimeout(function(){
+        var realInbox = document.getElementById('inboxRowToday');
+        if (realInbox) {
+          realInbox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // Brief visual highlight so the user can spot where attention went
+          realInbox.style.transition = 'box-shadow .3s';
+          realInbox.style.boxShadow = '0 0 0 3px rgba(201,150,58,.45)';
+          setTimeout(function(){ realInbox.style.boxShadow = ''; }, 1500);
+        } else if (typeof showInbox==='function') {
+          // Fallback if dashboard layout changes — keep old behaviour as escape hatch
+          showInbox();
+        }
+      }, 250); // wait for ARIA modal close animation
     };
     hd.parentNode.insertBefore(banner, hd.nextSibling);
   }
