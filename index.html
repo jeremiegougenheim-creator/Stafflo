@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -22534,693 +22535,415 @@ window.addEventListener('DOMContentLoaded', function() {
 </script>
 
 
+<!-- ════ ARIA_FIX Phase A — injected dimanche 10 mai 2026 ════ -->
 <script>
-// ─────────────────────────────────────────────────────────────────────────────
-//  STAFFLO ARIA v2 — Intent classifier + per-intent context builders
-//  Goal: 60-70% token reduction + zero hallucination via grounding validator
-//
-//  Plug-in: just include this file (or paste this IIFE) AFTER all of app.html's
-//  legacy ARIA code is defined. It wraps `handleChatQuestion` behind the flag
-//  `window.STAFFLO_INTENT_V2` (default ON). No other behavior is altered when
-//  the flag is OFF — except the openAriaHistory dedup fix, which is always on.
-// ─────────────────────────────────────────────────────────────────────────────
+/* ════════════════════════════════════════════════════════════════════
+   ARIA_FIX — Phase A patches (Stafflo)
+   Date: dimanche 10 mai 2026
+   Goal: stop hallucinations, ground in CRM, humanize dates, resolve anaphora
+   
+   Wraps handleChatQuestion (legacy) without rewriting it. Bypasses LLM
+   for pure-list aggregate queries (cannot hallucinate by construction).
+   ════════════════════════════════════════════════════════════════════ */
+
 (function(){
-  if (window._STAFFLO_V2_LOADED) return;
-  window._STAFFLO_V2_LOADED = true;
+  'use strict';
+  if (window.ARIA_FIX_LOADED) return;
+  window.ARIA_FIX_LOADED = true;
 
-  window.STAFFLO_INTENT_V2 = (typeof window.STAFFLO_INTENT_V2 === 'boolean') ? window.STAFFLO_INTENT_V2 : true;
-  window._ariaLastClient = window._ariaLastClient || null;
-  window._ariaTelemetry = window._ariaTelemetry || [];
+  // ── 1. HUMAN DATE FORMAT ─────────────────────────────────────────
+  var DAYS_FR = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  var DAYS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  var MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  function todayISO() { return new Date().toISOString().slice(0,10); }
-  function cfg() { try { return (typeof getCfg === 'function') ? (getCfg() || {}) : {}; } catch(_) { return {}; } }
-  function ownerName() { return cfg().owner || 'Jérémie'; }
-  function villaName() { return cfg().villa || 'Villa DarJ'; }
-  function isFr() { return (typeof lang === 'string' && lang.toLowerCase().startsWith('fr')); }
-  function safeArr(x) { return Array.isArray(x) ? x : []; }
-
-  function getStaffWithRoles() {
-    var c = cfg();
-    if (Array.isArray(c.staffMembers) && c.staffMembers.length) {
-      return c.staffMembers
-        .map(function(s){ return { name: (s && s.name) || '', role: (s && s.role) || '' }; })
-        .filter(function(s){ return s.name; });
-    }
-    if (typeof c.staff === 'string' && c.staff.trim()) {
-      return c.staff.split('\n').map(function(line){
-        var m = line.match(/^(.+?)\s*\((.+?)\)\s*$/);
-        if (m) return { name: m[1].trim(), role: m[2].trim() };
-        return { name: line.trim(), role: '' };
-      }).filter(function(s){ return s.name; });
-    }
-    return [
-      { name: 'Said', role: 'butler' },
-      { name: 'Faiza', role: 'chef' },
-      { name: 'Bouchra', role: 'housekeeping' }
-    ];
-  }
-  function getStaffNames() { return getStaffWithRoles().map(function(s){ return s.name; }); }
-
-  // Match a name in user's input against window.clients first names.
-  // Returns the client object whose first name appears, longest match wins.
-  function detectClient(text) {
-    var cs = safeArr(window.clients);
-    if (!cs.length || !text) return null;
-    var padded = ' ' + text.toLowerCase() + ' ';
-    var best = null, bestLen = 0;
-    cs.forEach(function(c){
-      if (!c || !c.name) return;
-      var fn = c.name.split(/\s+/)[0].toLowerCase();
-      if (fn.length < 3) return;
-      var rx = new RegExp('[\\s.,!?\\-\'"`(]' + fn.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '[\\s.,!?\\-\'"`)]', 'i');
-      if (rx.test(padded) && fn.length > bestLen) {
-        best = c;
-        bestLen = fn.length;
-      }
-    });
-    return best;
+  function formatDateHuman(iso, opts){
+    if (!iso) return '';
+    opts = opts || {};
+    var lang = opts.lang || (typeof window.lang !== 'undefined' ? window.lang : 'fr');
+    var includeRelative = opts.includeRelative !== false;
+    var d = new Date(iso + 'T12:00:00');
+    if (isNaN(d.getTime())) return iso;
+    var today = new Date(); today.setHours(0,0,0,0);
+    d.setHours(0,0,0,0);
+    var diffDays = Math.round((d - today) / 86400000);
+    var nowYear = today.getFullYear();
+    var dYear = d.getFullYear();
+    var months = lang==='fr' ? MONTHS_FR : MONTHS_EN;
+    var days = lang==='fr' ? DAYS_FR : DAYS_EN;
+    var dayName = days[d.getDay()];
+    var dayNum = d.getDate();
+    var monthName = months[d.getMonth()];
+    var base = lang==='fr'
+      ? (dayName + ' ' + dayNum + ' ' + monthName + (dYear !== nowYear ? ' ' + dYear : ''))
+      : (dayName + ', ' + monthName + ' ' + dayNum + (dYear !== nowYear ? ' ' + dYear : ''));
+    if (!includeRelative) return base;
+    if (diffDays === 0) return lang==='fr' ? 'aujourd\'hui (' + base + ')' : 'today (' + base + ')';
+    if (diffDays === 1) return lang==='fr' ? 'demain ' + base : 'tomorrow ' + base;
+    if (diffDays === -1) return lang==='fr' ? 'hier ' + base : 'yesterday ' + base;
+    if (diffDays > 1 && diffDays <= 14) return base + (lang==='fr' ? ' (dans ' + diffDays + ' jours)' : ' (in ' + diffDays + ' days)');
+    if (diffDays < -1 && diffDays >= -14) return base + (lang==='fr' ? ' (il y a ' + Math.abs(diffDays) + ' jours)' : ' (' + Math.abs(diffDays) + ' days ago)');
+    return base;
   }
 
-  // ── Intent classifier ──────────────────────────────────────────────────────
-  // Returns { intent, confidence, target?, meta? }
-  function classifyIntent(text) {
-    if (!text || !text.trim()) return { intent: 'factual_chat', confidence: 0.5 };
-    var t = text.trim();
-    var lc = t.toLowerCase();
-    var len = t.length;
-    var wc = t.split(/\s+/).length;
-
-    // 1. EXTRACT_STRUCTURED — long pasted email/booking
-    if (len > 400) {
-      var hasEmailHeaders = /(^|\n)\s*(de\s*\/\s*from|from|sujet\s*\/\s*subject|subject)\s*:/i.test(t);
-      var hasStrongEmail  = /new inquiry from|nouvelle demande|airbnb\.com|booking\.com|express@airbnb|noreply@booking|réservation confirmée|reservation confirmed/i.test(t);
-      var hasWaTs         = /\[\d{1,2}\/\d{1,2}\/\d{4}[,\s]+\d{1,2}:\d{2}/.test(t);
-      if (hasEmailHeaders || hasStrongEmail || hasWaTs) {
-        return { intent: 'extract_structured', confidence: 0.95 };
-      }
-    }
-
-    // 2. COMMAND — slash or one-word ack
-    var slash = t.match(/^\/(\w+)/);
-    if (slash) return { intent: 'command', confidence: 1, meta: { cmd: slash[1].toLowerCase() } };
-    if (wc <= 2 && /^(merci|thanks|thx|ok|okay|d'?accord|got it|yes|oui|non|no|nope)[!.?\s]*$/i.test(t)) {
-      return { intent: 'command', confidence: 0.85, meta: { cmd: 'ack' } };
-    }
-
-    // 3. ORCHESTRATOR — multi-action plan
-    var orchestratorRx = [
-      /\b(\d+)\s+actions?\s+(prioritaires?|à faire|priority|to do|todo)/i,
-      /\bactions?\s+(prioritaires?|priority).{0,30}\b(semaine|week|aujourd|today|jour|day)\b/i,
-      /^(liste|list|donne|donnes?|give)[\s\-]*(moi|me)?\s+(les?|the)?\s*\d+\s+(actions?|étapes?|steps?|priorités?|tâches?|tasks?)/i,
-      // Without explicit count: "donne moi les actions à faire pour Massi"
-      /\b(donne|donnes?|give|liste|list|montre|show|propose|suggest)\s+(moi|me)?\s*(les?|the)?\s*(\d+\s+)?(actions?|étapes?|steps?|priorités?|tâches?|tasks?)\b/i,
-      /\b(propose|suggest|recommend|recommande)\s+\d+\s+(actions?|étapes?|steps?)/i,
-      /\b(plan|stratégie|strategy|workflow|todo|to-do)\s+(d'action|of action|du jour|de la semaine|for the week|for today)/i,
-      /\b(que|what)\s+(dois-je|should i|do i need to)\s+(faire|do)\b/i,
-      /\b(actions?|étapes?|steps?)\s+(à|a)\s+(faire|fiare|prendre|take)\b/i,
-      /\b(actions?|étapes?|steps?)\s+(nécessaires?|needed|to do|à faire)\b/i
-    ];
-    if (orchestratorRx.some(function(rx){ return rx.test(lc); })) {
-      var tg0 = detectClient(text) || window._ariaLastClient || null;
-      if (tg0) window._ariaLastClient = tg0;
-      return { intent: 'orchestrator', confidence: 0.9, target: tg0 };
-    }
-
-    // 4. WRITE_MESSAGE — explicit drafting
-    var writeRx = [
-      /^(écris|écrire|rédige|rédiger|prépare un message|draft|write|compose)\b/i,
-      /\b(je voudrais|je veux|i'?d like|can you|peux[\-\s]?tu)\s+(un|une|le|la|les|a|the)\s+(whatsapp|message|email|sms|wa|réponse|reponse|reply|mail)/i,
-      /\b(répond|reply|answer|réponds|reponds)\b.{0,20}\b(à|to|au|aux)\s+/i,
-      /\b(envoie|envoyer|send)\s+(un|une|a|lui|her|him|leur)?\s*(message|whatsapp|email|sms|wa|mail)\b/i,
-      /\b(un|une|a)\s+(whatsapp|message|email|sms|mail)\s+(pour|for|à|to)\b/i,
-      // Anaphoric: "une réponse plus détaillée en reprenant ses…"
-      /\b(une|une?|a)\s+(réponse|reponse|reply)\s+(plus|more)?\b/i,
-      /\b(reprenant|en reprenant|using|en utilisant)\s+(ses|son|sa|her|his|their)\b/i
-    ];
-    if (writeRx.some(function(rx){ return rx.test(lc); })) {
-      var tg = detectClient(text);
-      // Anaphoric: "ses anciennes demandes", "lui répondre"
-      if (!tg && /\b(lui|elle|ses|son|sa|him|her|their|his|reprenant)\b/i.test(lc)) {
-        tg = window._ariaLastClient;
-      }
-      if (tg) window._ariaLastClient = tg;
-      return { intent: 'write_message', confidence: 0.85, target: tg };
-    }
-
-    // 5. REASONING (check BEFORE crm_query so "compare le NET de X et Y" routes here, not to bare CRM lookup)
-    if (wc > 6 && /\b(compare|comparer|analyse|analyser|stratégie|strategy|optim|recommend|recommande|conseil|conseille|why|pourquoi|expliqu|explique|approfondi|approfondir|ranger par|sorted by|trie|trier|distingue|différence)\b/i.test(lc)) {
-      return { intent: 'reasoning', confidence: 0.8 };
-    }
-
-    // 6. CRM_QUERY — info about the business
-    var crmRx = [
-      /\b(qui|who)\s+(arrive|arrives|arrivent|est|sont|are|is|reste|sera|will|stays?)\b/i,
-      /\b(quand|when)\s+(arrive|arrives|arrivent|part|partent|leaves?|comes?|est|will|do|do you)\b/i,
-      /\b(combien|how (many|much))\b/i,
-      /\b(quel|quelle|what|which)\s+(est|client|prix|price|net|booking|réservation|reservation|séjour)\b/i,
-      /\b(prochain|next|prochaine|prochains|prochaines)\s+(client|guest|booking|réservation|reservation|arrivée|arrival|arrivées|arrivals|séjour|stay|stays|clients|guests)\b/i,
-      /\b(sur place|in[\-\s]?house|à la villa|at the villa|aujourd'?hui|today|cette semaine|this week|ce mois|this month)\b/i,
-      /\b(revenu|revenue|net|total|montant|amount|chiffre|earnings)\b/i,
-      /\b(stat|statistique|stats|statistics)\b/i
-    ];
-    if (crmRx.some(function(rx){ return rx.test(lc); })) {
-      var tgC = detectClient(text);
-      if (tgC) window._ariaLastClient = tgC;
-      return { intent: 'crm_query', confidence: 0.85, target: tgC };
-    }
-
-    // 7. FACTUAL_CHAT — fallback
-    return { intent: 'factual_chat', confidence: 0.6 };
+  function todayHuman(lang){
+    return formatDateHuman(new Date().toISOString().slice(0,10), {lang: lang||'fr', includeRelative: true});
   }
 
-  // ── Per-intent context builders ────────────────────────────────────────────
-  function buildCtxClient(client) {
-    if (!client) return '';
-    var bits = [];
-    bits.push('CLIENT FOCUS: ' + (client.name || '?'));
-    if (client.arrival)   bits.push('arrivée: ' + client.arrival);
-    if (client.departure) bits.push('départ: ' + client.departure);
-    if (client.guests)    bits.push('personnes: ' + client.guests);
-    if (client.nights)    bits.push('nuits: ' + client.nights);
-    if (client.price)     bits.push('prix: ' + client.price + '€');
-    if (client.net != null) bits.push('net: ' + client.net + '€');
-    if (client.source)    bits.push('source: ' + client.source);
-    if (client.phone)     bits.push('phone: ' + client.phone);
-    if (client.email)     bits.push('email: ' + client.email);
-    if (client.notes)     bits.push('notes: ' + (client.notes.length>200 ? client.notes.slice(0,200)+'…' : client.notes));
-    var lines = [bits.join(' · ')];
+  // ── 2. CLIENT NAME DETECTION ──────────────────────────────────────
+  function getClients(){
+    return Array.isArray(window.clients) ? window.clients : [];
+  }
+  
+  function normName(s){
+    return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,' ').trim();
+  }
 
-    // Last 3 messages from various possible storage shapes
-    var msgs = null;
-    if (client.context && Array.isArray(client.context.messages)) msgs = client.context.messages;
-    else if (Array.isArray(client.messages)) msgs = client.messages;
-    if (msgs && msgs.length) {
-      lines.push('Derniers messages:');
-      msgs.slice(-3).forEach(function(m){
-        var who = (m.role === 'guest' || m.from === 'guest') ? 'Client'
-                : (m.role === 'owner' || m.from === 'owner') ? 'Owner'
-                : (m.role || m.from || 'note');
-        var when = m.ts ? (' ['+ String(new Date(m.ts).toISOString().slice(0,10)) +']') : '';
-        var body = (m.text || m.content || m.body || '').slice(0, 140);
-        lines.push('  - ' + who + when + ': ' + body);
+  /** Returns the matched client (full object) if any first name in `text` matches a CRM client's first name. */
+  function detectClientByName(text){
+    var t = ' ' + normName(text) + ' ';
+    var clients = getClients();
+    var bestMatch = null, bestLen = 0;
+    for (var i = 0; i < clients.length; i++) {
+      var c = clients[i];
+      if (!c.name) continue;
+      var firstName = normName(c.name.split(/\s+/)[0]);
+      if (firstName.length < 3) continue;
+      var pattern = ' ' + firstName + ' ';
+      if (t.indexOf(pattern) >= 0 && firstName.length > bestLen) {
+        bestMatch = c;
+        bestLen = firstName.length;
+      }
+    }
+    return bestMatch;
+  }
+
+  // ── 3. ANAPHORA RESOLVER ──────────────────────────────────────────
+  var ANAPHORIC_FR = /\b(mon client|ma cliente|ce client|cette cliente|ces clients|il|elle|son|sa|ses|leur|leurs|chez lui|chez elle)\b/i;
+  var ANAPHORIC_EN = /\b(my client|this client|the client|he|she|his|her|their|them)\b/i;
+
+  function resolveAnaphora(text){
+    var last = window._ariaLastClient;
+    if (!last) return null;
+    if (ANAPHORIC_FR.test(text) || ANAPHORIC_EN.test(text)) return last;
+    return null;
+  }
+
+  // ── 4. AGGREGATE QUERY DETECTION + LOCAL ANSWERS ─────────────────
+  // These bypass the LLM entirely. Cannot hallucinate by construction.
+
+  function detectAggregateQuery(text){
+    var t = ' ' + normName(text) + ' ';
+    
+    // Domain-relevant nouns (with plural support via s?)
+    var BOOKING_NOUN = /\b(locations?|reservations?|reservations?|bookings?|sejours?|sejours?|stays?|stay|clients?|guests?|hotes?|invites?|arriv)\b/;
+    var TIME_FUTURE = /\b(prochain|prochaine|prochains|prochaines|next|a venir|upcoming|futurs?)\b/;
+    var TIME_INHOUSE = /\b(sur place|on site|present|presents|currently|actuellement|aujourdhui|today|right now|maintenant|en ce moment|in house|inhouse)\b/;
+    var TIME_PAST = /\b(passes?|past|recents?|derniers?|dernieres?|completes?)\b/;
+    var STATUS_INQUIRY = /\b(potentiels?|potentielles?|en attente|pending|inquiry|inquiries|demandes?|prospects?|pipeline|en discussion)\b/;
+    var QUANTIFIER_ALL = /\b(tous|toutes|all|liste|list|complete|recap|recapitulatif|combien|how many|how much)\b/;
+    
+    var hasFuture = TIME_FUTURE.test(t);
+    var hasInquiry = STATUS_INQUIRY.test(t);
+    var hasBookingNoun = BOOKING_NOUN.test(t);
+    var hasInhouse = TIME_INHOUSE.test(t);
+    var hasPast = TIME_PAST.test(t);
+    var hasAll = QUANTIFIER_ALL.test(t);
+    
+    // ─── Combined: "confirmed AND inquiries" → return both lists ───
+    if (hasFuture && hasInquiry) {
+      return { kind: 'both' };
+    }
+    
+    // Upcoming/confirmed bookings
+    if (hasFuture && hasBookingNoun) {
+      return { kind: 'upcoming_confirmed' };
+    }
+    
+    // Inquiries / pipeline alone
+    if (hasInquiry) {
+      return { kind: 'inquiries' };
+    }
+    
+    // In-house / currently on site
+    if (hasInhouse && /\b(qui|who|clients?|guests?|invites?)\b/.test(t)) {
+      return { kind: 'in_house' };
+    }
+    
+    // Past clients
+    if (hasPast && hasBookingNoun) {
+      return { kind: 'past' };
+    }
+    
+    // Overall recap / count
+    if (hasAll && hasBookingNoun) {
+      return { kind: 'all' };
+    }
+    
+    // Specific date arrivals
+    if (/\b(qui arrive|who arrives|qui part|who leaves|who departs|who is coming)\b/.test(t)) {
+      if (/\b(demain|tomorrow)\b/.test(t)) return { kind: 'arriving_on', offset: 1 };
+      if (/\b(aujourd|today)\b/.test(t)) return { kind: 'arriving_on', offset: 0 };
+      if (/\b(cette semaine|this week)\b/.test(t)) return { kind: 'arriving_within', days: 7 };
+      if (/\b(ce mois|this month)\b/.test(t)) return { kind: 'arriving_within', days: 30 };
+      return { kind: 'upcoming_confirmed' };
+    }
+    
+    return null;
+  }
+
+  function answerAggregateLocally(query, lang){
+    var clients = getClients();
+    var fr = lang === 'fr' || (typeof window.lang !== 'undefined' && window.lang === 'fr');
+    var todayISO = new Date().toISOString().slice(0,10);
+    var L = function(f, e){ return fr ? f : e; };
+
+    // Filter helpers
+    var confirmed = clients.filter(function(c){ return (c.booking_status||'confirmed') === 'confirmed'; });
+    var inquiry = clients.filter(function(c){ return (c.booking_status||'') === 'inquiry'; });
+    var declined = clients.filter(function(c){ return ['declined','cancelled'].indexOf(c.booking_status||'') >= 0; });
+    var past_status = clients.filter(function(c){ return (c.booking_status||'') === 'past'; });
+
+    function fmtClient(c, opts){
+      opts = opts || {};
+      var bits = [c.name];
+      if (c.arrival && c.departure) {
+        if (opts.dateMode === 'short') {
+          bits.push(formatDateHuman(c.arrival, {lang: fr?'fr':'en', includeRelative:true}) + ' → ' + (c.departure ? formatDateHuman(c.departure, {lang: fr?'fr':'en', includeRelative:false}) : ''));
+        } else {
+          bits.push(formatDateHuman(c.arrival, {lang: fr?'fr':'en', includeRelative:true}));
+        }
+      } else if (c.arrival) {
+        bits.push(formatDateHuman(c.arrival, {lang: fr?'fr':'en', includeRelative:true}));
+      }
+      if (c.guests) bits.push(c.guests + (fr?' pers':' pax'));
+      if (c.source) bits.push(c.source);
+      if (c.price && Number(c.price) > 0) bits.push(Math.round(c.price) + '€');
+      return bits.join(' · ');
+    }
+
+    if (query.kind === 'both') {
+      var upBoth = confirmed.filter(function(c){ return c.arrival && c.arrival > todayISO; });
+      upBoth.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
+      var pipeBoth = inquiry.filter(function(c){ return !c.arrival || c.arrival >= todayISO; });
+      pipeBoth.sort(function(a,b){ return (a.arrival||'9999').localeCompare(b.arrival||'9999'); });
+      var sections = [];
+      if (upBoth.length) {
+        var s1 = [L('**' + upBoth.length + ' réservations confirmées à venir** :', '**' + upBoth.length + ' upcoming confirmed bookings:**')];
+        upBoth.forEach(function(c){ s1.push('• ' + fmtClient(c, {dateMode:'long'})); });
+        sections.push(s1.join('\n'));
+      }
+      if (pipeBoth.length) {
+        var s2 = [L('**' + pipeBoth.length + ' inquiries actives** (potentielles) :', '**' + pipeBoth.length + ' active inquiries** (pipeline):')];
+        pipeBoth.forEach(function(c){ s2.push('• ' + fmtClient(c)); });
+        sections.push(s2.join('\n'));
+      }
+      if (sections.length === 0) return L('Aucune réservation ni inquiry active.', 'No bookings or active inquiries.');
+      return sections.join('\n\n');
+    }
+
+    if (query.kind === 'upcoming_confirmed') {
+      var upcoming = confirmed.filter(function(c){ return c.arrival && c.arrival > todayISO; });
+      upcoming.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
+      if (upcoming.length === 0) {
+        return L('Aucune réservation confirmée à venir dans le CRM.', 'No confirmed upcoming bookings in CRM.');
+      }
+      var lines = [L('**' + upcoming.length + ' réservations confirmées à venir** :', '**' + upcoming.length + ' upcoming confirmed bookings:**')];
+      upcoming.forEach(function(c){ lines.push('• ' + fmtClient(c, {dateMode:'long'})); });
+      return lines.join('\n');
+    }
+
+    if (query.kind === 'inquiries') {
+      var pipeline = inquiry.filter(function(c){ return !c.arrival || c.arrival >= todayISO; });
+      pipeline.sort(function(a,b){ return (a.arrival||'9999').localeCompare(b.arrival||'9999'); });
+      if (pipeline.length === 0) {
+        return L('Aucune inquiry active dans le pipeline.', 'No active inquiries in pipeline.');
+      }
+      var ls = [L('**' + pipeline.length + ' inquiries actives** (pipeline) :', '**' + pipeline.length + ' active inquiries** (pipeline):')];
+      pipeline.forEach(function(c){ ls.push('• ' + fmtClient(c)); });
+      return ls.join('\n');
+    }
+
+    if (query.kind === 'in_house') {
+      var inhouse = clients.filter(function(c){
+        return c.arrival && c.departure && c.arrival <= todayISO && c.departure >= todayISO;
       });
+      if (inhouse.length === 0) {
+        return L('Aucun client sur place actuellement (' + todayHuman('fr') + ').', 'No guests currently on site (' + todayHuman('en') + ').');
+      }
+      var ls2 = [L('**Sur place actuellement** :', '**Currently on site:**')];
+      inhouse.forEach(function(c){ ls2.push('• ' + fmtClient(c)); });
+      return ls2.join('\n');
     }
-    return lines.join('\n');
+
+    if (query.kind === 'past') {
+      var allPast = past_status.concat(confirmed.filter(function(c){ return c.departure && c.departure < todayISO; }));
+      allPast.sort(function(a,b){ return (b.departure||'').localeCompare(a.departure||''); });
+      if (allPast.length === 0) return L('Aucun séjour passé dans le CRM.', 'No past stays in CRM.');
+      var top = allPast.slice(0, 10);
+      var ls3 = [L('**' + top.length + ' derniers séjours passés** (sur ' + allPast.length + ') :', '**Last ' + top.length + ' past stays** (of ' + allPast.length + '):')];
+      top.forEach(function(c){ ls3.push('• ' + fmtClient(c)); });
+      return ls3.join('\n');
+    }
+
+    if (query.kind === 'all') {
+      var stats = {
+        confirmed: confirmed.filter(function(c){return c.arrival && c.arrival>=todayISO;}).length,
+        inhouse: clients.filter(function(c){return c.arrival&&c.departure&&c.arrival<=todayISO&&c.departure>=todayISO;}).length,
+        inquiries: inquiry.length,
+        past: past_status.length,
+        declined: declined.length,
+        total: clients.length
+      };
+      return L(
+        '**Récap CRM** (' + stats.total + ' clients au total)\n' +
+        '• ' + stats.inhouse + ' sur place\n' +
+        '• ' + stats.confirmed + ' confirmées à venir\n' +
+        '• ' + stats.inquiries + ' inquiries actives\n' +
+        '• ' + stats.past + ' séjours passés\n' +
+        '• ' + stats.declined + ' declined/cancelled',
+        '**CRM summary** (' + stats.total + ' clients total)\n' +
+        '• ' + stats.inhouse + ' on site\n' +
+        '• ' + stats.confirmed + ' upcoming confirmed\n' +
+        '• ' + stats.inquiries + ' active inquiries\n' +
+        '• ' + stats.past + ' past stays\n' +
+        '• ' + stats.declined + ' declined/cancelled'
+      );
+    }
+
+    if (query.kind === 'arriving_on') {
+      var target = new Date();
+      target.setDate(target.getDate() + (query.offset || 0));
+      var targetISO = target.toISOString().slice(0,10);
+      var arr = confirmed.filter(function(c){ return c.arrival === targetISO; });
+      if (arr.length === 0) {
+        return L('Personne n\'arrive ' + (query.offset===1?'demain':query.offset===0?'aujourd\'hui':'à cette date') + '.',
+                 'Nobody arrives ' + (query.offset===1?'tomorrow':query.offset===0?'today':'on that date') + '.');
+      }
+      return L('**Arrivée ' + (query.offset===1?'demain':query.offset===0?'aujourd\'hui':'') + '** :', '**Arriving ' + (query.offset===1?'tomorrow':query.offset===0?'today':'') + ':**') +
+        '\n' + arr.map(function(c){ return '• ' + fmtClient(c); }).join('\n');
+    }
+
+    if (query.kind === 'arriving_within') {
+      var until = new Date(); until.setDate(until.getDate() + query.days);
+      var untilISO = until.toISOString().slice(0,10);
+      var win = confirmed.filter(function(c){ return c.arrival && c.arrival >= todayISO && c.arrival <= untilISO; });
+      win.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
+      if (win.length === 0) return L('Aucune arrivée dans les ' + query.days + ' prochains jours.', 'No arrivals in the next ' + query.days + ' days.');
+      return L('**' + win.length + ' arrivée(s) dans les ' + query.days + ' jours** :', '**' + win.length + ' arrival(s) in the next ' + query.days + ' days:**') +
+        '\n' + win.map(function(c){ return '• ' + fmtClient(c); }).join('\n');
+    }
+
+    return null; // unknown — fall through to LLM
   }
 
-  function buildCtxClientsLight() {
-    if (typeof buildClientsContextRich === 'function') {
-      try { return buildClientsContextRich(8); } catch(_){}
+  // ── 5. PRE-PROCESS USER TEXT BEFORE LLM CALL ─────────────────────
+  function enrichTextForARIA(text){
+    var enriched = text;
+    var clients = getClients();
+    
+    // (a) Anaphora — resolve "mon client" / "il" / "elle" to last mentioned
+    var resolved = resolveAnaphora(text);
+    if (resolved) {
+      enriched = '[CONTEXTE: référence à ' + resolved.name + ' (notre client, séjour ' +
+        (resolved.arrival ? formatDateHuman(resolved.arrival, {lang:'fr', includeRelative:true}) : 'dates inconnues') +
+        ')]\n' + enriched;
     }
-    return 'CRM: ' + safeArr(window.clients).slice(0, 8).map(function(c){
-      return (c.name || '?') + (c.arrival ? ' arr:'+c.arrival : '');
-    }).join(' · ');
+    
+    // (b) Direct first-name mention — disambiguate from web entities
+    var byName = detectClientByName(text);
+    if (byName) {
+      window._ariaLastClient = byName;
+      enriched = '[CLIENT CRM RÉFÉRENCÉ: ' + byName.name + ' — ' +
+        (byName.arrival ? 'arrivée ' + formatDateHuman(byName.arrival, {lang:'fr', includeRelative:true}) : 'pas de dates') +
+        (byName.guests ? ', ' + byName.guests + ' personnes' : '') +
+        (byName.source ? ', via ' + byName.source : '') +
+        (byName.notes ? '. Notes: ' + byName.notes.slice(0,150) : '') +
+        ']\n[INSTRUCTION: Le message de l\'owner concerne CE client (jamais une personne célèbre du web). Utilise UNIQUEMENT les infos CRM ci-dessus.]\n' +
+        enriched;
+    }
+    
+    // (c) Domain glossary — "locations" in FR = bookings
+    if (/\blocations?\b/i.test(text) && /\b(quels|quelles|prochain|combien|liste)\b/i.test(text)) {
+      enriched += '\n[GLOSSAIRE: "location" en français = "booking/réservation" (PAS une ville). Tu réponds avec les bookings du CRM.]';
+    }
+    
+    return enriched;
   }
 
-  function buildCtxOrchestrator(target) {
-    var lines = [];
-    var today = todayISO();
-    lines.push('Date du jour: ' + today);
-    var staff = getStaffWithRoles();
-    lines.push('STAFF DISPONIBLE (interdit d\'inventer un autre nom):');
-    staff.forEach(function(s){ lines.push('  - ' + s.name + (s.role?' ('+s.role+')':'')); });
-    lines.push('');
-
-    var cs = safeArr(window.clients);
-    if (target) {
-      lines.push('CLIENT FOCUS:');
-      lines.push('  ' + buildCtxClient(target));
-      lines.push('');
-    }
-
-    // Arrivals next 14 days
-    var in14 = cs.filter(function(c){
-      if (!c || !c.arrival) return false;
-      var d = new Date(c.arrival);
-      var diffDays = (d - new Date(today))/86400000;
-      return diffDays >= -1 && diffDays <= 14;
-    }).sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
-    if (in14.length) {
-      lines.push('ARRIVÉES PROCHAINES 14j (' + in14.length + '):');
-      in14.slice(0, 6).forEach(function(c){
-        lines.push('  - ' + c.name + ' arr ' + c.arrival
-          + (c.guests?' '+c.guests+'p':'')
-          + (c.source?' '+c.source:'')
-          + (c.phone?' tel:'+c.phone:''));
-      });
-      lines.push('');
-    }
-
-    // In-house now
-    var inHouse = cs.filter(function(c){
-      return c && c.arrival && c.departure && c.arrival <= today && c.departure >= today;
-    });
-    if (inHouse.length) {
-      lines.push('SUR PLACE AUJOURD\'HUI: ' + inHouse.map(function(c){ return c.name; }).join(', '));
-    }
-
-    return lines.join('\n');
+  // ── 6. WRAPPER: pre-process + intercept aggregate queries ────────
+  var _originalHandler = window.handleChatQuestion;
+  if (typeof _originalHandler !== 'function') {
+    console.warn('[ARIA_FIX] handleChatQuestion not found — fix not installed');
+    return;
   }
 
-  function buildCtxRecentHistory(n) {
-    if (typeof chatHistory === 'undefined' || !Array.isArray(chatHistory)) return '';
-    var recent = chatHistory.slice(-Math.min(n||4, 6));
-    if (!recent.length) return '';
-    return 'CONTEXTE RÉCENT:\n' + recent.map(function(m){
-      return '  ' + (m.role === 'user' ? 'OWNER' : 'ARIA') + ': ' + (m.text || '').slice(0, 120);
-    }).join('\n');
-  }
-
-  // ── Per-intent system prompts (compact) ────────────────────────────────────
-  function systemPromptFor(intent, target) {
-    var owner = ownerName();
-    var villa = villaName();
-    var L = isFr() ? 'français' : 'anglais';
-
-    if (intent === 'crm_query') {
-      return [
-        'Tu es ARIA, assistant de ' + owner + ' (propriétaire ' + villa + ', Marrakech).',
-        'Réponds à la question CRM en ' + L + ', UNIQUEMENT à partir des données fournies.',
-        'Format: 1-3 phrases concises, cite les noms/dates/montants exactement.',
-        'Si l\'info n\'est pas dans les données: dis "Données non disponibles dans le CRM."',
-        'INTERDIT: inventer un nom, une date, un montant. Pas de message à un client.'
-      ].join('\n');
-    }
-    if (intent === 'write_message') {
-      var tgName = target ? (target.name || '').split(/\s+/)[0] : 'destinataire';
-      return [
-        'Tu es ARIA. Rédige UN message au nom de ' + owner + ' à ' + tgName + '.',
-        'Langue: ' + L + '. Ton: chaleureux, professionnel, naturel.',
-        'Reprends les éléments du contexte (séjour, demandes précédentes) si pertinent.',
-        'Format: message brut prêt à envoyer, signé "' + owner + '". 2-5 phrases.',
-        'Pas de préambule type "Voici le message". Juste le message.',
-        'INTERDIT: inventer un fait absent du contexte (date, prix, accord pris).'
-      ].join('\n');
-    }
-    if (intent === 'orchestrator') {
-      return [
-        'Tu es ARIA, centre nerveux de ' + owner + ' (' + villa + ').',
-        'Propose 3 actions concrètes prioritaires en JSON STRICT, classées par urgence.',
-        '',
-        'FORMAT (uniquement, pas de markdown, pas de préambule, pas de commentaire après):',
-        '[{"label":"<5 mots>","kind":"whatsapp|email|internal_note","target":"staff|guest|owner","staff":"<nom ou null>","client":"<nom ou null>","content":"<texte prêt>"}]',
-        '',
-        'CONTRAINTES STRICTES:',
-        '- "staff": UNIQUEMENT un nom de la liste STAFF DISPONIBLE. Aucun autre nom permis.',
-        '- "client": UNIQUEMENT un nom présent dans les données fournies, ou null.',
-        '- "content": message complet prêt à envoyer (pas de [placeholder], pas de "à compléter").',
-        '- 3 actions max, classées urgence décroissante.',
-        '- Si tu manques de données pour 3 actions concrètes, retourne moins plutôt qu\'inventer.'
-      ].join('\n');
-    }
-    if (intent === 'factual_chat') {
-      return [
-        'Tu es ARIA, assistant de ' + owner + '. Réponds en ' + L + ' en 1-2 phrases, directement.',
-        'Pas de référence CRM, pas de message client, pas de formule de politesse.'
-      ].join('\n');
-    }
-    if (intent === 'reasoning') {
-      return [
-        'Tu es ARIA, conseil métier pour ' + villa + ' (villa de luxe, Marrakech).',
-        'Réponds en ' + L + ' en 4-6 phrases analytiques. Référence le CRM seulement si présent.',
-        'Structure: constat → option(s) → recommandation.'
-      ].join('\n');
-    }
-    return '';
-  }
-
-  function maxTokensFor(intent) {
-    return ({
-      crm_query: 350,
-      write_message: 500,
-      orchestrator: 800,
-      factual_chat: 200,
-      reasoning: 800,
-      command: 0,
-      extract_structured: 600
-    })[intent] || 400;
-  }
-
-  // ── Validators (per-intent, structural where possible) ─────────────────────
-  // For orchestrator: parse JSON, check staff/client fields specifically.
-  function validateOrchestratorJSON(raw, allowedStaff, allowedClients) {
-    var parsed;
+  window.handleChatQuestion = async function(text){
     try {
-      // Strip code fences if any
-      var stripped = (raw || '').replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-      parsed = JSON.parse(stripped);
-    } catch(_) {
-      return { ok: false, reason: 'invalid_json', issues: ['JSON malformé'] };
-    }
-    if (!Array.isArray(parsed)) return { ok: false, reason: 'not_array', issues: ['Pas un tableau'] };
-    var issues = [];
-    var staffSet = {};
-    (allowedStaff || []).forEach(function(s){ staffSet[s.toLowerCase()] = 1; });
-    var clientSet = {};
-    (allowedClients || []).forEach(function(c){
-      if (!c) return;
-      var first = c.split(/\s+/)[0].toLowerCase();
-      clientSet[first] = 1;
-      clientSet[c.toLowerCase()] = 1;
-    });
-    parsed.forEach(function(action, i){
-      if (action && action.staff && action.staff !== 'null' && action.staff !== null) {
-        var sn = String(action.staff).split(/\s*[\(,;]/)[0].trim().toLowerCase();
-        if (sn && !staffSet[sn]) issues.push('action #'+i+' staff="'+action.staff+'" inconnu');
-      }
-      if (action && action.client && action.client !== 'null' && action.client !== null) {
-        var cn = String(action.client).split(/\s+/)[0].toLowerCase();
-        if (cn && !clientSet[cn] && !clientSet[String(action.client).toLowerCase()]) {
-          issues.push('action #'+i+' client="'+action.client+'" inconnu');
+      var trimmed = (text || '').trim();
+      if (!trimmed) return _originalHandler.call(this, text);
+      
+      // Step 1: Try aggregate local answer (no LLM)
+      var aggQuery = detectAggregateQuery(trimmed);
+      if (aggQuery) {
+        var localAnswer = answerAggregateLocally(aggQuery, window.lang);
+        if (localAnswer) {
+          if (typeof window.addChatBubble === 'function') {
+            var typing = document.getElementById('chatTyping');
+            if (typing) typing.style.display = 'none';
+            window.addChatBubble('ai', localAnswer, [{ label: window.lang==='fr'?'👍 OK':'👍 OK', cls:'yes', fn:'dismissChatAction(this)' }]);
+          }
+          // Persist to chat history if available
+          if (typeof window.saveChatTurn === 'function') {
+            try { window.saveChatTurn('user', text); window.saveChatTurn('ai', localAnswer); } catch(e){}
+          }
+          // Track last client if single-result query
+          return;
         }
       }
-    });
-    return { ok: issues.length === 0, issues: issues, parsed: parsed };
-  }
-
-  // For write_message: detect any STAFF-LIKE name reference that isn't in roster.
-  // Conservative: only flags names that match the pattern of a French first name
-  // and are NOT in the safe set.
-  function validateNoUnknownStaff(response, allowedStaff) {
-    var safeStaff = {};
-    (allowedStaff || []).forEach(function(s){
-      String(s).split(/\s+/).forEach(function(w){ if (w.length >= 2) safeStaff[w] = 1; });
-    });
-    // Patterns where a staff name typically appears in a message:
-    //   "X est en route", "X va préparer", "demande à X", "via X", "appelle X"
-    var rx = /\b(via|avec|appelle|demande à|demander à|contacte|contacter|prévenir|prévenu par|preparé par|géré par)\s+([A-ZÀ-Ý][a-zà-ÿ]{2,})\b/gi;
-    var unknown = [];
-    var m;
-    while ((m = rx.exec(response || '')) !== null) {
-      var name = m[2];
-      if (!safeStaff[name] && unknown.indexOf(name) === -1) unknown.push(name);
-    }
-    return { ok: unknown.length === 0, unknown: unknown };
-  }
-
-  // Generic exposed validator (kept for tests / external use), now smarter:
-  // skips common capitalized French/English words and verbs.
-  function validateGroundedInCrm(response, allowedClientNames, allowedStaffNames) {
-    var safe = {
-      // Geographic
-      'Marrakech':1,'Maroc':1,'Morocco':1,'France':1,'Paris':1,'Lyon':1,'Marseille':1,
-      'CMN':1,'Menara':1,'Ourika':1,'Atlas':1,'Sahara':1,'Europe':1,'Afrique':1,
-      // Platforms
-      'Airbnb':1,'Booking':1,'VRBO':1,'WhatsApp':1,'Gmail':1,'iCal':1,'Google':1,'Yahoo':1,
-      'Stafflo':1,'ARIA':1,'Villa':1,'DarJ':1,'TBD':1,'JSON':1,'CRM':1,'NET':1,
-      // Default staff/owner
-      'Said':1,'Faiza':1,'Bouchra':1,'Jérémie':1,'Jeremie':1,
-      // Months
-      'Janvier':1,'Février':1,'Mars':1,'Avril':1,'Mai':1,'Juin':1,'Juillet':1,'Août':1,'Septembre':1,'Octobre':1,'Novembre':1,'Décembre':1,
-      'January':1,'February':1,'March':1,'April':1,'May':1,'June':1,'July':1,'August':1,'September':1,'October':1,'November':1,'December':1,
-      'Lundi':1,'Mardi':1,'Mercredi':1,'Jeudi':1,'Vendredi':1,'Samedi':1,'Dimanche':1,
-      'Monday':1,'Tuesday':1,'Wednesday':1,'Thursday':1,'Friday':1,'Saturday':1,'Sunday':1,
-      // French sentence-starters / verbs / common words
-      'Bonjour':1,'Bonsoir':1,'Merci':1,'Cordialement':1,'Bien':1,'Bonne':1,'Belle':1,
-      'Voici':1,'Voilà':1,'Voici':1,'Je':1,'Tu':1,'Nous':1,'Vous':1,'Cher':1,'Chère':1,'Chers':1,
-      'Concernant':1,'Suite':1,'Pour':1,'Avec':1,'Sans':1,'Selon':1,'Depuis':1,'Avant':1,'Après':1,
-      'Préparer':1,'Confirmer':1,'Réserver':1,'Prévoir':1,'Coordonner':1,'Briefing':1,
-      'Hello':1,'Hi':1,'Dear':1,'Best':1,'Thanks':1,'Regards':1,'Sincerely':1,'Hope':1,
-      // Days/time
-      'Demain':1,'Aujourd':1,'Hier':1,'Tomorrow':1,'Today':1,'Yesterday':1,'Now':1,'Soon':1
-    };
-    (allowedClientNames || []).forEach(function(n){
-      if (!n) return;
-      n.split(/\s+/).forEach(function(w){ if (w.length >= 2) safe[w] = 1; });
-    });
-    (allowedStaffNames || []).forEach(function(n){
-      if (!n) return;
-      n.split(/\s+/).forEach(function(w){ if (w.length >= 2) safe[w] = 1; });
-    });
-    var unknown = [];
-    var seen = {};
-    // Look ONLY at words preceded by space/comma (skip sentence-start where any word can be capitalized)
-    var matches = (response || '').match(/(?:[ ,'"–—\-])\s*([A-ZÀ-Ý][a-zà-ÿ]{2,})/g) || [];
-    matches.forEach(function(raw){
-      var w = raw.replace(/^[\s,'"–—\-]+/, '');
-      if (safe[w] || seen[w]) return;
-      seen[w] = 1;
-      unknown.push(w);
-    });
-    return { ok: unknown.length === 0, unknown: unknown };
-  }
-
-  // ── Local command handler (zero LLM tokens) ────────────────────────────────
-  function handleCommandLocal(text, meta) {
-    var fr = isFr();
-    var c = (meta && meta.cmd) || '';
-    if (c === 'reset' || c === 'clear' || c === 'new') {
-      if (typeof clearChat === 'function') clearChat();
-      window._ariaLastClient = null;
-      return { handled: true, response: fr ? 'Chat effacé. ✓' : 'Chat cleared. ✓' };
-    }
-    if (c === 'help' || c === 'aide') {
-      return { handled: true, response: fr
-        ? 'ARIA peut: répondre sur le CRM (qui arrive, combien de bookings…), rédiger un message client, planifier 3 actions concrètes, expliquer une stratégie. Tape ta question naturellement.'
-        : 'ARIA can: answer CRM questions, draft a guest message, plan 3 concrete actions, explain strategy. Just type your question naturally.'
-      };
-    }
-    if (c === 'debug') {
-      var info = 'V2:'+window.STAFFLO_INTENT_V2
-        +' · clients:'+safeArr(window.clients).length
-        +' · staff:'+getStaffNames().join(',')
-        +' · lastClient:'+(window._ariaLastClient?window._ariaLastClient.name:'-')
-        +' · telemetry:'+(window._ariaTelemetry||[]).length;
-      return { handled: true, response: info };
-    }
-    if (c === 'ack') {
-      return { handled: true, response: fr ? 'À ton service.' : 'At your service.' };
-    }
-    return { handled: false };
-  }
-
-  // ── V2 dispatcher ──────────────────────────────────────────────────────────
-  async function handleChatQuestionV2(text) {
-    var classification = classifyIntent(text);
-    var intent = classification.intent;
-    var target = classification.target || null;
-    var meta   = classification.meta || null;
-
-    // Telemetry
-    try {
-      window._ariaTelemetry.push({
-        ts: Date.now(),
-        intent: intent,
-        target: target ? target.name : null,
-        len: text.length,
-        confidence: classification.confidence
-      });
-      if (window._ariaTelemetry.length > 100) window._ariaTelemetry.shift();
-    } catch(_){}
-
-    var typingEl = document.getElementById('chatTyping');
-    function hideTyping() { if (typingEl) typingEl.style.display = 'none'; }
-
-    // 0. Local command — zero LLM
-    if (intent === 'command') {
-      var local = handleCommandLocal(text, meta);
-      if (local.handled) {
-        hideTyping();
-        addChatBubble('ai', local.response, []);
-        return;
-      }
-      intent = 'factual_chat'; // unknown command falls through
-    }
-
-    // 1. Defer extract_structured to existing pipeline
-    if (intent === 'extract_structured' && typeof handleChatEmailAnalysis === 'function') {
-      return await handleChatEmailAnalysis(text);
-    }
-
-    // 2. Build per-intent context
-    var ctx = '';
-    if (intent === 'crm_query') {
-      ctx = target ? buildCtxClient(target) : buildCtxClientsLight();
-      var hist = buildCtxRecentHistory(3);
-      if (hist) ctx += '\n\n' + hist;
-    } else if (intent === 'write_message') {
-      if (!target) {
-        hideTyping();
-        addChatBubble('ai', isFr()
-          ? 'À qui dois-je écrire ce message ? Précise le nom du client (ex : « écris un message à Massi »).'
-          : 'Who should I write to? Please specify the client name (e.g. "write a message to Massi").', []);
-        return;
-      }
-      ctx = buildCtxClient(target);
-      var hist2 = buildCtxRecentHistory(4);
-      if (hist2) ctx += '\n\n' + hist2;
-    } else if (intent === 'orchestrator') {
-      ctx = buildCtxOrchestrator(target);
-      var hist3 = buildCtxRecentHistory(3);
-      if (hist3) ctx += '\n\n' + hist3;
-    } else if (intent === 'factual_chat') {
-      ctx = ''; // ZERO context — huge token savings
-    } else if (intent === 'reasoning') {
-      ctx = buildCtxClientsLight().split('\n').slice(0, 6).join('\n');
-      var hist4 = buildCtxRecentHistory(4);
-      if (hist4) ctx += '\n\n' + hist4;
-    }
-
-    var systemPrompt = systemPromptFor(intent, target);
-    var maxTokens = maxTokensFor(intent);
-    var userCtx = (ctx ? ctx + '\n\n' : '') + 'OWNER:\n' + text;
-
-    // 3. Map intent → existing callBestAI route
-    var aiTask = ({
-      crm_query: 'chat_fr',
-      write_message: 'write_fr',
-      orchestrator: 'reason',
-      factual_chat: 'fast_classify',
-      reasoning: 'reason'
-    })[intent] || 'chat_fr';
-
-    var raw;
-    try {
-      raw = await window.callBestAI(aiTask, systemPrompt, userCtx, maxTokens);
+      
+      // Step 2: Detect specific client → set _ariaLastClient + enrich text
+      var byName = detectClientByName(trimmed);
+      if (byName) window._ariaLastClient = byName;
+      
+      // Step 3: Enrich the text with CRM context, anaphora, glossary
+      var enriched = enrichTextForARIA(trimmed);
+      
+      return _originalHandler.call(this, enriched);
     } catch(e) {
-      hideTyping();
-      addChatBubble('ai', '⚠ ' + (e.message || 'Erreur'), []);
-      return;
+      console.error('[ARIA_FIX] error in wrapper:', e);
+      return _originalHandler.call(this, text);
     }
-    hideTyping();
-
-    if (!raw) {
-      addChatBubble('ai', '…', []);
-      return;
-    }
-
-    // 4. Validate per intent (structural where possible, conservative otherwise)
-    if (intent === 'orchestrator') {
-      var staffNames = getStaffNames();
-      var clientNames = safeArr(window.clients).map(function(c){ return c.name || ''; }).filter(Boolean);
-      var v = validateOrchestratorJSON(raw, staffNames, clientNames);
-      if (!v.ok && v.issues && v.issues.length) {
-        console.warn('[ARIA v2] orchestrator validation failed:', v.issues);
-        try {
-          var t = window._ariaTelemetry;
-          if (t.length) t[t.length-1].hallucinated = v.issues;
-        } catch(_){}
-        // Retry once with stricter prompt
-        var stricter = systemPrompt
-          + '\n\nERREUR DÉTECTÉE: ' + v.issues.join(' ; ')
-          + '. Refais en utilisant UNIQUEMENT staff=' + staffNames.join('|')
-          + ' et client=' + (clientNames.slice(0,8).join('|') || 'null') + '.';
-        try {
-          var retry = await window.callBestAI(aiTask, stricter, userCtx, maxTokens);
-          if (retry) {
-            var v2 = validateOrchestratorJSON(retry, staffNames, clientNames);
-            if (v2.ok) {
-              raw = retry;
-              try { window._ariaTelemetry[window._ariaTelemetry.length-1].retried = true; } catch(_){}
-            }
-          }
-        } catch(_){}
-      }
-    } else if (intent === 'write_message') {
-      var sn = getStaffNames();
-      var vws = validateNoUnknownStaff(raw, sn);
-      if (!vws.ok) {
-        console.warn('[ARIA v2] write_message: unknown staff name detected:', vws.unknown);
-        try {
-          var tt = window._ariaTelemetry;
-          if (tt.length) tt[tt.length-1].hallucinated = vws.unknown;
-        } catch(_){}
-      }
-    }
-    // crm_query, factual_chat, reasoning: skip validation — the LLM is grounded
-    // in the CRM context we passed, and over-strict regex on French capitalized
-    // words produces too many false positives.
-
-    // 5. Render per intent
-    if (intent === 'orchestrator') {
-      // Emit raw JSON — existing ARIA modal parser handles the cards
-      addChatBubble('ai', raw, []);
-      return;
-    }
-
-    if (intent === 'write_message') {
-      var msg = raw.trim();
-      var actions = [];
-      if (target && target.phone) {
-        var phoneClean = (target.phone || '').replace(/[\s\-+()]/g, '');
-        var jsonMsg = JSON.stringify(msg);
-        actions.push({
-          label: '💬 ' + (isFr()?'Envoyer WhatsApp':'Send WhatsApp'),
-          fn: 'window.open(\'https://wa.me/' + phoneClean + '?text=\'+encodeURIComponent(' + jsonMsg + '),\'_blank\')',
-          cls: 'wa'
-        });
-      }
-      actions.push({
-        label: '📋 ' + (isFr()?'Copier':'Copy'),
-        fn: '(function(){var t='+JSON.stringify(msg)+';if(navigator.clipboard)navigator.clipboard.writeText(t);if(typeof toast===\'function\')toast(\''+(isFr()?'Copié ✓':'Copied ✓')+'\');})()',
-        cls: ''
-      });
-      addChatBubble('ai', msg, actions);
-      return;
-    }
-
-    // crm_query, factual_chat, reasoning → plain text
-    addChatBubble('ai', raw, []);
-  }
-
-  // ── Public exposures ───────────────────────────────────────────────────────
-  window.classifyIntent = classifyIntent;
-  window.validateGroundedInCrm = validateGroundedInCrm;
-  window.validateOrchestratorJSON = validateOrchestratorJSON;
-  window.validateNoUnknownStaff = validateNoUnknownStaff;
-  window.handleChatQuestionV2 = handleChatQuestionV2;
-  window._ariaDebugV2 = function() {
-    return {
-      flag: window.STAFFLO_INTENT_V2,
-      lastClient: window._ariaLastClient ? window._ariaLastClient.name : null,
-      telemetry: (window._ariaTelemetry || []).slice(-10),
-      staff: getStaffNames(),
-      clientsCount: safeArr(window.clients).length
-    };
   };
 
-  // ── Wrap handleChatQuestion ────────────────────────────────────────────────
-  if (typeof window.handleChatQuestion === 'function') {
-    var _origHCQ = window.handleChatQuestion;
-    window.handleChatQuestion = async function(text) {
-      if (window.STAFFLO_INTENT_V2) {
-        try {
-          return await handleChatQuestionV2(text);
-        } catch (e) {
-          console.warn('[ARIA v2] dispatcher failed, falling back to v1:', e);
-          return await _origHCQ.call(this, text);
-        }
-      }
-      return await _origHCQ.call(this, text);
+  // ── 7. ALSO PATCH buildClientsContextRich to use human dates ─────
+  var _origBuildRich = window.buildClientsContextRich;
+  if (typeof _origBuildRich === 'function') {
+    window.buildClientsContextRich = function(maxItems){
+      var raw = _origBuildRich.call(this, maxItems);
+      // Replace ISO dates YYYY-MM-DD with human format
+      if (typeof raw !== 'string') return raw;
+      return raw.replace(/(\d{4}-\d{2}-\d{2})/g, function(iso){
+        return formatDateHuman(iso, {lang:'fr', includeRelative: false});
+      });
     };
   }
 
-  // ── BUG FIX: dedup recent-history panels in ARIA modal ────────────────────
-  if (typeof window.openAriaHistory === 'function') {
-    var _origOAH = window.openAriaHistory;
-    window.openAriaHistory = async function() {
-      try {
-        var body = document.getElementById('ariaModalMessages');
-        if (body) {
-          var bubbles = body.querySelectorAll('.aria-modal-bubble');
-          bubbles.forEach(function(b){
-            var h = b.innerHTML || '';
-            if (/🕘\s*<\/?strong>?\s*(Vos conversations récentes|Your recent conversations|Historique|History)/i.test(h)
-                || /🕘[^<]*Chargement|🕘[^<]*Loading/i.test(h)) {
-              b.remove();
-            }
-          });
-        }
-      } catch(_){}
-      return await _origOAH.apply(this, arguments);
-    };
-  }
+  // ── 8. Expose for debugging ──────────────────────────────────────
+  window.ARIA_FIX = {
+    formatDateHuman: formatDateHuman,
+    todayHuman: todayHuman,
+    detectClientByName: detectClientByName,
+    detectAggregateQuery: detectAggregateQuery,
+    answerAggregateLocally: answerAggregateLocally,
+    enrichTextForARIA: enrichTextForARIA,
+    version: '0.1-phase-A',
+    loaded_at: new Date().toISOString()
+  };
 
-  console.log('[ARIA v2] loaded — STAFFLO_INTENT_V2 =', window.STAFFLO_INTENT_V2);
+  console.log('[ARIA_FIX] Phase A loaded. Today:', todayHuman('fr'));
 })();
 
 </script>
-
 </body>
 </html>
