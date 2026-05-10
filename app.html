@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -2798,7 +2799,7 @@ const MAX_FREE_STAYS = 3;
 // CONFIG & STATE
 // ════════════════════════════════════════════
 let lang = localStorage.getItem('stafflo_lang') || 'fr';
-let clients = [];
+var clients = []; window.clients = clients; // Patched 2026-05-10: var so window-accessible
 
 // Global date utilities
 function dateInDays(n) { const d = new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
@@ -22533,5 +22534,510 @@ window.addEventListener('DOMContentLoaded', function() {
 })();
 </script>
 
+
+<!-- ════ ARIA_FIX Phase A.1 — injected dimanche 10 mai 2026 ════ -->
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   ARIA_FIX — Phase A patches (Stafflo)
+   Date: dimanche 10 mai 2026
+   Goal: stop hallucinations, ground in CRM, humanize dates, resolve anaphora
+   
+   Wraps handleChatQuestion (legacy) without rewriting it. Bypasses LLM
+   for pure-list aggregate queries (cannot hallucinate by construction).
+   ════════════════════════════════════════════════════════════════════ */
+
+(function(){
+  'use strict';
+  if (window.ARIA_FIX_LOADED) return;
+  window.ARIA_FIX_LOADED = true;
+
+  // ── 1. HUMAN DATE FORMAT ─────────────────────────────────────────
+  var DAYS_FR = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  var DAYS_EN = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  var MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  function formatDateHuman(iso, opts){
+    if (!iso) return '';
+    opts = opts || {};
+    var lang = opts.lang || (typeof window.lang !== 'undefined' ? window.lang : 'fr');
+    var includeRelative = opts.includeRelative !== false;
+    var d = new Date(iso + 'T12:00:00');
+    if (isNaN(d.getTime())) return iso;
+    var today = new Date(); today.setHours(0,0,0,0);
+    d.setHours(0,0,0,0);
+    var diffDays = Math.round((d - today) / 86400000);
+    var nowYear = today.getFullYear();
+    var dYear = d.getFullYear();
+    var months = lang==='fr' ? MONTHS_FR : MONTHS_EN;
+    var days = lang==='fr' ? DAYS_FR : DAYS_EN;
+    var dayName = days[d.getDay()];
+    var dayNum = d.getDate();
+    var monthName = months[d.getMonth()];
+    var base = lang==='fr'
+      ? (dayName + ' ' + dayNum + ' ' + monthName + (dYear !== nowYear ? ' ' + dYear : ''))
+      : (dayName + ', ' + monthName + ' ' + dayNum + (dYear !== nowYear ? ' ' + dYear : ''));
+    if (!includeRelative) return base;
+    if (diffDays === 0) return lang==='fr' ? 'aujourd\'hui (' + base + ')' : 'today (' + base + ')';
+    if (diffDays === 1) return lang==='fr' ? 'demain ' + base : 'tomorrow ' + base;
+    if (diffDays === -1) return lang==='fr' ? 'hier ' + base : 'yesterday ' + base;
+    if (diffDays > 1 && diffDays <= 14) return base + (lang==='fr' ? ' (dans ' + diffDays + ' jours)' : ' (in ' + diffDays + ' days)');
+    if (diffDays < -1 && diffDays >= -14) return base + (lang==='fr' ? ' (il y a ' + Math.abs(diffDays) + ' jours)' : ' (' + Math.abs(diffDays) + ' days ago)');
+    return base;
+  }
+
+  function todayHuman(lang){
+    return formatDateHuman(new Date().toISOString().slice(0,10), {lang: lang||'fr', includeRelative: true});
+  }
+
+  // ── 2. CLIENT NAME DETECTION ──────────────────────────────────────
+  function getClients(){
+    return Array.isArray(window.clients) ? window.clients : [];
+  }
+  
+  function normName(s){
+    return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,' ').trim();
+  }
+
+  /** Returns the matched client (full object) if any first name in `text` matches a CRM client's first name. */
+  function detectClientByName(text){
+    var t = ' ' + normName(text) + ' ';
+    var clients = getClients();
+    var bestMatch = null, bestLen = 0;
+    for (var i = 0; i < clients.length; i++) {
+      var c = clients[i];
+      if (!c.name) continue;
+      var firstName = normName(c.name.split(/\s+/)[0]);
+      if (firstName.length < 3) continue;
+      var pattern = ' ' + firstName + ' ';
+      if (t.indexOf(pattern) >= 0 && firstName.length > bestLen) {
+        bestMatch = c;
+        bestLen = firstName.length;
+      }
+    }
+    return bestMatch;
+  }
+  
+  /** Returns ALL clients whose first name appears in text. Useful for multi-client queries. */
+  function detectMultipleClients(text){
+    var t = ' ' + normName(text) + ' ';
+    var clients = getClients();
+    var found = [];
+    var seenIds = {};
+    for (var i = 0; i < clients.length; i++) {
+      var c = clients[i];
+      if (!c.name || seenIds[c.id]) continue;
+      var firstName = normName(c.name.split(/\s+/)[0]);
+      if (firstName.length < 3) continue;
+      var pattern = ' ' + firstName + ' ';
+      if (t.indexOf(pattern) >= 0) {
+        found.push(c);
+        seenIds[c.id] = true;
+      }
+    }
+    return found;
+  }
+
+  // ── 3. ANAPHORA RESOLVER ──────────────────────────────────────────
+  var ANAPHORIC_FR = /\b(mon client|ma cliente|ce client|cette cliente|ces clients|il|elle|son|sa|ses|leur|leurs|chez lui|chez elle)\b/i;
+  var ANAPHORIC_EN = /\b(my client|this client|the client|he|she|his|her|their|them)\b/i;
+
+  function resolveAnaphora(text){
+    var last = window._ariaLastClient;
+    if (!last) return null;
+    if (ANAPHORIC_FR.test(text) || ANAPHORIC_EN.test(text)) return last;
+    return null;
+  }
+
+  // ── 4. AGGREGATE QUERY DETECTION + LOCAL ANSWERS ─────────────────
+  // These bypass the LLM entirely. Cannot hallucinate by construction.
+
+  function detectAggregateQuery(text){
+    var t = ' ' + normName(text) + ' ';
+    
+    // Domain-relevant nouns (with plural support via s?)
+    var BOOKING_NOUN = /\b(locations?|reservations?|reservations?|bookings?|sejours?|sejours?|stays?|stay|clients?|guests?|hotes?|invites?|arriv)\b/;
+    var TIME_FUTURE = /\b(prochain|prochaine|prochains|prochaines|next|a venir|upcoming|futurs?)\b/;
+    var TIME_INHOUSE = /\b(sur place|on site|present|presents|currently|actuellement|aujourdhui|today|right now|maintenant|en ce moment|in house|inhouse)\b/;
+    var TIME_PAST = /\b(passes?|past|recents?|derniers?|dernieres?|completes?)\b/;
+    var STATUS_INQUIRY = /\b(potentiels?|potentielles?|en attente|pending|inquiry|inquiries|demandes?|prospects?|pipeline|en discussion)\b/;
+    var QUANTIFIER_ALL = /\b(tous|toutes|all|liste|list|complete|recap|recapitulatif|combien|how many|how much)\b/;
+    
+    var hasFuture = TIME_FUTURE.test(t);
+    var hasInquiry = STATUS_INQUIRY.test(t);
+    var hasBookingNoun = BOOKING_NOUN.test(t);
+    var hasInhouse = TIME_INHOUSE.test(t);
+    var hasPast = TIME_PAST.test(t);
+    var hasAll = QUANTIFIER_ALL.test(t);
+    
+    // ─── Acronymes business : RSA / RSV / RES = Réservations ─────
+    // Exemple : "donne moi les prochaines RSA" → upcoming bookings
+    if (/\b(rsa|rsv|res|resa|resas)\b/i.test(text)) {
+      // Specifically look for plural / future intent
+      if (/\b(prochain|prochaines?|next|a venir|upcoming|toutes?|all|liste|combien)\b/i.test(text)) {
+        // Inquiry signal takes priority over upcoming when both present
+        if (hasInquiry || /\b(potentiel|en attente|inquiry|inquiries|pending)\b/i.test(text)) {
+          return { kind: 'inquiries' };
+        }
+        return { kind: 'upcoming_confirmed' };
+      }
+    }
+    
+    // ─── Combined: "confirmed AND inquiries" → return both lists ───
+    if (hasFuture && hasInquiry) {
+      return { kind: 'both' };
+    }
+    
+    // Upcoming/confirmed bookings
+    if (hasFuture && hasBookingNoun) {
+      return { kind: 'upcoming_confirmed' };
+    }
+    
+    // Inquiries / pipeline alone
+    if (hasInquiry) {
+      return { kind: 'inquiries' };
+    }
+    
+    // In-house / currently on site
+    if (hasInhouse && /\b(qui|who|clients?|guests?|invites?)\b/.test(t)) {
+      return { kind: 'in_house' };
+    }
+    
+    // Past clients
+    if (hasPast && hasBookingNoun) {
+      return { kind: 'past' };
+    }
+    
+    // Overall recap / count
+    if (hasAll && hasBookingNoun) {
+      return { kind: 'all' };
+    }
+    
+    // Specific date arrivals
+    if (/\b(qui arrive|who arrives|qui part|who leaves|who departs|who is coming)\b/.test(t)) {
+      if (/\b(demain|tomorrow)\b/.test(t)) return { kind: 'arriving_on', offset: 1 };
+      if (/\b(aujourd|today)\b/.test(t)) return { kind: 'arriving_on', offset: 0 };
+      if (/\b(apres demain|day after tomorrow)\b/.test(t)) return { kind: 'arriving_on', offset: 2 };
+      if (/\b(cette semaine|this week)\b/.test(t)) return { kind: 'arriving_within', days: 7 };
+      if (/\b(prochains?\s+jours|next\s+days)\b/.test(t)) {
+        var m = t.match(/(\d+)\s+(prochains?\s+jours|next\s+days)/);
+        return { kind: 'arriving_within', days: m ? parseInt(m[1]) : 7 };
+      }
+      if (/\b(ce mois|this month)\b/.test(t)) return { kind: 'arriving_within', days: 30 };
+      
+      // Specific date: "qui arrive le 15 mai" / "qui arrive en juin"
+      var dateM = parseFrenchDate(text);
+      if (dateM) return { kind: 'arriving_on_iso', iso: dateM };
+      
+      return { kind: 'upcoming_confirmed' };
+    }
+    
+    return null;
+  }
+  
+  // ── 4b. SIMPLE FRENCH DATE PARSER (1 mai, le 15 mai, mai, juin 2026)
+  function parseFrenchDate(text){
+    var monthMap = { 'janvier':0,'fevrier':1,'mars':2,'avril':3,'mai':4,'juin':5,'juillet':6,'aout':7,'septembre':8,'octobre':9,'novembre':10,'decembre':11,
+                     'jan':0,'fev':1,'avr':3,'jul':6,'sep':8,'oct':9,'nov':10,'dec':11 };
+    var t = normName(text);
+    // "15 mai 2026" or "15 mai"
+    var m1 = t.match(/(\d{1,2})\s+(janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)(?:\s+(\d{4}))?/);
+    if (m1) {
+      var day = parseInt(m1[1]);
+      var mon = monthMap[m1[2]];
+      var year = m1[3] ? parseInt(m1[3]) : (new Date()).getFullYear();
+      var d = new Date(year, mon, day);
+      return d.toISOString().slice(0,10);
+    }
+    return null;
+  }
+
+  function answerAggregateLocally(query, lang){
+    var clients = getClients();
+    var fr = lang === 'fr' || (typeof window.lang !== 'undefined' && window.lang === 'fr');
+    var todayISO = new Date().toISOString().slice(0,10);
+    var L = function(f, e){ return fr ? f : e; };
+
+    // Filter helpers
+    var confirmed = clients.filter(function(c){ return (c.booking_status||'confirmed') === 'confirmed'; });
+    var inquiry = clients.filter(function(c){ return (c.booking_status||'') === 'inquiry'; });
+    var declined = clients.filter(function(c){ return ['declined','cancelled'].indexOf(c.booking_status||'') >= 0; });
+    var past_status = clients.filter(function(c){ return (c.booking_status||'') === 'past'; });
+
+    function fmtClient(c, opts){
+      opts = opts || {};
+      var bits = [c.name];
+      if (c.arrival && c.departure) {
+        if (opts.dateMode === 'short') {
+          bits.push(formatDateHuman(c.arrival, {lang: fr?'fr':'en', includeRelative:true}) + ' → ' + (c.departure ? formatDateHuman(c.departure, {lang: fr?'fr':'en', includeRelative:false}) : ''));
+        } else {
+          bits.push(formatDateHuman(c.arrival, {lang: fr?'fr':'en', includeRelative:true}));
+        }
+      } else if (c.arrival) {
+        bits.push(formatDateHuman(c.arrival, {lang: fr?'fr':'en', includeRelative:true}));
+      }
+      if (c.guests) bits.push(c.guests + (fr?' pers':' pax'));
+      if (c.source) bits.push(c.source);
+      if (c.price && Number(c.price) > 0) bits.push(Math.round(c.price) + '€');
+      return bits.join(' · ');
+    }
+
+    if (query.kind === 'both') {
+      var upBoth = confirmed.filter(function(c){ return c.arrival && c.arrival > todayISO; });
+      upBoth.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
+      var pipeBoth = inquiry.filter(function(c){ return !c.arrival || c.arrival >= todayISO; });
+      pipeBoth.sort(function(a,b){ return (a.arrival||'9999').localeCompare(b.arrival||'9999'); });
+      var sections = [];
+      if (upBoth.length) {
+        var s1 = [L('**' + upBoth.length + ' réservations confirmées à venir** :', '**' + upBoth.length + ' upcoming confirmed bookings:**')];
+        upBoth.forEach(function(c){ s1.push('• ' + fmtClient(c, {dateMode:'long'})); });
+        sections.push(s1.join('\n'));
+      }
+      if (pipeBoth.length) {
+        var s2 = [L('**' + pipeBoth.length + ' inquiries actives** (potentielles) :', '**' + pipeBoth.length + ' active inquiries** (pipeline):')];
+        pipeBoth.forEach(function(c){ s2.push('• ' + fmtClient(c)); });
+        sections.push(s2.join('\n'));
+      }
+      if (sections.length === 0) return L('Aucune réservation ni inquiry active.', 'No bookings or active inquiries.');
+      return sections.join('\n\n');
+    }
+
+    if (query.kind === 'upcoming_confirmed') {
+      var upcoming = confirmed.filter(function(c){ return c.arrival && c.arrival > todayISO; });
+      upcoming.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
+      if (upcoming.length === 0) {
+        return L('Aucune réservation confirmée à venir dans le CRM.', 'No confirmed upcoming bookings in CRM.');
+      }
+      var lines = [L('**' + upcoming.length + ' réservations confirmées à venir** :', '**' + upcoming.length + ' upcoming confirmed bookings:**')];
+      upcoming.forEach(function(c){ lines.push('• ' + fmtClient(c, {dateMode:'long'})); });
+      return lines.join('\n');
+    }
+
+    if (query.kind === 'inquiries') {
+      var pipeline = inquiry.filter(function(c){ return !c.arrival || c.arrival >= todayISO; });
+      pipeline.sort(function(a,b){ return (a.arrival||'9999').localeCompare(b.arrival||'9999'); });
+      if (pipeline.length === 0) {
+        return L('Aucune inquiry active dans le pipeline.', 'No active inquiries in pipeline.');
+      }
+      var ls = [L('**' + pipeline.length + ' inquiries actives** (pipeline) :', '**' + pipeline.length + ' active inquiries** (pipeline):')];
+      pipeline.forEach(function(c){ ls.push('• ' + fmtClient(c)); });
+      return ls.join('\n');
+    }
+
+    if (query.kind === 'in_house') {
+      var inhouse = clients.filter(function(c){
+        return c.arrival && c.departure && c.arrival <= todayISO && c.departure >= todayISO;
+      });
+      if (inhouse.length === 0) {
+        return L('Aucun client sur place actuellement (' + todayHuman('fr') + ').', 'No guests currently on site (' + todayHuman('en') + ').');
+      }
+      var ls2 = [L('**Sur place actuellement** :', '**Currently on site:**')];
+      inhouse.forEach(function(c){ ls2.push('• ' + fmtClient(c)); });
+      return ls2.join('\n');
+    }
+
+    if (query.kind === 'past') {
+      var allPast = past_status.concat(confirmed.filter(function(c){ return c.departure && c.departure < todayISO; }));
+      allPast.sort(function(a,b){ return (b.departure||'').localeCompare(a.departure||''); });
+      if (allPast.length === 0) return L('Aucun séjour passé dans le CRM.', 'No past stays in CRM.');
+      var top = allPast.slice(0, 10);
+      var ls3 = [L('**' + top.length + ' derniers séjours passés** (sur ' + allPast.length + ') :', '**Last ' + top.length + ' past stays** (of ' + allPast.length + '):')];
+      top.forEach(function(c){ ls3.push('• ' + fmtClient(c)); });
+      return ls3.join('\n');
+    }
+
+    if (query.kind === 'all') {
+      var stats = {
+        confirmed: confirmed.filter(function(c){return c.arrival && c.arrival>=todayISO;}).length,
+        inhouse: clients.filter(function(c){return c.arrival&&c.departure&&c.arrival<=todayISO&&c.departure>=todayISO;}).length,
+        inquiries: inquiry.length,
+        past: past_status.length,
+        declined: declined.length,
+        total: clients.length
+      };
+      return L(
+        '**Récap CRM** (' + stats.total + ' clients au total)\n' +
+        '• ' + stats.inhouse + ' sur place\n' +
+        '• ' + stats.confirmed + ' confirmées à venir\n' +
+        '• ' + stats.inquiries + ' inquiries actives\n' +
+        '• ' + stats.past + ' séjours passés\n' +
+        '• ' + stats.declined + ' declined/cancelled',
+        '**CRM summary** (' + stats.total + ' clients total)\n' +
+        '• ' + stats.inhouse + ' on site\n' +
+        '• ' + stats.confirmed + ' upcoming confirmed\n' +
+        '• ' + stats.inquiries + ' active inquiries\n' +
+        '• ' + stats.past + ' past stays\n' +
+        '• ' + stats.declined + ' declined/cancelled'
+      );
+    }
+
+    if (query.kind === 'arriving_on') {
+      var target = new Date();
+      target.setDate(target.getDate() + (query.offset || 0));
+      var targetISO = target.toISOString().slice(0,10);
+      var arr = confirmed.filter(function(c){ return c.arrival === targetISO; });
+      if (arr.length === 0) {
+        return L('Personne n\'arrive ' + (query.offset===1?'demain':query.offset===0?'aujourd\'hui':'à cette date') + '.',
+                 'Nobody arrives ' + (query.offset===1?'tomorrow':query.offset===0?'today':'on that date') + '.');
+      }
+      return L('**Arrivée ' + (query.offset===1?'demain':query.offset===0?'aujourd\'hui':'') + '** :', '**Arriving ' + (query.offset===1?'tomorrow':query.offset===0?'today':'') + ':**') +
+        '\n' + arr.map(function(c){ return '• ' + fmtClient(c); }).join('\n');
+    }
+
+    if (query.kind === 'arriving_within') {
+      var until = new Date(); until.setDate(until.getDate() + query.days);
+      var untilISO = until.toISOString().slice(0,10);
+      var win = confirmed.filter(function(c){ return c.arrival && c.arrival >= todayISO && c.arrival <= untilISO; });
+      win.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
+      if (win.length === 0) return L('Aucune arrivée dans les ' + query.days + ' prochains jours.', 'No arrivals in the next ' + query.days + ' days.');
+      return L('**' + win.length + ' arrivée(s) dans les ' + query.days + ' jours** :', '**' + win.length + ' arrival(s) in the next ' + query.days + ' days:**') +
+        '\n' + win.map(function(c){ return '• ' + fmtClient(c); }).join('\n');
+    }
+
+    if (query.kind === 'arriving_on_iso') {
+      var arr2 = confirmed.filter(function(c){ return c.arrival === query.iso; });
+      var dateLbl = formatDateHuman(query.iso, {lang: fr?'fr':'en', includeRelative:true});
+      if (arr2.length === 0) {
+        return L('Personne n\'arrive le ' + dateLbl + '.', 'Nobody arrives on ' + dateLbl + '.');
+      }
+      return L('**Arrivée le ' + dateLbl + '** :', '**Arrivals on ' + dateLbl + ':**') +
+        '\n' + arr2.map(function(c){ return '• ' + fmtClient(c); }).join('\n');
+    }
+
+    return null; // unknown — fall through to LLM
+  }
+
+  // ── 5. PRE-PROCESS USER TEXT BEFORE LLM CALL ─────────────────────
+  function enrichTextForARIA(text){
+    var enriched = text;
+    var clients = getClients();
+    
+    // (a) Anaphora — resolve "mon client" / "il" / "elle" to last mentioned
+    var resolved = resolveAnaphora(text);
+    if (resolved) {
+      enriched = '[CONTEXTE: référence à ' + resolved.name + ' (notre client, séjour ' +
+        (resolved.arrival ? formatDateHuman(resolved.arrival, {lang:'fr', includeRelative:true}) : 'dates inconnues') +
+        ')]\n' + enriched;
+    }
+    
+    // (b) Multi-client mention — inject all if 2+ matches
+    var allMatches = detectMultipleClients(text);
+    if (allMatches.length >= 2) {
+      var blocks = allMatches.map(function(c){
+        return '- ' + c.name + ': ' +
+          (c.arrival ? 'arrivée ' + formatDateHuman(c.arrival, {lang:'fr', includeRelative:true}) : 'pas de dates') +
+          (c.guests ? ', ' + c.guests + ' personnes' : '') +
+          (c.source ? ', via ' + c.source : '') +
+          (c.booking_status ? ', status: ' + c.booking_status : '');
+      });
+      enriched = '[CLIENTS CRM RÉFÉRENCÉS (' + allMatches.length + ')]\n' + blocks.join('\n') +
+        '\n[INSTRUCTION: Le message concerne ces clients du CRM. Utilise UNIQUEMENT ces données.]\n' +
+        enriched;
+      window._ariaLastClient = allMatches[0]; // track first as "last"
+    } else {
+      // (c) Single first-name mention — disambiguate from web entities
+      var byName = detectClientByName(text);
+      if (byName) {
+        window._ariaLastClient = byName;
+        enriched = '[CLIENT CRM RÉFÉRENCÉ: ' + byName.name + ' — ' +
+          (byName.arrival ? 'arrivée ' + formatDateHuman(byName.arrival, {lang:'fr', includeRelative:true}) : 'pas de dates') +
+          (byName.guests ? ', ' + byName.guests + ' personnes' : '') +
+          (byName.source ? ', via ' + byName.source : '') +
+          (byName.notes ? '. Notes: ' + byName.notes.slice(0,150) : '') +
+          ']\n[INSTRUCTION: Le message de l\'owner concerne CE client (jamais une personne célèbre du web). Utilise UNIQUEMENT les infos CRM ci-dessus.]\n' +
+          enriched;
+      }
+    }
+    
+    // (d) Domain glossary — "locations" in FR = bookings
+    if (/\blocations?\b/i.test(text) && /\b(quels|quelles|prochain|combien|liste)\b/i.test(text)) {
+      enriched += '\n[GLOSSAIRE: "location" en français = "booking/réservation" (PAS une ville). Tu réponds avec les bookings du CRM.]';
+    }
+    
+    // (e) Acronyms glossary
+    if (/\b(rsa|rsv|res|resa|resas)\b/i.test(text)) {
+      enriched += '\n[GLOSSAIRE: RSA/RSV/RES = "réservations". Réponds avec les bookings du CRM.]';
+    }
+    
+    return enriched;
+  }
+
+  // ── 6. WRAPPER: pre-process + intercept aggregate queries ────────
+  var _originalHandler = window.handleChatQuestion;
+  if (typeof _originalHandler !== 'function') {
+    console.warn('[ARIA_FIX] handleChatQuestion not found — fix not installed');
+    return;
+  }
+
+  window.handleChatQuestion = async function(text){
+    try {
+      var trimmed = (text || '').trim();
+      if (!trimmed) return _originalHandler.call(this, text);
+      
+      // Step 1: Try aggregate local answer (no LLM)
+      var aggQuery = detectAggregateQuery(trimmed);
+      if (aggQuery) {
+        var localAnswer = answerAggregateLocally(aggQuery, window.lang);
+        if (localAnswer) {
+          if (typeof window.addChatBubble === 'function') {
+            var typing = document.getElementById('chatTyping');
+            if (typing) typing.style.display = 'none';
+            window.addChatBubble('ai', localAnswer, [{ label: window.lang==='fr'?'👍 OK':'👍 OK', cls:'yes', fn:'dismissChatAction(this)' }]);
+          }
+          // Persist to chat history if available
+          if (typeof window.saveChatTurn === 'function') {
+            try { window.saveChatTurn('user', text); window.saveChatTurn('ai', localAnswer); } catch(e){}
+          }
+          // Track last client if single-result query
+          return;
+        }
+      }
+      
+      // Step 2: Detect specific client → set _ariaLastClient + enrich text
+      var byName = detectClientByName(trimmed);
+      if (byName) window._ariaLastClient = byName;
+      
+      // Step 3: Enrich the text with CRM context, anaphora, glossary
+      var enriched = enrichTextForARIA(trimmed);
+      
+      return _originalHandler.call(this, enriched);
+    } catch(e) {
+      console.error('[ARIA_FIX] error in wrapper:', e);
+      return _originalHandler.call(this, text);
+    }
+  };
+
+  // ── 7. ALSO PATCH buildClientsContextRich to use human dates ─────
+  var _origBuildRich = window.buildClientsContextRich;
+  if (typeof _origBuildRich === 'function') {
+    window.buildClientsContextRich = function(maxItems){
+      var raw = _origBuildRich.call(this, maxItems);
+      // Replace ISO dates YYYY-MM-DD with human format
+      if (typeof raw !== 'string') return raw;
+      return raw.replace(/(\d{4}-\d{2}-\d{2})/g, function(iso){
+        return formatDateHuman(iso, {lang:'fr', includeRelative: false});
+      });
+    };
+  }
+
+  // ── 8. Expose for debugging ──────────────────────────────────────
+  window.ARIA_FIX = {
+    formatDateHuman: formatDateHuman,
+    todayHuman: todayHuman,
+    detectClientByName: detectClientByName,
+    detectMultipleClients: detectMultipleClients,
+    parseFrenchDate: parseFrenchDate,
+    resolveAnaphora: resolveAnaphora,
+    detectAggregateQuery: detectAggregateQuery,
+    answerAggregateLocally: answerAggregateLocally,
+    enrichTextForARIA: enrichTextForARIA,
+    version: '0.2-phase-A.1',
+    loaded_at: new Date().toISOString()
+  };
+
+  console.log('[ARIA_FIX] Phase A.1 loaded — version', window.ARIA_FIX.version, '— today:', todayHuman('fr'));
+})();
+
+</script>
 </body>
 </html>
