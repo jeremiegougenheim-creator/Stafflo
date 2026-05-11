@@ -2007,12 +2007,30 @@ body, main { background: var(--cream); }
   <!-- Search + filters (kept inline, not in v2-card) -->
   <input class="crm-search" id="crmSearch" oninput="renderClients()" placeholder="🔍 Rechercher..." data-placeholder-fr="🔍 Rechercher..." data-placeholder-en="🔍 Search...">
 
-  <div class="crm-filters">
-    <button class="cf-btn on" data-f="all" onclick="setFilter('all',this)" data-fr="Tous (actifs)" data-en="All (active)">Tous (actifs)</button>
-    <button class="cf-btn" data-f="inquiry" onclick="setFilter('inquiry',this)" data-fr="💬 Demandes" data-en="💬 Inquiries">💬 Demandes</button>
+  <div class="crm-main-tabs" style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px">
+    <button class="crm-main-tab on" data-maintab="clients" onclick="setMainTab('clients',this)"
+      style="flex:1;padding:14px 20px;background:none;border:none;border-bottom:3px solid var(--gold);font-family:Fraunces,serif;font-size:18px;color:var(--green-dark);cursor:pointer;font-weight:500">
+      🟢 <span data-fr="Clients" data-en="Guests">Clients</span>
+      <span id="countClients" style="color:var(--muted);font-size:14px">(0)</span>
+    </button>
+    <button class="crm-main-tab" data-maintab="pipeline" onclick="setMainTab('pipeline',this)"
+      style="flex:1;padding:14px 20px;background:none;border:none;border-bottom:3px solid transparent;font-family:Fraunces,serif;font-size:18px;color:var(--muted);cursor:pointer;font-weight:500">
+      🟡 <span data-fr="Pipeline" data-en="Pipeline">Pipeline</span>
+      <span id="countLeads" style="color:var(--muted);font-size:14px">(0)</span>
+    </button>
+  </div>
+
+  <div class="crm-subfilters" id="subClients" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+    <button class="cf-btn on" data-f="all" onclick="setFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
     <button class="cf-btn" data-f="current" onclick="setFilter('current',this)" data-fr="En cours" data-en="Current">En cours</button>
     <button class="cf-btn" data-f="upcoming" onclick="setFilter('upcoming',this)" data-fr="À venir" data-en="Upcoming">À venir</button>
-    <button class="cf-btn" data-f="past" onclick="setFilter('past',this)" style="margin-left:auto;background:var(--paper);border-color:var(--border);color:var(--muted)" data-fr="📁 Historique" data-en="📁 History">📁 Historique</button>
+    <button class="cf-btn" data-f="past" onclick="setFilter('past',this)" data-fr="📁 Historique" data-en="📁 History">📁 Historique</button>
+  </div>
+
+  <div class="crm-subfilters" id="subPipeline" style="display:none;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+    <button class="cf-btn on" data-f="all" onclick="setFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
+    <button class="cf-btn" data-f="inquiry" onclick="setFilter('inquiry',this)" data-fr="💬 Actifs" data-en="💬 Active">💬 Actifs</button>
+    <button class="cf-btn" data-f="declined" onclick="setFilter('declined',this)" data-fr="❌ Refusés" data-en="❌ Declined">❌ Refusés</button>
   </div>
 
   <div id="clientList"></div>
@@ -4236,6 +4254,15 @@ async function pullSettingsFromSupabase() {
   try {
     var params = new URLSearchParams(location.search);
     if (params.get('oauth_callback') !== '1') return;
+    // Google PKCE code flow: ?code=... in query
+    var code = params.get('code');
+    if (code && window.opener && !window.opener.closed) {
+      try { window.opener.postMessage({ type: 'stafflo_oauth_code', code: code, state: params.get('state') }, location.origin); } catch(e){}
+      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:DM Sans,sans-serif"><h2>✅ Connecté</h2><p>Cette fenêtre va se fermer...</p></div>';
+      setTimeout(function(){ window.close(); }, 800);
+      return;
+    }
+    // Implicit flow (Yahoo + legacy): #access_token=... in hash
     var hash = (location.hash||'').slice(1);
     var hp = new URLSearchParams(hash);
     var token = hp.get('access_token');
@@ -5005,6 +5032,37 @@ function fmtDate(str, withDay) {
   return new Date(str + 'T12:00:00').toLocaleDateString(lang==='fr'?'fr-FR':'en-GB', opts);
 }
 
+window.currentMainTab = 'clients';
+function setMainTab(tab, btn){
+  window.currentMainTab = tab;
+  document.querySelectorAll('.crm-main-tab').forEach(function(b){
+    b.classList.remove('on');
+    b.style.borderBottomColor = 'transparent';
+    b.style.color = 'var(--muted)';
+  });
+  btn.classList.add('on');
+  btn.style.borderBottomColor = 'var(--gold)';
+  btn.style.color = 'var(--green-dark)';
+  document.getElementById('subClients').style.display  = tab==='clients'  ? 'flex' : 'none';
+  document.getElementById('subPipeline').style.display = tab==='pipeline' ? 'flex' : 'none';
+  // Reset sub-filter to "all"
+  document.querySelectorAll('.cf-btn').forEach(function(b){ b.classList.remove('on'); });
+  var firstBtn = document.querySelector('#sub'+(tab==='clients'?'Clients':'Pipeline')+' .cf-btn');
+  if(firstBtn){ firstBtn.classList.add('on'); window.currentFilter = 'all'; crmFilter = 'all'; }
+  renderClients();
+  updateCrmCounts();
+}
+
+function updateCrmCounts(){
+  var isLead = function(c){ return c.bookingStatus==='lead' || c.bookingStatus==='inquiry' || c.bookingStatus==='declined'; };
+  var nClients = clients.filter(function(c){ return !isLead(c); }).length;
+  var nLeads = clients.filter(isLead).length;
+  var ec = document.getElementById('countClients');
+  var el = document.getElementById('countLeads');
+  if(ec) ec.textContent = '('+nClients+')';
+  if(el) el.textContent = '('+nLeads+')';
+}
+
 function setFilter(f, btn) {
   crmFilter = f;
   document.querySelectorAll('.cf-btn').forEach(b => b.classList.remove('on'));
@@ -5076,6 +5134,13 @@ function renderClients() {
   var search = searchEl ? (searchEl.value || '').toLowerCase() : '';
   var list = clients.slice(); // SES-safe copy
 
+  // Main tab filter (Clients vs Pipeline)
+  var mainTab = window.currentMainTab || 'clients';
+  var isLeadStatus = function(s){ return s==='lead' || s==='inquiry' || s==='declined'; };
+  list = list.filter(function(c){
+    return mainTab==='pipeline' ? isLeadStatus(c.bookingStatus) : !isLeadStatus(c.bookingStatus);
+  });
+
   // Filter
   if (search) {
     list = list.filter(function(x) {
@@ -5084,8 +5149,12 @@ function renderClients() {
              (x.source||'').toLowerCase().indexOf(search) !== -1;
     });
   }
-  if (crmFilter === 'all')           list = list.filter(function(x){ return getStatus(x) !== 'past'; });
-  else if (crmFilter === 'inquiry')  list = list.filter(function(x){ return getStatus(x) === 'inquiry'; });
+  if (crmFilter === 'all') {
+    // In Clients tab "all" excludes past; in Pipeline tab "all" keeps all leads
+    if (mainTab !== 'pipeline') list = list.filter(function(x){ return getStatus(x) !== 'past'; });
+  }
+  else if (crmFilter === 'inquiry')  list = list.filter(function(x){ return x.bookingStatus === 'inquiry'; });
+  else if (crmFilter === 'declined') list = list.filter(function(x){ return x.bookingStatus === 'declined'; });
   else if (crmFilter === 'current')  list = list.filter(function(x){ return getStatus(x) === 'current'; });
   else if (crmFilter === 'upcoming') list = list.filter(function(x){ return getStatus(x) === 'upcoming'; });
   else if (crmFilter === 'past')     list = list.filter(function(x){ return getStatus(x) === 'past'; });
@@ -5110,6 +5179,7 @@ function renderClients() {
   if (!list.length) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏡</div><div style="font-size:15px">' +
       (fr ? 'Aucun client' : 'No guests') + '</div></div>';
+    updateCrmCounts();
     return;
   }
 
@@ -5151,6 +5221,7 @@ function renderClients() {
     var card = e.target.closest('[data-id]');
     if (card) openDetail(card.getAttribute('data-id'));
   });
+  updateCrmCounts();
 }
 
 // ════════════════════════════════════════════
@@ -5927,6 +5998,8 @@ function goTab(t) {
   if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); } catch(e) { console.error('loadHomeData error:', e); } }
   if (t === 'today') {
     renderTodayQV();
+    // Auto-load inbox into the inline dashboard card (#inboxList)
+    if (typeof loadInboxEmails === 'function') { try { loadInboxEmails(); } catch(e) { console.warn('loadInboxEmails on tab switch:', e); } }
     // Restore last AI result if it exists
     if (window._lastResult) {
       renderResult(window._lastResult);
@@ -7002,9 +7075,16 @@ function closeInbox() {
 }
 
 async function loadInboxEmails() {
-  var el = document.getElementById('inboxList');
-  if (!el) return;
-  el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px">Chargement...</div>';
+  // Dual-write: inline dashboard card (#inboxList) + modal (#inboxListLegacy)
+  var els = Array.from(document.querySelectorAll('#inboxList, #inboxListLegacy'));
+  if (!els.length) return;
+  var setHtml = function(h){ els.forEach(function(e){ e.innerHTML = h; }); };
+  var qsa = function(s){
+    var out = [];
+    els.forEach(function(e){ out.push.apply(out, e.querySelectorAll(s)); });
+    return out;
+  };
+  setHtml('<div style="color:var(--muted);font-size:12px;padding:8px">Chargement...</div>');
   
   // Auto-sync Gmail if connected (client-side, silent)
   var cfg = getCfg();
@@ -7027,9 +7107,9 @@ async function loadInboxEmails() {
     });
     var rows = await r.json();
     if (!rows.length) {
-      el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;text-align:center">'+
+      setHtml('<div style="color:var(--muted);font-size:12px;padding:8px 0;text-align:center">'+
         (lang==='fr' ? 'Aucun email reçu — configurez le transfert automatique ci-dessus' : 'No emails received yet — set up auto-forwarding above') +
-        '</div>';
+        '</div>');
       return;
     }
     // Store emails for click handler (avoid inline JSON stringify)
@@ -7114,10 +7194,10 @@ async function loadInboxEmails() {
       inboxHtml += '<div id="inboxMore" style="display:none">' + hiddenRows.map(renderRow).join('') + '</div>';
       inboxHtml += '<button onclick="(function(b){var m=document.getElementById(\'inboxMore\');var open=m.style.display===\'block\';m.style.display=open?\'none\':\'block\';b.textContent=open?\'' + moreLabel + '\':\'' + lessLabel + '\';})(this)" style="width:100%;padding:8px;background:none;border:none;border-top:1px solid var(--border);font-size:12px;color:var(--muted);cursor:pointer;margin-top:4px;font-family:\'DM Sans\',sans-serif">' + moreLabel + '</button>';
     }
-    el.innerHTML = inboxHtml;
+    setHtml(inboxHtml);
 
     // Delegate click events instead of inline onclick (avoids JSON issues)
-    el.querySelectorAll('.ic-open-btn').forEach(function(btn) {
+    qsa('.ic-open-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
         var id = btn.getAttribute('data-email-id');
@@ -7126,7 +7206,7 @@ async function loadInboxEmails() {
       });
     });
     // Also let clicking the whole card open it (except links/buttons)
-    el.querySelectorAll('.inbox-card').forEach(function(card) {
+    qsa('.inbox-card').forEach(function(card) {
       card.addEventListener('click', function(e) {
         if (e.target.closest('a,button')) return;
         var id = card.getAttribute('data-email-id');
@@ -7135,7 +7215,7 @@ async function loadInboxEmails() {
       });
     });
   } catch(e) {
-    el.innerHTML = '<div style="color:var(--red);font-size:12px">Erreur: '+e.message+'</div>';
+    setHtml('<div style="color:var(--red);font-size:12px">Erreur: '+e.message+'</div>');
   }
 }
 
@@ -8815,6 +8895,52 @@ function showEmailConnectModal() {
 // DEPRECATED: this Client ID returns invalid_client. Users now configure their own via Settings.
 // const STAFFLO_GOOGLE_CLIENT_ID = '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com';
 
+// ── PKCE helpers for Google OAuth (authorization code flow, no backend) ──
+function _b64UrlEncode(buf) {
+  var bytes = new Uint8Array(buf);
+  var s = '';
+  for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+async function _pkceChallenge() {
+  var verifier = _b64UrlEncode(crypto.getRandomValues(new Uint8Array(64)));
+  var hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return { verifier: verifier, challenge: _b64UrlEncode(hash) };
+}
+
+// Refresh Gmail access_token using stored refresh_token. Returns the new token or null.
+async function _tryRefreshGmailToken() {
+  var cfg = getCfg();
+  var conn = cfg.email_connection || {};
+  var clientId = (cfg.googleClientId || cfg.google_client_id || '').trim();
+  if (!conn.refresh_token || !clientId) return null;
+  try {
+    var r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        refresh_token: conn.refresh_token,
+        grant_type: 'refresh_token'
+      }).toString()
+    });
+    if (!r.ok) return null;
+    var data = await r.json();
+    if (!data.access_token) return null;
+    conn.access_token = data.access_token;
+    conn.expires_at = Date.now() + (parseInt(data.expires_in || 3600, 10) * 1000);
+    delete conn.last_error;
+    delete conn.last_error_at;
+    // Persist locally + Supabase (saveEmailConnection mirrors to villa_settings)
+    try { await saveEmailConnection(conn); } catch(e) { cfg.email_connection = conn; setCfg(cfg); }
+    return data.access_token;
+  } catch(e) {
+    console.warn('Gmail refresh error:', e);
+    return null;
+  }
+}
+window._tryRefreshGmailToken = _tryRefreshGmailToken;
+
 async function connectEmailProvider(kind) {
   var fr = lang === 'fr';
   // Close current modal first to prevent z-index/stacking bugs
@@ -8878,12 +9004,17 @@ async function connectEmailProvider(kind) {
     var clientId = userClientId;
     var redirectUri = location.origin + location.pathname + '?oauth_callback=1';
     var scope = encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly email profile');
+    // PKCE: generate verifier + challenge; verifier stays in closure for the code exchange
+    var pkce = await _pkceChallenge();
     var oauthUrl = 'https://accounts.google.com/o/oauth2/v2/auth' +
       '?client_id=' + encodeURIComponent(clientId) +
       '&redirect_uri=' + encodeURIComponent(redirectUri) +
-      '&response_type=token' +
+      '&response_type=code' +
+      '&access_type=offline' +
       '&scope=' + scope +
       '&prompt=consent' +
+      '&code_challenge=' + pkce.challenge +
+      '&code_challenge_method=S256' +
       '&state=email_connect';
     var popup = window.open(oauthUrl, 'stafflo_oauth', 'width=520,height=640');
     if (!popup) {
@@ -8893,17 +9024,42 @@ async function connectEmailProvider(kind) {
     }
 
     var handler = async function(event) {
-      if (!event.data || event.data.type !== 'stafflo_oauth_token') return;
+      if (!event.data || event.data.type !== 'stafflo_oauth_code') return;
       window.removeEventListener('message', handler);
-      var token = event.data.access_token;
+      var code = event.data.code;
       try {
-        var pr = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: 'Bearer ' + token } });
+        // Exchange authorization code for tokens (PKCE, no client secret needed)
+        var tokRes = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: clientId,
+            code: code,
+            code_verifier: pkce.verifier,
+            redirect_uri: redirectUri,
+            grant_type: 'authorization_code'
+          }).toString()
+        });
+        if (!tokRes.ok) throw new Error('token_exchange_' + tokRes.status);
+        var tok = await tokRes.json();
+        var accessToken = tok.access_token;
+        var refreshToken = tok.refresh_token || null;
+        var expiresAt = Date.now() + (parseInt(tok.expires_in || 3600, 10) * 1000);
+        var pr = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: 'Bearer ' + accessToken } });
         var prof = await pr.json();
-        await saveEmailConnection({ provider: 'Google', email: prof.email, access_token: token, connected_at: new Date().toISOString() });
+        await saveEmailConnection({
+          provider: 'Google',
+          email: prof.email,
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          expires_at: expiresAt,
+          connected_at: new Date().toISOString()
+        });
         toast(fr ? '✅ Gmail connecté : ' + prof.email : '✅ Gmail connected: ' + prof.email);
         var m = document.getElementById('emailConnectModal'); if (m) m.remove();
         showEmailConnectModal();
       } catch(e) {
+        console.error('OAuth code exchange error:', e);
         toast(fr?'❌ Erreur OAuth':'❌ OAuth error');
         if (existing) existing.style.opacity = '1';
       }
@@ -9158,17 +9314,24 @@ async function syncGmailDirect(opts) {
     var listUrl = 'https://www.googleapis.com/gmail/v1/users/me/messages?maxResults=15&q=newer_than:7d';
     var listRes = await fetch(listUrl, { headers: { Authorization: 'Bearer ' + token } });
     if (listRes.status === 401) {
-      // Token expired — clear it, persist error flag, prompt re-auth
-      conn.access_token = null;
-      conn.last_error = 'token_expired';
-      conn.last_error_at = new Date().toISOString();
-      cfg.email_connection = conn;
-      setCfg(cfg);
-      // Always toast on token expired — even silent calls — because action is required
-      toast(fr ? '⚠ Token Gmail expiré — reconnectez Gmail dans ⚙ Réglages' : '⚠ Gmail token expired — reconnect in ⚙ Settings');
-      // Refresh inbox UI so the warning chip appears
-      try { renderInboxConnectionStatus(); } catch(e) {}
-      return { error: 'token_expired' };
+      // Try to refresh using stored refresh_token before bailing
+      var newToken = await _tryRefreshGmailToken();
+      if (newToken) {
+        token = newToken;
+        listRes = await fetch(listUrl, { headers: { Authorization: 'Bearer ' + token } });
+      }
+      if (listRes.status === 401) {
+        // Refresh failed (or no refresh_token) — clear and prompt re-auth
+        conn.access_token = null;
+        conn.refresh_token = null;
+        conn.last_error = 'token_expired';
+        conn.last_error_at = new Date().toISOString();
+        cfg.email_connection = conn;
+        setCfg(cfg);
+        toast(fr ? '⚠ Token Gmail expiré — reconnectez Gmail dans ⚙ Réglages' : '⚠ Gmail token expired — reconnect in ⚙ Settings');
+        try { renderInboxConnectionStatus(); } catch(e) {}
+        return { error: 'token_expired' };
+      }
     }
     if (!listRes.ok) {
       conn.last_error = 'gmail_list_' + listRes.status;
@@ -10127,6 +10290,7 @@ async function initAppAfterAuth() {
   await loadFromSupabase();
   renderAll();
   renderTodayQV();
+  if (typeof updateCrmCounts === 'function') updateCrmCounts();
 }
 
 function updateUserIndicator() {
@@ -14710,6 +14874,7 @@ function stopAriaChatMirror() {
 }
 
 function sendAriaModal() {
+  if (window._ariaAlreadySent) { window._ariaAlreadySent = false; return; }
   var input = document.getElementById('ariaModalInput');
   var text = (input && input.value || '').trim();
   var attach = window._ariaAttachment || null;
@@ -15224,17 +15389,29 @@ function openInboxSettings() {
     // ── Single source of truth: cfg.email_connection (mirrored to Supabase villa_settings) ──
     var cfg = (typeof getCfg === 'function') ? getCfg() : {};
     var ec = cfg.email_connection || null;
+    var en = (typeof lang !== 'undefined' && lang === 'en');
     var connLabel = '';
+    var tokenInvalid = false;
     if (ec && ec.email) {
-      var provider = (ec.provider || 'gmail');
-      var providerName = provider === 'gmail' ? 'Gmail' : (provider.charAt(0).toUpperCase() + provider.slice(1));
-      connLabel = providerName + ' · ' + ec.email;
+      var provider = (ec.provider || 'gmail').toLowerCase();
+      var providerName = (provider === 'gmail' || provider === 'google') ? 'Gmail' : (provider.charAt(0).toUpperCase() + provider.slice(1));
+      tokenInvalid = !ec.access_token || ec.last_error === 'token_expired';
+      if (tokenInvalid) {
+        connLabel = '⚠ ' + (en ? 'Token expired — ' : 'Token expiré — ') + providerName + ' · ' + ec.email;
+      } else {
+        connLabel = providerName + ' · ' + ec.email;
+      }
     }
     var lastSync = localStorage.getItem('stafflo_inbox_last_sync') || '';
     document.getElementById('inboxSetAutoToggle').checked = auto;
     document.getElementById('inboxSetInterval').value = interval;
-    document.getElementById('inboxSetConnSub').textContent = connLabel || ((typeof lang !== 'undefined' && lang === 'en') ? 'Not connected' : 'Non connecté');
-    document.getElementById('inboxSetConnBtn').querySelector('span').textContent = connLabel ? ((typeof lang !== 'undefined' && lang === 'en') ? 'Manage' : 'Gérer') : ((typeof lang !== 'undefined' && lang === 'en') ? 'Configure' : 'Configurer');
+    var subEl = document.getElementById('inboxSetConnSub');
+    subEl.textContent = connLabel || (en ? 'Not connected' : 'Non connecté');
+    subEl.style.color = tokenInvalid ? 'var(--red)' : '';
+    var btnLabel = !ec || !ec.email ? (en ? 'Configure' : 'Configurer')
+                 : tokenInvalid       ? (en ? 'Reconnect' : 'Reconnecter')
+                 :                      (en ? 'Manage'    : 'Gérer');
+    document.getElementById('inboxSetConnBtn').querySelector('span').textContent = btnLabel;
     document.getElementById('inboxSetLastSync').textContent = lastSync || ((typeof lang !== 'undefined' && lang === 'en') ? 'Never' : 'Jamais');
     updateAutoToggleVisual();
   } catch(e) {}
@@ -19383,7 +19560,10 @@ window.addEventListener('DOMContentLoaded', function() {
           if (cl && cl.phone) buttons.push({ label: '📲 WhatsApp ' + cl.name.split(' ')[0], onclick: 'sendWA(\'' + cl.phone + '\', ' + JSON.stringify(action.msg) + ')' });
         }
         addChatBubble('ai', response, buttons);
-        try { saveChatMessage('user', text); saveChatMessage('assistant', response); } catch(e) {}
+        // Note: addChatBubble already saves to chat_history via side effect (line 6966).
+        // chatSend's earlier addChatBubble('user', text) save the user side. Removed the
+        // redundant manual saveChatMessage pair here that caused the double-submit P0
+        // since 2026-05-07 (see ARIA usage report).
       } catch(err) {
         console.error('[stafflo-patch] handleChatQuestion crashed:', err);
         var typing2 = document.getElementById('chatTyping');
@@ -19544,7 +19724,11 @@ window.addEventListener('DOMContentLoaded', function() {
               var rendered = _renderJsonActions(raw);
               if (rendered) {
                 if (typeof addChatBubble === 'function') {
-                  addChatBubble('ai', '', []);
+                  // Pass raw (JSON array text) so addChatBubble's saveChatMessage side effect
+                  // persists the actual assistant content to chat_history. The setTimeout below
+                  // replaces the visible bubble innerHTML with the rendered action buttons,
+                  // but the DB row keeps the raw JSON (useful for history replay/debug).
+                  addChatBubble('ai', raw, []);
                   setTimeout(function(){
                     var pane = document.getElementById('chatMessages');
                     if (pane) {
@@ -19557,7 +19741,11 @@ window.addEventListener('DOMContentLoaded', function() {
               } else {
                 if (typeof addChatBubble === 'function') addChatBubble('ai', raw || (fr?'(pas de réponse)':'(no reply)'), []);
               }
-              try { saveChatMessage('user', displayLabel); saveChatMessage('assistant', raw || ''); } catch(e) {}
+              // saveChatMessage already fired via addChatBubble side effect (line 6966) when
+              // addChatBubble('user', displayLabel) and addChatBubble('ai', raw) ran above.
+              // Removed redundant manual saves that produced the duplicates in chat_history
+              // since 2026-05-07 (P0 #1 in ARIA usage report).
+              window._ariaAlreadySent = true;
             } catch(err) {
               if (typing) typing.style.display = 'none';
               if (typeof addChatBubble === 'function') addChatBubble('ai', '⚠ ' + (err.message || 'Erreur'), []);
