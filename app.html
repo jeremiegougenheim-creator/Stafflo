@@ -9037,7 +9037,11 @@ async function connectEmailProvider(kind) {
             grant_type: 'authorization_code'
           }).toString()
         });
-        if (!tokRes.ok) throw new Error('token_exchange_' + tokRes.status);
+        if (!tokRes.ok) {
+          var errBody = await tokRes.text().catch(function(){ return ''; });
+          console.error('[oauth] token exchange failed:', tokRes.status, errBody);
+          throw new Error('token_exchange_' + tokRes.status + ' ' + errBody.slice(0,300));
+        }
         var tok = await tokRes.json();
         var accessToken = tok.access_token;
         var refreshToken = tok.refresh_token || null;
