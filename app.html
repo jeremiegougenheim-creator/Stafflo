@@ -8946,6 +8946,14 @@ async function connectEmailProvider(kind) {
   if (existing) existing.style.opacity = '0.4';
 
   if (kind === 'google') {
+    // Require a real Supabase session — RLS on email_inbox needs auth.uid()
+    if (!isAuthed() || !getUserId()) {
+      if (existing) existing.style.opacity = '1';
+      alert(fr
+        ? 'Connectez-vous à Stafflo (mode démo non supporté) avant de lier Gmail.'
+        : 'Sign in to Stafflo (demo mode not supported) before connecting Gmail.');
+      return;
+    }
     var cfg = getCfg();
     var userClientId = (cfg.googleClientId || cfg.google_client_id || '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com').trim();
     if (!userClientId) {
@@ -9296,6 +9304,11 @@ async function syncGmailDirect(opts) {
   if (!conn || conn.provider !== 'Google' || !conn.access_token) {
     return { skipped: true, reason: 'no gmail connection' };
   }
+  // RLS on email_inbox requires auth.uid() = owner_id — bail in demo / unauth
+  if (!isAuthed() || !getUserId()) {
+    return { skipped: true, reason: 'not_authed' };
+  }
+  var ownerId = getUserId();
   var token = conn.access_token;
   var sbKey = cfg.sbKey || SB_ANON;
   var fr = lang === 'fr';
@@ -9346,7 +9359,7 @@ async function syncGmailDirect(opts) {
 
     // 2) Get existing gmail_ids from email_inbox to skip duplicates
     var existRes = await fetch(SB_URL + '/rest/v1/email_inbox?select=gmail_id&gmail_id=not.is.null&limit=100', {
-      headers: { apikey: sbKey, Authorization: 'Bearer ' + sbKey }
+      headers: authHeaders()
     });
     var existRows = await existRes.json().catch(function() { return []; });
     var existingIds = {};
@@ -9414,6 +9427,7 @@ async function syncGmailDirect(opts) {
 
         // 4) Insert into email_inbox
         var row = {
+          owner_id: ownerId,
           gmail_id: toFetch[i],
           from_name: fromName.slice(0, 200),
           from_email: fromEmail.slice(0, 200),
@@ -9426,12 +9440,7 @@ async function syncGmailDirect(opts) {
 
         var insRes = await fetch(SB_URL + '/rest/v1/email_inbox', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: sbKey,
-            Authorization: 'Bearer ' + sbKey,
-            Prefer: 'return=representation'
-          },
+          headers: Object.assign({}, authHeaders(), { Prefer: 'return=representation' }),
           body: JSON.stringify(row)
         });
         if (insRes.ok) {
