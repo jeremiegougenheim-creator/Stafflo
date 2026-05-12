@@ -5467,6 +5467,185 @@ function buildLeadMessage(c, cfg, fr) {
 }
 window.buildLeadMessage = buildLeadMessage;
 
+// ─── Lead detail modal ──────────────────────────────────────────────────
+// Dedicated viewer for inquiry/lead/quoted clients. Replaces the generic
+// openDetail() panel — which is tuned for confirmed bookings and assumes
+// arrival dates, payment status, etc. that don't apply to live leads.
+function openLeadDetail(clientId) {
+  var c = (typeof clients !== 'undefined') ? clients.find(function(x){ return x.id === clientId; }) : null;
+  if (!c) return;
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+
+  var score = (typeof getLeadScore === 'function') ? getLeadScore(c) : null;
+  var created = c.createdAt ? new Date(c.createdAt) : new Date();
+  var updated = c.updatedAt ? new Date(c.updatedAt) : created;
+  var daysSinceUpdated = Math.round((Date.now() - updated.getTime()) / 86400000);
+
+  // Conversation history
+  var messages = (window._clientMessages && window._clientMessages[clientId]) || c.messages || {};
+  var msgArray = [];
+  Object.keys(messages).forEach(function(k){ if (messages[k]) msgArray.push({ key: k, text: String(messages[k]) }); });
+
+  var prev = document.getElementById('leadDetailModal');
+  if (prev) prev.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'leadDetailModal';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9998;background:rgba(15,35,24,.7);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px';
+
+  var inner = document.createElement('div');
+  inner.style.cssText = 'background:#FAF6EE;max-width:560px;width:100%;border-radius:20px;overflow:hidden;margin:20px 0';
+
+  var nameEsc = (c.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  var initial = ((c.name || '?').charAt(0)).toUpperCase();
+
+  var scoreLabel = score === 'hot' ? 'HOT 🔥' : score === 'warm' ? 'WARM ⚡' : score === 'cold' ? 'COLD ⏰' : score === 'lost' ? 'LOST 💀' : '—';
+  var lastReplyText = daysSinceUpdated === 0 ? (fr?'Aujourd\'hui':'Today')
+                    : (daysSinceUpdated + (fr?'j':'d') + (fr?' ':' ago'));
+  if (!fr) lastReplyText = (daysSinceUpdated === 0 ? 'Today' : daysSinceUpdated + 'd ago');
+
+  var datesText = c.arrival
+    ? (new Date(c.arrival).toLocaleDateString(fr?'fr-FR':'en-US') + ' → ' + (c.departure ? new Date(c.departure).toLocaleDateString(fr?'fr-FR':'en-US') : '?'))
+    : (fr?'Non précisé':'Not specified');
+
+  var html = '';
+
+  // ── HEADER ──
+  html += '<div style="background:#0F2318;padding:20px 24px;display:flex;align-items:center;gap:14px;color:white">' +
+    '<div style="width:44px;height:44px;border-radius:50%;background:rgba(201,150,58,.2);color:#C9963A;display:flex;align-items:center;justify-content:center;font-family:\'Cormorant Garamond\',serif;font-size:18px;font-weight:700">' + initial + '</div>' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="font-family:\'Cormorant Garamond\',serif;font-size:20px;font-weight:600">' + (c.name||'?') + '</div>' +
+      '<div style="font-family:Inter,sans-serif;font-size:12px;opacity:.7">' + (c.nat||'') + ' · ' + (c.source||'Direct') + '</div>' +
+    '</div>' +
+    '<button onclick="document.getElementById(\'leadDetailModal\').remove()" style="background:rgba(255,255,255,.1);border:none;color:white;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:18px">×</button>' +
+  '</div>';
+
+  // ── ARIA SUMMARY (placeholder, filled async) ──
+  html += '<div style="padding:20px 24px;background:rgba(201,150,58,.05);border-bottom:1px solid rgba(15,35,24,.06)">' +
+    '<div style="font-family:Inter,sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#C9963A;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px">' +
+      '<i class="ti ti-sparkles"></i> ARIA Summary' +
+    '</div>' +
+    '<div id="leadAriaSummary" style="font-family:Inter,sans-serif;font-size:13px;color:#0F2318;line-height:1.6">' +
+      (fr ? 'Génération en cours…' : 'Generating…') +
+    '</div>' +
+  '</div>';
+
+  // ── ENGAGEMENT STATS ──
+  html += '<div style="padding:16px 24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;border-bottom:1px solid rgba(15,35,24,.06)">' +
+    '<div><div style="font-family:Inter,sans-serif;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#8a8a7a">' + (fr?'Score':'Score') + '</div>' +
+      '<div style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#0F2318;margin-top:2px">' + scoreLabel + '</div></div>' +
+    '<div><div style="font-family:Inter,sans-serif;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#8a8a7a">' + (fr?'Dernière réponse':'Last reply') + '</div>' +
+      '<div style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#0F2318;margin-top:2px">' + lastReplyText + '</div></div>' +
+    '<div><div style="font-family:Inter,sans-serif;font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#8a8a7a">' + (fr?'Messages':'Messages') + '</div>' +
+      '<div style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#0F2318;margin-top:2px">' + msgArray.length + '</div></div>' +
+  '</div>';
+
+  // ── REQUEST DETAILS ──
+  var notSpec = fr ? 'Non précisé' : 'Not specified';
+  html += '<div style="padding:16px 24px;border-bottom:1px solid rgba(15,35,24,.06)">' +
+    '<div style="font-family:Inter,sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8a7a;font-weight:600;margin-bottom:10px">' + (fr?'Détails demande':'Request details') + '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-family:Inter,sans-serif;font-size:13px">' +
+      '<div><span style="color:#8a8a7a">' + (fr?'Dates :':'Dates: ') + ' </span><span style="color:#0F2318">' + datesText + '</span></div>' +
+      '<div><span style="color:#8a8a7a">' + (fr?'Pers. :':'Guests: ') + ' </span><span style="color:#0F2318">' + (c.guests || notSpec) + '</span></div>' +
+      '<div><span style="color:#8a8a7a">' + (fr?'Budget :':'Budget: ') + ' </span><span style="color:#0F2318">' + (c.price ? c.price + '€' : notSpec) + '</span></div>' +
+      '<div><span style="color:#8a8a7a">' + (fr?'Tél :':'Phone: ') + ' </span><span style="color:#0F2318">' + (c.phone || '—') + '</span></div>' +
+      '<div style="grid-column:span 2"><span style="color:#8a8a7a">Email : </span><span style="color:#0F2318">' + (c.email || '—') + '</span></div>' +
+    '</div>' +
+  '</div>';
+
+  // ── CONVERSATION ──
+  if (msgArray.length) {
+    var esc = function(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+    html += '<div style="padding:16px 24px;border-bottom:1px solid rgba(15,35,24,.06)">' +
+      '<div style="font-family:Inter,sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8a7a;font-weight:600;margin-bottom:10px">' + (fr?'Conversation':'Conversation') + '</div>' +
+      '<div id="leadMessages" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">' +
+        msgArray.map(function(m){
+          var truncated = m.text.length > 400;
+          return '<div style="background:white;border:1px solid rgba(15,35,24,.06);border-radius:10px;padding:10px 12px;font-family:Inter,sans-serif;font-size:12px;color:#0F2318;line-height:1.5;white-space:pre-wrap">' +
+            '<div style="font-size:10px;color:#C9963A;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;font-weight:600">' + esc(m.key) + '</div>' +
+            esc(m.text.slice(0, 400)) + (truncated ? '…' : '') +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+  }
+
+  // ── NOTES (editable) ──
+  html += '<div style="padding:16px 24px;border-bottom:1px solid rgba(15,35,24,.06)">' +
+    '<div style="font-family:Inter,sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8a7a;font-weight:600;margin-bottom:10px">' + (fr?'Notes':'Notes') + '</div>' +
+    '<textarea onblur="updateLeadNotes(\'' + clientId + '\',this.value)" placeholder="' + (fr?'Ajoutez vos notes…':'Add your notes…') + '" style="width:100%;min-height:60px;padding:10px;border:1px solid rgba(15,35,24,.12);border-radius:8px;font-family:Inter,sans-serif;font-size:13px;background:white;color:#0F2318;resize:vertical;box-sizing:border-box">' + (c.notes||'').replace(/</g,'&lt;') + '</textarea>' +
+  '</div>';
+
+  // ── ACTIONS ──
+  html += '<div style="padding:20px 24px;display:flex;gap:8px;flex-wrap:wrap">' +
+    '<button onclick="smartWhatsApp(\'lead\',\'' + clientId + '\')" style="flex:1;min-width:140px;padding:12px;background:#25D366;color:white;border:none;border-radius:10px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px"><i class="ti ti-brand-whatsapp"></i> ' + (fr?'Relancer WhatsApp':'WhatsApp follow-up') + '</button>' +
+    '<button onclick="openAriaModal(\'draft a quote for ' + nameEsc + '\')" style="flex:1;min-width:140px;padding:12px;background:#C9963A;color:#0F2318;border:none;border-radius:10px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px"><i class="ti ti-file-invoice"></i> ' + (fr?'Envoyer devis':'Send quote') + '</button>' +
+    '<button onclick="updateBookingStatus(\'' + clientId + '\',\'confirmed\');document.getElementById(\'leadDetailModal\').remove();" style="flex:1;min-width:140px;padding:12px;background:white;color:#1d6b45;border:1px solid #1d6b45;border-radius:10px;font-family:Inter,sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px"><i class="ti ti-check"></i> ' + (fr?'Marquer confirmé':'Mark confirmed') + '</button>' +
+    '<button onclick="updateBookingStatus(\'' + clientId + '\',\'declined\');document.getElementById(\'leadDetailModal\').remove();" style="flex:1;min-width:140px;padding:12px;background:transparent;color:#a33030;border:1px solid rgba(180,60,60,.3);border-radius:10px;font-family:Inter,sans-serif;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px"><i class="ti ti-x"></i> ' + (fr?'Archiver':'Archive') + '</button>' +
+  '</div>';
+
+  inner.innerHTML = html;
+  overlay.appendChild(inner);
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+
+  generateLeadAriaSummary(c, msgArray);
+}
+window.openLeadDetail = openLeadDetail;
+
+function generateLeadAriaSummary(client, messages) {
+  var summaryEl = document.getElementById('leadAriaSummary');
+  if (!summaryEl) return;
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+
+  // Build conversation context — fall back to notes if no messages stored.
+  var convText = messages && messages.length
+    ? messages.map(function(m){ return '[' + m.key + ']\n' + m.text; }).join('\n\n---\n\n')
+    : (client.notes || '');
+  // Light client profile so the LLM has something to anchor on.
+  var profile = [
+    'Name: ' + (client.name || '?'),
+    client.nat ? 'Nationality: ' + client.nat : '',
+    client.arrival ? 'Requested arrival: ' + client.arrival + (client.departure ? ' → ' + client.departure : '') : '',
+    client.guests ? 'Guests: ' + client.guests : '',
+    client.price ? 'Quoted/mentioned price: ' + client.price + '€' : '',
+    client.source ? 'Source: ' + client.source : '',
+    'Booking status: ' + (client.bookingStatus || 'inquiry')
+  ].filter(Boolean).join('\n');
+
+  var sys = fr
+    ? 'Tu es ARIA, assistante d\'une villa de luxe. Analyse cette conversation avec un lead et résume en 3-4 phrases :\n1. Qui est le client (profil, nationalité, intention)\n2. Ce qu\'il demande (dates, budget, contraintes)\n3. Sentiment et engagement (chaud, froid, hésitant, prêt à payer)\n4. Recommandation d\'action concrète (relancer, envoyer devis, abandonner)\nSois direct, concis. Pas de blabla.'
+    : 'You are ARIA, assistant for a luxury villa. Analyze this lead conversation and summarize in 3-4 sentences:\n1. Who is the client (profile, nationality, intent)\n2. What they want (dates, budget, constraints)\n3. Sentiment and engagement (hot, cold, hesitant, ready to pay)\n4. Concrete action recommendation (follow up, send quote, drop)\nBe direct, concise. No fluff.';
+
+  if (typeof callBestAI !== 'function') {
+    summaryEl.textContent = client.notes || (fr ? 'Pas d\'analyse disponible.' : 'No analysis available.');
+    return;
+  }
+  callBestAI('fast_classify', sys, profile + '\n\n=== CONVERSATION ===\n' + (convText || '(empty)'), 400)
+    .then(function(resp){
+      if (!summaryEl.isConnected) return;
+      var text = (typeof resp === 'string') ? resp : (resp && resp.text ? resp.text : '');
+      summaryEl.textContent = (text || '').trim() || (fr ? 'Pas d\'analyse disponible.' : 'No analysis available.');
+    })
+    .catch(function(){
+      if (summaryEl.isConnected) summaryEl.textContent = fr ? 'Impossible de générer le résumé.' : 'Could not generate summary.';
+    });
+}
+window.generateLeadAriaSummary = generateLeadAriaSummary;
+
+function updateLeadNotes(clientId, notes) {
+  if (typeof clients === 'undefined') return;
+  var idx = clients.findIndex(function(c){ return c.id === clientId; });
+  if (idx < 0) return;
+  if (clients[idx].notes === notes) return; // no-op
+  clients[idx].notes = notes;
+  clients[idx].updatedAt = new Date().toISOString();
+  if (typeof saveLocal === 'function') saveLocal();
+  if (typeof pushToSupabase === 'function') pushToSupabase(clients[idx]);
+  if (typeof toast === 'function') toast(lang === 'fr' ? '✓ Notes enregistrées' : '✓ Notes saved');
+}
+window.updateLeadNotes = updateLeadNotes;
+
 // Move a client between pipeline stages (inquiry/quoted/pending/confirmed/declined).
 function updateBookingStatus(clientId, newStatus) {
   var idx = clients.findIndex(function(c){ return c.id === clientId; });
@@ -5664,10 +5843,71 @@ function renderClients() {
     return;
   }
 
+  // Minimal one-line card for live leads (inquiry/lead/quoted). The full
+  // booking-style card doesn't make sense before the stay is confirmed —
+  // there's no real ARRIVÉE/NIGHTS/NET yet.
+  function leadCardHtml(cl) {
+    var score = getLeadScore(cl);
+    var initial = ((cl.name||'?').charAt(0)).toUpperCase();
+
+    var styles = {
+      hot:  { bg:'#ffe5e5',                color:'#a33030', label:'HOT',  border:'#e24b4a', dim:'' },
+      warm: { bg:'rgba(201,150,58,.15)',   color:'#8a6520', label:'WARM', border:'#C9963A', dim:'' },
+      cold: { bg:'rgba(138,138,122,.15)',  color:'#5a5a4a', label:'COLD', border:'#8a8a7a', dim:'' },
+      lost: { bg:'rgba(138,138,122,.1)',   color:'#8a8a7a', label:'LOST', border:'#8a8a7a', dim:'opacity:.6;' }
+    };
+    var sty = styles[score] || { bg:'rgba(201,150,58,.15)', color:'#8a6520', label:(cl.bookingStatus||'LEAD').toUpperCase(), border:'#C9963A', dim:'' };
+
+    var d = daysSinceUpdate(cl);
+    var engagement;
+    if (d < 1)       engagement = fr ? '⚡ Conversation active' : '⚡ Active conversation';
+    else if (d <= 2) engagement = fr ? ('💬 Répondu il y a ' + d + 'j') : ('💬 Replied ' + d + 'd ago');
+    else if (d <= 6) engagement = fr ? ('⏰ Pas de réponse depuis ' + d + 'j') : ('⏰ No reply for ' + d + 'd');
+    else if (d <= 13) engagement = fr ? ('🔴 Silence depuis ' + d + 'j') : ('🔴 Silent for ' + d + 'd');
+    else             engagement = fr ? '💀 Lead inactif' : '💀 Inactive lead';
+
+    var datesText;
+    if (cl.arrival) {
+      var n = nights(cl);
+      var arrLbl = new Date(cl.arrival).toLocaleDateString(fr?'fr-FR':'en-US', {day:'numeric', month:'long'});
+      datesText = fr
+        ? ('demande pour le ' + arrLbl + (n ? ' (' + n + ' nuit' + (n>1?'s':'') + ')' : ''))
+        : ('asking for ' + arrLbl + (n ? ' (' + n + ' night' + (n>1?'s':'') + ')' : ''));
+    } else {
+      datesText = fr ? 'dates non précisées' : 'dates not specified';
+    }
+
+    var hasPhone = !!(cl.phone && cl.phone.trim());
+    var waBtnHtml = hasPhone
+      ? '<button onclick="event.stopPropagation();smartWhatsApp(\'lead\',\'' + cl.id + '\')" title="WhatsApp" style="width:36px;height:36px;border-radius:50%;background:#25D366;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">' +
+        '<i class="ti ti-brand-whatsapp" style="color:white;font-size:18px"></i>' +
+      '</button>'
+      : '';
+
+    return '<div data-id="' + cl.id + '" data-lead="1" style="cursor:pointer;background:white;border-radius:14px;border:1px solid rgba(15,35,24,.08);border-left:3px solid ' + sty.border + ';padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all .15s;margin-bottom:10px;' + sty.dim + '" ' +
+      'onmouseover="this.style.boxShadow=\'0 4px 12px rgba(15,35,24,.08)\'" onmouseout="this.style.boxShadow=\'none\'">' +
+      '<div style="width:40px;height:40px;border-radius:50%;background:#0F2318;color:white;display:flex;align-items:center;justify-content:center;font-family:Inter,sans-serif;font-size:14px;font-weight:600;flex-shrink:0">' + initial + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">' +
+          '<span style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#0F2318">' + (cl.name||'?') + '</span>' +
+          '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:' + sty.bg + ';color:' + sty.color + ';font-weight:600">' + sty.label + '</span>' +
+        '</div>' +
+        '<div style="font-family:Inter,sans-serif;font-size:12px;color:#8a8a7a">' + engagement + ' · ' + datesText + '</div>' +
+      '</div>' +
+      waBtnHtml +
+      '<i class="ti ti-chevron-right" style="color:#8a8a7a;font-size:18px;flex-shrink:0"></i>' +
+    '</div>';
+  }
+
   // Build the HTML for a single client card (used both by the flat list and the
   // grouped pipeline view). `extraAction` is an optional HTML snippet appended
   // after the grid (typically a "Relancer" or "Archiver" pill).
   function cardHtml(cl, extraAction) {
+    // Live leads get the minimal one-line variant (different look + lighter info).
+    var bs = cl.bookingStatus;
+    if (bs === 'inquiry' || bs === 'lead' || bs === 'quoted') {
+      return leadCardHtml(cl);
+    }
     var s = getStatus(cl);
     var n = nights(cl);
     var net = netAmt(cl);
@@ -5836,11 +6076,18 @@ function renderClients() {
     for (var i = 0; i < list.length; i++) html += cardHtml(list[i]);
   }
   el.innerHTML = html;
-  // Event delegation — SES-safe, works even with inline handlers blocked
+  // Event delegation — SES-safe, works even with inline handlers blocked.
+  // Leads route to openLeadDetail; confirmed/declined/etc. keep the booking-style openDetail.
   el.onclick = null;
   el.addEventListener('click', function(e) {
     var card = e.target.closest('[data-id]');
-    if (card) openDetail(card.getAttribute('data-id'));
+    if (!card) return;
+    var id = card.getAttribute('data-id');
+    if (card.getAttribute('data-lead') === '1' && typeof openLeadDetail === 'function') {
+      openLeadDetail(id);
+    } else {
+      openDetail(id);
+    }
   });
   updateCrmCounts();
 }
