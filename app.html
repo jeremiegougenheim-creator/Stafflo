@@ -2552,50 +2552,66 @@ body, main { background: var(--cream); }
 </div>
 
 <div class="toast" id="toast"></div>
-<!-- WELCOME MODAL — single action screen, shown once -->
-<div id="welcomeModal" class="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.85);z-index:9999;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto">
-  <div style="background:#FAF6EE;width:100%;max-width:480px;margin:8vh auto 24px;border-radius:16px;padding:40px 32px;text-align:center;font-family:'Cormorant Garamond',serif;box-shadow:0 24px 80px rgba(0,0,0,.3)">
-    <div style="font-size:32px;font-weight:700;color:#0F2318">Staff<span style="color:#C9963A">lo</span></div>
-    <div style="font-size:14px;color:#666;font-family:'Inter',sans-serif;margin:8px 0 32px" data-fr="Votre villa. Votre staff. Gérés." data-en="Your villa. Your staff. Handled.">Votre villa. Votre staff. Gérés.</div>
+<!-- ONBOARD MODAL — 3-step linear flow, mobile-first, finishable in ~30s -->
+<div id="onboardModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,35,24,.85);align-items:center;justify-content:center;padding:16px">
+<div id="onboardInner" style="background:#FAF6EE;max-width:420px;width:100%;border-radius:20px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
 
-    <div style="font-size:16px;font-weight:600;color:#0F2318;margin-bottom:16px;font-family:'Inter',sans-serif" data-fr="Comment gérez-vous vos réservations aujourd'hui ?" data-en="How do you manage bookings today?">Comment gérez-vous vos réservations aujourd'hui ?</div>
-
-    <div style="display:flex;flex-direction:column;gap:10px;text-align:left">
-      <button onclick="closeWelcome();if(typeof openIcalSettings==='function')openIcalSettings();else if(typeof openSettings==='function')openSettings()" style="display:flex;align-items:center;gap:14px;padding:16px;background:#0F2318;color:#FAF6EE;border:none;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;width:100%;text-align:left">
-        <span style="font-size:24px">📅</span>
-        <div>
-          <div style="font-weight:600" data-fr="Synchroniser mon calendrier" data-en="Sync my calendar">Synchroniser mon calendrier</div>
-          <div style="font-size:12px;opacity:.7;margin-top:2px" data-fr="Airbnb, Booking, VRBO, Google Cal — collez le lien iCal" data-en="Airbnb, Booking, VRBO, Google Cal — paste iCal link">Airbnb, Booking, VRBO, Google Cal — collez le lien iCal</div>
-        </div>
-      </button>
-
-      <button onclick="closeWelcome();setTimeout(function(){if(typeof connectEmailProvider==='function')connectEmailProvider('google');else if(typeof openSettings==='function')openSettings()},200)" style="display:flex;align-items:center;gap:14px;padding:16px;background:#0F2318;color:#FAF6EE;border:none;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;width:100%;text-align:left">
-        <span style="font-size:24px">📧</span>
-        <div>
-          <div style="font-weight:600" data-fr="Connecter mon email" data-en="Connect my email">Connecter mon email</div>
-          <div style="font-size:12px;opacity:.7;margin-top:2px" data-fr="Gmail, Yahoo, Outlook — import automatique" data-en="Gmail, Yahoo, Outlook — auto-import bookings">Gmail, Yahoo, Outlook — import automatique</div>
-        </div>
-      </button>
-
-      <button onclick="closeWelcome();if(typeof openForm==='function')openForm()" style="display:flex;align-items:center;gap:14px;padding:16px;background:transparent;color:#0F2318;border:1.5px solid #0F2318;border-radius:12px;cursor:pointer;font-family:'Inter',sans-serif;font-size:14px;width:100%;text-align:left">
-        <span style="font-size:24px">✏️</span>
-        <div>
-          <div style="font-weight:600" data-fr="Ajouter un client à la main" data-en="Add a guest manually">Ajouter un client à la main</div>
-          <div style="font-size:12px;opacity:.7;margin-top:2px" data-fr="Pas de calendrier ? Saisissez votre première résa en 30 secondes" data-en="No calendar? Enter your first booking in 30 seconds">Pas de calendrier ? Saisissez votre première résa en 30 secondes</div>
-        </div>
-      </button>
-
-      <button onclick="closeWelcome()" style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:transparent;color:#999;border:none;cursor:pointer;font-family:'Inter',sans-serif;font-size:13px;width:100%;text-align:left">
-        <span style="font-size:18px">👀</span>
-        <div data-fr="Explorer avec les données démo" data-en="Explore with demo data">Explorer avec les données démo</div>
-      </button>
-    </div>
-
-    <label style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:24px;font-size:12px;color:#999;font-family:'Inter',sans-serif;cursor:pointer">
-      <input type="checkbox" id="welcomeDontShow" style="accent-color:#C9963A">
-      <span data-fr="Ne plus afficher" data-en="Don't show again">Ne plus afficher</span>
-    </label>
+  <!-- Progress bar -->
+  <div style="display:flex;gap:4px;padding:16px 24px 0">
+    <div id="prog1" style="flex:1;height:3px;border-radius:2px;background:#C9963A"></div>
+    <div id="prog2" style="flex:1;height:3px;border-radius:2px;background:rgba(15,35,24,.1)"></div>
+    <div id="prog3" style="flex:1;height:3px;border-radius:2px;background:rgba(15,35,24,.1)"></div>
   </div>
+
+  <!-- STEP 1: Name your villa -->
+  <div id="onbStep1" style="padding:32px 24px;text-align:center">
+    <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:700;color:#0F2318">Staff<span style="color:#C9963A">lo</span></div>
+    <div style="font-family:'Inter',sans-serif;font-size:14px;color:#8a8a7a;margin:8px 0 28px" data-fr="Votre villa. Votre staff. Gérés." data-en="Your villa. Your staff. Handled.">Your villa. Your staff. Handled.</div>
+    <input id="onbVillaName" type="text" placeholder="Villa name (e.g. Villa Santi)"
+      data-placeholder-fr="Nom de la villa (ex : Villa DarJ)" data-placeholder-en="Villa name (e.g. Villa Santi)"
+      style="width:100%;padding:14px 18px;border:1.5px solid rgba(15,35,24,.15);border-radius:12px;font-family:'Inter',sans-serif;font-size:15px;background:white;color:#0F2318;outline:none;text-align:center;box-sizing:border-box"
+      onfocus="this.style.borderColor='#C9963A'" onblur="this.style.borderColor='rgba(15,35,24,.15)'"
+      onkeydown="if(event.key==='Enter')onbNextStep(2)">
+    <button onclick="onbNextStep(2)" style="width:100%;margin-top:20px;padding:14px;background:#0F2318;color:#FAF6EE;border:none;border-radius:12px;font-family:'Inter',sans-serif;font-size:15px;font-weight:500;cursor:pointer" data-fr="Suivant →" data-en="Next →">Next →</button>
+    <div onclick="onbSkip()" style="margin-top:16px;font-family:'Inter',sans-serif;font-size:13px;color:#8a8a7a;cursor:pointer" data-fr="Passer, j'explore d'abord" data-en="Skip setup, explore first">Skip setup, explore first</div>
+  </div>
+
+  <!-- STEP 2: Import calendar -->
+  <div id="onbStep2" style="padding:32px 24px;display:none">
+    <div style="font-family:'Inter',sans-serif;font-size:18px;font-weight:600;color:#0F2318;text-align:center;margin-bottom:6px" data-fr="Importez vos réservations" data-en="Import your bookings">Import your bookings</div>
+    <div style="font-family:'Inter',sans-serif;font-size:13px;color:#8a8a7a;text-align:center;margin-bottom:24px" data-fr="Collez votre lien iCal Airbnb ou Booking.com" data-en="Paste your Airbnb or Booking.com calendar link">Paste your Airbnb or Booking.com calendar link</div>
+    <input id="onbIcalUrl" type="url" placeholder="https://www.airbnb.com/calendar/ical/..."
+      style="width:100%;padding:14px 16px;border:1.5px solid rgba(15,35,24,.15);border-radius:12px;font-family:'Inter',sans-serif;font-size:13px;background:white;color:#0F2318;outline:none;box-sizing:border-box"
+      onfocus="this.style.borderColor='#C9963A'" onblur="this.style.borderColor='rgba(15,35,24,.15)'">
+    <details style="margin-top:12px;font-family:'Inter',sans-serif;font-size:12px;color:#8a8a7a">
+      <summary style="cursor:pointer;color:#C9963A" data-fr="Où trouver mon lien iCal ?" data-en="How do I find my calendar link?">How do I find my calendar link?</summary>
+      <div style="margin-top:8px;line-height:1.6;padding:8px 12px;background:rgba(15,35,24,.03);border-radius:8px">
+        <b>Airbnb:</b> Hosting → Calendar → Availability settings → Export calendar → Copy link<br>
+        <b>Booking.com:</b> Extranet → Rates &amp; Availability → Sync calendars → Copy iCal link<br>
+        <b>VRBO:</b> Calendar → Import/Export → Export → Copy link<br>
+        <b>Google Calendar:</b> Settings → Calendar → Integrate → Secret address in iCal
+      </div>
+    </details>
+    <div id="onbIcalResult" style="margin-top:16px;display:none;padding:12px 16px;border-radius:10px;background:rgba(34,120,70,.08);font-family:'Inter',sans-serif;font-size:13px;color:#1d6b45;text-align:center"></div>
+    <button id="onbImportBtn" onclick="onbImportIcal()" style="width:100%;margin-top:20px;padding:14px;background:#0F2318;color:#FAF6EE;border:none;border-radius:12px;font-family:'Inter',sans-serif;font-size:15px;font-weight:500;cursor:pointer" data-fr="Importer →" data-en="Import →">Import →</button>
+    <div style="display:flex;gap:12px;margin-top:12px;justify-content:center">
+      <div onclick="onbNextStep(3)" style="font-family:'Inter',sans-serif;font-size:13px;color:#C9963A;cursor:pointer" data-fr="Ajouter un client à la main" data-en="Add a guest manually instead">Add a guest manually instead</div>
+    </div>
+    <div onclick="onbSkip()" style="margin-top:8px;font-family:'Inter',sans-serif;font-size:12px;color:#8a8a7a;cursor:pointer;text-align:center" data-fr="Passer, je le ferai plus tard" data-en="Skip, I'll do this later">Skip, I'll do this later</div>
+  </div>
+
+  <!-- STEP 3: Meet ARIA -->
+  <div id="onbStep3" style="padding:32px 24px;display:none;text-align:center">
+    <div style="width:56px;height:56px;border-radius:50%;background:#0F2318;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;border:2px solid #C9963A">
+      <span style="font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:700;color:#C9963A">A</span>
+    </div>
+    <div style="font-family:'Inter',sans-serif;font-size:18px;font-weight:600;color:#0F2318;margin-bottom:6px" data-fr="Voici ARIA" data-en="Meet ARIA">Meet ARIA</div>
+    <div style="font-family:'Inter',sans-serif;font-size:13px;color:#8a8a7a;margin-bottom:20px" data-fr="Votre IA villa manager. Demandez-lui n'importe quoi." data-en="Your AI villa manager. Ask anything.">Your AI villa manager. Ask anything.</div>
+    <div id="onbAriaMsg" style="background:rgba(15,35,24,.04);border-radius:12px;padding:16px;font-family:'Inter',sans-serif;font-size:13px;color:#0F2318;line-height:1.6;text-align:left;border-left:3px solid #C9963A;min-height:60px" data-fr="Préparation de votre premier brief..." data-en="Loading your first brief...">Loading your first brief...</div>
+    <button onclick="onbFinish()" style="width:100%;margin-top:24px;padding:14px;background:#C9963A;color:#0F2318;border:none;border-radius:12px;font-family:'Inter',sans-serif;font-size:15px;font-weight:600;cursor:pointer" data-fr="Démarrer Stafflo →" data-en="Start using Stafflo →">Start using Stafflo →</button>
+  </div>
+
+</div>
 </div>
 
 <!-- ─────────────────────────────────────────────────────────────────
@@ -14891,30 +14907,147 @@ function incrementTrialCount() {
   return n;
 }
 
-// Welcome screen — shown once on first login. Respects both new and legacy flags
-// so existing users who already dismissed the old tour never see it again.
+// 3-step onboarding — name villa, import iCal, meet ARIA. Same legacy flags
+// honored so anyone who already dismissed the old tour is never re-prompted.
 function checkOnboarding() {
-  var done = localStorage.getItem('stafflo_welcome_done')
+  var done = localStorage.getItem('stafflo_tour_done')
+          || localStorage.getItem('stafflo_welcome_done')
           || localStorage.getItem('stafflo_tour_dismissed_forever')
           || localStorage.getItem('stafflo_tour_v1_done');
   if (!done) {
-    var modal = document.getElementById('welcomeModal');
-    if (modal) modal.style.display = 'flex';
+    var modal = document.getElementById('onboardModal');
+    if (modal) { modal.style.display = 'flex'; onbNextStep(1); }
   }
   updateTrialBanner();
 }
-function closeWelcome() {
-  var modal = document.getElementById('welcomeModal');
-  if (modal) modal.style.display = 'none';
-  var cb = document.getElementById('welcomeDontShow');
-  if (cb && cb.checked) {
-    localStorage.setItem('stafflo_welcome_done', '1');
-    localStorage.setItem('stafflo_tour_dismissed_forever', '1');
+
+function onbNextStep(step) {
+  if (step === 2) {
+    var name = (document.getElementById('onbVillaName').value || '').trim();
+    if (name) {
+      var cfg = getCfg();
+      cfg.villa = name;
+      setCfg(cfg);
+    }
   }
-  localStorage.setItem('stafflo_onboarded', '1');
-  try { if (window.posthog) posthog.capture('welcome_closed', {dismissed_forever: !!(cb && cb.checked)}); } catch(e){}
-  try { updateSetupChecklist(); } catch(e){}
+  for (var i = 1; i <= 3; i++) {
+    var el = document.getElementById('onbStep' + i);
+    if (el) el.style.display = i === step ? '' : 'none';
+  }
+  for (var j = 1; j <= 3; j++) {
+    var p = document.getElementById('prog' + j);
+    if (p) p.style.background = j <= step ? '#C9963A' : 'rgba(15,35,24,.1)';
+  }
+  if (step === 3) onbGenerateGreeting();
 }
+window.onbNextStep = onbNextStep;
+
+function onbImportIcal() {
+  var url = (document.getElementById('onbIcalUrl').value || '').trim();
+  if (!url) { onbNextStep(3); return; }
+  var btn = document.getElementById('onbImportBtn');
+  var res = document.getElementById('onbIcalResult');
+  btn.textContent = (lang === 'fr' ? 'Import…' : 'Importing…');
+  btn.disabled = true;
+  var cfg = getCfg();
+  cfg.icalFeeds = cfg.icalFeeds || [];
+  if (!cfg.icalFeeds.find(function(f){ return f.url === url; })) {
+    cfg.icalFeeds.push({ url: url, label: 'Main' });
+  }
+  setCfg(cfg);
+  // The actual sync function in this codebase is icalSyncAll(); some older skill
+  // packs may register syncIcalFeeds, so we try both.
+  var syncFn = (typeof window.icalSyncAll === 'function') ? window.icalSyncAll
+             : (typeof window.syncIcalFeeds === 'function') ? window.syncIcalFeeds
+             : null;
+  if (!syncFn) {
+    btn.textContent = (lang === 'fr' ? 'Suivant →' : 'Next →');
+    btn.disabled = false;
+    btn.onclick = function(){ onbNextStep(3); };
+    return;
+  }
+  Promise.resolve(syncFn()).then(function(){
+    var count = (typeof clients !== 'undefined') ? clients.filter(function(c){ return c.arrival; }).length : 0;
+    if (res) {
+      res.style.display = '';
+      res.style.background = 'rgba(34,120,70,.08)';
+      res.style.color = '#1d6b45';
+      res.textContent = '✅ ' + count + ' ' + (lang === 'fr' ? ('réservation' + (count !== 1 ? 's' : '') + ' importée' + (count !== 1 ? 's' : '') + ' !') : ('booking' + (count !== 1 ? 's' : '') + ' imported!'));
+    }
+    btn.textContent = (lang === 'fr' ? 'Suivant →' : 'Next →');
+    btn.disabled = false;
+    btn.onclick = function(){ onbNextStep(3); };
+  }).catch(function(){
+    btn.textContent = (lang === 'fr' ? 'Importer →' : 'Import →');
+    btn.disabled = false;
+    if (res) {
+      res.style.display = '';
+      res.style.background = 'rgba(180,60,60,.08)';
+      res.style.color = '#a33030';
+      res.textContent = (lang === 'fr' ? '⚠ Lien non valide. Vérifiez l\'URL.' : '⚠ Could not parse link. Check URL and try again.');
+    }
+  });
+}
+window.onbImportIcal = onbImportIcal;
+
+function onbGenerateGreeting() {
+  var cfg = getCfg();
+  var fr = lang === 'fr';
+  var villa = cfg.villa || (fr ? 'votre villa' : 'your villa');
+  var upcoming = [];
+  if (typeof clients !== 'undefined') {
+    upcoming = clients.filter(function(c){
+      return c.arrival && new Date(c.arrival) >= new Date() && c.bookingStatus === 'confirmed';
+    }).sort(function(a, b){ return new Date(a.arrival) - new Date(b.arrival); });
+  }
+  var msg;
+  if (upcoming.length) {
+    var next = upcoming[0];
+    var days = Math.round((new Date(next.arrival) - new Date()) / 86400000);
+    var when = days === 0 ? (fr?'aujourd\'hui':'today')
+             : days === 1 ? (fr?'demain':'tomorrow')
+             : (fr?('dans ' + days + ' jours'):('in ' + days + ' days'));
+    if (fr) {
+      msg = 'Bienvenue à ' + villa + '. Vous avez ' + upcoming.length + ' réservation' + (upcoming.length > 1 ? 's' : '') + ' à venir. ' +
+            next.name + ' arrive ' + when + '. Je peux préparer un brief staff, suggérer un prix, ou générer une checklist d\'accueil — demandez.';
+    } else {
+      msg = 'Welcome to ' + villa + '. You have ' + upcoming.length + ' upcoming booking' + (upcoming.length > 1 ? 's' : '') + '. ' +
+            next.name + ' arrives ' + when + '. I can prepare a staff brief, suggest a price, or generate a welcome checklist — just ask.';
+    }
+  } else {
+    if (fr) {
+      msg = 'Bienvenue à ' + villa + '. Je suis ARIA, votre IA villa manager. Connectez votre calendrier ou ajoutez un client pour démarrer. Je peux briefer votre staff, suggérer des prix, et gérer vos opérations.';
+    } else {
+      msg = 'Welcome to ' + villa + '. I\'m ARIA, your AI villa manager. Connect your calendar or add a guest to get started. I can brief your staff, suggest prices, and manage your operations.';
+    }
+  }
+  var el = document.getElementById('onbAriaMsg');
+  if (el) el.textContent = msg;
+}
+window.onbGenerateGreeting = onbGenerateGreeting;
+
+function onbFinish() {
+  localStorage.setItem('stafflo_tour_done', '1');
+  localStorage.setItem('stafflo_welcome_done', '1');
+  localStorage.setItem('stafflo_onboarded', '1');
+  var m = document.getElementById('onboardModal');
+  if (m) m.style.display = 'none';
+  try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
+  try { if (typeof loadHomeData === 'function') loadHomeData(); } catch(e){}
+  try { updateSetupChecklist(); } catch(e){}
+  try { if (window.posthog) posthog.capture('onboarding_finished', {flow:'3step'}); } catch(e){}
+}
+window.onbFinish = onbFinish;
+
+function onbSkip() {
+  localStorage.setItem('stafflo_tour_done', '1');
+  localStorage.setItem('stafflo_welcome_done', '1');
+  var m = document.getElementById('onboardModal');
+  if (m) m.style.display = 'none';
+  try { updateSetupChecklist(); } catch(e){}
+  try { if (window.posthog) posthog.capture('onboarding_skipped', {flow:'3step'}); } catch(e){}
+}
+window.onbSkip = onbSkip;
 
 // Persistent setup checklist on tab-today — hides itself when 4/4 done
 function updateSetupChecklist() {
@@ -14949,9 +15082,10 @@ window.updateSetupChecklist = updateSetupChecklist;
 // Backward compat: old startDemo loads sample paste content
 function startDemo() {
   var demoMsg = "New booking confirmed! Celia Magne arrives 23 Apr.\n\nLuxury Family Villa-Pool, Butler, Chef in Marrakech\nCheck-in: Wed, 23 Apr 2026 14:00\nCheckout: Sun, 27 Apr 2026 12:00\nGuests: 3 adults\nHost payout: \u20ac2,040 (3.6% commission)\n\n---WhatsApp---\nCelia Magne: Bonjour ! Nous arrivons vers 15h. Nous sommes v\u00e9g\u00e9tariens, pas d'allergies. Un anniversaire samedi soir si possible d\u00e9coration florale. Merci !";
-  var modal = document.getElementById('welcomeModal');
+  var modal = document.getElementById('onboardModal');
   if (modal) modal.style.display = 'none';
   localStorage.setItem('stafflo_tour_v1_done', '1');
+  localStorage.setItem('stafflo_tour_done', '1');
   localStorage.setItem('stafflo_onboarded', '1');
   var ta = document.getElementById('pasteInput');
   if (ta) {
