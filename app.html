@@ -2035,6 +2035,7 @@ body, main { background: var(--cream); }
   <div class="crm-subfilters" id="subPipeline" style="display:none;gap:6px;margin-bottom:12px;flex-wrap:wrap">
     <button class="cf-btn on" data-f="all" onclick="setFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
     <button class="cf-btn" data-f="inquiry" onclick="setFilter('inquiry',this)" data-fr="💬 Actifs" data-en="💬 Active">💬 Actifs</button>
+    <button class="cf-btn" data-f="quoted" onclick="setFilter('quoted',this)" data-fr="📋 Devis envoyés" data-en="📋 Quoted">📋 Devis envoyés</button>
     <button class="cf-btn" data-f="declined" onclick="setFilter('declined',this)" data-fr="❌ Refusés" data-en="❌ Declined">❌ Refusés</button>
   </div>
 
@@ -4958,6 +4959,58 @@ function getStatus(c) {
   return 'past';
 }
 
+// Lead pipeline stage — collapses bookingStatus + date math into a single enum.
+// Pipeline: inquiry → quoted → pending → confirmed → (in-stay) → (departed)
+function getLeadStage(c) {
+  if (!c) return 'unknown';
+  var bs = c.bookingStatus || 'confirmed';
+  if (bs === 'confirmed' || bs === 'pending') {
+    var now = new Date(); now.setHours(0,0,0,0);
+    var arr = c.arrival ? new Date(c.arrival) : null;
+    var dep = c.departure ? new Date(c.departure) : null;
+    if (arr && dep && arr <= now && dep >= now) return 'in-stay';
+    if (dep && dep < now) return 'departed';
+  }
+  return bs;
+}
+window.getLeadStage = getLeadStage;
+
+// Lead heat — null for confirmed/no-status, else 'hot' / 'warm' / 'cold'.
+function getLeadScore(c) {
+  if (!c || !c.bookingStatus || c.bookingStatus === 'confirmed') return null;
+  var score = 0;
+  if (c.arrival) score += 30;
+  if (c.phone && c.phone.trim()) score += 20;
+  if (c.email && c.email.trim()) score += 10;
+  if (c.price && +c.price > 0) score += 15;
+  if (c.arrival) {
+    var diff = Math.round((new Date(c.arrival).getTime() - Date.now()) / 86400000);
+    if (diff >= 0 && diff <= 30) score += 25;
+    if (diff >= 0 && diff <= 7) score += 15;
+  }
+  var created = c.createdAt ? new Date(c.createdAt).getTime() : 0;
+  if (Date.now() - created < 86400000) score += 10;
+  if (score >= 60) return 'hot';
+  if (score >= 30) return 'warm';
+  return 'cold';
+}
+window.getLeadScore = getLeadScore;
+
+// Move a client between pipeline stages (inquiry/quoted/pending/confirmed/declined).
+function updateBookingStatus(clientId, newStatus) {
+  var idx = clients.findIndex(function(c){ return c.id === clientId; });
+  if (idx < 0) return;
+  clients[idx].bookingStatus = newStatus;
+  clients[idx].updatedAt = new Date().toISOString();
+  if (typeof saveLocal === 'function') saveLocal();
+  if (typeof pushToSupabase === 'function') pushToSupabase(clients[idx]);
+  if (typeof renderAll === 'function') renderAll();
+  var name = clients[idx].name || '';
+  if (typeof toast === 'function') toast('✓ ' + name + ' → ' + newStatus);
+  if (typeof openDetail === 'function') openDetail(clientId);
+}
+window.updateBookingStatus = updateBookingStatus;
+
 function nights(c) {
   if (!c.arrival || !c.departure) return 0;
   return Math.round((new Date(c.departure) - new Date(c.arrival)) / 864e5);
@@ -5003,13 +5056,19 @@ function setMainTab(tab, btn){
 }
 
 function updateCrmCounts(){
-  var isRequest = function(c){ return c.bookingStatus==='lead' || c.bookingStatus==='inquiry' || c.bookingStatus==='pending'; };
+  var isRequest = function(c){
+    var bs = c.bookingStatus;
+    return bs==='lead' || bs==='inquiry' || bs==='pending' || bs==='quoted' || bs==='declined';
+  };
   var nClients = clients.filter(function(c){ return !isRequest(c); }).length;
-  var nLeads = clients.filter(isRequest).length;
+  var nLeads   = clients.filter(function(c){ var bs=c.bookingStatus; return bs==='lead'||bs==='inquiry'||bs==='pending'; }).length;
+  var nQuoted  = clients.filter(function(c){ return c.bookingStatus==='quoted'; }).length;
   var ec = document.getElementById('countClients');
   var el = document.getElementById('countLeads');
+  var eq = document.getElementById('countQuoted');
   if(ec) ec.textContent = '('+nClients+')';
-  if(el) el.textContent = '('+nLeads+')';
+  if(el) el.textContent = '('+(nLeads + nQuoted)+')';
+  if(eq) eq.textContent = '('+nQuoted+')';
 }
 
 function setFilter(f, btn) {
@@ -5085,7 +5144,7 @@ function renderClients() {
 
   // Main tab filter (Confirmés vs Demandes)
   var mainTab = window.currentMainTab || 'clients';
-  var isRequestStatus = function(s){ return s==='lead' || s==='inquiry' || s==='pending'; };
+  var isRequestStatus = function(s){ return s==='lead' || s==='inquiry' || s==='pending' || s==='quoted' || s==='declined'; };
   list = list.filter(function(c){
     return mainTab==='pipeline' ? isRequestStatus(c.bookingStatus) : !isRequestStatus(c.bookingStatus);
   });
@@ -5102,7 +5161,8 @@ function renderClients() {
     // In Clients tab "all" excludes past; in Pipeline tab "all" keeps all leads
     if (mainTab !== 'pipeline') list = list.filter(function(x){ return getStatus(x) !== 'past'; });
   }
-  else if (crmFilter === 'inquiry')  list = list.filter(function(x){ return x.bookingStatus === 'inquiry'; });
+  else if (crmFilter === 'inquiry')  list = list.filter(function(x){ var bs=x.bookingStatus; return bs==='inquiry'||bs==='lead'||bs==='pending'; });
+  else if (crmFilter === 'quoted')   list = list.filter(function(x){ return x.bookingStatus === 'quoted'; });
   else if (crmFilter === 'declined') list = list.filter(function(x){ return x.bookingStatus === 'declined'; });
   else if (crmFilter === 'current')  list = list.filter(function(x){ return getStatus(x) === 'current'; });
   else if (crmFilter === 'upcoming') list = list.filter(function(x){ return getStatus(x) === 'upcoming'; });
@@ -5146,12 +5206,41 @@ function renderClients() {
                  s==='past'     ? (fr?'Passé':'Past') : (fr?'Sans date':'No date');
     // SES-safe number format
     var netStr = net ? (Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f') + '€') : '';
-    html += '<div class="client-card ' + s + '" data-id="' + cl.id + '">' +
+    // Lead heat badge (only for non-confirmed)
+    var score = getLeadScore(cl);
+    var scoreBadge = '';
+    if (score === 'hot')       scoreBadge = '<span style="background:#e24b4a;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle">HOT</span>';
+    else if (score === 'warm') scoreBadge = '<span style="background:#C9963A;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle">WARM</span>';
+    else if (score === 'cold') scoreBadge = '<span style="background:#8a8a7a;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle">COLD</span>';
+
+    // Response-time indicator for fresh inquiries / leads
+    var responseTime = '';
+    if (cl.bookingStatus === 'inquiry' || cl.bookingStatus === 'lead') {
+      var createdMs = cl.createdAt ? new Date(cl.createdAt).getTime() : 0;
+      if (createdMs) {
+        var hoursAgo = Math.round((Date.now() - createdMs) / 3600000);
+        if (hoursAgo < 1)       responseTime = '<span style="color:#1d6b45;font-size:10px">⚡ < 1h</span>';
+        else if (hoursAgo < 24) responseTime = '<span style="color:#C9963A;font-size:10px">⏰ ' + hoursAgo + 'h</span>';
+        else                    responseTime = '<span style="color:#e24b4a;font-size:10px">🔴 ' + Math.round(hoursAgo/24) + 'j</span>';
+      }
+    }
+
+    // Stage-colored left border + dimming for declined
+    var lstage = getLeadStage(cl);
+    var borderColor = lstage === 'inquiry'  ? '#C9963A'
+                    : lstage === 'quoted'   ? '#5DCAA5'
+                    : lstage === 'declined' ? '#e24b4a'
+                    : (lstage === 'confirmed' || lstage === 'in-stay' || lstage === 'departed') ? '#1d6b45'
+                    : '';
+    var cardStyle = borderColor ? ('border-left:3px solid ' + borderColor + ';') : '';
+    if (lstage === 'declined') cardStyle += 'opacity:.6;';
+
+    html += '<div class="client-card ' + s + '" data-id="' + cl.id + '"' + (cardStyle ? (' style="' + cardStyle + '"') : '') + '>' +
       '<div class="cc-top">' +
         '<div class="cc-avatar">' + initials(cl.name) + '</div>' +
         '<div>' +
-          '<div class="cc-name">' + (cl.name||'') + '</div>' +
-          '<div class="cc-sub">' + (cl.nat||'') + (cl.source ? ' · ' + cl.source : '') + '</div>' +
+          '<div class="cc-name">' + (cl.name||'') + scoreBadge + '</div>' +
+          '<div class="cc-sub">' + (cl.nat||'') + (cl.source ? ' · ' + cl.source : '') + (responseTime ? ' · ' + responseTime : '') + '</div>' +
         '</div>' +
         '<span class="cc-badge ' + bClass + '">' + bText + '</span>' +
       '</div>' +
@@ -5296,6 +5385,33 @@ function openDetail(id) {
   var badgeColor = s==='current'?'#52b788':s==='upcoming'?'var(--gold)':'var(--muted)';
   var badgeTextStr = s==='current'?(fr?'En cours':'Current'):s==='upcoming'?(fr?'⏳ À venir':'⏳ Upcoming'):(fr?'✓ Passé':'✓ Past');
 
+  // Stage-specific actions injected below the dark-green header
+  var stage = getLeadStage(cl);
+  var nameEsc = (cl.name || '').replace(/'/g, "\\'");
+  var pillBase = 'font-size:12px;padding:6px 14px;border-radius:16px;cursor:pointer;font-family:Inter,sans-serif;display:inline-flex;align-items:center;gap:4px';
+  var actionsHtml = '';
+  if (stage === 'inquiry') {
+    actionsHtml =
+      '<div style="display:flex;gap:8px;margin:12px 16px;flex-wrap:wrap">' +
+        '<button onclick="openAriaModal(\'draft a quote for ' + nameEsc + '\')" style="' + pillBase + ';border:1px solid #C9963A;background:rgba(201,150,58,.1);color:#8a6520"><i class="ti ti-file-invoice" style="font-size:13px"></i> ' + (fr?'Envoyer un devis':'Send a quote') + '</button>' +
+        '<button onclick="updateBookingStatus(\'' + cl.id + '\',\'quoted\')" style="' + pillBase + ';border:1px solid rgba(15,35,24,.15);background:white;color:#0F2318"><i class="ti ti-check" style="font-size:13px"></i> ' + (fr?'Marquer devis envoyé':'Mark as quoted') + '</button>' +
+        '<button onclick="updateBookingStatus(\'' + cl.id + '\',\'declined\')" style="' + pillBase + ';border:1px solid rgba(180,60,60,.2);background:white;color:#a33030"><i class="ti ti-x" style="font-size:13px"></i> ' + (fr?'Décliner':'Decline') + '</button>' +
+      '</div>';
+  } else if (stage === 'quoted') {
+    actionsHtml =
+      '<div style="display:flex;gap:8px;margin:12px 16px;flex-wrap:wrap">' +
+        '<button onclick="openAriaModal(\'follow up with ' + nameEsc + ' about their quote\')" style="' + pillBase + ';border:1px solid #C9963A;background:rgba(201,150,58,.1);color:#8a6520"><i class="ti ti-send" style="font-size:13px"></i> ' + (fr?'Relancer':'Follow up') + '</button>' +
+        '<button onclick="updateBookingStatus(\'' + cl.id + '\',\'confirmed\')" style="' + pillBase + ';border:1px solid #1d6b45;background:rgba(34,120,70,.1);color:#1d6b45"><i class="ti ti-check" style="font-size:13px"></i> ' + (fr?'Confirmer réservation':'Confirm booking') + '</button>' +
+        '<button onclick="updateBookingStatus(\'' + cl.id + '\',\'declined\')" style="' + pillBase + ';border:1px solid rgba(180,60,60,.2);background:white;color:#a33030"><i class="ti ti-x" style="font-size:13px"></i> ' + (fr?'Décliner':'Decline') + '</button>' +
+      '</div>';
+  } else if (stage === 'confirmed') {
+    actionsHtml =
+      '<div style="display:flex;gap:8px;margin:12px 16px;flex-wrap:wrap">' +
+        '<button onclick="openAriaModal(\'generate staff checklist for ' + nameEsc + '\')" style="' + pillBase + ';border:1px solid rgba(15,35,24,.15);background:white;color:#0F2318"><i class="ti ti-checkbox" style="font-size:13px"></i> ' + (fr?'Checklist staff':'Staff checklist') + '</button>' +
+        '<button onclick="openAriaModal(\'brief Said on ' + nameEsc + ' stay\')" style="' + pillBase + ';border:1px solid rgba(15,35,24,.15);background:white;color:#0F2318"><i class="ti ti-send" style="font-size:13px"></i> ' + (fr?'Brief Said':'Brief Said') + '</button>' +
+      '</div>';
+  }
+
   // Tasks for Qui fait quoi
   var tasks = [];
   var n2 = notesLower;
@@ -5369,6 +5485,7 @@ function openDetail(id) {
       '<div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:2px">'+(cl.nat||'')+' '+(cl.source?'· '+cl.source:'')+'</div></div>' +
       '<span style="background:'+badgeColor+';color:'+(s==='current'?'#0F2318':'#fff')+';font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap">'+badgeTextStr+'</span>' +
     '</div>' +
+    actionsHtml +
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 2fr 1fr;border-bottom:1px solid var(--border)">' +
       [fmtDate(cl.arrival,true)+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Arrivée':'Arrival')+'</span>',
        fmtDate(cl.departure,true)+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Départ':'Departure')+'</span>',
