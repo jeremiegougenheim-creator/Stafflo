@@ -4394,6 +4394,27 @@ async function syncNow() {
 function loadLocal() {
   if (isDemoMode()) return;
   try { clients = JSON.parse(localStorage.getItem('stafflo_clients') || '[]'); } catch { clients = []; }
+  // One-shot migration: a handful of seeded clients (Millie/Marouan/Jonathan) were
+  // imported as 'confirmed' but never confirmed in reality. Supabase has already
+  // been corrected to 'inquiry'; this flips stale localStorage copies on first load.
+  try {
+    if (!localStorage.getItem('stafflo_fix_misclassified_v1') && Array.isArray(clients) && clients.length) {
+      var fixNames = ['millie', 'marouan', 'jonathan'];
+      var changed = false;
+      clients.forEach(function(c){
+        var n = (c.name || '').toLowerCase().trim();
+        if (fixNames.some(function(f){ return n.indexOf(f) !== -1; }) && c.bookingStatus !== 'inquiry') {
+          c.bookingStatus = 'inquiry';
+          c.updatedAt = new Date().toISOString();
+          changed = true;
+        }
+      });
+      if (changed) {
+        localStorage.setItem('stafflo_clients', JSON.stringify(clients));
+      }
+      localStorage.setItem('stafflo_fix_misclassified_v1', '1');
+    }
+  } catch(e){}
 }
 function saveLocal() {
   if (isDemoMode()) return;
