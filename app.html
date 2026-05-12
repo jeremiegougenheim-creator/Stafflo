@@ -1802,7 +1802,13 @@ body, main { background: var(--cream); }
   <div class="v2-card" id="heroActionBoardToday">
     <div class="v2-card-hd">
       <div class="v2-card-title"><i class="ti ti-bolt"></i> <span data-fr="Aria suggère" data-en="Aria suggests">Aria suggère</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Ops du jour" data-en="Today's ops">Ops du jour</span></div>
-      <span style="font-size:11px;color:var(--muted)" id="heroActionsCount">—</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="briefAllStaff()" title="Brief staff" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:#25D366;color:#fff;border:none;border-radius:8px;font-size:11px;font-family:Inter,sans-serif;font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12)">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>
+          <span data-fr="Brief staff" data-en="Brief staff">Brief staff</span>
+        </button>
+        <span style="font-size:11px;color:var(--muted)" id="heroActionsCount">—</span>
+      </div>
     </div>
     <div class="v2-card-body" id="heroActionsBody" style="padding:14px 18px">
       <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
@@ -2352,8 +2358,15 @@ body, main { background: var(--cream); }
     <div class="field"><label data-fr="Votre prénom" data-en="Your first name">Votre prénom</label><input id="cfgOwner" placeholder="Jérémie"></div>
     <div class="field"><label data-fr="Ville" data-en="City">Ville</label><input id="cfgCity" placeholder="Marrakech"></div>
     <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
+    <div class="field" style="margin-top:-6px">
+      <button type="button" onclick="if(typeof showOnboardingWizard==='function')showOnboardingWizard();" style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="📱 Configurer staff + WhatsApp" data-en="📱 Set up staff + WhatsApp">📱 Configurer staff + WhatsApp</button>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.4" data-fr="Numéros WhatsApp par membre (utilisés pour les briefs)" data-en="WhatsApp per member (used for staff briefs)">Numéros WhatsApp par membre (utilisés pour les briefs)</div>
+    </div>
     <div class="field"><label data-fr="WhatsApp villa" data-en="Villa WhatsApp">WhatsApp villa</label><input id="cfgWa" placeholder="+212 6..."></div>
     <div class="field"><label>GPS</label><input id="cfgGps" placeholder="31.6295, -7.9811"></div>
+    <div class="field"><label data-fr="Adresse / lien Google Maps" data-en="Address / Google Maps link">Adresse / lien Google Maps</label><input id="cfgAddress" placeholder="Rue …, Marrakech — https://maps.app.goo.gl/..."></div>
+    <div class="field"><label data-fr="Code porte" data-en="Door code">Code porte</label><input id="cfgDoorCode" placeholder="1234"></div>
+    <div class="field"><label data-fr="Mot de passe WiFi" data-en="WiFi password">Mot de passe WiFi</label><input id="cfgWifiPassword" placeholder="VillaWiFi2025"></div>
   </div>
 
   <!-- ARIA Memory: persistent reference info injected in every ARIA call -->
@@ -5020,6 +5033,440 @@ function isBookable(c) {
 }
 window.isBookable = isBookable;
 
+// ─── Smart WhatsApp ──────────────────────────────────────────────────────
+// Context-aware WhatsApp: detects staff vs guest vs lead and routes to the
+// right message builder. Phone numbers are normalized for wa.me.
+
+function _normalizePhone(raw, defaultCountryDigits) {
+  if (!raw) return '';
+  var s = String(raw).replace(/[\s\-+().]/g, '');
+  if (s.startsWith('00')) s = s.slice(2);
+  // Local-format Moroccan numbers (06.. or 07.. or 0033...) — prepend country.
+  if (defaultCountryDigits && s.length <= 10 && /^0/.test(s)) {
+    s = defaultCountryDigits + s.replace(/^0/, '');
+  } else if (defaultCountryDigits && s.length === 9) {
+    s = defaultCountryDigits + s;
+  }
+  return s;
+}
+
+function smartWhatsApp(targetType, targetId) {
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  var phone, message, recipientName;
+
+  if (targetType === 'staff') {
+    var members = cfg.staffMembers || [];
+    var idx = (typeof targetId === 'string') ? parseInt(targetId, 10) : targetId;
+    var s = members[idx];
+    if (!s || !s.wa) {
+      toast(fr ? 'Pas de numéro WhatsApp configuré pour ce staff' : 'No WhatsApp number for this staff member');
+      return;
+    }
+    phone = s.wa;
+    recipientName = s.name || '';
+    message = buildStaffBrief(s, cfg, fr);
+  } else {
+    var c = (typeof clients !== 'undefined') ? clients.find(function(x){ return x.id === targetId; }) : null;
+    if (!c) { toast(fr ? 'Client introuvable' : 'Client not found'); return; }
+    if (!c.phone || !c.phone.trim()) {
+      // No phone — fall back to drafting an email via ARIA.
+      if (typeof openAriaModal === 'function') {
+        openAriaModal((fr ? 'rédige un email pour ' : 'draft an email for ') + (c.name || ''));
+      }
+      return;
+    }
+    phone = c.phone;
+    recipientName = c.name || '';
+    var bs = c.bookingStatus || 'confirmed';
+    if (bs === 'inquiry' || bs === 'lead' || bs === 'quoted' || bs === 'pending') {
+      message = buildLeadMessage(c, cfg, fr);
+    } else {
+      message = buildGuestMessage(c, cfg, fr);
+    }
+  }
+
+  // Normalize phone (Morocco default unless cfg.country says otherwise).
+  var cc = (cfg.country === 'FR') ? '33' : '212';
+  phone = _normalizePhone(phone, cc);
+  if (!phone) { toast(fr ? 'Numéro invalide' : 'Invalid phone number'); return; }
+
+  var url = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(message);
+  window.open(url, '_blank');
+  toast('✅ WhatsApp → ' + recipientName);
+}
+window.smartWhatsApp = smartWhatsApp;
+
+// Brief staff picker — open WhatsApp for one staff member at a time.
+// Browsers block batch popups, so we surface a tiny picker when there's > 1 member.
+function briefAllStaff() {
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  var members = (cfg.staffMembers || []).map(function(s, i){ return { idx:i, s:s }; })
+    .filter(function(o){ return o.s && o.s.wa && o.s.wa.trim(); });
+  if (!members.length) {
+    toast(fr ? 'Aucun staff avec WhatsApp configuré' : 'No staff with WhatsApp configured');
+    return;
+  }
+  if (members.length === 1) {
+    smartWhatsApp('staff', members[0].idx);
+    return;
+  }
+  var prev = document.getElementById('staffBriefPicker');
+  if (prev) prev.remove();
+  var modal = document.createElement('div');
+  modal.id = 'staffBriefPicker';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.55);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.onclick = function(e){ if (e.target === modal) modal.remove(); };
+  var inner = '<div style="background:#fff;border-radius:14px;padding:18px 18px 14px;max-width:360px;width:100%;box-shadow:0 18px 50px rgba(0,0,0,.3);font-family:Inter,sans-serif">' +
+    '<div style="font-family:Fraunces,serif;font-size:18px;color:#0F2318;margin-bottom:4px">' + (fr?'Brief staff':'Brief staff') + '</div>' +
+    '<div style="font-size:12px;color:#8a8a7a;margin-bottom:14px">' + (fr?'Choisir un membre :':'Pick a member:') + '</div>';
+  members.forEach(function(o){
+    var name = (o.s.name || '').replace(/"/g, '&quot;');
+    var role = (o.s.role || '').replace(/"/g, '&quot;');
+    inner += '<button onclick="document.getElementById(\'staffBriefPicker\').remove();smartWhatsApp(\'staff\',' + o.idx + ')" style="display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;background:#FAF6EE;border:1px solid #E8E2D8;border-radius:10px;margin-bottom:8px;cursor:pointer;font-family:inherit;text-align:left">' +
+      '<span style="width:30px;height:30px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600">' + (name[0]||'?').toUpperCase() + '</span>' +
+      '<div style="flex:1;min-width:0"><div style="font-weight:600;color:#0F2318;font-size:13px">' + name + '</div>' +
+      '<div style="font-size:11px;color:#8a8a7a">' + role + ' · ' + (o.s.wa||'') + '</div></div>' +
+      '<span style="color:#25D366;font-size:16px">→</span>' +
+    '</button>';
+  });
+  inner += '<button onclick="document.getElementById(\'staffBriefPicker\').remove()" style="width:100%;padding:8px;background:none;border:none;color:#8a8a7a;font-size:12px;cursor:pointer;font-family:inherit;margin-top:4px">' + (fr?'Annuler':'Cancel') + '</button></div>';
+  modal.innerHTML = inner;
+  document.body.appendChild(modal);
+}
+window.briefAllStaff = briefAllStaff;
+
+function buildStaffBrief(staffMember, cfg, fr) {
+  var today = new Date();
+  var todayISO = today.toISOString().slice(0,10);
+  var lines = [];
+  var role = (staffMember.role || '').toLowerCase();
+  var villaName = cfg.villa || 'Villa';
+
+  lines.push('📋 *Brief ' + villaName + '*');
+  lines.push(today.toLocaleDateString(fr ? 'fr-FR' : 'en-US', { weekday:'long', day:'numeric', month:'long' }));
+  lines.push('');
+
+  var arrivals = [], departures = [], inHouse = [];
+  if (typeof clients !== 'undefined') {
+    clients.forEach(function(c) {
+      var bs = c.bookingStatus;
+      if (bs === 'inquiry' || bs === 'lead' || bs === 'quoted' || bs === 'declined') return;
+      if (typeof isBookable === 'function' && !isBookable(c)) return;
+      var arr = (c.arrival || '').slice(0,10);
+      var dep = (c.departure || '').slice(0,10);
+      if (arr === todayISO) arrivals.push(c);
+      if (dep === todayISO) departures.push(c);
+      if (arr && dep && arr <= todayISO && dep > todayISO) inHouse.push(c);
+    });
+  }
+
+  var guestNotes = function(c, indent) {
+    if (!c.notes) return;
+    c.notes.split(/[,;·]/).forEach(function(n){
+      n = n.trim();
+      if (n) lines.push(indent + '→ ' + n);
+    });
+  };
+
+  if (departures.length && arrivals.length) {
+    // TURNAROUND
+    lines.push('⚡ *TURNAROUND*');
+    lines.push('');
+    departures.forEach(function(c){ lines.push('🔴 *' + (fr?'Départ':'Depart') + ' :* ' + c.name); });
+    lines.push('');
+    arrivals.forEach(function(c){
+      lines.push('🟢 *' + (fr?'Arrivée':'Arrival') + ' :* ' + c.name + (c.nat ? ' ' + c.nat : ''));
+      lines.push('   👥 ' + (c.guests || '?') + (fr ? ' personnes' : ' guests'));
+      guestNotes(c, '   ');
+      if (c.phone) lines.push('   📞 ' + c.phone);
+    });
+    lines.push('');
+    if (role.indexOf('major') >= 0 || role.indexOf('butler') >= 0) {
+      lines.push('*Checklist ' + (staffMember.name||'') + ' :*');
+      lines.push('☐ ' + (fr?'Check-out ':'Check-out ') + departures[0].name + ' : ' + (fr?'état des lieux':'inventory check'));
+      lines.push('☐ ' + (fr?'Ménage express entre deux':'Quick turnover cleaning'));
+      lines.push('☐ ' + (fr?'Préparer accueil ':'Welcome prep ') + arrivals[0].name);
+      lines.push('☐ ' + (fr?'Fleurs fraîches + code porte':'Fresh flowers + door code'));
+      lines.push('☐ ' + (fr?'Confirmer transfert arrivée':'Confirm arrival transfer'));
+    } else if (role.indexOf('chef') >= 0 || role.indexOf('cuisi') >= 0) {
+      lines.push('*Checklist ' + (staffMember.name||'') + ' :*');
+      arrivals.forEach(function(c){
+        var diet = (c.notes || '').match(/v[ée]g[ée]tarien|vegetarian|vegan|halal|allerg[a-z]*|sans gluten|gluten.free|kosher|casher/i);
+        lines.push('☐ ' + (fr?'Menu ':'Menu ') + c.name + (diet ? ' ⚠️ ' + diet[0] : ''));
+      });
+      lines.push('☐ ' + (fr?'Courses fraîches':'Fresh groceries'));
+      lines.push('☐ ' + (fr?'Boissons de bienvenue':'Welcome drinks'));
+    } else if (role.indexOf('ménage') >= 0 || role.indexOf('menage') >= 0 || role.indexOf('housekeep') >= 0 || role.indexOf('bouch') >= 0) {
+      lines.push('*Checklist ' + (staffMember.name||'') + ' :*');
+      lines.push('☐ ' + (fr?'Ménage complet après départ':'Full cleaning after checkout'));
+      lines.push('☐ ' + (fr?'Changement linge toutes chambres':'Linen change all rooms'));
+      lines.push('☐ ' + (fr?'Piscine + terrasse':'Pool + terrace'));
+      lines.push('☐ ' + (fr?'Produits salle de bain':'Bathroom amenities'));
+      lines.push('☐ ' + (fr?'Vérification finale avant arrivée':'Final check before arrival'));
+    }
+  } else if (arrivals.length) {
+    lines.push('🏠 *' + (fr ? 'ARRIVÉE AUJOURD\'HUI' : 'ARRIVING TODAY') + '*');
+    lines.push('');
+    arrivals.forEach(function(c){
+      lines.push('• *' + c.name + '*' + (c.nat ? ' ' + c.nat : ''));
+      lines.push('  👥 ' + (c.guests || '?') + (fr ? ' personnes' : ' guests'));
+      guestNotes(c, '  ');
+      if (c.phone) lines.push('  📞 ' + c.phone);
+    });
+    lines.push('');
+    if (role.indexOf('major') >= 0 || role.indexOf('butler') >= 0) {
+      lines.push('*' + (fr?'À faire':'To do') + ' :*');
+      lines.push('☐ ' + (fr?'Chambres prêtes + linge frais':'Rooms ready + fresh linen'));
+      lines.push('☐ ' + (fr?'Fleurs + accueil':'Flowers + welcome'));
+      lines.push('☐ ' + (fr?'Code porte + WiFi prêts':'Door code + WiFi ready'));
+      lines.push('☐ ' + (fr?'Confirmer transfert':'Confirm transfer'));
+      lines.push('☐ ' + (fr?'Piscine OK':'Pool OK'));
+    } else if (role.indexOf('chef') >= 0 || role.indexOf('cuisi') >= 0) {
+      lines.push('*' + (fr?'À faire':'To do') + ' :*');
+      arrivals.forEach(function(c){
+        var diet = (c.notes || '').match(/v[ée]g[ée]tarien|vegetarian|vegan|halal|allerg[a-z]*|sans gluten|gluten.free|kosher|casher/i);
+        lines.push('☐ ' + (fr?'Menu ':'Menu ') + c.name + (diet ? ' ⚠️ ' + diet[0] : ''));
+      });
+      lines.push('☐ ' + (fr?'Courses + stock boissons':'Groceries + drinks stock'));
+    } else if (role.indexOf('ménage') >= 0 || role.indexOf('menage') >= 0 || role.indexOf('housekeep') >= 0 || role.indexOf('bouch') >= 0) {
+      lines.push('*' + (fr?'À faire':'To do') + ' :*');
+      lines.push('☐ ' + (fr?'Vérification finale toutes chambres':'Final check all rooms'));
+      lines.push('☐ ' + (fr?'Piscine + terrasse impeccables':'Pool + terrace spotless'));
+      lines.push('☐ ' + (fr?'Produits salle de bain complets':'Bathroom amenities stocked'));
+    }
+  } else if (departures.length) {
+    lines.push('🔴 *' + (fr ? 'DÉPART AUJOURD\'HUI' : 'DEPARTING TODAY') + '*');
+    lines.push('');
+    departures.forEach(function(c){ lines.push('• ' + c.name + (fr?' — check-out':' — check-out')); });
+    lines.push('');
+    if (role.indexOf('major') >= 0 || role.indexOf('butler') >= 0) {
+      lines.push('*' + (fr?'À faire':'To do') + ' :*');
+      lines.push('☐ ' + (fr?'État des lieux après départ':'Inventory after checkout'));
+      lines.push('☐ ' + (fr?'Clés / codes récupérés':'Keys / codes recovered'));
+      lines.push('☐ ' + (fr?'Signaler dégâts éventuels':'Report any damage'));
+    } else if (role.indexOf('ménage') >= 0 || role.indexOf('menage') >= 0 || role.indexOf('housekeep') >= 0 || role.indexOf('bouch') >= 0) {
+      lines.push('*' + (fr?'À faire':'To do') + ' :*');
+      lines.push('☐ ' + (fr?'Ménage complet':'Full cleaning'));
+      lines.push('☐ ' + (fr?'Lessive + repassage linge':'Laundry + linen ironing'));
+      lines.push('☐ ' + (fr?'Inventaire produits à racheter':'Restocking inventory'));
+    }
+  } else if (inHouse.length) {
+    lines.push('🟢 *' + (fr ? 'EN SÉJOUR' : 'IN HOUSE') + '*');
+    lines.push('');
+    inHouse.forEach(function(c){
+      var dep = c.departure ? new Date(c.departure) : null;
+      var days = dep ? Math.round((dep - today) / 86400000) : '?';
+      lines.push('• ' + c.name + ' — ' + (fr ? 'départ dans ' + days + 'j' : days + 'd remaining'));
+    });
+    lines.push('');
+    lines.push('*' + (fr?'Routine':'Routine') + ' :*');
+    lines.push('☐ ' + (fr?'Piscine + jardin':'Pool + garden'));
+    lines.push('☐ ' + (fr?'Ménage chambres':'Rooms cleaning'));
+    lines.push('☐ ' + (fr?'Vérifier si le client a besoin de quelque chose':'Check if guest needs anything'));
+  } else {
+    lines.push('✨ *' + (fr ? 'Villa libre aujourd\'hui' : 'Villa empty today') + '*');
+    lines.push('');
+    var nextArr = null;
+    if (typeof clients !== 'undefined') {
+      var upcoming = clients.filter(function(c){
+        return c.arrival && new Date(c.arrival) > today && c.bookingStatus === 'confirmed';
+      }).sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
+      if (upcoming.length) nextArr = upcoming[0];
+    }
+    if (nextArr) {
+      var d = Math.round((new Date(nextArr.arrival) - today) / 86400000);
+      lines.push((fr ? 'Prochaine arrivée' : 'Next arrival') + ' : *' + nextArr.name + '* ' + (fr ? 'dans ' + d + ' jours' : 'in ' + d + ' days'));
+      lines.push('');
+    }
+    lines.push('*' + (fr?'Entretien':'Maintenance') + ' :*');
+    lines.push('☐ ' + (fr?'Piscine + traitement':'Pool + treatment'));
+    lines.push('☐ ' + (fr?'Jardin':'Garden'));
+    lines.push('☐ ' + (fr?'Vérification générale':'General check'));
+  }
+
+  lines.push('');
+  lines.push('_Stafflo ✦_');
+  return lines.join('\n');
+}
+window.buildStaffBrief = buildStaffBrief;
+
+function buildGuestMessage(c, cfg, fr) {
+  var today = new Date();
+  var arr = c.arrival ? new Date(c.arrival) : null;
+  var dep = c.departure ? new Date(c.departure) : null;
+  var daysUntilArrival = arr ? Math.round((arr - today) / 86400000) : 999;
+  var daysUntilDeparture = dep ? Math.round((dep - today) / 86400000) : 999;
+  var villaName = cfg.villa || 'your villa';
+  var guestLang = (c.lang || c.nat || '').match(/fran[çc]|🇫🇷|FR/i) ? 'fr' : 'en';
+  var isFr = guestLang === 'fr';
+  var name = (c.name || '').split(' ')[0];
+  var staffContact = cfg.staffMembers && cfg.staffMembers[0] ? cfg.staffMembers[0].name : '';
+
+  if (daysUntilArrival >= 2 && daysUntilArrival <= 7) {
+    if (isFr) {
+      return 'Bonjour ' + name + ' 👋\n\n' +
+        'Nous préparons ' + villaName + ' pour votre arrivée le ' + arr.toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'}) + '.\n\n' +
+        '🕐 À quelle heure prévoyez-vous d\'arriver ?\n' +
+        '🚗 Avez-vous besoin d\'un transfert depuis l\'aéroport ?\n' +
+        '🍽 Des restrictions alimentaires ou allergies à signaler ?\n\n' +
+        'N\'hésitez pas si vous avez des questions !\n' +
+        (staffContact ? '\nVotre majordome ' + staffContact + ' sera là pour vous accueillir.' : '') +
+        '\n\n_' + villaName + '_';
+    }
+    return 'Hi ' + name + ' 👋\n\n' +
+      'We\'re preparing ' + villaName + ' for your arrival on ' + arr.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'}) + '.\n\n' +
+      '🕐 What time do you expect to arrive?\n' +
+      '🚗 Do you need an airport transfer?\n' +
+      '🍽 Any dietary restrictions or allergies?\n\n' +
+      'Feel free to ask if you have any questions!\n' +
+      (staffContact ? '\nYour butler ' + staffContact + ' will be there to welcome you.' : '') +
+      '\n\n_' + villaName + '_';
+  }
+  if (daysUntilArrival === 0 || daysUntilArrival === 1) {
+    var code = cfg.doorCode || 'XXXX';
+    var wifi = cfg.wifiPassword || '';
+    var address = cfg.address || (fr?'voir lien Google Maps':'see Google Maps link');
+    if (isFr) {
+      return 'Bonjour ' + name + ' ! 🌟\n\n' +
+        villaName + ' est prête pour vous.\n\n' +
+        '🔑 Code porte : *' + code + '*\n' +
+        (wifi ? '📶 WiFi : *' + wifi + '*\n' : '') +
+        (staffContact ? '👤 Votre majordome : *' + staffContact + '*\n' : '') +
+        '\n📍 Adresse : ' + address + '\n\n' +
+        'Bon voyage et à très vite ! 🏡';
+    }
+    return 'Hi ' + name + '! 🌟\n\n' +
+      villaName + ' is ready for you.\n\n' +
+      '🔑 Door code: *' + code + '*\n' +
+      (wifi ? '📶 WiFi: *' + wifi + '*\n' : '') +
+      (staffContact ? '👤 Your butler: *' + staffContact + '*\n' : '') +
+      '\n📍 Address: ' + address + '\n\n' +
+      'Safe travels and see you soon! 🏡';
+  }
+  if (daysUntilArrival < 0 && daysUntilDeparture > 1) {
+    if (isFr) {
+      return 'Bonjour ' + name + ' 😊\n\n' +
+        'J\'espère que vous passez un excellent séjour à ' + villaName + '.\n\n' +
+        'Avez-vous besoin de quelque chose ?\n' +
+        '• 🍽 Réservation restaurant\n' +
+        '• 🏔 Excursion ou activité\n' +
+        '• 🚗 Transport\n' +
+        '• 🛎 Autre demande\n\n' +
+        'N\'hésitez pas, ' + (staffContact || 'nous sommes') + ' à votre disposition !';
+    }
+    return 'Hi ' + name + ' 😊\n\n' +
+      'Hope you\'re enjoying your stay at ' + villaName + '.\n\n' +
+      'Is there anything you need?\n' +
+      '• 🍽 Restaurant reservation\n' +
+      '• 🏔 Day trip or activity\n' +
+      '• 🚗 Transportation\n' +
+      '• 🛎 Anything else\n\n' +
+      'Just let us know — ' + (staffContact || 'we\'re') + ' here for you!';
+  }
+  if (daysUntilDeparture < 0 && daysUntilDeparture >= -14) {
+    if (isFr) {
+      return 'Bonjour ' + name + ' 👋\n\n' +
+        'Merci d\'avoir séjourné à ' + villaName + ' ! Nous espérons que vous avez passé un merveilleux moment.\n\n' +
+        '⭐ Si vous avez apprécié votre séjour, un avis sur Airbnb nous aiderait beaucoup.\n\n' +
+        'Au plaisir de vous accueillir à nouveau ! 🏡';
+    }
+    return 'Hi ' + name + ' 👋\n\n' +
+      'Thank you for staying at ' + villaName + '! We hope you had a wonderful time.\n\n' +
+      '⭐ If you enjoyed your stay, a review on Airbnb would mean a lot.\n\n' +
+      'We\'d love to welcome you back! 🏡';
+  }
+  return isFr
+    ? 'Bonjour ' + name + ', comment puis-je vous aider ? — ' + villaName
+    : 'Hi ' + name + ', how can I help? — ' + villaName;
+}
+window.buildGuestMessage = buildGuestMessage;
+
+function buildLeadMessage(c, cfg, fr) {
+  var today = new Date();
+  var created = c.createdAt ? new Date(c.createdAt) : today;
+  var updated = c.updatedAt ? new Date(c.updatedAt) : created;
+  var daysSinceCreated = Math.round((today - created) / 86400000);
+  var daysSinceUpdated = Math.round((today - updated) / 86400000);
+  var name = (c.name || '').split(' ')[0];
+  var villaName = cfg.villa || 'our villa';
+  var guestLang = (c.lang || c.nat || '').match(/fran[çc]|🇫🇷|FR/i) ? 'fr' : 'en';
+  var isFr = guestLang === 'fr';
+  var dates = '';
+  if (c.arrival && c.departure) {
+    dates = new Date(c.arrival).toLocaleDateString(isFr?'fr-FR':'en-US', {day:'numeric',month:'long'}) +
+      ' → ' + new Date(c.departure).toLocaleDateString(isFr?'fr-FR':'en-US', {day:'numeric',month:'long'});
+  } else if (c.arrival) {
+    dates = new Date(c.arrival).toLocaleDateString(isFr?'fr-FR':'en-US', {day:'numeric',month:'long'});
+  }
+  var price = c.price ? c.price + '€' : '';
+  var question = c.question || c.notes || '';
+
+  if (daysSinceCreated <= 2) {
+    if (isFr) {
+      return 'Bonjour ' + name + ' ! 🌟\n\n' +
+        'Merci pour votre intérêt pour ' + villaName + '.\n\n' +
+        (dates ? '📅 Pour vos dates du ' + dates + ', la villa est disponible.\n' : '') +
+        (price ? '💰 Tarif : *' + price + '*' + (c.guests ? ' pour ' + c.guests + ' personnes' : '') + '\n' : '') +
+        '\n' + villaName + ' offre :\n' +
+        '• 🏊 Piscine privée chauffée\n' +
+        '• 👨‍🍳 Chef privé sur demande\n' +
+        '• 🚗 Transfert aéroport inclus\n' +
+        '• 🛎 Majordome dédié\n\n' +
+        (question ? 'Concernant votre question : _' + question.slice(0,100) + '_\n\n' : '') +
+        'Souhaitez-vous réserver ou avez-vous d\'autres questions ? 😊';
+    }
+    return 'Hi ' + name + '! 🌟\n\n' +
+      'Thank you for your interest in ' + villaName + '.\n\n' +
+      (dates ? '📅 For your dates ' + dates + ', the villa is available.\n' : '') +
+      (price ? '💰 Rate: *' + price + '*' + (c.guests ? ' for ' + c.guests + ' guests' : '') + '\n' : '') +
+      '\n' + villaName + ' features:\n' +
+      '• 🏊 Private heated pool\n' +
+      '• 👨‍🍳 Private chef on request\n' +
+      '• 🚗 Airport transfer included\n' +
+      '• 🛎 Dedicated butler\n\n' +
+      (question ? 'About your question: _' + question.slice(0,100) + '_\n\n' : '') +
+      'Would you like to book or have any other questions? 😊';
+  }
+  if (daysSinceUpdated >= 3 && daysSinceUpdated <= 7) {
+    if (isFr) {
+      return 'Bonjour ' + name + ' 👋\n\n' +
+        'Je me permets de revenir vers vous concernant ' + villaName + '.\n\n' +
+        (dates ? '📅 Vos dates (' + dates + ') sont encore disponibles pour le moment.\n\n' : '') +
+        'Si vous avez des questions supplémentaires ou souhaitez discuter des options, je suis disponible !\n\n' +
+        'Belle journée 🌿';
+    }
+    return 'Hi ' + name + ' 👋\n\n' +
+      'Just following up about ' + villaName + '.\n\n' +
+      (dates ? '📅 Your dates (' + dates + ') are still available for now.\n\n' : '') +
+      'If you have any additional questions or would like to discuss options, I\'m here to help!\n\n' +
+      'Have a lovely day 🌿';
+  }
+  if (daysSinceUpdated > 7 && daysSinceUpdated <= 14) {
+    if (isFr) {
+      return 'Bonjour ' + name + ',\n\n' +
+        'Je voulais vous informer que nous avons d\'autres demandes pour ' + villaName + (dates ? ' sur la période du ' + dates : '') + '.\n\n' +
+        'Si vous êtes encore intéressé(e), je peux :\n' +
+        '• 📅 Vous proposer des dates alternatives\n' +
+        '• 💰 Discuter d\'un tarif ajusté\n' +
+        '• ⏰ Bloquer les dates 48h pour vous\n\n' +
+        'Dites-moi ! 🙏';
+    }
+    return 'Hi ' + name + ',\n\n' +
+      'I wanted to let you know we\'ve received other inquiries for ' + villaName + (dates ? ' around ' + dates : '') + '.\n\n' +
+      'If you\'re still interested, I can:\n' +
+      '• 📅 Suggest alternative dates\n' +
+      '• 💰 Discuss an adjusted rate\n' +
+      '• ⏰ Hold the dates for 48h\n\n' +
+      'Let me know! 🙏';
+  }
+  return isFr
+    ? 'Bonjour ' + name + ', la villa est toujours disponible si vous souhaitez revenir vers nous. À bientôt !'
+    : 'Hi ' + name + ', the villa is still available if you\'d like to get back to us. Best wishes!';
+}
+window.buildLeadMessage = buildLeadMessage;
+
 // Move a client between pipeline stages (inquiry/quoted/pending/confirmed/declined).
 function updateBookingStatus(clientId, newStatus) {
   var idx = clients.findIndex(function(c){ return c.id === clientId; });
@@ -5275,10 +5722,35 @@ function renderClients() {
                     : lstage === 'declined' ? '#e24b4a'
                     : (lstage === 'confirmed' || lstage === 'in-stay' || lstage === 'departed') ? '#1d6b45'
                     : '';
-    var cardStyle = borderColor ? ('border-left:3px solid ' + borderColor + ';') : '';
+    var cardStyle = 'position:relative;' + (borderColor ? ('border-left:3px solid ' + borderColor + ';') : '');
     if (lstage === 'declined') cardStyle += 'opacity:.6;';
     if (score === 'lost')      cardStyle += 'opacity:.55;';
     else if (score === 'cold') cardStyle += 'opacity:.85;';
+
+    // Contextual WhatsApp pill — only when we have a phone number.
+    var waBtn = '';
+    var hasPhone = !!(cl.phone && cl.phone.trim());
+    if (hasPhone) {
+      var isInquiry = cl.bookingStatus === 'inquiry' || cl.bookingStatus === 'lead' ||
+                      cl.bookingStatus === 'quoted'  || cl.bookingStatus === 'pending';
+      var waLabel = '';
+      if (isInquiry) {
+        var dSU = daysSinceUpdate(cl);
+        if (dSU <= 2)       waLabel = fr ? 'Répondre' : 'Reply';
+        else if (dSU <= 7)  waLabel = fr ? 'Relancer' : 'Follow up';
+        else                waLabel = fr ? 'Dernière relance' : 'Last follow-up';
+      } else {
+        var dUA = cl.arrival ? Math.round((new Date(cl.arrival) - Date.now()) / 86400000) : 999;
+        if (dUA >= 2 && dUA <= 7)       waLabel = fr ? 'Pré-arrivée' : 'Pre-arrival';
+        else if (dUA >= 0 && dUA <= 1)  waLabel = fr ? 'Accueil' : 'Welcome';
+        else if (dUA < 0)               waLabel = fr ? 'Pendant séjour' : 'During stay';
+        else                            waLabel = fr ? 'Contacter' : 'Contact';
+      }
+      var waKind = isInquiry ? 'lead' : 'guest';
+      waBtn = '<button onclick="event.stopPropagation();smartWhatsApp(\'' + waKind + '\',\'' + cl.id + '\')" title="' + waLabel + '" style="position:absolute;bottom:10px;right:10px;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:#25D366;color:white;border:none;border-radius:8px;font-size:10px;font-family:Inter,sans-serif;font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12)">' +
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>' + waLabel +
+      '</button>';
+    }
 
     return '<div class="client-card ' + s + '" data-id="' + cl.id + '"' + (cardStyle ? (' style="' + cardStyle + '"') : '') + '>' +
       '<div class="cc-top">' +
@@ -5296,6 +5768,7 @@ function renderClients() {
         (netStr ? '<div class="cc-item"><label>' + (fr?'NET VOUS':'YOUR NET') + '</label><span class="net">' + netStr + '</span></div>' : '') +
       '</div>' +
       (extraAction || '') +
+      waBtn +
     '</div>';
   }
 
@@ -5864,6 +6337,9 @@ function loadSettingsUI() {
   set('cfgVilla', cfg.villa);   set('cfgOwner', cfg.owner);
   set('cfgCity',  cfg.city);    set('cfgStaff', cfg.staff);
   set('cfgWa',    cfg.wa);      set('cfgGps',   cfg.gps);
+  set('cfgAddress',      cfg.address);
+  set('cfgDoorCode',     cfg.doorCode);
+  set('cfgWifiPassword', cfg.wifiPassword);
   set('cfgGoogleClientId', cfg.googleClientId || '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com');
   set('cfgSbUrl', cfg.sbUrl);   set('cfgSbKey', cfg.sbKey);
   // ARIA Memory + char counter
@@ -5906,6 +6382,9 @@ async function saveSettings() {
     staff: document.getElementById('cfgStaff').value.trim(),
     wa: document.getElementById('cfgWa').value.trim(),
     gps: document.getElementById('cfgGps').value.trim(),
+    address: (document.getElementById('cfgAddress')?.value || '').trim(),
+    doorCode: (document.getElementById('cfgDoorCode')?.value || '').trim(),
+    wifiPassword: (document.getElementById('cfgWifiPassword')?.value || '').trim(),
     googleClientId: (document.getElementById('cfgGoogleClientId')?.value || '').trim(),
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
     sbKey: document.getElementById('cfgSbKey').value.trim(),
