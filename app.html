@@ -19262,15 +19262,27 @@ window.addEventListener('DOMContentLoaded', function() {
         var msgsEl = document.getElementById('chatMessages');
         if (msgsEl) msgsEl.appendChild(sysDiv);
 
-        // ── Save / update CRM button ──
+        // ── Auto-save to CRM (no manual click required) ──
         if (g.name) {
           var actDiv = document.createElement('div');
           actDiv.className = 'chat-actions';
           actDiv.style.marginTop = '8px';
           var saveBtn = document.createElement('button');
           saveBtn.className = 'chat-action-btn save';
-          saveBtn.textContent = existing ? (fr?'🔄 Mettre à jour ':'🔄 Update ') + existing.name.split(' ')[0] : (fr?'💾 Sauvegarder':'💾 Save');
-          saveBtn.onclick = function() {
+          saveBtn.textContent = '⏳ ' + (fr?'Sauvegarde...':'Saving...');
+          saveBtn.disabled = true;
+          actDiv.appendChild(saveBtn);
+
+          var undoLink = document.createElement('span');
+          undoLink.style.cssText = 'margin-left:10px;font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline;display:none';
+          undoLink.textContent = '↩ ' + (fr?'Annuler':'Undo');
+          actDiv.appendChild(undoLink);
+
+          sysDiv.appendChild(actDiv);
+
+          // Delay 500ms so the user sees the card before it commits.
+          setTimeout(function doAutoSave(){
+            var savedClientId = null;
             try {
               if (existing) {
                 var merged = Object.assign({}, existing, {
@@ -19284,25 +19296,68 @@ window.addEventListener('DOMContentLoaded', function() {
                 if (idx>=0) clientList[idx] = merged;
                 if (typeof saveLocal === 'function') saveLocal();
                 if (typeof renderAll === 'function') renderAll();
-                this.textContent = fr?'✅ Mis à jour':'✅ Updated';
-                this.disabled = true;
+                savedClientId = existing.id;
+                saveBtn.textContent = '✅ ' + (fr?'Mis à jour':'Updated') + ' — ' + existing.name.split(' ')[0];
+                saveBtn.style.background = 'rgba(34,120,70,.15)';
+                saveBtn.style.color = '#1d6b45';
+                saveBtn.disabled = false;
+                saveBtn.title = fr?'→ Voir la fiche CRM':'→ View in CRM';
+                saveBtn.onclick = function(){ if (savedClientId && typeof openDetail === 'function') openDetail(savedClientId); };
               } else {
                 if (typeof saveFromResult === 'function') saveFromResult(g);
-                this.textContent = fr?'✅ Sauvegardé':'✅ Saved';
-                this.disabled = true;
+                // saveFromResult unshifts the new client onto clients[] (or dedupes silently);
+                // identify ours by matching the freshly-extracted name.
+                var firstWord = (g.name||'').toLowerCase().split(' ')[0];
+                var newCl = clientList.find(function(x){ return (x.name||'').toLowerCase().indexOf(firstWord) === 0; });
+                if (newCl) savedClientId = newCl.id;
+                saveBtn.textContent = '✅ ' + (fr?'Sauvegardé dans CRM':'Saved to CRM');
+                saveBtn.style.background = 'rgba(34,120,70,.15)';
+                saveBtn.style.color = '#1d6b45';
+                saveBtn.disabled = false;
+                saveBtn.title = fr?'→ Voir la fiche CRM':'→ View in CRM';
+                saveBtn.onclick = function(){ if (savedClientId && typeof openDetail === 'function') openDetail(savedClientId); };
+
+                // 5s undo window for new clients only — merges into an existing
+                // record are conservative enough that we don't expose undo there.
+                if (savedClientId) {
+                  undoLink.style.display = 'inline';
+                  var undoTimer = setTimeout(function(){ undoLink.style.display = 'none'; }, 5000);
+                  undoLink.onclick = function(){
+                    clearTimeout(undoTimer);
+                    var i2 = clientList.findIndex(function(x){ return x.id === savedClientId; });
+                    if (i2 >= 0) clientList.splice(i2, 1);
+                    if (typeof saveLocal === 'function') saveLocal();
+                    if (typeof renderAll === 'function') renderAll();
+                    try {
+                      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+                      if (cfg.sbUrl && cfg.sbKey && typeof sbHdrs === 'function') {
+                        fetch(cfg.sbUrl + '/rest/v1/clients?id=eq.' + savedClientId, {
+                          method: 'PATCH',
+                          headers: Object.assign({}, sbHdrs(cfg.sbKey), {'Prefer':'return=minimal'}),
+                          body: JSON.stringify({deleted_at: new Date().toISOString()})
+                        });
+                      }
+                    } catch(e){}
+                    saveBtn.textContent = '↩ ' + (fr?'Annulé':'Undone');
+                    saveBtn.style.background = '';
+                    saveBtn.style.color = 'var(--muted)';
+                    saveBtn.disabled = true;
+                    saveBtn.onclick = null;
+                    saveBtn.title = '';
+                    undoLink.style.display = 'none';
+                  };
+                }
               }
               if (parsed.context && parsed.context.length) {
-                var targetId = existing ? existing.id : null;
-                if (!targetId) {
-                  var newCl = clientList.find(function(x){return (x.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);});
-                  if (newCl) targetId = newCl.id;
-                }
+                var targetId = savedClientId || (existing ? existing.id : null);
                 if (targetId && typeof saveClientContext === 'function') saveClientContext(targetId, parsed.context);
               }
-            } catch(e) { console.error('[stafflo-patch] save failed:', e); }
-          };
-          actDiv.appendChild(saveBtn);
-          sysDiv.appendChild(actDiv);
+            } catch(e) {
+              console.error('[stafflo-patch] auto-save failed:', e);
+              saveBtn.textContent = '⚠ ' + (fr?'Erreur':'Error');
+              saveBtn.disabled = true;
+            }
+          }, 500);
         }
 
         // ── Replies: 3 collapsed cards (or 1 if spam/info) ──
