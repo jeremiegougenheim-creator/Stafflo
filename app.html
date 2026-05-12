@@ -9001,8 +9001,6 @@ async function connectEmailProvider(kind) {
     var clientId = userClientId;
     var redirectUri = location.origin + location.pathname + '?oauth_callback=1';
     var scope = encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly email profile');
-    // PKCE: generate verifier + challenge; verifier stays in closure for the code exchange
-    var pkce = await _pkceChallenge();
     var oauthUrl = 'https://accounts.google.com/o/oauth2/v2/auth' +
       '?client_id=' + encodeURIComponent(clientId) +
       '&redirect_uri=' + encodeURIComponent(redirectUri) +
@@ -9010,8 +9008,6 @@ async function connectEmailProvider(kind) {
       '&access_type=offline' +
       '&scope=' + scope +
       '&prompt=consent' +
-      '&code_challenge=' + pkce.challenge +
-      '&code_challenge_method=S256' +
       '&state=email_connect';
     var popup = window.open(oauthUrl, 'stafflo_oauth', 'width=520,height=640');
     if (!popup) {
@@ -9025,17 +9021,11 @@ async function connectEmailProvider(kind) {
       window.removeEventListener('message', handler);
       var code = event.data.code;
       try {
-        // Exchange authorization code for tokens (PKCE, no client secret needed)
-        var tokRes = await fetch('https://oauth2.googleapis.com/token', {
+        // Exchange authorization code for tokens via Supabase Edge Function (client_secret stays server-side)
+        var tokRes = await fetch(SB_URL + '/functions/v1/gmail-token-exchange', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            client_id: clientId,
-            code: code,
-            code_verifier: pkce.verifier,
-            redirect_uri: redirectUri,
-            grant_type: 'authorization_code'
-          }).toString()
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: code, redirect_uri: redirectUri })
         });
         if (!tokRes.ok) {
           var errBody = await tokRes.text().catch(function(){ return ''; });
