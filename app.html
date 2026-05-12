@@ -3588,6 +3588,8 @@ var staffloCal = (function(){
     var list = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
     list.forEach(function(c){
       if (c.deleted_at) return;
+      // Skip dead leads — declined + lost should not pollute the calendar.
+      if (typeof isBookable === 'function' && !isBookable(c)) return;
       if (!c.arrival || !c.departure) return;
       var a = new Date(c.arrival); a.setHours(0,0,0,0);
       var d = new Date(c.departure); d.setHours(0,0,0,0);
@@ -4975,26 +4977,48 @@ function getLeadStage(c) {
 }
 window.getLeadStage = getLeadStage;
 
-// Lead heat — null for confirmed/no-status, else 'hot' / 'warm' / 'cold'.
+// Days since the lead was last touched (updatedAt, fall back to createdAt).
+function daysSinceUpdate(c) {
+  if (!c) return Infinity;
+  var t = c.updatedAt ? new Date(c.updatedAt).getTime()
+        : c.createdAt ? new Date(c.createdAt).getTime()
+        : Date.now();
+  return Math.round((Date.now() - t) / 86400000);
+}
+window.daysSinceUpdate = daysSinceUpdate;
+
+// Lead heat based on engagement — null for confirmed/declined.
+//   hot  : updated ≤ 2d AND has dates + contact
+//   warm : updated < 7d
+//   cold : updated 7–13d
+//   lost : updated ≥ 14d (treated as dead)
 function getLeadScore(c) {
-  if (!c || !c.bookingStatus || c.bookingStatus === 'confirmed') return null;
-  var score = 0;
-  if (c.arrival) score += 30;
-  if (c.phone && c.phone.trim()) score += 20;
-  if (c.email && c.email.trim()) score += 10;
-  if (c.price && +c.price > 0) score += 15;
-  if (c.arrival) {
-    var diff = Math.round((new Date(c.arrival).getTime() - Date.now()) / 86400000);
-    if (diff >= 0 && diff <= 30) score += 25;
-    if (diff >= 0 && diff <= 7) score += 15;
-  }
-  var created = c.createdAt ? new Date(c.createdAt).getTime() : 0;
-  if (Date.now() - created < 86400000) score += 10;
-  if (score >= 60) return 'hot';
-  if (score >= 30) return 'warm';
+  if (!c) return null;
+  var bs = c.bookingStatus || 'confirmed';
+  if (bs === 'confirmed' || bs === 'declined') return null;
+  var d = daysSinceUpdate(c);
+  var hasArrival = !!c.arrival;
+  var hasContact = !!((c.phone || '').trim()) || !!((c.email || '').trim());
+  if (d >= 14) return 'lost';
+  if (d >= 7) return 'cold';
+  if (d <= 2 && hasArrival && hasContact) return 'hot';
+  if (d < 7) return 'warm';
   return 'cold';
 }
 window.getLeadScore = getLeadScore;
+
+// Should this client be treated as a confirmed-booking-like entity for surfaces
+// (calendar, brief, operational alerts)? Lost leads and declined bookings are excluded;
+// a lead with a near-term arrival that's hot/warm still appears (it might still convert).
+function isBookable(c) {
+  if (!c) return false;
+  var bs = c.bookingStatus || 'confirmed';
+  if (bs === 'declined') return false;
+  if (bs === 'confirmed' || bs === 'pending' || bs === 'quoted') return true;
+  // inquiry/lead: include only if not lost
+  return getLeadScore(c) !== 'lost';
+}
+window.isBookable = isBookable;
 
 // Move a client between pipeline stages (inquiry/quoted/pending/confirmed/declined).
 function updateBookingStatus(clientId, newStatus) {
@@ -5104,8 +5128,9 @@ function updateHeaderStats() {
 function renderStaysBar() {
   var bar = document.getElementById('staysBar');
   var today = new Date().toISOString().slice(0,10);
-  var inHouse = clients.find(function(c) { return c.arrival && c.departure && c.arrival <= today && c.departure >= today; });
-  var upcoming = clients.filter(function(c) { return c.arrival && c.arrival > today; })
+  var live = function(c){ return typeof isBookable === 'function' ? isBookable(c) : true; };
+  var inHouse = clients.find(function(c) { return live(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today; });
+  var upcoming = clients.filter(function(c) { return live(c) && c.arrival && c.arrival > today; })
     .sort(function(a,b){ return a.arrival<b.arrival?-1:a.arrival>b.arrival?1:0; }).slice(0,4);
 
   if (!inHouse && !upcoming.length) {
@@ -5192,9 +5217,10 @@ function renderClients() {
     return;
   }
 
-  var html = '';
-  for (var i = 0; i < list.length; i++) {
-    var cl = list[i];
+  // Build the HTML for a single client card (used both by the flat list and the
+  // grouped pipeline view). `extraAction` is an optional HTML snippet appended
+  // after the grid (typically a "Relancer" or "Archiver" pill).
+  function cardHtml(cl, extraAction) {
     var s = getStatus(cl);
     var n = nights(cl);
     var net = netAmt(cl);
@@ -5206,26 +5232,43 @@ function renderClients() {
                  s==='past'     ? (fr?'Passé':'Past') : (fr?'Sans date':'No date');
     // SES-safe number format
     var netStr = net ? (Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f') + '€') : '';
-    // Lead heat badge (only for non-confirmed)
+    // 4-tier heat badge: HOT / WARM / COLD / LOST (strikethrough)
     var score = getLeadScore(cl);
     var scoreBadge = '';
     if (score === 'hot')       scoreBadge = '<span style="background:#e24b4a;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle">HOT</span>';
     else if (score === 'warm') scoreBadge = '<span style="background:#C9963A;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle">WARM</span>';
     else if (score === 'cold') scoreBadge = '<span style="background:#8a8a7a;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle">COLD</span>';
+    else if (score === 'lost') scoreBadge = '<span style="background:#8a8a7a;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle;text-decoration:line-through">LOST</span>';
 
-    // Response-time indicator for fresh inquiries / leads
-    var responseTime = '';
-    if (cl.bookingStatus === 'inquiry' || cl.bookingStatus === 'lead') {
-      var createdMs = cl.createdAt ? new Date(cl.createdAt).getTime() : 0;
-      if (createdMs) {
-        var hoursAgo = Math.round((Date.now() - createdMs) / 3600000);
-        if (hoursAgo < 1)       responseTime = '<span style="color:#1d6b45;font-size:10px">⚡ < 1h</span>';
-        else if (hoursAgo < 24) responseTime = '<span style="color:#C9963A;font-size:10px">⏰ ' + hoursAgo + 'h</span>';
-        else                    responseTime = '<span style="color:#e24b4a;font-size:10px">🔴 ' + Math.round(hoursAgo/24) + 'j</span>';
+    // No-reply indicator (scored leads only) — 5 tiers with "sans réponse" wording.
+    var noReply = '';
+    if (score) {
+      var d = daysSinceUpdate(cl);
+      if (d < 1) {
+        var lastMs = new Date(cl.updatedAt || cl.createdAt || Date.now()).getTime();
+        var hrs = Math.max(0, Math.round((Date.now() - lastMs) / 3600000));
+        var hrLbl = hrs < 1 ? '< 1h' : (hrs + 'h');
+        noReply = '<span style="color:#1d6b45;font-size:10px">⚡ ' + hrLbl + '</span>';
+      } else if (d <= 3) {
+        noReply = '<span style="color:#C9963A;font-size:10px">⏰ ' + d + (fr?'j':'d') + '</span>';
+      } else if (d <= 6) {
+        noReply = '<span style="color:#d97a2f;font-size:10px">⚠️ ' + d + (fr?'j':'d') + '</span>';
+      } else if (d <= 13) {
+        noReply = '<span style="color:#e24b4a;font-size:10px">🔴 ' + d + (fr?'j sans réponse':'d no reply') + '</span>';
+      } else {
+        var weeks = Math.floor(d / 7);
+        var lbl;
+        if (d >= 30) {
+          var months = Math.floor(d/30);
+          lbl = months + (fr ? ' mois' : (' month' + (months>1?'s':'')));
+        } else {
+          lbl = weeks + (fr ? (weeks>1?' semaines':' semaine') : (weeks>1?' weeks':' week'));
+        }
+        noReply = '<span style="color:#8a8a7a;font-size:10px">💀 ' + lbl + (fr?' sans réponse':' no reply') + '</span>';
       }
     }
 
-    // Stage-colored left border + dimming for declined
+    // Stage-colored left border + dimming for declined / lost / cold
     var lstage = getLeadStage(cl);
     var borderColor = lstage === 'inquiry'  ? '#C9963A'
                     : lstage === 'quoted'   ? '#5DCAA5'
@@ -5234,13 +5277,15 @@ function renderClients() {
                     : '';
     var cardStyle = borderColor ? ('border-left:3px solid ' + borderColor + ';') : '';
     if (lstage === 'declined') cardStyle += 'opacity:.6;';
+    if (score === 'lost')      cardStyle += 'opacity:.55;';
+    else if (score === 'cold') cardStyle += 'opacity:.85;';
 
-    html += '<div class="client-card ' + s + '" data-id="' + cl.id + '"' + (cardStyle ? (' style="' + cardStyle + '"') : '') + '>' +
+    return '<div class="client-card ' + s + '" data-id="' + cl.id + '"' + (cardStyle ? (' style="' + cardStyle + '"') : '') + '>' +
       '<div class="cc-top">' +
         '<div class="cc-avatar">' + initials(cl.name) + '</div>' +
         '<div>' +
           '<div class="cc-name">' + (cl.name||'') + scoreBadge + '</div>' +
-          '<div class="cc-sub">' + (cl.nat||'') + (cl.source ? ' · ' + cl.source : '') + (responseTime ? ' · ' + responseTime : '') + '</div>' +
+          '<div class="cc-sub">' + (cl.nat||'') + (cl.source ? ' · ' + cl.source : '') + (noReply ? ' · ' + noReply : '') + '</div>' +
         '</div>' +
         '<span class="cc-badge ' + bClass + '">' + bText + '</span>' +
       '</div>' +
@@ -5250,7 +5295,72 @@ function renderClients() {
         '<div class="cc-item"><label>' + (fr?'PERS.':'GUESTS') + '</label><span>' + (cl.guests||'—') + '</span></div>' +
         (netStr ? '<div class="cc-item"><label>' + (fr?'NET VOUS':'YOUR NET') + '</label><span class="net">' + netStr + '</span></div>' : '') +
       '</div>' +
+      (extraAction || '') +
     '</div>';
+  }
+
+  function sectionHeader(icon, title, color, count, opts) {
+    var collapsible = opts && opts.collapsible;
+    var collapsed   = opts && opts.collapsed;
+    var id = opts && opts.id ? opts.id : '';
+    var arrow = collapsed ? '▸' : '▾';
+    var onclick = collapsible
+      ? ' onclick="(function(t){var s=document.getElementById(\'' + id + '-body\');if(!s)return;var hidden=s.style.display===\'none\';s.style.display=hidden?\'\':\'none\';t.firstChild.textContent=hidden?\'▾\':\'▸\';})(this)"'
+      : '';
+    return '<div' + onclick + ' style="font-family:Inter,sans-serif;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:' + color + ';margin:20px 0 10px;padding:0 4px;' + (collapsible?'cursor:pointer':'') + '">' +
+      '<span style="margin-right:6px">' + arrow + '</span>' +
+      icon + ' ' + title +
+      ' <span style="font-weight:400;color:#8a8a7a">(' + count + ')</span>' +
+    '</div>';
+  }
+
+  var html = '';
+  var groupedView = (mainTab === 'pipeline' && crmFilter === 'all');
+
+  if (groupedView) {
+    // Bucket leads by engagement
+    var bucketActive = []; // hot + warm + unscored (declined/quoted etc.)
+    var bucketCold = [];
+    var bucketLost = [];
+    for (var bi = 0; bi < list.length; bi++) {
+      var cli = list[bi];
+      var sc = getLeadScore(cli);
+      if (sc === 'lost')      bucketLost.push(cli);
+      else if (sc === 'cold') bucketCold.push(cli);
+      else                    bucketActive.push(cli);
+    }
+    bucketActive.sort(function(a,b){ return (a.arrival||'9999')<(b.arrival||'9999')?-1:1; });
+    bucketCold.sort(function(a,b){ return daysSinceUpdate(b) - daysSinceUpdate(a); });
+    bucketLost.sort(function(a,b){ return daysSinceUpdate(b) - daysSinceUpdate(a); });
+
+    var actionFollow = function(cl, urgent){
+      var nameEsc = (cl.name||'').replace(/'/g, "\\'");
+      var prompt = urgent ? ('final follow-up with ' + nameEsc + ' before archiving')
+                          : ('follow up with ' + nameEsc + ' about their inquiry');
+      var label = urgent ? ('↻ ' + (fr?'Relancer une dernière fois':'Final follow-up'))
+                         : ('⚡ ' + (fr?'Relancer':'Follow up'));
+      return '<button onclick="event.stopPropagation();openAriaModal(\'' + prompt + '\')" style="margin:8px 12px 12px;font-size:11px;padding:6px 12px;border-radius:14px;border:1px solid #C9963A;background:rgba(201,150,58,.1);color:#8a6520;cursor:pointer;font-family:Inter,sans-serif">' + label + '</button>';
+    };
+    var actionArchive = function(cl){
+      return '<button onclick="event.stopPropagation();updateBookingStatus(\'' + cl.id + '\',\'declined\')" style="margin:8px 12px 12px;font-size:11px;padding:6px 12px;border-radius:14px;border:1px solid rgba(180,60,60,.3);background:white;color:#a33030;cursor:pointer;font-family:Inter,sans-serif">🗄 ' + (fr?'Archiver':'Archive') + '</button>';
+    };
+
+    if (bucketActive.length) {
+      html += sectionHeader('⚡', (fr?'À relancer cette semaine':'To follow up this week'), '#C9963A', bucketActive.length);
+      for (var ai = 0; ai < bucketActive.length; ai++) html += cardHtml(bucketActive[ai], actionFollow(bucketActive[ai], false));
+    }
+    if (bucketCold.length) {
+      html += sectionHeader('⏸', (fr?'En attente de réponse':'Awaiting reply'), '#8a8a7a', bucketCold.length);
+      for (var ci = 0; ci < bucketCold.length; ci++) html += cardHtml(bucketCold[ci], actionFollow(bucketCold[ci], true));
+    }
+    if (bucketLost.length) {
+      html += sectionHeader('❌', (fr?'Probablement perdus':'Probably lost'), '#a33030', bucketLost.length, {collapsible:true, collapsed:true, id:'lostGroup'});
+      html += '<div id="lostGroup-body" style="display:none">';
+      for (var li = 0; li < bucketLost.length; li++) html += cardHtml(bucketLost[li], actionArchive(bucketLost[li]));
+      html += '</div>';
+    }
+  } else {
+    for (var i = 0; i < list.length; i++) html += cardHtml(list[i]);
   }
   el.innerHTML = html;
   // Event delegation — SES-safe, works even with inline handlers blocked
@@ -11184,14 +11294,15 @@ async function generateAlerts(weatherTemp) {
   const daysFrom = (dateStr) => Math.ceil((new Date(dateStr) - now) / 86400000);
   // dateInDays defined globally below
 
-  // ── 1. CRM OPERATIONAL ALERTS — highest priority ──
-  const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
-  const checkoutToday = clients.filter(c => c.departure === today);
-  const checkinToday  = clients.filter(c => c.arrival === today);
-  const checkin1d     = clients.filter(c => c.arrival === dateInDays(1));
-  const checkin2d     = clients.filter(c => c.arrival === dateInDays(2));
-  const checkin3d     = clients.filter(c => c.arrival === dateInDays(3));
-  const checkout1d    = clients.filter(c => c.departure === dateInDays(1));
+  // ── 1. CRM OPERATIONAL ALERTS — confirmed / live leads only (no dead leads) ──
+  const _live = c => isBookable(c);
+  const inHouse = clients.find(c => _live(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today);
+  const checkoutToday = clients.filter(c => _live(c) && c.departure === today);
+  const checkinToday  = clients.filter(c => _live(c) && c.arrival === today);
+  const checkin1d     = clients.filter(c => _live(c) && c.arrival === dateInDays(1));
+  const checkin2d     = clients.filter(c => _live(c) && c.arrival === dateInDays(2));
+  const checkin3d     = clients.filter(c => _live(c) && c.arrival === dateInDays(3));
+  const checkout1d    = clients.filter(c => _live(c) && c.departure === dateInDays(1));
 
   // Same-day turnover (checkout + checkin same day) — critical
   if (checkoutToday.length && checkinToday.length) {
@@ -11218,12 +11329,12 @@ async function generateAlerts(weatherTemp) {
   // ── REVIEW REMINDERS — J+1, J+2, J+7, J+14 after departure ──
   // Critical for Airbnb/Booking ratings; auto-dismissed once flagged hostReviewLeft=true
   const checkoutReminders = clients.filter(c => {
+    if (!_live(c)) return false;
     if (!c.departure) return false;
     if (c.hostReviewLeft) return false;
     var src = (c.source||'').toLowerCase();
-    // Only platforms that benefit from host reviews
     if (!/airbnb|booking|vrbo|abritel|expedia/.test(src)) return false;
-    var dd = -daysFrom(c.departure); // days since departure
+    var dd = -daysFrom(c.departure);
     return dd === 1 || dd === 2 || dd === 7 || dd === 14;
   });
   checkoutReminders.forEach(c => {
@@ -11243,7 +11354,7 @@ async function generateAlerts(weatherTemp) {
   });
 
   // Upcoming gaps — no booking in next 7 days
-  const next7 = clients.filter(c => c.arrival && c.arrival > today && daysFrom(c.arrival) <= 7);
+  const next7 = clients.filter(c => _live(c) && c.arrival && c.arrival > today && daysFrom(c.arrival) <= 7);
   if (!inHouse && !checkinToday.length && !checkin1d.length && !checkin2d.length && next7.length === 0) {
     alerts.push({type:'info',
       title:'📭 ' + (fr?'Aucune réservation dans les 7 prochains jours':'No bookings in next 7 days'),
@@ -11251,7 +11362,7 @@ async function generateAlerts(weatherTemp) {
   }
 
   // Note-based smart alerts for upcoming/in-house guests
-  const noteGuests = clients.filter(c => c.notes && c.arrival && daysFrom(c.arrival) >= -1 && daysFrom(c.arrival) <= 5);
+  const noteGuests = clients.filter(c => _live(c) && c.notes && c.arrival && daysFrom(c.arrival) >= -1 && daysFrom(c.arrival) <= 5);
   noteGuests.forEach(cl => {
     const n2 = (cl.notes||'').toLowerCase();
     const dTo = daysFrom(cl.arrival);
@@ -12643,12 +12754,13 @@ async function loadMorningBrief(forceRefresh = false) {
   const tomorrowStr = tomorrow.toISOString().slice(0,10);
   const in7 = new Date(); in7.setDate(in7.getDate()+7);
 
-  // CRM data
-  const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
-  const checkoutToday = clients.filter(c => c.departure === today);
-  const checkinToday = clients.filter(c => c.arrival === today);
-  const checkinTomorrow = clients.filter(c => c.arrival === tomorrowStr);
-  const upcoming7 = clients.filter(c => c.arrival && c.arrival > today && new Date(c.arrival) <= in7);
+  // CRM data — confirmed / live leads only (dead leads pollute the brief)
+  const _live = c => isBookable(c);
+  const inHouse = clients.find(c => _live(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today);
+  const checkoutToday = clients.filter(c => _live(c) && c.departure === today);
+  const checkinToday = clients.filter(c => _live(c) && c.arrival === today);
+  const checkinTomorrow = clients.filter(c => _live(c) && c.arrival === tomorrowStr);
+  const upcoming7 = clients.filter(c => _live(c) && c.arrival && c.arrival > today && new Date(c.arrival) <= in7);
   const totalRevenue = clients.reduce((s,c) => s + (parseFloat(c.price)||0), 0);
   const occupancyDays = clients.filter(c => c.arrival && c.departure).reduce((s,c) => {
     return s + Math.max(0, Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000));
