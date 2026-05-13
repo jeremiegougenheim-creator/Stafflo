@@ -92,7 +92,7 @@ Si un critère échoue, le flag reste et l'ancien code reste.
 - **Localiser** : `grep -n "pattern_unique" app.html`
 - **Vérifier le contexte** : `view` avec range 20-40 lignes autour
 - **`str_replace`** avec 3-5 lignes d'ancrage (sinon match ambigu)
-- Pre-existing brace balance delta `-1` = baseline connue, pas un bug. Un delta plus grand = quelque chose est cassé.
+- Pre-existing brace balance delta `-4` = baseline mesurée sur le live (JS-only, 13 blocs `<script>`). Pas un bug. Un delta plus négatif = quelque chose est cassé.
 
 ## 4. Validation après chaque édition
 
