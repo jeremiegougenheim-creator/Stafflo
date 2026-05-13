@@ -5070,6 +5070,17 @@ function isBookable(c) {
 }
 window.isBookable = isBookable;
 
+// Stricter filter for "real" upcoming/in-stay arrivals (ARIA context, brief, alerts).
+// Quoted/inquiry/lead are NEVER treated as confirmed arrivals — they belong in the
+// pipeline section, not in checkinToday/upcoming7/inHouse. Legacy rows without
+// bookingStatus default to confirmed.
+function isFirmBooking(c) {
+  if (!c) return false;
+  var bs = c.bookingStatus || 'confirmed';
+  return bs === 'confirmed' || bs === 'pending';
+}
+window.isFirmBooking = isFirmBooking;
+
 // ─── Smart WhatsApp ──────────────────────────────────────────────────────
 // Context-aware WhatsApp: detects staff vs guest vs lead and routes to the
 // right message builder. Phone numbers are normalized for wa.me.
@@ -7472,16 +7483,25 @@ async function chatSend() {
   }
 }
 
-// Build a rich CRM context for ARIA: today's status, upcoming bookings, prices, net.
-// Returns a multi-line string suitable for inclusion in the user message context.
+// Build a rich CRM context for ARIA. Two strictly separated sections:
+//   CONFIRMED BOOKINGS — only confirmed/pending clients land in in-house / upcoming / past
+//   PIPELINE          — inquiry/lead/quoted leads with score + days since update
+// The split is what stops ARIA from announcing a hot lead as "arriving tomorrow".
 function buildClientsContextRich(maxItems) {
   if (typeof clients === 'undefined' || !Array.isArray(clients) || clients.length === 0) {
     return 'CRM: aucun client enregistré.';
   }
   var today = new Date();
   var todayISO = today.toISOString().slice(0,10);
+
+  var confirmedOnly = clients.filter(function(c){ return isFirmBooking(c); });
+  var leadsOnly = clients.filter(function(c){
+    var bs = c.bookingStatus;
+    return bs === 'inquiry' || bs === 'lead' || bs === 'quoted';
+  });
+
   var inHouse = [], upcoming = [], past = [];
-  clients.forEach(function(c){
+  confirmedOnly.forEach(function(c){
     if (!c.arrival && !c.departure) { past.push(c); return; }
     var arr = c.arrival || '';
     var dep = c.departure || '';
@@ -7489,9 +7509,7 @@ function buildClientsContextRich(maxItems) {
     else if (arr > todayISO) upcoming.push(c);
     else past.push(c);
   });
-  // Sort upcoming by arrival ascending
   upcoming.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
-  // Sort past by departure descending
   past.sort(function(a,b){ return (b.departure||'').localeCompare(a.departure||''); });
 
   function fmtClient(c) {
@@ -7499,7 +7517,6 @@ function buildClientsContextRich(maxItems) {
     if (c.nat) bits.push(c.nat);
     if (c.arrival && c.departure) {
       bits.push('séjour ' + c.arrival + '→' + c.departure);
-      // Days until / days remaining
       var arrDate = new Date(c.arrival), depDate = new Date(c.departure);
       var diffArr = Math.round((arrDate - today)/86400000);
       var diffDep = Math.round((depDate - today)/86400000);
@@ -7516,8 +7533,27 @@ function buildClientsContextRich(maxItems) {
     return bits.join(' · ');
   }
 
+  function fmtLead(c) {
+    var bits = [c.name || 'sans nom'];
+    bits.push('stage:' + (c.bookingStatus || 'inquiry'));
+    var sc = getLeadScore(c);
+    if (sc) bits.push('score:' + sc);
+    var d = daysSinceUpdate(c);
+    if (isFinite(d)) bits.push('last touch:' + d + 'j');
+    if (c.arrival && c.departure) bits.push('demande ' + c.arrival + '→' + c.departure);
+    else if (c.arrival) bits.push('demande ' + c.arrival);
+    if (c.guests) bits.push(c.guests + 'p');
+    if (c.price) bits.push('budget ' + c.price + '€');
+    if (c.source) bits.push(c.source);
+    if (c.notes) bits.push('notes: ' + (c.notes.length > 80 ? c.notes.slice(0,80) + '…' : c.notes));
+    return bits.join(' · ');
+  }
+
   var lines = [];
-  lines.push('CRM Villa (' + clients.length + ' total) — date: ' + todayISO);
+  lines.push('CRM Villa — date: ' + todayISO + ' · ' + confirmedOnly.length + ' confirmed · ' + leadsOnly.length + ' pipeline');
+
+  lines.push('');
+  lines.push('=== CONFIRMED BOOKINGS ===');
   if (inHouse.length) {
     lines.push('SUR PLACE actuellement (' + inHouse.length + '):');
     inHouse.forEach(function(c){ lines.push('  • ' + fmtClient(c)); });
@@ -7528,12 +7564,20 @@ function buildClientsContextRich(maxItems) {
     lines.push('À VENIR (' + upcoming.length + '):');
     upcoming.slice(0, maxItems || 5).forEach(function(c){ lines.push('  • ' + fmtClient(c)); });
   } else {
-    lines.push('À VENIR: aucune réservation prévue.');
+    lines.push('À VENIR: aucune réservation confirmée prévue.');
   }
   if (past.length) {
     lines.push('RÉCENTS (' + Math.min(past.length, 3) + '/' + past.length + '):');
     past.slice(0, 3).forEach(function(c){ lines.push('  • ' + fmtClient(c)); });
   }
+
+  if (leadsOnly.length) {
+    leadsOnly.sort(function(a,b){ return daysSinceUpdate(a) - daysSinceUpdate(b); });
+    lines.push('');
+    lines.push('=== PIPELINE (leads non confirmés — NE PAS traiter comme des séjours) ===');
+    leadsOnly.slice(0, (maxItems || 5) + 3).forEach(function(c){ lines.push('  • ' + fmtLead(c)); });
+  }
+
   return lines.join('\n');
 }
 
@@ -7573,7 +7617,8 @@ async function handleChatQuestion(text) {
       '- For staff WhatsApp: write in French, casual but professional, signed ' + ownerName,
       '- For guest WhatsApp/email: warm, hospitable, signed ' + ownerName,
       '- For internal_note: short reminder for ' + ownerName + ' himself',
-      '- Use guest/staff names when they appear in context'
+      '- Use guest/staff names when they appear in context',
+      '- CRITICAL: PIPELINE entries (inquiry/quoted leads) are NOT confirmed stays. Never propose an arrival/welcome action for them — only follow-up / quote / archive actions.'
     ].join('\n');
   } else {
     // ── REFINED SYSTEM PROMPT: 3 distinct response modes ──
@@ -7603,7 +7648,14 @@ async function handleChatQuestion(text) {
       '════ RÈGLE D\'OR ════',
       'Par défaut, tu es en MODE 1 ou 3 (info / conversation). Tu passes en MODE 2 SEULEMENT si ' + ownerName + ' te demande explicitement de rédiger.',
       'JAMAIS tu n\'écris "Bonjour, je suis ' + ownerName + '..." sauf en MODE 2.',
-      'JAMAIS tu n\'inventes une info qui n\'est pas dans le CRM.'
+      'JAMAIS tu n\'inventes une info qui n\'est pas dans le CRM.',
+      '',
+      '════ RÈGLE CRITIQUE — PIPELINE vs CONFIRMED ════',
+      'Le bloc CRM ci-dessous a DEUX sections distinctes :',
+      '  • CONFIRMED BOOKINGS : réservations payées / confirmées. Ce sont des SÉJOURS RÉELS.',
+      '  • PIPELINE : prospects (inquiry/quoted) qui n\'ont PAS confirmé. Ce ne sont PAS des séjours.',
+      'Si on te demande les prochaines arrivées, qui arrive demain, qui est sur place, etc. → tu ne cites QUE des CONFIRMED BOOKINGS.',
+      'Les leads dans PIPELINE ne doivent JAMAIS être mentionnés comme des arrivées ou des séjours. Ils sont à convertir, pas à accueillir.'
     ].join('\n');
   }
 
@@ -7619,11 +7671,21 @@ async function handleChatQuestion(text) {
 
   var userCtx;
   if (isOrchestrator) {
-    // For orchestrator, send the prompt as-is — it already has the structure
+    // For orchestrator, send the prompt as-is — it already has the structure.
+    // Filter to firm bookings so the orchestrator never schedules an action against
+    // an unconfirmed lead as if it were an upcoming stay.
+    var firmActive = clients.filter(function(cl){ return isFirmBooking(cl); });
+    var pipelineActive = clients.filter(function(cl){
+      var bs = cl.bookingStatus;
+      return bs === 'inquiry' || bs === 'lead' || bs === 'quoted';
+    });
     userCtx = [
       'Today: ' + today,
-      'Active clients (' + clients.length + '): ' + clients.slice(0,5).map(function(cl) {
+      'Confirmed bookings (' + firmActive.length + '): ' + firmActive.slice(0,5).map(function(cl) {
         return cl.name + (cl.arrival?' arr:'+cl.arrival:'') + (cl.guests?' '+cl.guests+'p':'');
+      }).join(' · '),
+      'Pipeline leads (' + pipelineActive.length + ', NOT confirmed): ' + pipelineActive.slice(0,5).map(function(cl){
+        return cl.name + ' [' + (cl.bookingStatus||'inquiry') + ']';
       }).join(' · '),
       '',
       historyBlock,
@@ -12057,8 +12119,9 @@ async function generateAlerts(weatherTemp) {
   const daysFrom = (dateStr) => Math.ceil((new Date(dateStr) - now) / 86400000);
   // dateInDays defined globally below
 
-  // ── 1. CRM OPERATIONAL ALERTS — confirmed / live leads only (no dead leads) ──
-  const _live = c => isBookable(c);
+  // ── 1. CRM OPERATIONAL ALERTS — firm bookings only (confirmed/pending).
+  // Leads, quoted, declined, lost all stay out of arrival/checkin alerts.
+  const _live = c => isFirmBooking(c);
   const inHouse = clients.find(c => _live(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today);
   const checkoutToday = clients.filter(c => _live(c) && c.departure === today);
   const checkinToday  = clients.filter(c => _live(c) && c.arrival === today);
@@ -13517,8 +13580,9 @@ async function loadMorningBrief(forceRefresh = false) {
   const tomorrowStr = tomorrow.toISOString().slice(0,10);
   const in7 = new Date(); in7.setDate(in7.getDate()+7);
 
-  // CRM data — confirmed / live leads only (dead leads pollute the brief)
-  const _live = c => isBookable(c);
+  // CRM data — firm bookings only (confirmed/pending). Leads have their own
+  // section in the ARIA context; the brief must never confuse a lead with an arrival.
+  const _live = c => isFirmBooking(c);
   const inHouse = clients.find(c => _live(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today);
   const checkoutToday = clients.filter(c => _live(c) && c.departure === today);
   const checkinToday = clients.filter(c => _live(c) && c.arrival === today);
