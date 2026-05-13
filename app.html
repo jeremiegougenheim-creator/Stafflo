@@ -4410,28 +4410,49 @@ async function syncNow() {
 function loadLocal() {
   if (isDemoMode()) return;
   try { clients = JSON.parse(localStorage.getItem('stafflo_clients') || '[]'); } catch { clients = []; }
-  // One-shot migration: a handful of seeded clients (Millie/Marouan/Jonathan) were
-  // imported as 'confirmed' but never confirmed in reality. Supabase has already
-  // been corrected to 'inquiry'; this flips stale localStorage copies on first load.
-  try {
-    if (!localStorage.getItem('stafflo_fix_misclassified_v1') && Array.isArray(clients) && clients.length) {
-      var fixNames = ['millie', 'marouan', 'jonathan'];
-      var changed = false;
-      clients.forEach(function(c){
-        var n = (c.name || '').toLowerCase().trim();
-        if (fixNames.some(function(f){ return n.indexOf(f) !== -1; }) && c.bookingStatus !== 'inquiry') {
-          c.bookingStatus = 'inquiry';
-          c.updatedAt = new Date().toISOString();
-          changed = true;
-        }
-      });
-      if (changed) {
-        localStorage.setItem('stafflo_clients', JSON.stringify(clients));
-      }
-      localStorage.setItem('stafflo_fix_misclassified_v1', '1');
-    }
-  } catch(e){}
+  // Schedule a Supabase-truth reconcile in the background. Runs after this tick
+  // so the initial render isn't blocked. Supabase is authoritative for
+  // booking_status (and friends) — any local drift gets corrected on next load.
+  try { setTimeout(function(){ reconcileFromSupabase(); }, 0); } catch(e){}
 }
+
+// Pull booking_status (and a few related fields) from Supabase and overwrite
+// any divergence in localStorage. Generalizes the previous 3-name patch: any
+// misclassified client gets aligned automatically, without hardcoding names.
+async function reconcileFromSupabase() {
+  if (typeof clients === 'undefined' || !Array.isArray(clients) || !clients.length) return;
+  if (isDemoMode && isDemoMode()) return;
+  try {
+    var cfg = getCfg();
+    var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+    var key = cfg.sbKey || SB_ANON;
+    if (!key) return;
+    var r = await fetch(url + '/rest/v1/crm_clients?select=id,booking_status,arrival,departure', {
+      headers: { apikey: key, Authorization: 'Bearer ' + key }
+    });
+    if (!r.ok) return;
+    var rows = await r.json();
+    var supa = {};
+    rows.forEach(function(row){ supa[row.id] = row; });
+    var changed = 0;
+    clients.forEach(function(c){
+      var s = supa[c.id];
+      if (!s) return;
+      var serverStatus = s.booking_status || 'confirmed';
+      if (serverStatus !== (c.bookingStatus || 'confirmed')) {
+        console.log('[reconcile] ' + (c.name||c.id) + ': ' + c.bookingStatus + ' → ' + serverStatus + ' (Supabase wins)');
+        c.bookingStatus = serverStatus;
+        changed++;
+      }
+    });
+    if (changed > 0) {
+      try { localStorage.setItem('stafflo_clients', JSON.stringify(clients)); } catch(e){}
+      if (typeof renderAll === 'function') renderAll();
+      console.log('[reconcile] ' + changed + ' client(s) booking_status realigned with Supabase');
+    }
+  } catch(e) { console.warn('[reconcile] failed:', e); }
+}
+window.reconcileFromSupabase = reconcileFromSupabase;
 function saveLocal() {
   if (isDemoMode()) return;
   localStorage.setItem('stafflo_clients', JSON.stringify(clients));
