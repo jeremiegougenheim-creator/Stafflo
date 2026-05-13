@@ -677,6 +677,25 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .aria-hero::after{content:'';position:absolute;inset:0;background:linear-gradient(120deg, transparent 60%, rgba(201,150,58,.04) 100%);pointer-events:none}
 @keyframes ariaHeroGlow{0%{opacity:.7;transform:scale(1)}100%{opacity:1;transform:scale(1.08)}}
 
+/* === AriaFirst v1 — orb hero (strangler fig, gated by stafflo_aria_first_v1) === */
+.af1-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:48px 24px 56px;background:var(--cream);min-height:60vh;box-sizing:border-box}
+.af1-orb-wrap{position:relative;width:120px;height:120px;display:flex;align-items:center;justify-content:center}
+.af1-orb-glow{position:absolute;inset:-30px;border-radius:50%;background:radial-gradient(circle,rgba(201,150,58,.22) 0%,rgba(201,150,58,0) 65%);animation:af1Glow 4s ease-in-out infinite;pointer-events:none}
+.af1-orb{position:relative;width:80px;height:80px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#1d4d3a 0%,var(--green3) 70%);box-shadow:0 8px 28px rgba(15,35,24,.35),inset 0 0 24px rgba(201,150,58,.18);display:flex;align-items:center;justify-content:center;animation:af1Breathe 4s ease-in-out infinite}
+.af1-orb-letter{font-family:'Fraunces',serif;font-size:28px;font-weight:600;color:var(--gold);line-height:1;letter-spacing:.5px}
+.af1-greeting{font-family:'Fraunces',serif;font-size:22px;color:var(--ink);text-align:center;margin-top:6px;font-weight:500;letter-spacing:.2px}
+.af1-date{font-family:'Inter','DM Sans',sans-serif;font-size:13px;color:var(--muted);text-align:center;letter-spacing:.3px}
+.af1-status{display:inline-flex;align-items:center;gap:7px;font-family:'Inter','DM Sans',sans-serif;font-size:12px;color:var(--muted);margin-top:6px}
+.af1-status-dot{width:7px;height:7px;border-radius:50%;background:#7EC850;box-shadow:0 0 0 4px rgba(126,200,80,.18),0 0 10px rgba(126,200,80,.45)}
+@keyframes af1Breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+@keyframes af1Glow{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.9;transform:scale(1.12)}}
+@media (max-width: 480px){
+  .af1-hero{padding:40px 18px 48px;min-height:55vh}
+  .af1-orb-wrap{width:100px;height:100px}
+  .af1-orb{width:72px;height:72px}
+  .af1-greeting{font-size:20px}
+}
+
 /* Top row: logo + name/tagline left, counter right */
 .aria-hero-top{display:flex;align-items:center;justify-content:space-between;gap:18px;position:relative;z-index:1}
 .aria-hero-left{display:flex;align-items:center;gap:14px;min-width:0;flex:1}
@@ -1658,6 +1677,20 @@ body, main { background: var(--cream); }
 
 <!-- ═══ TODAY ═════════════════════════════════════════════ -->
 <div class="tab on" id="tab-today">
+
+<!-- === AriaFirst v1 hero (strangler fig — gated by stafflo_aria_first_v1, default OFF) === -->
+<div id="ariaFirstHero" class="af1-hero" style="display:none">
+  <div class="af1-orb-wrap">
+    <div class="af1-orb-glow"></div>
+    <div class="af1-orb"><span class="af1-orb-letter">A</span></div>
+  </div>
+  <div class="af1-greeting" id="af1Greeting"></div>
+  <div class="af1-date" id="af1Date"></div>
+  <div class="af1-status">
+    <span class="af1-status-dot"></span>
+    <span id="af1StatusLabel"></span>
+  </div>
+</div>
 
 <!-- ══ V2 UNIFIED LAYOUT — Today ════════════════════════════ -->
 <!-- Row 1: ARIA hero — anchored at top, quick-actions, usage counter -->
@@ -3978,6 +4011,58 @@ function getSessionKeyFromUrl() {
 }
 
 function setCfg(c) { localStorage.setItem('stafflo_cfg', JSON.stringify(c)); }
+
+// ─── AriaFirst v1 — strangler fig gate (CLAUDE.md §2) ───────────────────
+// Activation: ?aria_first=1 in URL OR localStorage.stafflo_aria_first_v1 === '1'.
+// Default OFF. When ON, paints the new orb hero and hides legacy #tab-today siblings.
+// When OFF, this entire block is a no-op — the legacy dashboard is untouched.
+function isAriaFirstV1Enabled() {
+  try {
+    if (location && location.search && new URLSearchParams(location.search).get('aria_first') === '1') return true;
+  } catch(e){}
+  try { return localStorage.getItem('stafflo_aria_first_v1') === '1'; } catch(e) { return false; }
+}
+window.isAriaFirstV1Enabled = isAriaFirstV1Enabled;
+
+function renderAriaFirstTodayV1() {
+  var hero = document.getElementById('ariaFirstHero');
+  var tab  = document.getElementById('tab-today');
+  if (!hero || !tab) return;
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+
+  // Greeting by time of day
+  var h = new Date().getHours();
+  var period = h < 13 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  var owner = (cfg.owner || '').trim();
+  var greetingLead = fr
+    ? (period === 'morning' ? 'Bonjour' : period === 'afternoon' ? 'Bon après-midi' : 'Bonsoir')
+    : (period === 'morning' ? 'Good morning' : period === 'afternoon' ? 'Good afternoon' : 'Good evening');
+  var gEl = document.getElementById('af1Greeting');
+  if (gEl) gEl.textContent = owner ? (greetingLead + ' ' + owner) : greetingLead;
+
+  // Date (e.g. "Mardi 13 mai 2025" / "Tuesday, May 13, 2025")
+  var dEl = document.getElementById('af1Date');
+  if (dEl) {
+    var d = new Date();
+    var s = d.toLocaleDateString(fr ? 'fr-FR' : 'en-US', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+    dEl.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  // Status label
+  var sEl = document.getElementById('af1StatusLabel');
+  if (sEl) sEl.textContent = fr ? 'ARIA en ligne' : 'ARIA online';
+
+  // Show hero, hide all other legacy children of #tab-today
+  hero.style.display = '';
+  Array.prototype.forEach.call(tab.children, function(child){
+    if (child !== hero) child.style.display = 'none';
+  });
+}
+window.renderAriaFirstTodayV1 = renderAriaFirstTodayV1;
+
+function af1ApplyGate() { if (isAriaFirstV1Enabled()) renderAriaFirstTodayV1(); }
+window.af1ApplyGate = af1ApplyGate;
 
 // ════════════════════════════════════════════════════════════
 // SETTINGS AUTO-SAVE ENGINE
@@ -11481,6 +11566,8 @@ document.addEventListener('DOMContentLoaded', function() {
   loadLocal();
   renderAll();
   renderTodayQV();
+  // AriaFirst v1: gate paint AFTER legacy DOM is rendered (CLAUDE.md §2 strangler fig).
+  try { af1ApplyGate(); } catch(e){}
 
   // ── Load remote data in background (cascading) ──
   loadFromSupabase()
