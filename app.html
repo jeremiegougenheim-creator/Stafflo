@@ -7527,11 +7527,14 @@ async function chatSend() {
   var inp = document.getElementById('chatInput');
   var text = inp.value.trim();
   if (!text) return;
-  
+
   inp.value = '';
   inp.style.height = 'auto';
   document.getElementById('chatSendBtn').disabled = true;
-  
+
+  // Track last user question for contextual ARIA actions
+  try { window._lastAriaQuestion = text; } catch(e){}
+
   // Add user bubble
   addChatBubble('user', text);
   
@@ -15828,6 +15831,88 @@ function ariaQuickModifier(mode) {
 }
 window.ariaQuickModifier = ariaQuickModifier;
 
+// ── Contextual ARIA actions — chooses follow-up buttons based on
+//   what the USER asked (window._lastAriaQuestion) + what ARIA replied.
+//   Returns up to 3 actions. Each action is { label, prompt? , fn? }.
+function getAriaContextualActions(userQuestion, ariaResponse) {
+  var q = (userQuestion || '').toLowerCase();
+  var resp = (ariaResponse || '').toLowerCase();
+  var actions = [];
+  var next = null;
+  if (typeof clients !== 'undefined') {
+    var firm = clients.filter(function(c) {
+      return (typeof isFirmBooking === 'function' ? isFirmBooking(c) : true) && c.arrival && new Date(c.arrival) >= new Date();
+    }).sort(function(a,b) { return new Date(a.arrival)-new Date(b.arrival); });
+    if (firm.length) next = firm[0];
+  }
+
+  if (q.match(/arriv|calendrier|agenda|demain|cette semaine|prochain/)) {
+    if (next) {
+      actions.push({ label: '📋 Brief Said — ' + next.name, prompt: 'brief Said pour l\'arrivée de ' + next.name });
+    }
+    actions.push({ label: '✅ Checklist arrivée', prompt: 'génère une checklist d\'arrivée complète' });
+    actions.push({ label: '📅 Calendrier', fn: function() { if (typeof goTab === 'function') goTab('calendar'); if (typeof closeAriaModal === 'function') closeAriaModal(); } });
+  }
+  else if (q.match(/prix|tarif|price|revenue|combien|marché|market/)) {
+    actions.push({ label: '💰 Suggérer un prix', prompt: 'suggère un prix optimal pour ce soir' });
+    actions.push({ label: '📊 Analyse marché', prompt: 'analyse le marché local et compare mes tarifs actuels' });
+  }
+  else if (q.match(/staff|said|faiza|bouchra|checklist|ménage|pool|piscine/)) {
+    actions.push({ label: '💬 WhatsApp Said', fn: function() { if (typeof smartWhatsApp === 'function') smartWhatsApp('staff', 0); } });
+    actions.push({ label: '✅ Checklist du jour', prompt: 'génère la checklist complète du jour pour le staff' });
+  }
+  else if (q.match(/client|guest|séjour|qui est|contact|téléphone/) || resp.match(/bonjour|dear|cher /)) {
+    actions.push({ label: '📩 Message guest', prompt: 'rédige un message de bienvenue pour ce client' });
+    actions.push({ label: '📋 Brief staff', prompt: 'brief le staff pour ce séjour' });
+  }
+  else if (resp.match(/bonjour|dear |cher |objet:|subject:/) || q.match(/rédig|écris|draft|prépare|compose/)) {
+    actions.push({ label: '📋 Copier', fn: function() {
+      var txt = document.querySelector('#ariaModal .aria-response, .aria-last-response, .stafflo-bubble:last-child');
+      if (txt && navigator.clipboard) navigator.clipboard.writeText(txt.innerText || txt.textContent);
+      if (typeof toast === 'function') toast('✓ Copié');
+    }});
+    actions.push({ label: '💬 Envoyer WhatsApp', fn: function() {
+      var txt = document.querySelector('#ariaModal .aria-response, .aria-last-response, .stafflo-bubble:last-child');
+      if (txt) window.open('https://wa.me/?text=' + encodeURIComponent(txt.innerText || txt.textContent), '_blank');
+    }});
+  }
+  else {
+    actions.push({ label: '📋 Brief du jour', prompt: 'génère le brief complet du jour' });
+    actions.push({ label: '✅ Checklist staff', prompt: 'checklist staff pour aujourd\'hui' });
+  }
+  return actions.slice(0, 3);
+}
+window.getAriaContextualActions = getAriaContextualActions;
+
+// Render the contextual actions into a container. If `container` is passed
+// (e.g. a fresh sub-div inside an ARIA bubble), it's used directly. Otherwise
+// fall back to the first matching legacy selector — useful for external call sites.
+function renderAriaContextualActions(userQuestion, ariaResponse, container) {
+  var actions = getAriaContextualActions(userQuestion, ariaResponse);
+  if (!container) container = document.querySelector('.aria-chips, .aria-actions, .suggested-actions, [id*=ariaAction], [id*=actionChip]');
+  if (!container) return;
+  container.innerHTML = '';
+  actions.forEach(function(a) {
+    var btn = document.createElement('button');
+    btn.textContent = a.label;
+    btn.style.cssText = 'font-family:Inter,sans-serif;font-size:12px;padding:6px 14px;border-radius:16px;border:1px solid rgba(15,35,24,.15);background:white;color:#0F2318;cursor:pointer;margin:2px 4px 2px 0;transition:background .15s';
+    btn.onmouseover = function(){ this.style.background = 'rgba(15,35,24,.05)'; };
+    btn.onmouseout  = function(){ this.style.background = 'white'; };
+    btn.onclick = function() {
+      if (a.fn) { a.fn(); }
+      else if (a.prompt) {
+        if (typeof sendAriaModal === 'function' && typeof openAriaModal === 'function') {
+          openAriaModal(a.prompt);
+        } else if (typeof openAriaModal === 'function') {
+          openAriaModal(a.prompt);
+        }
+      }
+    };
+    container.appendChild(btn);
+  });
+}
+window.renderAriaContextualActions = renderAriaContextualActions;
+
 // ── Patch 5: Contextual action chips — appended after each AI reply ──
 // Detects the topic of the AI message and shows 2-3 relevant follow-up chips.
 function appendContextualChips(bubble) {
@@ -15837,6 +15922,24 @@ function appendContextualChips(bubble) {
   var text = (bubble.textContent || '').toLowerCase();
   if (!text || text.length < 30) return;
   var fr = (typeof lang !== 'undefined' && lang === 'fr');
+
+  // ── Question-aware chips (new path) ──
+  // If we have the user's last question stored, build context-driven actions
+  // via getAriaContextualActions instead of pattern-matching the AI reply.
+  var lastQ = (typeof window !== 'undefined') ? (window._lastAriaQuestion || '') : '';
+  if (lastQ) {
+    var box = document.createElement('div');
+    box.className = 'aria-actions';
+    box.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(201,150,58,.25);display:flex;gap:6px;flex-wrap:wrap';
+    bubble.appendChild(box);
+    try { renderAriaContextualActions(lastQ, bubble.textContent || '', box); } catch(e) { console.warn('renderAriaContextualActions', e); }
+    if (box.children.length) {
+      bubble.dataset.contextualChips = '1';
+      return;
+    }
+    // Empty render → fall through to legacy chip logic
+    box.remove();
+  }
 
   // Detect if reply is an actual DRAFTED MESSAGE (vs an info response).
   // A drafted message typically contains: quotes, "Bonjour"/"Hello", a signature pattern.
@@ -16127,6 +16230,9 @@ function sendAriaModal() {
   var text = (input && input.value || '').trim();
   var attach = window._ariaAttachment || null;
   if (!text && !attach) return;
+
+  // Track last user question for contextual ARIA actions
+  try { if (text) window._lastAriaQuestion = text; } catch(e){}
 
   var body = document.getElementById('ariaModalMessages');
   if (body) {
