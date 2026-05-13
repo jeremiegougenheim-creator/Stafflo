@@ -3617,8 +3617,9 @@ var staffloCal = (function(){
     var list = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
     list.forEach(function(c){
       if (c.deleted_at) return;
-      // Skip dead leads — declined + lost should not pollute the calendar.
-      if (typeof isBookable === 'function' && !isBookable(c)) return;
+      // Firm bookings only — leads (inquiry/lead/quoted) do NOT belong on the
+      // calendar. A guest who never confirmed is not a stay.
+      if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
       if (!c.arrival || !c.departure) return;
       var a = new Date(c.arrival); a.setHours(0,0,0,0);
       var d = new Date(c.departure); d.setHours(0,0,0,0);
@@ -5823,7 +5824,8 @@ function updateHeaderStats() {
 function renderStaysBar() {
   var bar = document.getElementById('staysBar');
   var today = new Date().toISOString().slice(0,10);
-  var live = function(c){ return typeof isBookable === 'function' ? isBookable(c) : true; };
+  // Firm bookings only — the stays bar represents real arrivals, not leads.
+  var live = function(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : true; };
   var inHouse = clients.find(function(c) { return live(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today; });
   var upcoming = clients.filter(function(c) { return live(c) && c.arrival && c.arrival > today; })
     .sort(function(a,b){ return a.arrival<b.arrival?-1:a.arrival>b.arrival?1:0; }).slice(0,4);
