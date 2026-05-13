@@ -4673,7 +4673,7 @@ async function analyze() {
   const staffFirst = staffNames.split('\n')[0].replace(/\(.*?\)/g,'').trim();
   const gpsInfo    = cfg.gps    || 'to be confirmed';
 
-  const inHouse    = clients.find(cl => cl.arrival <= today && cl.departure >= today);
+  const inHouse    = clients.find(cl => isFirmBooking(cl) && cl.arrival <= today && cl.departure >= today);
   const clientCtx  = clients.length
     ? 'CRM:\n' + clients.map(cl => `ID:${cl.id}|${cl.name}|${cl.arrival||'?'}|${cl.phone||''}`).join('\n')
     : 'No existing clients.';
@@ -6928,9 +6928,9 @@ function _ariaBuildPlaceholderVariants() {
   try {
     if (typeof clients !== 'undefined' && Array.isArray(clients) && clients.length) {
       var today = new Date().toISOString().slice(0,10);
-      activeClient = clients.find(function(c){ return c.arrival && c.departure && c.arrival <= today && c.departure >= today; });
+      activeClient = clients.find(function(c){ return isFirmBooking(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today; });
       if (!activeClient) {
-        var future = clients.filter(function(c){ return c.arrival && c.arrival > today; });
+        var future = clients.filter(function(c){ return isFirmBooking(c) && c.arrival && c.arrival > today; });
         future.sort(function(a,b){ return a.arrival.localeCompare(b.arrival); });
         nextClient = future[0] || null;
       }
@@ -7494,7 +7494,7 @@ function renderChatClientChips() {
   var today = new Date().toISOString().slice(0,10);
   // Prioritize: arriving soon, in house, then all
   var priority = clients.filter(function(c) {
-    return c.arrival && Math.abs(new Date(c.arrival) - new Date()) < 7 * 864e5;
+    return isFirmBooking(c) && c.arrival && Math.abs(new Date(c.arrival) - new Date()) < 7 * 864e5;
   }).slice(0,4);
   if (!priority.length) priority = clients.slice(0,4);
   
@@ -13708,8 +13708,8 @@ async function loadMorningBrief(forceRefresh = false) {
   const checkinToday = clients.filter(c => _live(c) && c.arrival === today);
   const checkinTomorrow = clients.filter(c => _live(c) && c.arrival === tomorrowStr);
   const upcoming7 = clients.filter(c => _live(c) && c.arrival && c.arrival > today && new Date(c.arrival) <= in7);
-  const totalRevenue = clients.reduce((s,c) => s + (parseFloat(c.price)||0), 0);
-  const occupancyDays = clients.filter(c => c.arrival && c.departure).reduce((s,c) => {
+  const totalRevenue = clients.reduce((s,c) => isFirmBooking(c) ? s + (parseFloat(c.price)||0) : s, 0);
+  const occupancyDays = clients.filter(c => isFirmBooking(c) && c.arrival && c.departure).reduce((s,c) => {
     return s + Math.max(0, Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000));
   }, 0);
 
@@ -15742,7 +15742,7 @@ function ariaExecuteLegacyAction(btn) {
         }
         if (!match) {
           var today = new Date(); today.setHours(0,0,0,0);
-          match = clients.find(function(c){ if (!c.arrival||!c.departure) return false; var ad = new Date(c.arrival), dd = new Date(c.departure); return ad <= today && today < dd; });
+          match = clients.find(function(c){ if (!isFirmBooking(c)) return false; if (!c.arrival||!c.departure) return false; var ad = new Date(c.arrival), dd = new Date(c.departure); return ad <= today && today < dd; });
         }
         if (match) phone = (match.phone||'').replace(/[\s\-+()]/g,'');
       }
@@ -16031,7 +16031,7 @@ function ariaExecuteAction(idx, btn) {
     try {
       if (a.target === 'guest' && typeof clients !== 'undefined') {
         var today = new Date(); today.setHours(0,0,0,0);
-        var current = clients.find(function(c){ if (!c.arrival||!c.departure) return false; var ad = new Date(c.arrival), dd = new Date(c.departure); return ad <= today && today < dd; });
+        var current = clients.find(function(c){ if (!isFirmBooking(c)) return false; if (!c.arrival||!c.departure) return false; var ad = new Date(c.arrival), dd = new Date(c.departure); return ad <= today && today < dd; });
         if (current) phone = (current.phone||'').replace(/[\s\-+()]/g,'');
       }
     } catch(e){}
@@ -18059,7 +18059,7 @@ window.addEventListener('DOMContentLoaded', function() {
         }
         if (!clientId && target === 'guest' && typeof clients!=='undefined'){
           var today = new Date(); today.setHours(0,0,0,0);
-          var current = clients.find(function(c){ if (!c.arrival||!c.departure) return false; var ad=new Date(c.arrival),dd=new Date(c.departure); return ad<=today && today<dd; });
+          var current = clients.find(function(c){ if (!isFirmBooking(c)) return false; if (!c.arrival||!c.departure) return false; var ad=new Date(c.arrival),dd=new Date(c.departure); return ad<=today && today<dd; });
           if (current){ clientId = current.id; clientName = current.name; phone = current.phone||''; }
         }
         if (clientId && !phone){
@@ -18166,7 +18166,7 @@ window.addEventListener('DOMContentLoaded', function() {
       try {
         if (target === 'guest' && typeof clients!=='undefined'){
           var today = new Date(); today.setHours(0,0,0,0);
-          var cur = clients.find(function(c){ if(!c.arrival||!c.departure)return false; var ad=new Date(c.arrival),dd=new Date(c.departure); return ad<=today&&today<dd; });
+          var cur = clients.find(function(c){ if (!isFirmBooking(c)) return false; if(!c.arrival||!c.departure)return false; var ad=new Date(c.arrival),dd=new Date(c.departure); return ad<=today&&today<dd; });
           if (cur) phone = (cur.phone||'').replace(/[\s\-+()]/g,'');
         }
         if (!phone && typeof _chatActiveClient!=='undefined' && _chatActiveClient && _chatActiveClient.id){
@@ -21664,6 +21664,7 @@ window.addEventListener('DOMContentLoaded', function() {
         if (bodyId === 'heroGuestsUpcomingBody') { applyState(false); }
         else {
           var hasInHouse = (typeof window.clients !== 'undefined') && window.clients.some(function(c){
+            if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return false;
             if(!c.arrival||!c.departure) return false;
             var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;
           });
@@ -23804,6 +23805,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
     // 1. ARRIVAL TODAY: notify once per guest per arrival day
     clients.forEach(function(c){
+      if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
       if (!c.arrival) return;
       var d = new Date(c.arrival); d.setHours(0,0,0,0);
       var dd = Math.round((d - today) / DAY);
@@ -23834,6 +23836,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
     // 2. REVIEW REMINDERS J+1, J+2, J+7, J+14
     clients.forEach(function(c){
+      if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
       if (!c.departure || c.hostReviewLeft) return;
       var src = (c.source||'').toLowerCase();
       if (!/airbnb|booking|vrbo|abritel|expedia/.test(src)) return;
@@ -23865,6 +23868,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
     // 3. CHECKOUT TODAY
     clients.forEach(function(c){
+      if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
       if (!c.departure) return;
       var d = new Date(c.departure); d.setHours(0,0,0,0);
       if (d.getTime() === today.getTime()) {
@@ -24325,7 +24329,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
     if (query.kind === 'in_house') {
       var inhouse = clients.filter(function(c){
-        return c.arrival && c.departure && c.arrival <= todayISO && c.departure >= todayISO;
+        return isFirmBooking(c) && c.arrival && c.departure && c.arrival <= todayISO && c.departure >= todayISO;
       });
       if (inhouse.length === 0) {
         return L('Aucun client sur place actuellement (' + todayHuman('fr') + ').', 'No guests currently on site (' + todayHuman('en') + ').');
