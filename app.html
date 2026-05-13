@@ -5809,12 +5809,14 @@ function renderAll() {
 }
 
 function updateHeaderStats() {
-  const total = clients.reduce((s,c) => s + netAmt(c), 0);
+  // Stats reflect real revenue/guests — leads are NOT counted here.
+  const firm = clients.filter(c => isFirmBooking(c));
+  const total = firm.reduce((s,c) => s + netAmt(c), 0);
   document.getElementById('hNet').textContent = Math.round(total).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
-  document.getElementById('hCount').textContent = clients.length;
-  document.getElementById('crmCount').textContent = clients.length;
+  document.getElementById('hCount').textContent = firm.length;
+  document.getElementById('crmCount').textContent = firm.length;
   document.getElementById('crmNet').textContent = Math.round(total).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
-  const withNights = clients.filter(c => c.arrival && c.departure);
+  const withNights = firm.filter(c => c.arrival && c.departure);
   if (withNights.length) {
     const avg = Math.round(withNights.reduce((s,c)=>s+netAmt(c)/(nights(c)||1),0)/withNights.length);
     document.getElementById('crmAvg').textContent = avg + '€';
@@ -11700,13 +11702,15 @@ function getAutoPricingDate() {
   }
   if (typeof clients !== 'undefined' && Array.isArray(clients)) {
     var today = new Date(); today.setHours(0,0,0,0);
+    var _firm = function(c){ return typeof isFirmBooking==='function' ? isFirmBooking(c) : true; };
     var current = clients.find(function(c){
+      if (!_firm(c)) return false;
       if (!c.arrival || !c.departure) return false;
       var a = new Date(c.arrival), dep = new Date(c.departure);
       return a <= today && today < dep;
     });
     if (current) return new Date(current.arrival);
-    var upcoming = clients.filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
+    var upcoming = clients.filter(function(c){ return _firm(c) && c.arrival && new Date(c.arrival) >= today; })
       .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
     if (upcoming[0]) return new Date(upcoming[0].arrival);
   }
@@ -12242,8 +12246,9 @@ async function generateAlerts(weatherTemp) {
     }
   });
 
-  // Missing passport alert — for clients arriving in < 5 days with no passport note
+  // Missing passport alert — for confirmed guests arriving in < 5 days with no passport note
   const needPassport = clients.filter(c => {
+    if (!_live(c)) return false;
     const d = daysFrom(c.arrival||'9999');
     return d > 0 && d <= 5 && !(c.notes||'').toLowerCase().includes('passport');
   });
@@ -12262,8 +12267,8 @@ async function generateAlerts(weatherTemp) {
     }
   }
 
-  // ── 2. FLIGHT DELAYS — for ALL upcoming guests in 7 days ──
-  const upcomingFlightGuests = clients.filter(c => c.arrival && daysFrom(c.arrival) >= 0 && daysFrom(c.arrival) <= 1);
+  // ── 2. FLIGHT DELAYS — for confirmed arrivals only (leads have no flight to delay) ──
+  const upcomingFlightGuests = clients.filter(c => _live(c) && c.arrival && daysFrom(c.arrival) >= 0 && daysFrom(c.arrival) <= 1);
   if (upcomingFlightGuests.length && AVIATION_KEY) {
     try {
       const flightRes = await fetch(`${SB_URL}/functions/v1/flight-proxy?airport=RAK&mode=arr&limit=20`);
@@ -12393,8 +12398,8 @@ async function generateAlerts(weatherTemp) {
     }
   } catch(e) {}
 
-  // ── 7. OCCUPANCY & REVENUE INTELLIGENCE ──
-  const thisMonth = clients.filter(c => c.arrival && c.arrival.slice(0,7) === today.slice(0,7));
+  // ── 7. OCCUPANCY & REVENUE INTELLIGENCE — confirmed only (leads aren't revenue) ──
+  const thisMonth = clients.filter(c => _live(c) && c.arrival && c.arrival.slice(0,7) === today.slice(0,7));
   const monthRevenue = thisMonth.reduce((s,c) => s + (parseFloat(c.price)||0), 0);
   const occupiedDays = thisMonth.reduce((s,c) => s + Math.max(0,Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000)), 0);
   const daysInMonth = new Date(now.getFullYear(), month, 0).getDate();
@@ -12422,7 +12427,7 @@ async function generateAlerts(weatherTemp) {
     title:'🚀 ' + (fr?'Commencez par ajouter vos réservations':'Start by adding your bookings'),
     sub: fr?'Collez un email Airbnb dans Analyser un message — 1 clic suffit.':'Paste an Airbnb email in Analyse a message — 1 click is all it takes.'});
   
-  const lastCheckout = clients.filter(c => c.departure && c.departure < today).sort(function(a,b){return b.departure<a.departure?-1:b.departure>a.departure?1:0;})[0];
+  const lastCheckout = clients.filter(c => _live(c) && c.departure && c.departure < today).sort(function(a,b){return b.departure<a.departure?-1:b.departure>a.departure?1:0;})[0];
   if (lastCheckout && daysFrom(lastCheckout.departure) >= -5 && daysFrom(lastCheckout.departure) < 0) {
     allTips.push({type:'info',
       title:'⭐ ' + (fr?'Demandez un avis à ':'Ask for review from ') + lastCheckout.name,
@@ -13017,13 +13022,14 @@ function renderTodayQV() {
     return; // skip rest of normal Today rendering
   }
 
-  // Find in-house and next upcoming
-  const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
-  const upcoming = clients.filter(c => c.arrival && c.arrival > today)
+  // Find in-house and next upcoming — confirmed/pending only (no leads).
+  const _firm = c => isFirmBooking(c);
+  const inHouse = clients.find(c => _firm(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today);
+  const upcoming = clients.filter(c => _firm(c) && c.arrival && c.arrival > today)
     .sort(function(a,b){return a.arrival<b.arrival?-1:a.arrival>b.arrival?1:0;});
   const nextUp = upcoming[0] || null;
-  const checkoutToday = clients.filter(c => c.departure === today);
-  const checkinToday = clients.filter(c => c.arrival === today);
+  const checkoutToday = clients.filter(c => _firm(c) && c.departure === today);
+  const checkinToday = clients.filter(c => _firm(c) && c.arrival === today);
 
   let html = '';
 
@@ -13088,18 +13094,18 @@ function renderTodayQV() {
   const wTempVal = wTempRaw.match(/\d+/)?.[0];
   const wDesc = document.getElementById('weatherContent')?.querySelector?.('[class*="desc"]')?.textContent || '';
 
-  // Revenue this month
+  // Revenue this month — confirmed only
   const thisMonthStr = today.slice(0,7);
-  const monthClients = clients.filter(c => c.arrival && c.arrival.slice(0,7) === thisMonthStr);
+  const monthClients = clients.filter(c => _firm(c) && c.arrival && c.arrival.slice(0,7) === thisMonthStr);
   const monthRev = monthClients.reduce((s,c) => s + (parseFloat(c.price)||0), 0);
   const monthNights = monthClients.reduce((s,c) => s + Math.max(0,Math.ceil((new Date(c.departure||today)-new Date(c.arrival))/86400000)), 0);
   const _now = new Date();
   const daysInMonth = new Date(_now.getFullYear(), _now.getMonth()+1, 0).getDate();
   const occPct = Math.round(monthNights / daysInMonth * 100);
 
-  // Next 30 days revenue pipeline
+  // Next 30 days confirmed revenue (renamed from "pipeline" to avoid confusion with leads)
   const in30 = dateInDays(30);
-  const pipeline = clients.filter(c => c.arrival && c.arrival > today && c.arrival <= in30)
+  const pipeline = clients.filter(c => _firm(c) && c.arrival && c.arrival > today && c.arrival <= in30)
     .reduce((s,c) => s + (parseFloat(c.price)||0), 0);
 
   // Tonight price
@@ -14023,9 +14029,10 @@ function generateStaffChecklist() {
   const tomorrowStr = tomorrow.toISOString().slice(0,10);
   const cfg = getCfg();
   
-  // Find relevant client
-  const inHouse = clients.find(c => c.arrival && c.departure && c.arrival <= today && c.departure >= today);
-  const checkinTomorrow = clients.filter(c => c.arrival === tomorrowStr)[0];
+  // Find relevant client — confirmed/pending only (the checklist is for real arrivals)
+  const _firm = c => typeof isFirmBooking === 'function' ? isFirmBooking(c) : true;
+  const inHouse = clients.find(c => _firm(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today);
+  const checkinTomorrow = clients.filter(c => _firm(c) && c.arrival === tomorrowStr)[0];
   const relevant = checkinTomorrow || inHouse;
   
   const wTemp = parseInt(document.getElementById('factorWeather')?.textContent?.match(/\d+/)?.[0] || '20');
@@ -14100,10 +14107,12 @@ function renderBriefFallback(el, fr) {
   const tomorrowStr = tomorrow.toISOString().slice(0,10);
   const cards = [];
   
-  const checkoutToday = clients.filter(c => c.departure === today);
-  const checkinToday = clients.filter(c => c.arrival === today);
-  const checkinTomorrow = clients.filter(c => c.arrival === tomorrowStr);
-  
+  // Confirmed/pending only — never surface leads as if they were real arrivals.
+  const _firm = c => typeof isFirmBooking === 'function' ? isFirmBooking(c) : true;
+  const checkoutToday = clients.filter(c => _firm(c) && c.departure === today);
+  const checkinToday = clients.filter(c => _firm(c) && c.arrival === today);
+  const checkinTomorrow = clients.filter(c => _firm(c) && c.arrival === tomorrowStr);
+
   if (checkoutToday.length) cards.push({urgency:9, icon:'🧳', title: fr?'Départ aujourd\'hui':'Checkout today', detail: checkoutToday.map(c=>c.name).join(', '), action: fr?'Préparer le ménage':'Prepare cleaning'});
   if (checkinToday.length) cards.push({urgency:10, icon:'🏡', title: fr?'Arrivée aujourd\'hui':'Arrival today', detail: checkinToday.map(c=>c.name+' ('+c.guests+' pers.)').join(', '), action: fr?'Vérifier villa':'Check villa ready'});
   if (checkinTomorrow.length) cards.push({urgency:7, icon:'📅', title: fr?'Arrivée demain':'Arriving tomorrow', detail: checkinTomorrow.map(c=>c.name).join(', '), action: fr?'Confirmer transfert':'Confirm transfer'});
@@ -14469,13 +14478,15 @@ const VILLA_SOP_PHASES = [
 function getActiveOrNextGuest() {
   if (typeof clients === 'undefined' || !Array.isArray(clients)) return null;
   var today = new Date(); today.setHours(0,0,0,0);
+  var _firm = function(c){ return typeof isFirmBooking==='function' ? isFirmBooking(c) : true; };
   var current = clients.find(function(c){
+    if (!_firm(c)) return false;
     if (!c.arrival || !c.departure) return false;
     var a = new Date(c.arrival), d = new Date(c.departure);
     return a <= today && today < d;
   });
   if (current) return { guest: current, status: 'current' };
-  var upcoming = clients.filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
+  var upcoming = clients.filter(function(c){ return _firm(c) && c.arrival && new Date(c.arrival) >= today; })
     .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
   if (upcoming.length > 0) {
     var days = Math.round((new Date(upcoming[0].arrival) - today) / 86400000);
@@ -16971,16 +16982,18 @@ window.toggleHeroAction = toggleHeroAction;
 
 // ── Hero panels — populate from existing data ──
 function v2RenderHero() {
-  // Find current and upcoming guests from existing 'clients' array
+  // Find current and upcoming guests — confirmed/pending only (no leads).
   if (typeof clients === 'undefined' || !Array.isArray(clients)) return;
   var today = new Date(); today.setHours(0,0,0,0);
+  var _firm = function(c){ return typeof isFirmBooking==='function' ? isFirmBooking(c) : true; };
   var current = clients.find(function(c){
+    if (!_firm(c)) return false;
     if (!c.arrival || !c.departure) return false;
     var a = new Date(c.arrival), d = new Date(c.departure);
     return a <= today && today < d;
   });
   var upcoming = clients
-    .filter(function(c){ return c.arrival && new Date(c.arrival) > today; })
+    .filter(function(c){ return _firm(c) && c.arrival && new Date(c.arrival) > today; })
     .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); })
     .slice(0, 3);
 
@@ -17085,15 +17098,16 @@ function v2RenderHero() {
     var nextArrival = null;
     var daysToArrival = null;
     if (!current) {
-      var sorted = clients.filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
+      var sorted = clients.filter(function(c){ return (typeof isFirmBooking==='function'?isFirmBooking(c):true) && c.arrival && new Date(c.arrival) >= today; })
         .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
       if (sorted.length > 0) {
         nextArrival = sorted[0];
         daysToArrival = Math.round((new Date(nextArrival.arrival) - today) / 86400000);
       }
     }
-    // Departure today?
+    // Departure today? Confirmed/pending only.
     var departingToday = clients.find(function(c){
+      if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return false;
       if (!c.departure) return false;
       var d = new Date(c.departure); d.setHours(0,0,0,0);
       return d.getTime() === today.getTime();
@@ -21164,7 +21178,7 @@ window.addEventListener('DOMContentLoaded', function() {
       // Calendar (any: today + mirrors)
       if (cardId === 'cardCalendarMini' || (card.classList && card.classList.contains('cardCalendarMiniMirror'))) {
         var today = new Date(); today.setHours(0,0,0,0);
-        var soon = clients.filter(function(c){ if(!c.arrival)return false; var d=new Date(c.arrival);d.setHours(0,0,0,0); var dd=Math.round((d-today)/86400000); return dd>=0 && dd<=30;});
+        var soon = clients.filter(function(c){ if(typeof isFirmBooking==='function'&&!isFirmBooking(c))return false; if(!c.arrival)return false; var d=new Date(c.arrival);d.setHours(0,0,0,0); var dd=Math.round((d-today)/86400000); return dd>=0 && dd<=30;});
         soon.sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);});
         if (!soon.length) return pill(fr?'Aucune arrivée':'No arrivals', '#7a8a7a', 'rgba(120,140,120,.12)');
         // Show up to 3 inline timeline
@@ -21202,7 +21216,7 @@ window.addEventListener('DOMContentLoaded', function() {
         return pill(n+(fr?' alertes':' alerts'), '#C9963A', 'rgba(201,150,58,.18)');
       }
       if (cardId === 'card50VillaSnap') {
-        var inHouse = clients.find(function(c){ if(!c.arrival||!c.departure)return false; var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;});
+        var inHouse = clients.find(function(c){ if(typeof isFirmBooking==='function'&&!isFirmBooking(c))return false; if(!c.arrival||!c.departure)return false; var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;});
         if (inHouse) return pill((inHouse.name||'').split(' ')[0]+(fr?' en cours':' in stay'), '#3B6D11', 'rgba(59,109,17,.12)');
         return pill(fr?'Personne':'Empty', '#7a8a7a', 'rgba(120,140,120,.12)');
       }
@@ -21246,6 +21260,7 @@ window.addEventListener('DOMContentLoaded', function() {
         try {
           (clients || []).forEach(function(c){
             if (c.deleted_at) return;
+            if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
             if (!c.arrival || !c.departure) return;
             var aD = new Date(c.arrival); aD.setHours(0,0,0,0);
             var dD = new Date(c.departure); dD.setHours(0,0,0,0);
@@ -21373,12 +21388,14 @@ window.addEventListener('DOMContentLoaded', function() {
         var moreLineA = moreA > 0 ? '<div style="font-size:11px;color:var(--muted);margin-top:4px;padding-left:102px">+ '+moreA+(fr?' alerte(s)':' more')+'</div>' : '';
         return '<div style="padding:14px 20px;display:flex;flex-direction:column;gap:10px">'+outA.join('')+moreLineA+'</div>';
       }
-      // Villa & Pipeline: current guest + counts dashboard
+      // Villa & Pipeline: current guest + counts dashboard.
+      // Confirmed/pending only for inHouse + upc; leads have their own counter below.
       if (cardId === 'card50VillaSnap') {
         var todayV = new Date(); todayV.setHours(0,0,0,0);
-        var inHouse = clients.find(function(c){ if(!c.arrival||!c.departure)return false; var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;});
-        var upc = clients.filter(function(c){if(!c.arrival)return false;var d=new Date(c.arrival);d.setHours(0,0,0,0);return d>todayV;});
-        var leads = clients.filter(function(c){return c.bookingStatus==='inquiry'||c.bookingStatus==='lead';});
+        var _firm = function(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : true; };
+        var inHouse = clients.find(function(c){ if(!_firm(c)||!c.arrival||!c.departure)return false; var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;});
+        var upc = clients.filter(function(c){if(!_firm(c)||!c.arrival)return false;var d=new Date(c.arrival);d.setHours(0,0,0,0);return d>todayV;});
+        var leads = clients.filter(function(c){var bs=c.bookingStatus;return bs==='inquiry'||bs==='lead'||bs==='quoted';});
         var nextArr = upc.slice().sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);})[0];
         var html = '<div style="padding:14px 20px">';
         if (inHouse) {
@@ -21417,7 +21434,7 @@ window.addEventListener('DOMContentLoaded', function() {
           return '<div style="padding:14px 20px"><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;font-family:var(--sans)">'+(fr?'Routine maison':'House routine')+'</div><div style="display:flex;flex-direction:column;gap:8px">'+alwaysOn.slice(0,2).map(function(t){return '<div style="display:flex;align-items:center;gap:10px;font-size:13px"><span style="width:14px;height:14px;border:1.5px solid var(--gold);border-radius:3px;flex-shrink:0"></span><span style="color:var(--ink)">'+t+'</span></div>';}).join('')+'</div></div>';
         }
         if (!checks.length) {
-          var inHV = clients.find(function(c){ if(!c.arrival||!c.departure)return false; var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;});
+          var inHV = clients.find(function(c){ if(typeof isFirmBooking==='function'&&!isFirmBooking(c))return false; if(!c.arrival||!c.departure)return false; var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;});
           var sugg = inHV ? (fr?'Briefer le staff pour le check-out de '+(inHV.name||'').split(' ')[0]:'Brief staff for '+(inHV.name||'').split(' ')[0]+'\'s checkout') : (fr?'Préparer la prochaine arrivée':'Prepare next arrival');
           return '<div style="padding:14px 20px"><div style="font-size:13px;color:#3B6D11;font-weight:600;display:flex;align-items:center;gap:8px"><i class="ti ti-circle-check" style="font-size:16px"></i>'+(fr?'Tout fait pour aujourd\'hui':'All done for today')+'</div><div style="font-size:11px;color:var(--muted);margin-top:6px;padding-left:24px">'+(fr?'Suggestion : ':'Tip: ')+sugg+'</div></div>';
         }
@@ -21441,10 +21458,10 @@ window.addEventListener('DOMContentLoaded', function() {
       // Detect by body id (Guests tab)
       var bodyEl = card.querySelector('.v2-card-body');
       var bodyId = bodyEl ? bodyEl.id : '';
-      // Upcoming arrivals
+      // Upcoming arrivals — confirmed/pending only
       if (bodyId === 'heroGuestsUpcomingBody') {
         var todayG = new Date(); todayG.setHours(0,0,0,0);
-        var upcoming = clients.filter(function(c){if(!c.arrival)return false;var d=new Date(c.arrival);d.setHours(0,0,0,0);return d>=todayG;}).sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);}).slice(0,3);
+        var upcoming = clients.filter(function(c){if(typeof isFirmBooking==='function'&&!isFirmBooking(c))return false;if(!c.arrival)return false;var d=new Date(c.arrival);d.setHours(0,0,0,0);return d>=todayG;}).sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);}).slice(0,3);
         if (!upcoming.length) return '<div style="padding:14px 18px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Aucune arrivée à venir':'No arrivals ahead')+'</div>';
         return upcoming.map(function(c){
           var d=new Date(c.arrival);
@@ -21453,19 +21470,19 @@ window.addEventListener('DOMContentLoaded', function() {
           return '<div style="padding:9px 18px;border-top:1px solid rgba(0,0,0,.04);display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div style="min-width:0;flex:1;overflow:hidden"><div style="font-weight:600;color:var(--ink);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(c.name||'?')+(c.nat?' <span style="font-weight:400;font-size:11px;color:var(--muted)">'+c.nat+'</span>':'')+'</div></div><div style="font-size:10px;color:var(--gold);font-weight:700;letter-spacing:.5px;white-space:nowrap;flex-shrink:0">'+lbl+'</div></div>';
         }).join('');
       }
-      // Current guest
+      // Current guest — confirmed/pending only
       if (bodyId === 'heroGuestsCurrentBody') {
-        var inH = clients.find(function(c){if(!c.arrival||!c.departure)return false;var t=Date.now();return new Date(c.arrival).getTime()<=t&&new Date(c.departure).getTime()>=t;});
+        var inH = clients.find(function(c){if(typeof isFirmBooking==='function'&&!isFirmBooking(c))return false;if(!c.arrival||!c.departure)return false;var t=Date.now();return new Date(c.arrival).getTime()<=t&&new Date(c.departure).getTime()>=t;});
         if (!inH) return '<div style="padding:14px 18px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Aucun guest en cours':'No guest currently')+'</div>';
         var dep=new Date(inH.departure);var nights=Math.max(0,Math.round((dep-Date.now())/86400000));
         return '<div style="padding:12px 18px"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><div style="min-width:0;flex:1;overflow:hidden"><div style="font-weight:600;color:var(--ink);font-size:14px">'+(inH.name||'?')+'</div><div style="font-size:11px;color:var(--muted);margin-top:2px">'+(inH.guests||0)+(fr?' pers · ':' guests · ')+(inH.source||'')+'</div></div><div style="font-size:11px;color:#3B6D11;font-weight:600;font-family:var(--sans);white-space:nowrap">'+nights+(fr?' nuit(s)':' night(s))')+'</div></div></div>';
       }
-      // Stats clients
-      // Stats clients
+      // Stats clients — confirmed/pending only
       if (titleSpan && titleSpan.textContent.toLowerCase().indexOf('stat') !== -1) {
-        var n=clients.length;
-        var net=clients.reduce(function(s,c){var p=Number(c.price||0);var cm=Number(c.commission||0);return s+(p*(1-cm/100));},0);
-        var nights2=clients.reduce(function(s,c){if(!c.arrival||!c.departure)return s;return s+Math.max(1,Math.round((new Date(c.departure)-new Date(c.arrival))/86400000));},0);
+        var firmList = clients.filter(function(c){ return typeof isFirmBooking==='function' ? isFirmBooking(c) : true; });
+        var n=firmList.length;
+        var net=firmList.reduce(function(s,c){var p=Number(c.price||0);var cm=Number(c.commission||0);return s+(p*(1-cm/100));},0);
+        var nights2=firmList.reduce(function(s,c){if(!c.arrival||!c.departure)return s;return s+Math.max(1,Math.round((new Date(c.departure)-new Date(c.arrival))/86400000));},0);
         var avg=nights2?Math.round(net/nights2):0;
         return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:12px 8px"><div style="text-align:center;padding:6px;border-right:1px solid var(--border)"><div style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--ink);line-height:1">'+n+'</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-top:3px">GUESTS</div></div><div style="text-align:center;padding:6px;border-right:1px solid var(--border)"><div style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--gold);line-height:1">'+Math.round(net)+'€</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-top:3px">NET</div></div><div style="text-align:center;padding:6px"><div style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--ink);line-height:1">'+avg+'€</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-top:3px">/NUIT</div></div></div>';
       }
@@ -23394,8 +23411,8 @@ window.addEventListener('DOMContentLoaded', function() {
     trackAriaAction('chip_'+type);
     var fr = lang === 'fr';
     var clients = window.clients || [];
-    var inHouse = clients.find(function(c){ if(!c.arrival||!c.departure)return false; var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;});
-    var nextG = clients.filter(function(c){if(!c.arrival)return false;return new Date(c.arrival).getTime()>Date.now();}).sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);})[0];
+    var inHouse = clients.find(function(c){ if(typeof isFirmBooking==='function'&&!isFirmBooking(c))return false; if(!c.arrival||!c.departure)return false; var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;});
+    var nextG = clients.filter(function(c){if(typeof isFirmBooking==='function'&&!isFirmBooking(c))return false; if(!c.arrival)return false;return new Date(c.arrival).getTime()>Date.now();}).sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);})[0];
     var refGuest = inHouse || nextG;
     var prompt = '';
     if (type === 'email') {
