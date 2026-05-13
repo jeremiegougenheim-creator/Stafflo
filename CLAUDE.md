@@ -1,200 +1,186 @@
-# CLAUDE.md — Stafflo / ARIA
+# CLAUDE.md — Manuel d'exécution Stafflo
 
-This file is read automatically by Claude Code at the start of every session. It tells Claude what this codebase is, how it's organized, and what conventions to follow.
+> Lu automatiquement par Claude Code au démarrage de chaque session.
+> Définit ce qu'est ce repo, comment l'éditer en sécurité, et les règles non-négociables.
 
-## What this project is
+## Contexte du repo
 
-Stafflo is a SaaS PWA for luxury villa operations management. The product is being repositioned around **ARIA**, an AI agent that becomes the primary interface (not a feature). Tagline: *"From a SaaS for luxury villas to an AI manager every villa hires."*
-
-Test villa: Villa DarJ in Marrakech. On-site staff: Said (majordome), Faiza (chef), Bouchra (housekeeping).
-
-## Stack at a glance
-
-- **App**: single-file `app.html` (~13 000+ lines) deployed on GitHub Pages
-  - Live URL: `https://jeremiegougenheim-creator.github.io/Stafflo/app.html`
-  - Repo path: `app.html` at root
-- **Landing**: `index.html` (FR) + `en.html` (EN), GitHub Pages
-- **Backend**: Supabase project `rcjhgilpmojohmrqzokx` — Auth, Postgres + RLS multi-tenant, Edge Functions (Deno), JSONB storage, Realtime
-- **AI proxy**: Cloudflare Worker at `stafflo-proxy.jeremiegougenheim.workers.dev`
-- **LLM cascade**: Groq `llama-3.1-8b-instant` (primary) → DeepSeek → Gemini → Mistral → OpenAI (fallback)
-- **Voice (v1)**: Web Speech API for input, ElevenLabs for TTS (planned)
-- **Icons**: Tabler Icons via webfont, mapped centrally through `iconFor()`
-- **Typography**: Cormorant Garamond (serif, ARIA voice & titles) + Inter (sans, UI)
-- **Palette**: cream `#FAF6EE`, dark green `#0F2318`, mid green `#1D4D3A`, gold `#C9963A`, gold soft `#E5C77A`
-
-## Working directory & files
-
-- Working file (Claude Code edits here): `app.html` at repo root
-- Backup before any session: `curl -o /tmp/app.live.html https://jeremiegougenheim-creator.github.io/Stafflo/app.html`
-- **The live version often diverges from local.** Always pull the live one before starting work.
+- **App** : single-file `app.html` (~13 000+ lignes), hébergé sur GitHub Pages
+  - URL live : <https://jeremiegougenheim-creator.github.io/Stafflo/>
+  - Repo path : `app.html` à la racine
+- **Landing** : `index.html` (FR) + `en.html` (EN) dans le même repo
+- **Backend** : Supabase project `rcjhgilpmojohmrqzokx` — Auth, Postgres + RLS multi-tenant, Edge Functions Deno, Realtime
+- **Proxy AI** : Cloudflare Worker `stafflo-proxy.jeremiegougenheim.workers.dev`
+- **LLM cascade** : Groq `llama-3.1-8b-instant` (primaire) → DeepSeek → Gemini → Mistral → OpenAI (fallback)
+- **Voix (v1)** : Web Speech API pour l'input, ElevenLabs pour le TTS (prévu)
+- **Icons** : Tabler Icons via webfont, centralisés via `iconFor()`
+- **Typographie** : Cormorant Garamond (titres, voix ARIA) + Inter (UI)
+- **Palette** : cream `#FAF6EE`, dark green `#0F2318`, mid green `#1D4D3A`, gold `#C9963A`, gold soft `#E5C77A`
+- **Villa de test** : Villa DarJ Marrakech. Staff : Said (majordome), Faiza (chef), Bouchra (housekeeping).
 
 ---
 
-## CRITICAL — Strangler fig pattern for ARIA-first refactor
+## 1. Avant chaque session
 
-The ARIA-first pivot is being executed as a **strangler fig refactor**, NOT a rewrite. This is non-negotiable.
+La version live (`app.html` sur GitHub Pages) **diverge souvent** de la version du repo local. Avant toute édition :
 
-### What this means concretely
+1. `curl https://jeremiegougenheim-creator.github.io/Stafflo/app.html -o /tmp/app-live.html`
+2. `diff /tmp/app-live.html app.html`
+3. Si diff non vide → **STOP** et demander quoi faire (rebase live → local, ou ignorer)
+4. `git status` doit être clean
+5. Confirmer la branche : `feature/*` pour tout sauf hotfix critique
 
-The new ARIA-first UI is built **as new components that COEXIST with the existing dashboard**, gated by a feature flag. Existing code is NOT modified or deleted during the build phase. Once the new UI is proven stable in production with real users (Villa DarJ + soft launch), the old code is then progressively removed.
+## 2. Pattern strangler fig pour le pivot ARIA-first v1
 
-### Rules Claude Code MUST follow
+Le pivot ARIA-first est exécuté en **strangler fig**, PAS en rewrite. Non-négociable.
 
-1. **Never delete existing code.** Wrap it in a conditional, never remove it.
-2. **Never modify existing components.** Create new components alongside them.
-3. **Always gate new ARIA-first code behind the feature flag** `ARIA_FIRST_V1`.
-4. **Read the flag from `localStorage`** so it can be toggled without redeploying:
-   `const ARIA_FIRST_V1 = localStorage.getItem('flag_aria_first_v1') === '1';`
-5. **Default to FALSE** until the v1 is feature-complete and tested. Owner enables it manually on their device.
-6. **Both UIs must work in parallel.** If something breaks in ARIA-first, the user can toggle off and fall back to dashboard.
-7. **No dead code cleanup during the build phase.** That happens later, in a dedicated cleanup session, only AFTER the new UI is proven in production for at least 2 weeks.
+La nouvelle UI ARIA-first est construite **comme de nouveaux composants qui COEXISTENT avec le dashboard existant**, derrière un feature flag. Le code existant n'est ni modifié ni supprimé pendant la phase de build. Une fois la nouvelle UI prouvée stable en production (Villa DarJ + soft launch), l'ancien code est retiré progressivement.
 
-### Concrete pattern for every new ARIA-first component
+### Règles que Claude Code DOIT suivre
 
-At render time:
+1. **Ne jamais supprimer de code existant.** Wrap dans un conditionnel, ne pas retirer.
+2. **Ne jamais modifier les composants existants.** Créer de nouveaux composants à côté.
+3. **Toujours gater le nouveau code ARIA-first** derrière le feature flag `ARIA_FIRST_V1`.
+4. **Lire le flag depuis `localStorage`** pour le toggler sans redéployer :
+   `const ARIA_FIRST_V1 = localStorage.getItem('stafflo_aria_first_v1') === '1';`
+   Activation alternative : `?aria_first=1` dans l'URL.
+5. **Default à FALSE** jusqu'à ce que v1 soit feature-complete et testée. Le owner l'active manuellement sur son device.
+6. **Les deux UI doivent fonctionner en parallèle.** Si ARIA-first plante, l'utilisateur toggle off et retombe sur le dashboard.
+7. **Aucun cleanup de dead code pendant la phase de build.** Ça arrive plus tard, dans une session dédiée, UNIQUEMENT après que la nouvelle UI soit prouvée en production pendant au moins 14 jours.
+
+### Pattern concret pour chaque nouveau composant ARIA-first
+
+Au render :
 ```javascript
 function renderTodayTab() {
   if (ARIA_FIRST_V1) {
-    return renderAriaFirstTodayV1();  // new component
+    return renderAriaFirstTodayV1();  // nouveau composant
   }
-  return renderClassicDashboard();    // existing, untouched
+  return renderClassicDashboard();    // existant, intact
 }
 ```
 
-Or in HTML, by visibility:
+Ou en HTML, par visibilité :
 ```html
 <div id="dashboard-classic">
-  <!-- existing 6 cards, unchanged -->
+  <!-- 6 cards existantes, inchangées -->
 </div>
 <div id="aria-first-hero" style="display: none">
-  <!-- new orb + brief + contextual cards -->
+  <!-- nouveau orb + brief + cards contextuelles -->
 </div>
 ```
-With JS toggling display based on the flag at app init.
+JS toggle le `display` selon le flag à l'init de l'app.
 
-### When Claude Code is tempted to "clean up"
+### Quand Claude Code est tenté de « cleaner »
 
-If Claude Code suggests deleting old dashboard code, refactoring shared functions, or simplifying the data flow during the build phase: **refuse politely and ask for the change to be scoped as a separate post-v1 cleanup session**.
+Si Claude Code propose de supprimer du vieux code dashboard, de refactoriser des fonctions partagées, ou de simplifier le data flow pendant la phase de build : **refuser poliment et demander que le changement soit scopé dans une session de cleanup post-v1 dédiée**.
 
-The reason: any "cleanup" during the build risks regressions on existing features (Inbox, Gmail OAuth, pricing logic, multi-villa) that the soft-launch users depend on. The strangler fig pattern's whole point is to never break what works.
+Raison : tout « cleanup » pendant le build risque de régresser des features existantes (Inbox, Gmail OAuth, pricing logic, multi-villa) dont les utilisateurs du soft launch dépendent. Le but du strangler fig est précisément de ne jamais casser ce qui marche.
 
-### Exit criteria (when to remove the old code)
+### Critères de sortie (quand retirer l'ancien code)
 
-The classic dashboard code can be removed only when ALL of these are true:
-- `ARIA_FIRST_V1` enabled on all production accounts for at least 14 days
-- Zero rollbacks needed during that period
-- Active DAU greater than or equal to 80% of pre-flag DAU (no churn caused by the new UI)
-- Voice input has been tested on iOS Safari, Android Chrome, desktop Safari, desktop Chrome
+L'ancien dashboard ne peut être retiré que si TOUS ces critères sont vrais :
+- `ARIA_FIRST_V1` activé sur tous les comptes de production depuis au moins 14 jours
+- Zéro rollback déclenché pendant cette période
+- DAU actif ≥ 80% du DAU pré-flag (pas de churn causé par la nouvelle UI)
+- Voice input testé sur iOS Safari, Android Chrome, Safari desktop, Chrome desktop
 
-If any criterion fails, the flag stays and the old code stays.
+Si un critère échoue, le flag reste et l'ancien code reste.
 
----
+## 3. Pattern d'édition safe sur app.html (13k+ lignes)
 
-## Conventions Claude Code must follow
+- **Localiser** : `grep -n "pattern_unique" app.html`
+- **Vérifier le contexte** : `view` avec range 20-40 lignes autour
+- **`str_replace`** avec 3-5 lignes d'ancrage (sinon match ambigu)
+- Pre-existing brace balance delta `-1` = baseline connue, pas un bug. Un delta plus grand = quelque chose est cassé.
 
-### 1. Safe editing pattern for large single-file HTML
+## 4. Validation après chaque édition
 
-`app.html` is around 13 000 lines. Never rewrite chunks. Always:
+- Script Python : extraire tous les `<script>` vers `/tmp/all_js.js`
+  ```bash
+  python3 -c "
+  import re
+  with open('app.html') as f: c = f.read()
+  blocks = re.findall(r'<script>(.*?)</script>', c, re.DOTALL)
+  open('/tmp/all_js.js','w').write('\n'.join(blocks))
+  "
+  ```
+- `node --check /tmp/all_js.js`
+- Ouvrir `app.html` dans le navigateur, vérifier qu'il n'y a pas d'erreur console
+- Tester sur **iPhone réel** à chaque commit majeur (le simulateur ment)
 
-- `grep -n "<keyword>" app.html` to locate
-- view 20 to 40 lines to confirm context
-- `str_replace` with 3 to 5 lines of anchor around the change
+## 5. Workflow git
 
-Anchors shorter than 3 lines cause ambiguous matches. Anchors longer than 5 are slow and break on whitespace.
+- 1 commit = 1 changement propre (pas de batch end-of-day)
+- Format : `feat(aria-first): commit 1 — orb central` ou `fix(voice): Safari iOS permission`
+- Push après chaque commit pour rollback granulaire
 
-### 2. Validation after every meaningful edit
+## 6. Règles produit non-négociables
 
-Extract the JS from app.html and check it parses:
+- L'AI ne dit **JAMAIS** "à vérifier dans le système" — propose toujours une action concrète
+- Champs manquants marqués explicitement avec `?`
+- **Pas de fake data** dans l'app
+- Distinction guest-paid vs host-payout critique
+- Commissions par défaut : Airbnb 3.6%, Booking 15%, Direct 0%
+- `cfg.minPrice` / `cfg.maxPrice` = plancher et plafond, ARIA doit les respecter
+- Pricing tiers :
+  - **Tier A** €69 / €179 / €399 — émergent
+  - **Tier B** €99 / €249 / €499 — mid-luxe (default Marrakech)
+  - **Tier C** €149 / €399 / €799 — premium
+- Vocabulaire : "signal" préféré à "paste/collez"
 
-```bash
-python3 -c "
-import re
-with open('app.html') as f: c = f.read()
-blocks = re.findall(r'<script>(.*?)</script>', c, re.DOTALL)
-open('/tmp/all_js.js','w').write('\n'.join(blocks))
-"
-node --check /tmp/all_js.js
-```
+## 7. Palette luxe (cohérence app + landing)
 
-A pre-existing brace-balance delta of -1 is a known baseline, not a bug. Bigger imbalance means something is broken.
+- Cream : `#FAF6EE`
+- Dark green : `#0F2318`
+- Mid green : `#1D4D3A`
+- Gold : `#C9963A`
+- Fonts : Cormorant Garamond + Inter (landing), DM Sans + Fraunces (app ARIA)
 
-### 3. localStorage is the runtime source of truth
+## 8. Roadmap pivot ARIA-first v1 (composants à livrer)
 
-Settings live in `localStorage` for snappy UI. `villa_settings` in Supabase is multi-device backup, synced on save. Never assume Supabase has the latest state during a session — always read from `localStorage` first.
+Le dashboard actuel (tab Today, 6 cards fixes) est **strangulé** par un nouvel écran ARIA orb-centered. Construction ALONGSIDE, pas en remplacement.
 
-### 4. ARIA orchestrator rules
+Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 
-- ARIA is the single AI entry point. Never write to legacy `#chatMessages` v1.
-- All AI calls go through the Cloudflare Worker proxy. Never call provider APIs directly from the client.
-- Heuristic intent classification routes to task endpoints: `reason`, `write_fr`, `extract`, `fast_classify`, `chat_fr`. Manual override prefix: `/deep`.
-- System prompt must NEVER say "à vérifier dans le système" — propose a concrete action when data is missing, mark missing fields explicitly with `?`.
+1. **`AriaHero`** : ARIA orb (animé, breathing), ligne de greeting, status indicator.
+2. **`AriaBrief`** : brief auto-généré qui lit calendrier + Gmail + état villa, synthétise un brief 1-paragraphe et propose UNE action primaire (ex. « envoyer le brief WhatsApp staff »).
+3. **`AriaCards`** : cards qui se matérialisent contextuellement quand ARIA répond ; la card brief est la première.
+4. **`AriaVoiceButton`** (Web Speech API) — **LE COMPOSANT LE PLUS RISQUÉ, conversation review obligatoire avant** :
+   - Pattern hold-to-talk, PAS toggle (évite les activations accidentelles)
+   - Gate de support browser : détecter `webkitSpeechRecognition`, fallback vers text input only si absent
+   - iOS Safari quirk : nécessite user gesture + secure context (https) — déjà satisfait sur GitHub Pages
+   - Pendant l'enregistrement : afficher une animation waveform, status "ARIA écoute…"
+   - Après l'enregistrement : transcrire, afficher le transcript, envoyer à l'orchestrateur ARIA
+   - Langue : `fr-FR` par défaut, toggle `en-US` dans les settings
+5. **Dashboard classique, Inbox, To-do, Settings restent inchangés.** Seul le rendering du tab Today est conditionnel sur le flag.
 
-### 5. Pricing & business defaults
+## 9. v1 explicitly out of scope
 
-- Platform commissions: Airbnb 3.6%, Booking.com 15%, Direct 0%
-- Distinguish guest-paid price vs host payout in every UI
-- `cfg.minPrice` / `cfg.maxPrice` are floor and cap, ARIA must respect them
-- Pricing tiers: Tier A €69/€179/€399 (émergent), Tier B €99/€249/€499 (mid-luxe, default for Marrakech), Tier C €149/€399/€799 (premium)
+- **TTS** (ARIA qui répond vocalement) — v1.5
+- **Monitoring proactif / agent** — v2
+- **Streaming card materialization** — v1.5
+- **Mode silencieux, multi-langues au-delà de FR/EN** — plus tard
+- **Tout cleanup du code dashboard existant** — uniquement après que v1 soit prouvée en prod ≥14 jours
 
-### 6. UX vocabulary
+## 10. Success criteria v1
 
-- Use "signal" not "paste/collez"
-- Direct, informal French with mixed English technical terms
-- Never use emoji; use Tabler outline icons
+- Avec flag activé : user ouvre l'app → voit ARIA orb + brief + 1 action primaire (3 secondes, zéro clic)
+- Avec flag activé : user peut tenir le voice button, parler, voir le transcript, recevoir une réponse ARIA avec une card
+- Avec flag désactivé : dashboard classique fonctionne exactement comme avant, zéro régression
+- Pas de régression sur Inbox, Settings, To-do staff, pricing logic, indépendamment de l'état du flag
+- L'app passe toujours le check de validation JS après chaque changement significatif
 
-### 7. Marrakech-specific features
+## 11. Conventions techniques
 
-Some features are gated by `isMarrakechVilla()`. When working on a feature that should be universal, make sure it's NOT inside that gate.
+- **ARIA orchestrator** : point d'entrée AI unique. Ne jamais écrire vers l'ancien `#chatMessages v1`. Tous les appels AI passent par le **proxy Cloudflare Worker only**, jamais d'appel direct provider depuis le client. Intent classification heuristique route vers : `reason`, `write_fr`, `extract`, `fast_classify`, `chat_fr`. Override manuel : préfixe `/deep`.
+- **localStorage = source of truth runtime** : les settings vivent en localStorage pour une UI snappy. `villa_settings` Supabase = backup multi-device, synced au save. **Ne jamais assumer que Supabase a le dernier état pendant une session** — toujours lire localStorage en premier.
+- **`isMarrakechVilla()`** : certaines features sont gated par ce check. Quand on bosse sur une feature qui doit être universelle, vérifier qu'elle n'est PAS dans ce gate.
+- **Service Worker** : `sw.js` filtre les requêtes non-HTTP/API pour éviter les erreurs cache chrome-extension. Si on ajoute des ressources externes, vérifier qu'elles ne cassent pas le filtre. **Toujours bump `CACHE_NAME` après un déploiement** pour forcer le refresh sur les devices users.
+- **`isFirmBooking()`** : filtre les leads (inquiry/lead/quoted) des surfaces opérationnelles (calendrier, brief, contexte ARIA, header stats). Tab Demandes utilise `isRequestStatus()` séparément. **iCal merge logic et dup detection on save ne sont PAS filtrés** — ils ont besoin de la donnée brute.
+- **Onboarding** : 3-step wizard, synced Supabase. Ne pas toucher sauf si la tâche le demande explicitement.
 
-### 8. Service Worker
+## 12. Limitations connues à NE PAS toucher dans v1
 
-`sw.js` filters non-HTTP/API requests to prevent chrome-extension cache errors. If you add new external resources, make sure they don't break the SW filter. After deploying new versions, always bump `CACHE_NAME` to force-refresh on users' devices.
-
-### 9. Onboarding
-
-3-step wizard, synced to Supabase. Don't touch unless the task explicitly requires it.
-
-### 10. Booking filtering (recent baseline)
-
-`isFirmBooking()` filters out leads (inquiry/lead/quoted) from operational surfaces (calendar, brief, ARIA context, header stats). Tab Demandes uses `isRequestStatus()` separately. iCal merge logic and dup detection on save are NOT filtered — they need raw data.
-
-## Known limitations to NOT try to fix unless asked
-
-- Gmail OAuth uses Implicit flow → tokens expire after ~1h, daily reconnect needed. Authorization Code flow upgrade is scoped for a later patch.
-- No `deleted_at` soft-delete history yet in Supabase. Don't add unless requested.
-
----
-
-## Current mission: ARIA-first UI pivot v1 (strangler fig)
-
-The dashboard (current tab Today with 6 fixed cards) is being **strangled** by a new ARIA orb-centered screen. The new screen is built ALONGSIDE, not replacing.
-
-### v1 scope (what to ship as new components, gated by ARIA_FIRST_V1)
-
-1. **New component `AriaHero`**: ARIA orb (animated, breathing), greeting line, status indicator.
-2. **New component `AriaBrief`**: auto-generated brief reading calendar + Gmail + villa state, synthesizes a 1-paragraph brief, proposes ONE primary action (e.g. "envoyer le brief WhatsApp staff").
-3. **New component `AriaCards`**: cards materialize contextually as ARIA responds; brief card is the first.
-4. **New component `AriaVoiceButton`** (Web Speech API):
-   - Hold-to-talk pattern, NOT toggle (avoids accidental activation)
-   - Browser support gate: detect `webkitSpeechRecognition`, fall back to text input only if missing
-   - iOS Safari quirk: needs user gesture + secure context (https) — already satisfied on GitHub Pages
-   - During recording: show waveform animation, status "ARIA écoute..."
-   - After recording: transcribe, show transcript, send to ARIA orchestrator
-   - Language: `fr-FR` by default, `en-US` toggle in settings
-5. **The classic dashboard, Inbox, To-do, Settings tabs remain unchanged.** Only the rendering of tab Today is conditional on the flag.
-
-### v1 explicitly out of scope
-
-- TTS (ARIA speaking back) — comes in v1.5
-- Proactive monitoring / agent — comes in v2
-- Streaming card materialization — comes in v1.5
-- Mode silencieux, multi-langues beyond FR/EN — comes later
-- Any cleanup of existing dashboard code — comes only after v1 is proven for ≥14 days
-
-### Success criteria for v1
-
-- With flag enabled: user opens app → sees ARIA orb + brief + 1 primary action (3 seconds, no clicks)
-- With flag enabled: user can hold the voice button, speak, see transcript, get an ARIA response with a card
-- With flag disabled: classic dashboard works exactly as before, zero regression
-- No regression on Inbox, Settings, To-do staff, pricing logic regardless of flag state
-- App still passes the JS validation check after every meaningful change
+- **Gmail OAuth** : Implicit flow → tokens expirent ~1h, daily reconnect nécessaire. Upgrade vers Authorization Code flow scopé pour un patch séparé, pas dans le pivot ARIA-first.
+- **`deleted_at`** : pas encore d'historique soft-delete dans Supabase. Ne pas ajouter sans demande.
