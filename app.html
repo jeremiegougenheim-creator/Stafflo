@@ -34,7 +34,8 @@ html{scroll-behavior:smooth}
 body{font-family:'DM Sans',sans-serif;font-size:15px;color:var(--ink);background:var(--paper);min-height:100vh}
 
 /* ── HEADER ── */
-header{background:var(--green3);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+:root{--hdr-h:56px}
+header{background:var(--green3);padding:0 20px;height:var(--hdr-h);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 2px 12px rgba(0,0,0,.25);transition:height .2s ease}
 .logo{font-family:'Fraunces',serif;font-size:22px;font-weight:300;color:#fff;letter-spacing:.3px;text-decoration:none;display:inline-flex;align-items:center;gap:10px}
 .logo em{color:var(--gold);font-style:italic;font-weight:400}
 .logo-ai{background:var(--gold);color:var(--green3);font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:1px;font-family:'DM Sans',sans-serif}
@@ -51,11 +52,25 @@ header{background:var(--green3);padding:0 20px;height:54px;display:flex;align-it
 .hdr-btn:hover{background:rgba(201,150,58,.15)}
 
 /* ── TABS ── */
-nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,.08);position:sticky;top:54px;z-index:199;padding:0 4px}
+nav{background:var(--green3);display:flex;border-top:1px solid rgba(255,255,255,.08);position:sticky;top:var(--hdr-h);z-index:199;padding:0 4px;transition:top .2s ease}
 .nav-btn{flex:1;padding:12px 8px;border:none;background:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:rgba(255,255,255,.45);cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1px;letter-spacing:.3px;transition:all .2s;white-space:nowrap}
 .nav-btn.on{color:#fff;border-bottom-color:var(--gold);background:rgba(255,255,255,.04)}
 .nav-btn:hover:not(.on){color:rgba(255,255,255,.7)}
 .nav-btn .badge{display:inline-block;background:var(--red);color:#fff;border-radius:8px;font-size:9px;font-weight:700;padding:1px 5px;margin-left:4px;vertical-align:middle;line-height:1.4}
+.nav-btn[data-has-new="1"]::after{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);margin-left:5px;vertical-align:middle;animation:navDotPulse 1.6s ease-in-out infinite}
+@keyframes navDotPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.85)}}
+
+/* ── Shrunk header state (toggled by IntersectionObserver on #hdrSentinel) ── */
+body.is-shrunk{--hdr-h:36px}
+body.is-shrunk header{box-shadow:0 1px 8px rgba(0,0,0,.3)}
+body.is-shrunk .logo{opacity:0;transform:scale(.85);pointer-events:none;transition:opacity .2s ease,transform .2s ease}
+.logo{transition:opacity .2s ease,transform .2s ease}
+body.is-shrunk .hstat-lbl{display:none}
+body.is-shrunk .hstat-val{font-size:13px;font-weight:600}
+body.is-shrunk .hstat+.hstat::before{content:'·';color:rgba(255,255,255,.4);margin-right:6px;font-weight:400}
+body.is-shrunk .hdr-btn,body.is-shrunk #ariaMemBtn,body.is-shrunk #icalSyncBtn,body.is-shrunk #notifBtn{padding:3px 7px;font-size:11px}
+body.is-shrunk .lang-seg{height:22px}
+body.is-shrunk #sessionBadge{display:none}
 .nav-badge{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;animation:pulse 1.5s infinite}
 
 /* ── MAIN ── */
@@ -1628,6 +1643,7 @@ body, main { background: var(--cream); }
 </div>
 
 
+<div id="hdrSentinel" aria-hidden="true" style="position:absolute;top:0;left:0;width:1px;height:1px;pointer-events:none"></div>
 <header>
   <a href="index.html" class="logo" id="logoLink" onclick="this.href=lang==='en'?'en.html':'index.html'" style="display:flex;align-items:center;gap:10px;text-decoration:none">
     <svg width="30" height="30" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
@@ -1670,6 +1686,21 @@ body, main { background: var(--cream); }
     <span>🏡 Villa</span>
   </button>
 </nav>
+
+<script>
+/* Sticky-header shrink via IntersectionObserver — toggles body.is-shrunk when
+   the 1px sentinel above <header> scrolls past 50px. No scroll listener. */
+(function(){
+  var sentinel = document.getElementById('hdrSentinel');
+  if (!sentinel || typeof IntersectionObserver !== 'function') return;
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      document.body.classList.toggle('is-shrunk', !e.isIntersecting);
+    });
+  }, { threshold: 0, rootMargin: '-50px 0px 0px 0px' });
+  io.observe(sentinel);
+})();
+</script>
 
 <!-- ═══ OFFLINE BANNER ═══════════════════════════════════════ -->
 <div id="offlineBanner" style="display:none;background:#BA7517;color:#fff;padding:8px 16px;text-align:center;font-size:12px;font-weight:500;letter-spacing:.3px">
