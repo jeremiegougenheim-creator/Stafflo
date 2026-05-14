@@ -5321,7 +5321,10 @@ window.isBookable = isBookable;
 // bookingStatus default to confirmed.
 function isFirmBooking(c) {
   if (!c) return false;
-  var bs = c.bookingStatus || 'confirmed';
+  // Accept either casing — server reconcile path can race with localStorage and leave
+  // the snake_case copy as the only source of truth. Empty/missing = legacy = confirmed.
+  var bs = c.bookingStatus || c.booking_status || '';
+  if (!bs) return true;
   return bs === 'confirmed' || bs === 'pending';
 }
 window.isFirmBooking = isFirmBooking;
@@ -7829,6 +7832,11 @@ function buildClientsContextRich(maxItems) {
     leadsOnly.slice(0, (maxItems || 5) + 3).forEach(function(c){ lines.push('  • ' + fmtLead(c)); });
   }
 
+  try {
+    console.log('[ARIA-CTX] clients count:', clients.length, 'firm:', confirmedOnly.length, 'leads:', leadsOnly.length, 'inHouse:', inHouse.length, 'upcoming:', upcoming.length);
+    console.log('[ARIA-CTX]\n' + lines.join('\n'));
+  } catch(e){}
+
   return lines.join('\n');
 }
 
@@ -7895,6 +7903,8 @@ async function handleChatQuestion(text) {
       '  → Tu rédiges au nom de ' + ownerName + ', signé "' + ownerName + '".',
       '  → Tu utilises le ton chaleureux/professionnel selon le destinataire.',
       '  → Tu mets le message entre guillemets et signé proprement.',
+      '  → "brief" / "note" / "résumé" SANS verbe de rédaction = MODE 1 (réponse directe, pas de Bonjour/signature).',
+      '  → "rédige un brief" / "prépare une note" = MODE 2 (texte formaté avec Bonjour/signature).',
       '',
       '【MODE 3 — CONVERSATION/CONSEIL】 Quand ' + ownerName + ' te pose une question générale (météo, heure, conseil business, idée) :',
       '  → Tu réponds en 2-3 phrases max, directement, comme un assistant.',
