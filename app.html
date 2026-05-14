@@ -1790,6 +1790,455 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 })();
 </script>
 
+<script>
+/* ═══ Today v3 — render + toggle + flag wiring ════════════════════════
+   Strangler fig: when stafflo_aria_first_v1 === '1', show #todayV3 and
+   hide every other child of #tab-today. When OFF, no-op — v2 dashboard
+   stays exactly as it was. Wraps (does NOT modify) loadHomeData and
+   renderAll so the v3 cards refresh on the same triggers as v2. */
+(function(){
+  function flagOn(){
+    try { return typeof isAriaFirstV1Enabled === 'function' && isAriaFirstV1Enabled(); }
+    catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') === '1'; } catch(_) { return false; } }
+  }
+
+  /* ── Toggle button: flip flag and reload (simplest state path) ── */
+  window.toggleTodayV3 = function(){
+    var k = 'stafflo_aria_first_v1';
+    try {
+      var cur = localStorage.getItem(k) === '1';
+      if (cur) localStorage.removeItem(k);
+      else     localStorage.setItem(k, '1');
+    } catch(e){}
+    location.reload();
+  };
+
+  /* ── Apply mode: show #todayV3 + hide siblings, or restore ── */
+  function applyV3Mode(){
+    var tab = document.getElementById('tab-today');
+    var v3 = document.getElementById('todayV3');
+    var on = flagOn();
+    document.body.classList.toggle('is-v3-on', on);
+    var btn = document.getElementById('v3ModeBtn');
+    if (btn) btn.textContent = on ? 'V3 ✓' : 'V3';
+    if (!tab || !v3) return;
+    Array.prototype.forEach.call(tab.children, function(child){
+      if (!on) {
+        if (child === v3) child.style.display = 'none';
+        // do nothing to other children — preserve their original visibility
+        return;
+      }
+      child.style.display = (child === v3) ? '' : 'none';
+    });
+    if (on) renderTodayV3All();
+  }
+
+  /* ── Relative date helper ── */
+  function relDate(iso, fr){
+    if (!iso) return '';
+    var d = new Date(iso + (iso.length === 10 ? 'T12:00:00' : ''));
+    var t = new Date(); t.setHours(12,0,0,0);
+    var diff = Math.round((d - t) / 86400000);
+    if (diff === 0) return fr ? "Aujourd'hui" : 'Today';
+    if (diff === 1) return fr ? 'Demain'      : 'Tomorrow';
+    if (diff === -1) return fr ? 'Hier'       : 'Yesterday';
+    if (diff > 1)  return 'J+' + diff;
+    if (diff < -1) return 'J' + diff;
+    return d.toLocaleDateString(fr ? 'fr-FR' : 'en-US', { day:'numeric', month:'short' });
+  }
+
+  function firm(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : !!(c && c.bookingStatus !== 'lead' && c.bookingStatus !== 'inquiry' && c.bookingStatus !== 'quoted'); }
+  function todayMidnight(){ var d = new Date(); d.setHours(0,0,0,0); return d; }
+  function firstName(n){ return (n||'').split(' ')[0] || ''; }
+  function fr(){ return typeof lang !== 'undefined' && lang === 'fr'; }
+
+  /* ── Card 1: ARIA hero — counter from existing aria-actions store ── */
+  function renderV3Hero(){
+    var num = document.getElementById('v3CounterNum');
+    if (!num) return;
+    try {
+      var arr = JSON.parse(localStorage.getItem('stafflo_aria_actions') || '[]');
+      var weekAgo = Date.now() - 7 * 86400000;
+      num.textContent = arr.filter(function(x){ return x && x.t > weekAgo; }).length;
+    } catch(e){ num.textContent = '0'; }
+  }
+
+  /* ── Card: Villa & Pipeline stats inline ── */
+  function renderV3VillaStats(){
+    var host = document.getElementById('v3VillaStats');
+    if (!host || typeof clients === 'undefined') return;
+    var FR = fr();
+    var today = todayMidnight();
+    var firmList = clients.filter(firm);
+    var upcoming = firmList.filter(function(c){ return c.arrival && new Date(c.arrival) > today; })
+                           .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
+    var net = firmList.reduce(function(s,c){
+      var p = +c.price || 0; var comm = +c.commission || 0;
+      return s + Math.round(p * (1 - comm/100));
+    }, 0);
+    var pipeline = clients.filter(function(c){ var bs=c.bookingStatus; return bs==='lead'||bs==='inquiry'||bs==='quoted'; }).length;
+    var next = upcoming[0];
+    var nextLbl = next ? (relDate(next.arrival, FR) + ' · ' + firstName(next.name)) : (FR?'aucun':'none');
+    host.innerHTML =
+      '<span class="v3-stat-num">' + net.toLocaleString(FR?'fr-FR':'en-US') + '€</span><span class="v3-stat-sep">·</span>' +
+      '<span class="v3-stat-num">' + upcoming.length + ' ' + (FR?'à venir':'upcoming') + '</span><span class="v3-stat-sep">·</span>' +
+      '<span class="v3-stat-num">' + pipeline + ' ' + (FR?'pipeline':'pipeline') + '</span><span class="v3-stat-sep">·</span>' +
+      '<span class="v3-stat-num v3-stat-accent">' + nextLbl + '</span>';
+  }
+
+  /* ── Card: Inbox compact chip ── */
+  function renderV3InboxChip(){
+    var host = document.getElementById('v3InboxChip');
+    var text = document.getElementById('v3InboxText');
+    if (!host || !text) return;
+    var FR = fr();
+    var unread = 0;
+    try {
+      var rows = window._inboxEmails || {};
+      Object.keys(rows).forEach(function(id){ if (!rows[id].read_at) unread++; });
+    } catch(e){}
+    var lastSyncStr = '';
+    try {
+      var lastIso = localStorage.getItem('stafflo_inbox_last_sync')
+                 || localStorage.getItem('stafflo_last_gmail_sync')
+                 || '';
+      if (lastIso) {
+        var t = isNaN(+lastIso) ? new Date(lastIso).getTime() : +lastIso;
+        if (t > 0) {
+          var diffMin = Math.max(0, Math.round((Date.now() - t) / 60000));
+          lastSyncStr = diffMin < 1 ? (FR?'sync now':'sync now')
+                      : diffMin < 60 ? (FR?'sync ' + diffMin + 'm':'sync ' + diffMin + 'm')
+                      : (FR?'sync ' + Math.round(diffMin/60) + 'h':'sync ' + Math.round(diffMin/60) + 'h');
+        }
+      }
+    } catch(e){}
+    host.classList.toggle('has-new', unread > 0);
+    text.textContent = unread + ' ' + (FR?'nouveaux':'new') + (lastSyncStr ? ' · ' + lastSyncStr : '');
+  }
+
+  /* ── Card: What matters today ── */
+  function buildMattersItems(){
+    if (typeof clients === 'undefined') return { items:[], moreCount:0, oppCount:0 };
+    var FR = fr();
+    var today = todayMidnight();
+    var firmList = clients.filter(firm);
+    var items = [];
+
+    firmList.forEach(function(c){
+      if (!c.departure) return;
+      var dep = new Date(c.departure); dep.setHours(0,0,0,0);
+      if (dep.getTime() === today.getTime()) {
+        items.push({ tier:'p1', icon:'🛄', title:(FR?'Départ ':'Departing ')+(c.name||''), sub:(FR?'Checkout + message d\'avis':'Checkout + review message'), client:c, cta:(FR?'Envoyer message départ':'Send checkout message') });
+      }
+    });
+    firmList.forEach(function(c){
+      if (!c.arrival) return;
+      var arr = new Date(c.arrival); arr.setHours(0,0,0,0);
+      if (arr.getTime() === today.getTime()) {
+        items.push({ tier:'p1', icon:'🛬', title:(FR?'Arrivée ':'Arriving ')+(c.name||''), sub:(FR?'Brief staff + welcome':'Brief staff + welcome'), client:c, cta:(FR?'Send welcome message':'Send welcome message') });
+      }
+    });
+    firmList.forEach(function(c){
+      if (!c.arrival || !c.departure) return;
+      var arr = new Date(c.arrival); arr.setHours(0,0,0,0);
+      var dep = new Date(c.departure); dep.setHours(0,0,0,0);
+      if (arr < today && today < dep) {
+        var nLeft = Math.round((dep - today)/86400000);
+        items.push({ tier:'p2', icon:'🏠', title:(FR?'Mi-séjour · ':'Mid-stay · ')+(c.name||''), sub:nLeft+(FR?' nuits restantes':' nights left'), client:c, cta:(FR?'Check-in mi-séjour':'Mid-stay check-in') });
+      }
+    });
+    firmList.forEach(function(c){
+      if (!c.arrival) return;
+      var arr = new Date(c.arrival); arr.setHours(0,0,0,0);
+      var d = Math.round((arr - today)/86400000);
+      if (d >= 1 && d <= 3) {
+        items.push({ tier:'p2', icon:'📅', title:(FR?'Arrivée J+':'Arrival J+')+d+' · '+(c.name||''), sub:(FR?'Briefer staff, courses, message':'Brief staff, groceries, message'), client:c, cta:(FR?'Send welcome message':'Send welcome message') });
+      }
+    });
+    var p1 = items.filter(function(x){return x.tier==='p1';}).slice(0,3);
+    var p2 = items.filter(function(x){return x.tier==='p2';}).slice(0,2);
+    var opps = [];
+    var nextNew = firmList.filter(function(c){ return c.arrival && new Date(c.arrival)>today; }).sort(function(a,b){ return new Date(a.arrival)-new Date(b.arrival);})[0];
+    if (nextNew) {
+      opps.push({ tier:'opp', icon:'✨', title:(FR?'Opportunité · ':'Opportunity · ')+firstName(nextNew.name), sub:(FR?'Anticipez un welcome message premium pour le prochain séjour':'Send an early premium welcome for the next stay'), client:nextNew, cta:(FR?'Send welcome message':'Send welcome message') });
+    }
+    var finalList = p1.concat(p2).concat(opps.slice(0,1));
+    var moreCount = Math.max(0, items.length - p1.length - p2.length);
+    return { items: finalList, moreCount: moreCount, oppCount: opps.length };
+  }
+
+  function renderV3WhatMatters(){
+    var body = document.getElementById('v3MattersBody');
+    var meta = document.getElementById('v3MattersCount');
+    var foot = document.getElementById('v3MattersFooter');
+    var moreCountEl = document.getElementById('v3MattersMoreCount');
+    var oppsMetaEl = document.getElementById('v3MattersOppsMeta');
+    if (!body) return;
+    var FR = fr();
+    var built = buildMattersItems();
+    var items = built.items;
+    if (!items.length) {
+      body.innerHTML = '<div style="color:#6B6760;font-size:13px;padding:8px 0;font-style:italic">' + (FR?'Rien d\'urgent. ARIA surveille.':'Nothing urgent. ARIA is watching.') + '</div>';
+      if (meta) meta.textContent = '';
+      if (foot) foot.style.display = 'none';
+      return;
+    }
+    if (meta) meta.textContent = items.length + (FR?' items':' items');
+    body.innerHTML = items.map(function(it, i){
+      var badgeHtml = (it.tier==='p1' || it.tier==='p2')
+        ? '<span class="v3-prio-badge is-'+it.tier+'">'+(it.tier==='p1'?'P1':'P2')+'</span>'
+        : '';
+      return '<div class="v3-prio is-'+it.tier+'" data-v3-prio-idx="'+i+'">' +
+               '<span class="v3-prio-icon">'+it.icon+'</span>' +
+               '<div class="v3-prio-body">' +
+                 '<div class="v3-prio-title">'+escapeHtml(it.title)+'</div>' +
+                 '<div class="v3-prio-sub">'+escapeHtml(it.sub)+'</div>' +
+               '</div>' +
+               badgeHtml +
+             '</div>';
+    }).join('');
+    body.querySelectorAll('[data-v3-prio-idx]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var i = parseInt(el.getAttribute('data-v3-prio-idx'), 10);
+        var it = items[i];
+        if (!it) return;
+        openMattersSheet(it);
+      });
+    });
+    if (foot) {
+      var hasMore = built.moreCount > 0 || built.oppCount > 1;
+      foot.style.display = hasMore ? '' : 'none';
+      if (moreCountEl) moreCountEl.textContent = built.moreCount;
+      if (oppsMetaEl) oppsMetaEl.textContent = built.oppCount ? ('· ' + built.oppCount + (FR?' opportunités':' opportunities')) : '';
+    }
+  }
+
+  function openMattersSheet(item){
+    if (!window.StaffloSheet) { console.warn('[v3] StaffloSheet missing'); return; }
+    var FR = fr();
+    var cl = item.client || {};
+    var bodyEl = document.createElement('div');
+    bodyEl.innerHTML =
+      '<div style="margin-bottom:10px;font-size:13px;color:#6B6760">' + escapeHtml(item.sub) + '</div>' +
+      '<div style="background:#FAF6EE;border-radius:8px;padding:10px 12px;border-left:3px solid #C9963A">' +
+        '<div style="font-family:Georgia,serif;font-size:15px;font-weight:600;color:#0F2318">' + escapeHtml(cl.name||'') + '</div>' +
+        (cl.arrival ? '<div style="font-size:12px;color:#6B6760;margin-top:2px">📅 ' + cl.arrival + (cl.departure?' → '+cl.departure:'') + '</div>' : '') +
+        (cl.guests ? '<div style="font-size:12px;color:#6B6760">👥 ' + cl.guests + (FR?' personnes':' guests') + '</div>' : '') +
+      '</div>';
+    StaffloSheet.open({
+      title: item.title,
+      body: bodyEl,
+      primaryCTA: item.cta,
+      secondaryCTA: FR ? 'Fermer' : 'Close',
+      onConfirm: function(){
+        if (cl.id && typeof openDetail === 'function') openDetail(cl.id);
+      }
+    });
+  }
+
+  /* ── Card: Calendar Next-4 ── */
+  function renderV3Calendar(){
+    var list = document.getElementById('v3CalList');
+    if (!list || typeof clients === 'undefined') return;
+    var FR = fr();
+    var today = todayMidnight();
+    var next = clients.filter(firm).filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
+                      .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); })
+                      .slice(0,4);
+    if (!next.length) {
+      list.innerHTML = '<li style="padding:10px 0;color:#6B6760;font-size:12.5px;font-style:italic">' + (FR?'Aucune arrivée à venir':'No upcoming arrivals') + '</li>';
+      return;
+    }
+    list.innerHTML = next.map(function(c){
+      var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
+      var meta = nights ? (nights + (FR?' n':' n')) : '';
+      if (c.guests) meta += (meta?' · ':'') + c.guests + (FR?'p':'p');
+      return '<li class="v3-cal-row" data-client-id="'+(c.id||'')+'">' +
+               '<span class="v3-cal-when">' + relDate(c.arrival, FR) + '</span>' +
+               '<span class="v3-cal-who">' + escapeHtml(c.name||'') + '</span>' +
+               '<span class="v3-cal-meta">' + escapeHtml(meta) + '</span>' +
+             '</li>';
+    }).join('');
+    list.querySelectorAll('[data-client-id]').forEach(function(el){
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', function(){
+        var id = el.getAttribute('data-client-id');
+        if (id && typeof openDetail === 'function') openDetail(id);
+      });
+    });
+  }
+
+  /* ── Card: Today's ops — 6 items checklist ── */
+  function buildOpsItems(){
+    var FR = fr();
+    var today = todayMidnight();
+    var firmList = (typeof clients !== 'undefined') ? clients.filter(firm) : [];
+    var current = firmList.find(function(c){
+      if (!c.arrival || !c.departure) return false;
+      var a = new Date(c.arrival), d = new Date(c.departure);
+      return a <= today && today < d;
+    });
+    var departing = firmList.find(function(c){
+      if (!c.departure) return false;
+      var d = new Date(c.departure); d.setHours(0,0,0,0);
+      return d.getTime() === today.getTime();
+    });
+    var nextArrival = firmList.filter(function(c){ return c.arrival && new Date(c.arrival) > today; })
+                              .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); })[0];
+    var daysToArr = nextArrival && nextArrival.arrival ? Math.round((new Date(nextArrival.arrival) - today)/86400000) : null;
+
+    var ctx, items;
+    if (departing) {
+      ctx = { phase:'departure', guest:departing };
+      items = [
+        { k:'checkout_msg', label: FR?'Message départ + avis':'Checkout + review message', urgent:true },
+        { k:'cleaning_brief', label: FR?'Briefer Bouchra ménage':'Brief Bouchra cleaning', urgent:true },
+        { k:'driver_back', label: FR?'Transfert retour':'Return transfer', urgent:false },
+        { k:'inventory', label: FR?'Inventaire chambre':'Room inventory', urgent:false },
+        { k:'invoice', label: FR?'Envoyer reçu':'Send receipt', urgent:false },
+        { k:'review', label: FR?'Demander avis':'Request review', urgent:false }
+      ];
+    } else if (current) {
+      ctx = { phase:'stay', guest:current };
+      items = [
+        { k:'pool_check', label: FR?'Piscine 28°C':'Pool 28°C', urgent:false },
+        { k:'breakfast', label: FR?'Petit-déj confirmé':'Breakfast confirmed', urgent:false },
+        { k:'midstay_msg', label: FR?'Check-in mi-séjour':'Mid-stay check-in', urgent:true },
+        { k:'chef_menu', label: FR?'Menu chef du soir':'Tonight chef menu', urgent:false },
+        { k:'housekeeping', label: FR?'Ménage quotidien':'Daily housekeeping', urgent:false },
+        { k:'flowers', label: FR?'Fleurs fraîches':'Fresh flowers', urgent:false }
+      ];
+    } else if (nextArrival && daysToArr !== null && daysToArr <= 3) {
+      ctx = { phase:'preArrival', guest:nextArrival };
+      items = [
+        { k:'staff_brief', label: FR?'Briefer Said + Faiza':'Brief Said + Faiza', urgent: daysToArr<=1 },
+        { k:'groceries', label: FR?'Courses + fleurs':'Groceries + flowers', urgent: daysToArr<=1 },
+        { k:'rooms_ready', label: FR?'Chambres prêtes':'Rooms ready', urgent: daysToArr<=1 },
+        { k:'driver_conf', label: FR?'Chauffeur confirmé':'Driver confirmed', urgent:false },
+        { k:'welcome_msg', label: FR?'Message bienvenue':'Welcome message', urgent:false },
+        { k:'passport_req', label: FR?'Passeports demandés':'Passports requested', urgent:false }
+      ];
+    } else {
+      ctx = { phase:'idle', guest:null };
+      items = [
+        { k:'inbox_review', label: FR?'Revue inbox du jour':'Daily inbox review', urgent:false },
+        { k:'pricing', label: FR?'Vérifier prix':'Check pricing', urgent:false },
+        { k:'pipeline', label: FR?'Relancer pipeline':'Follow up pipeline', urgent:false },
+        { k:'calendar', label: FR?'Vérifier calendrier':'Check calendar', urgent:false },
+        { k:'staff_chat', label: FR?'Check staff':'Check with staff', urgent:false },
+        { k:'photos', label: FR?'Photos villa':'Villa photos', urgent:false }
+      ];
+    }
+    return { ctx: ctx, items: items };
+  }
+
+  function opsStorageKey(phase, gid, k){ return 'v3_ops_' + phase + '_' + (gid||'idle') + '_' + k; }
+
+  function renderV3Ops(){
+    var list = document.getElementById('v3OpsList');
+    var counter = document.getElementById('v3OpsCount');
+    var prog = document.getElementById('v3OpsProgress');
+    if (!list) return;
+    var built = buildOpsItems();
+    var gid = built.ctx.guest ? built.ctx.guest.id : '';
+    var phase = built.ctx.phase;
+    var doneCount = 0;
+    list.innerHTML = built.items.map(function(it){
+      var key = opsStorageKey(phase, gid, it.k);
+      var done = false;
+      try { done = localStorage.getItem(key) === '1'; } catch(e){}
+      if (done) doneCount++;
+      return '<li class="v3-ops-row'+(done?' is-done':'')+'" data-key="'+key+'">' +
+               '<span class="v3-ops-check">✓</span>' +
+               '<span class="v3-ops-label">'+escapeHtml(it.label)+'</span>' +
+               (it.urgent ? '<span class="v3-prio-badge is-p1">P1</span>' : '') +
+             '</li>';
+    }).join('');
+    if (counter) counter.textContent = doneCount + '/' + built.items.length;
+    if (prog) prog.style.width = (built.items.length ? Math.round(doneCount/built.items.length*100) : 0) + '%';
+    list.querySelectorAll('[data-key]').forEach(function(row){
+      row.addEventListener('click', function(){
+        var key = row.getAttribute('data-key');
+        var nowDone = !row.classList.contains('is-done');
+        try { localStorage.setItem(key, nowDone ? '1' : '0'); } catch(e){}
+        row.classList.toggle('is-done', nowDone);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) { try { navigator.vibrate(10); } catch(e){} }
+        // Update counter + progress
+        var c = list.querySelectorAll('.v3-ops-row.is-done').length;
+        var t = list.querySelectorAll('.v3-ops-row').length;
+        if (counter) counter.textContent = c + '/' + t;
+        if (prog) prog.style.width = (t ? Math.round(c/t*100) : 0) + '%';
+      });
+    });
+  }
+
+  /* ── Chips: tap → StaffloSheet quick-action ── */
+  function wireV3Chips(){
+    var chips = document.querySelectorAll('.v3-chip[data-chip]');
+    if (!chips.length) return;
+    chips.forEach(function(btn){
+      if (btn.dataset.v3Wired === '1') return;
+      btn.dataset.v3Wired = '1';
+      btn.addEventListener('click', function(){
+        var kind = btn.getAttribute('data-chip');
+        // Reuse existing ARIA quick-action handler if present — same prompts as v2 chips.
+        if (typeof window.ariaQuickAction === 'function') { window.ariaQuickAction(kind); return; }
+        // Fallback: open ARIA modal via search bar
+        var inp = document.getElementById('v3HeroInput');
+        if (inp) inp.focus();
+      });
+    });
+  }
+
+  /* ── escapeHtml ── */
+  function escapeHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  /* ── Master render ── */
+  window.renderTodayV3All = function(){
+    if (!flagOn()) return;
+    try { renderV3Hero(); }         catch(e){ console.warn('[v3 hero]', e); }
+    try { renderV3VillaStats(); }   catch(e){ console.warn('[v3 stats]', e); }
+    try { renderV3InboxChip(); }    catch(e){ console.warn('[v3 inbox]', e); }
+    try { renderV3WhatMatters(); }  catch(e){ console.warn('[v3 matters]', e); }
+    try { renderV3Calendar(); }     catch(e){ console.warn('[v3 cal]', e); }
+    try { renderV3Ops(); }          catch(e){ console.warn('[v3 ops]', e); }
+    try { wireV3Chips(); }          catch(e){ console.warn('[v3 chips]', e); }
+  };
+
+  /* ── Wrap existing refresh entry points (do not modify) ──
+     af1ApplyGate is included so the orb-hero renderer can't re-hide #todayV3
+     after we've shown it — our applyV3Mode runs LAST and wins. */
+  function wrapRefreshers(){
+    ['loadHomeData','renderAll','loadMorningBrief','syncNow','af1ApplyGate'].forEach(function(name){
+      if (typeof window[name] !== 'function' || window[name]._v3Wrapped) return;
+      var orig = window[name];
+      var wrapped = function(){
+        var r = orig.apply(this, arguments);
+        try { if (flagOn()) applyV3Mode(); } catch(e){}
+        return r;
+      };
+      wrapped._v3Wrapped = true;
+      window[name] = wrapped;
+    });
+  }
+
+  function init(){
+    wrapRefreshers();
+    applyV3Mode();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
 <!-- ═══ OFFLINE BANNER ═══════════════════════════════════════ -->
 <div id="offlineBanner" style="display:none;background:#BA7517;color:#fff;padding:8px 16px;text-align:center;font-size:12px;font-weight:500;letter-spacing:.3px">
   <span style="margin-right:6px">⚠️</span>
