@@ -22644,6 +22644,19 @@ window.addEventListener('DOMContentLoaded', function() {
             if (ev && ev.stopPropagation) { ev.stopPropagation(); ev.preventDefault(); }
             saveClicked = true;
 
+            var firstName = (g.name || '').split(' ')[0] || (fr?'invité':'guest');
+            var now = new Date();
+            var hhmm = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+
+            // Inline receipt chip injected into the guest card so the confirmation
+            // sticks visibly next to the data, independent of the toast.
+            function injectReceipt(label) {
+              var chip = document.createElement('div');
+              chip.className = 'sec-save-receipt';
+              chip.textContent = '✓ ' + label + ' · ' + hhmm;
+              guestCard.appendChild(chip);
+            }
+
             try {
               if (existing) {
                 var merged = Object.assign({}, existing, {
@@ -22657,43 +22670,51 @@ window.addEventListener('DOMContentLoaded', function() {
                 if (idx>=0) clientList[idx] = merged;
                 if (typeof saveLocal === 'function') saveLocal();
                 if (typeof renderAll === 'function') renderAll();
-                _toast(fr ? '✓ ' + existing.name + ' mis à jour' : '✓ ' + existing.name + ' updated', 'success');
-                saveBtn.textContent = fr?'✅ À jour':'✅ Updated';
+                _toast(fr ? '✅ ' + existing.name + ' mis à jour dans le CRM' : '✅ ' + existing.name + ' updated in CRM', 'success');
+                saveBtn.textContent = (fr?'✅ Mis à jour · ':'✅ Updated · ') + firstName;
                 saveBtn.classList.add('is-saved');
                 saveBtn.disabled = true;
+                injectReceipt(fr ? 'Mis à jour dans le CRM' : 'Updated in CRM');
               } else {
                 var gWithStatus = Object.assign({}, g, {
                   bookingStatus: isLead ? 'lead' : 'confirmed',
                   source: g.source || ((cleanRow.from_email||'').match(/airbnb/i) ? 'Airbnb' : (cleanRow.from_email||'').match(/booking/i) ? 'Booking' : 'Direct')
                 });
                 if (typeof saveFromResult === 'function') saveFromResult(gWithStatus);
-                _toast(isLead ? (fr?'🎯 Lead ' + g.name + ' créé':'🎯 Lead ' + g.name + ' created')
-                              : (fr?'✓ ' + g.name + ' sauvegardé':'✓ ' + g.name + ' saved'), 'success');
-
-                saveBtn.textContent = fr?'→ Voir dans CRM':'→ View in CRM';
+                _toast(isLead ? (fr?'🎯 Lead ' + g.name + ' créé dans le CRM':'🎯 Lead ' + g.name + ' created in CRM')
+                              : (fr?'✅ ' + g.name + ' sauvegardé dans le CRM':'✅ ' + g.name + ' saved in CRM'), 'success');
+                injectReceipt(fr ? (isLead ? 'Lead créé · ' : 'Sauvegardé · ') + firstName
+                                 : (isLead ? 'Lead created · ' : 'Saved to CRM · ') + firstName);
+                saveBtn.textContent = (fr?'✅ Sauvegardé · ':'✅ Saved · ') + firstName;
                 saveBtn.classList.add('is-saved');
-                saveBtn.classList.add('is-cta');
-                saveClicked = false; // allow re-click to navigate
-                saveBtn.onclick = function(e2) {
-                  if (e2 && e2.stopPropagation) { e2.stopPropagation(); e2.preventDefault(); }
-                  var ariaClose = document.querySelector('#ariaModal .aria-modal-close, .aria-modal-close');
-                  if (ariaClose && typeof ariaClose.click === 'function') ariaClose.click();
-                  else if (typeof closeAriaModal === 'function') closeAriaModal();
-                  setTimeout(function() {
-                    var newClient = clientList.find(function(x) {
-                      return (x.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);
-                    });
-                    if (newClient) {
-                      var cardEl = document.querySelector('[data-client-id="' + newClient.id + '"]');
-                      if (cardEl) {
-                        cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        cardEl.style.transition = 'box-shadow .3s';
-                        cardEl.style.boxShadow = '0 0 0 3px ' + statusColor;
-                        setTimeout(function() { cardEl.style.boxShadow = ''; }, 1500);
+
+                // After 1.6s, morph into a click-through to the CRM card so the
+                // "Saved" confirmation has time to register before the CTA appears.
+                setTimeout(function(){
+                  saveBtn.textContent = fr?'→ Voir ' + firstName + ' dans le CRM':'→ View ' + firstName + ' in CRM';
+                  saveBtn.classList.add('is-cta');
+                  saveClicked = false; // allow re-click to navigate
+                  saveBtn.onclick = function(e2) {
+                    if (e2 && e2.stopPropagation) { e2.stopPropagation(); e2.preventDefault(); }
+                    var ariaClose = document.querySelector('#ariaModal .aria-modal-close, .aria-modal-close');
+                    if (ariaClose && typeof ariaClose.click === 'function') ariaClose.click();
+                    else if (typeof closeAriaModal === 'function') closeAriaModal();
+                    setTimeout(function() {
+                      var newClient = clientList.find(function(x) {
+                        return (x.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);
+                      });
+                      if (newClient) {
+                        var cardEl = document.querySelector('[data-client-id="' + newClient.id + '"]');
+                        if (cardEl) {
+                          cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          cardEl.style.transition = 'box-shadow .3s';
+                          cardEl.style.boxShadow = '0 0 0 3px ' + statusColor;
+                          setTimeout(function() { cardEl.style.boxShadow = ''; }, 1500);
+                        }
                       }
-                    }
-                  }, 300);
-                };
+                    }, 300);
+                  };
+                }, 1600);
               }
 
               if (parsed.context && parsed.context.length) {
@@ -22707,6 +22728,9 @@ window.addEventListener('DOMContentLoaded', function() {
             } catch(e) {
               console.error('[stafflo-v6] save failed:', e);
               _toast(fr ? '⚠ Erreur sauvegarde' : '⚠ Save error', 'error');
+              saveBtn.textContent = fr?'⚠ Erreur — Réessayer':'⚠ Failed — Retry';
+              saveBtn.style.background = '#C0392B';
+              saveBtn.style.color = '#fff';
               saveClicked = false;
             }
           };
@@ -23080,6 +23104,28 @@ window.addEventListener('DOMContentLoaded', function() {
     .sec-save-btn.is-saved {
       background: #1B4332;
       cursor: default;
+      animation: secSavePulse .55s ease-out;
+    }
+    @keyframes secSavePulse {
+      0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(27,67,50,.45); }
+      40%  { transform: scale(1.06); box-shadow: 0 0 0 8px rgba(27,67,50,0); }
+      100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(27,67,50,0); }
+    }
+    .sec-save-receipt {
+      margin-top: 10px;
+      padding: 7px 11px;
+      background: rgba(27,67,50,.08);
+      border-left: 3px solid #1B4332;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #1B4332;
+      font-family: inherit;
+      animation: secReceiptIn .35s ease-out;
+    }
+    @keyframes secReceiptIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
     .sec-save-btn.is-cta {
       background: #fff;
