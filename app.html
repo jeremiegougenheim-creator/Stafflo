@@ -15919,77 +15919,23 @@ function appendContextualChips(bubble) {
   if (!bubble || bubble.dataset.contextualChips === '1') return;
   // Skip user bubbles
   if (bubble.classList.contains('user')) return;
-  var text = (bubble.textContent || '').toLowerCase();
+  var text = (bubble.textContent || '');
   if (!text || text.length < 30) return;
-  var fr = (typeof lang !== 'undefined' && lang === 'fr');
-
-  // ── Question-aware chips (new path) ──
-  // If we have the user's last question stored, build context-driven actions
-  // via getAriaContextualActions instead of pattern-matching the AI reply.
+  // Need the user's last question to drive contextual actions. If none was
+  // recorded (e.g. an auto-injected ARIA bubble), skip — never fall back to
+  // the old hardcoded "Brief staff / Message guest / Provisions" buckets.
   var lastQ = (typeof window !== 'undefined') ? (window._lastAriaQuestion || '') : '';
-  if (lastQ) {
-    var box = document.createElement('div');
-    box.className = 'aria-actions';
-    box.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(201,150,58,.25);display:flex;gap:6px;flex-wrap:wrap';
-    bubble.appendChild(box);
-    try { renderAriaContextualActions(lastQ, bubble.textContent || '', box); } catch(e) { console.warn('renderAriaContextualActions', e); }
-    if (box.children.length) {
-      bubble.dataset.contextualChips = '1';
-      return;
-    }
-    // Empty render → fall through to legacy chip logic
+  if (!lastQ) return;
+  var box = document.createElement('div');
+  box.className = 'aria-actions';
+  box.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px solid rgba(201,150,58,.25);display:flex;gap:6px;flex-wrap:wrap';
+  bubble.appendChild(box);
+  try { renderAriaContextualActions(lastQ, text, box); } catch(e) { console.warn('renderAriaContextualActions', e); }
+  if (box.children.length) {
+    bubble.dataset.contextualChips = '1';
+  } else {
     box.remove();
   }
-
-  // Detect if reply is an actual DRAFTED MESSAGE (vs an info response).
-  // A drafted message typically contains: quotes, "Bonjour"/"Hello", a signature pattern.
-  var isDraftedMessage = /["«][\s\S]{30,}["»]/.test(bubble.textContent || '') // contains quoted block
-    || /^["«]?(Bonjour|Hello|Hi|Salut|Cher|Dear)/im.test(bubble.textContent || '') // starts with greeting
-    || /(Cordialement|Bien à vous|À bientôt|Best regards|Sincerely)[\s,]+\w+/i.test(bubble.textContent || ''); // ends with signoff
-
-  // Detect topic
-  var chips = [];
-  // Pricing context — show only when reply is an analysis (not a written message)
-  if (/\d+\s*€|prix|price|tarif|nuit|night|airbnb|booking/i.test(text) && /strat|recommand|optim|ajust/i.test(text) && !isDraftedMessage) {
-    chips.push({ label: fr?'💰 Appliquer ce prix':'💰 Apply this price', prompt: fr?'Mets à jour mes settings de pricing avec le prix recommandé ci-dessus.':'Update my pricing settings with the recommended price above.' });
-    chips.push({ label: fr?'📊 Comparer marché':'📊 Compare market', prompt: fr?'Compare ce prix avec le marché Marrakech actuel : villas 5★ similaires.':'Compare this price with current Marrakech market: similar 5-star villas.' });
-    chips.push({ label: fr?'📈 Scénarios revenus':'📈 Revenue scenarios', prompt: fr?'Donne-moi 3 scénarios de revenus mensuels selon ce prix (occupation 50%/70%/90%).':'Give me 3 monthly revenue scenarios at this price (50%/70%/90% occupancy).' });
-  }
-  // Email/message context — ONLY if ARIA actually drafted a message
-  else if (isDraftedMessage && /email|message|wa|whatsapp|envo|réponse|reply/i.test(text)) {
-    chips.push({ label: fr?'📋 Brief staff':'📋 Staff brief', prompt: fr?'Crée le brief staff lié à cette conversation.':'Create the staff brief linked to this conversation.' });
-    chips.push({ label: fr?'📅 Bloquer les dates':'📅 Block dates', prompt: fr?'Aide-moi à bloquer les dates mentionnées si nécessaire.':'Help me block the dates mentioned if needed.' });
-    chips.push({ label: fr?'➕ Ajouter au CRM':'➕ Add to CRM', prompt: fr?'Crée la fiche client à partir des infos ci-dessus.':'Create the client record from the info above.' });
-  }
-  // Guest/arrival context — ONLY when ARIA drafted a guest message (not when she answered an info query)
-  else if (isDraftedMessage && /guest|client|arriv|départ|séjour|stay/i.test(text)) {
-    chips.push({ label: fr?'📋 Brief staff':'📋 Staff brief', prompt: fr?'Brief staff pour ce séjour : Said, Faiza, Bouchra.':'Staff brief for this stay: Said, Faiza, Bouchra.' });
-    chips.push({ label: fr?'💬 Message guest':'💬 Guest message', prompt: fr?'Rédige un message WhatsApp chaleureux pour ce client.':'Write a warm WhatsApp message for this guest.' });
-    chips.push({ label: fr?'🛒 Provisions':'🛒 Provisions', prompt: fr?'Liste de courses pour ce séjour selon les notes guest.':'Shopping list for this stay based on guest notes.' });
-  }
-  // Event context
-  else if (/event|festival|marathon|noël|christmas/i.test(text) && !isDraftedMessage) {
-    chips.push({ label: fr?'💰 Pricing premium':'💰 Premium pricing', prompt: fr?'Quel prix premium appliquer pour cet événement ?':'What premium price for this event?' });
-    chips.push({ label: fr?'📣 Marketing':'📣 Marketing', prompt: fr?'Rédige un message marketing pour mes contacts intéressés.':'Write a marketing message for my interested contacts.' });
-  }
-  // Generic info response: no chips
-  else {
-    return;
-  }
-
-  if (!chips.length) return;
-  var html = '<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(201,150,58,.25);display:flex;gap:6px;flex-wrap:wrap">';
-  chips.forEach(function(c){
-    var safePrompt = c.prompt.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-    html += '<button onclick="ariaContextChip(this)" data-prompt="' + safePrompt + '" style="background:#fff;color:#1A1208;border:1px solid rgba(201,150,58,.4);border-radius:14px;padding:4px 10px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap;transition:background .15s" onmouseover="this.style.background=\'#0F2318\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'#fff\';this.style.color=\'#1A1208\'">' + c.label + '</button>';
-  });
-  html += '</div>';
-
-  // Append (don't replace)
-  var wrap = document.createElement('div');
-  wrap.innerHTML = html;
-  bubble.appendChild(wrap.firstChild);
-  bubble.dataset.contextualChips = '1';
 }
 window.appendContextualChips = appendContextualChips;
 
