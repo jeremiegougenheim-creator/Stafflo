@@ -22634,13 +22634,15 @@ window.addEventListener('DOMContentLoaded', function() {
             saveBtn.textContent = (fr?'💾 Sauvegarder':'💾 Save');
           }
 
-          // BULLETPROOF click handler — uses pointerdown for max compatibility
+          // Direct .onclick binding — survives ancestor-level stopPropagation,
+          // synthetic-click suppression on iOS pointerdown+preventDefault, and any
+          // late event-delegation that might swallow bubbling clicks.
           var saveClicked = false;
           var doSave = function(ev) {
+            console.log('[stafflo-v6] doSave ENTER', { guest: g.name, existing: !!existing, isLead: isLead });
             if (saveClicked) return;
-            if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+            if (ev && ev.stopPropagation) { ev.stopPropagation(); ev.preventDefault(); }
             saveClicked = true;
-            console.log('[stafflo-v6] save clicked', { isLead: isLead, existing: !!existing, guest: g.name });
 
             try {
               if (existing) {
@@ -22658,6 +22660,7 @@ window.addEventListener('DOMContentLoaded', function() {
                 _toast(fr ? '✓ ' + existing.name + ' mis à jour' : '✓ ' + existing.name + ' updated', 'success');
                 saveBtn.textContent = fr?'✅ À jour':'✅ Updated';
                 saveBtn.classList.add('is-saved');
+                saveBtn.disabled = true;
               } else {
                 var gWithStatus = Object.assign({}, g, {
                   bookingStatus: isLead ? 'lead' : 'confirmed',
@@ -22667,21 +22670,16 @@ window.addEventListener('DOMContentLoaded', function() {
                 _toast(isLead ? (fr?'🎯 Lead ' + g.name + ' créé':'🎯 Lead ' + g.name + ' created')
                               : (fr?'✓ ' + g.name + ' sauvegardé':'✓ ' + g.name + ' saved'), 'success');
 
-                // Transform button into "Voir dans CRM"
                 saveBtn.textContent = fr?'→ Voir dans CRM':'→ View in CRM';
                 saveBtn.classList.add('is-saved');
                 saveBtn.classList.add('is-cta');
                 saveClicked = false; // allow re-click to navigate
-                saveBtn.removeEventListener('click', doSave);
-                saveBtn.removeEventListener('pointerdown', doSave);
-                saveBtn.addEventListener('click', function(e2) {
-                  e2.stopPropagation(); e2.preventDefault();
-                  // Close Aria + scroll to CRM
+                saveBtn.onclick = function(e2) {
+                  if (e2 && e2.stopPropagation) { e2.stopPropagation(); e2.preventDefault(); }
                   var ariaClose = document.querySelector('#ariaModal .aria-modal-close, .aria-modal-close');
                   if (ariaClose && typeof ariaClose.click === 'function') ariaClose.click();
                   else if (typeof closeAriaModal === 'function') closeAriaModal();
                   setTimeout(function() {
-                    // Scroll the new client into view
                     var newClient = clientList.find(function(x) {
                       return (x.name||'').toLowerCase().includes((g.name||'').toLowerCase().split(' ')[0]);
                     });
@@ -22695,10 +22693,9 @@ window.addEventListener('DOMContentLoaded', function() {
                       }
                     }
                   }, 300);
-                });
+                };
               }
 
-              // Save context if present
               if (parsed.context && parsed.context.length) {
                 var targetId = existing ? existing.id : null;
                 if (!targetId) {
@@ -22710,11 +22707,10 @@ window.addEventListener('DOMContentLoaded', function() {
             } catch(e) {
               console.error('[stafflo-v6] save failed:', e);
               _toast(fr ? '⚠ Erreur sauvegarde' : '⚠ Save error', 'error');
-              saveClicked = false; // allow retry
+              saveClicked = false;
             }
           };
-          saveBtn.addEventListener('pointerdown', doSave, false);
-          saveBtn.addEventListener('click', doSave, false);
+          saveBtn.onclick = doSave;
 
           topRow.appendChild(saveBtn);
           guestCard.appendChild(topRow);
