@@ -2610,11 +2610,45 @@ body, main { background: var(--cream); }
 <div id="onboardModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(15,35,24,.85);align-items:center;justify-content:center;padding:16px">
 <div id="onboardInner" style="background:#FAF6EE;max-width:420px;width:100%;border-radius:20px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.3)">
 
-  <!-- Progress bar -->
-  <div style="display:flex;gap:4px;padding:16px 24px 0">
+  <!-- Progress bar (3 segments — hidden on step 0) -->
+  <div id="onbProgBar" style="display:none;gap:4px;padding:16px 24px 0">
     <div id="prog1" style="flex:1;height:3px;border-radius:2px;background:#C9963A"></div>
     <div id="prog2" style="flex:1;height:3px;border-radius:2px;background:rgba(15,35,24,.1)"></div>
     <div id="prog3" style="flex:1;height:3px;border-radius:2px;background:rgba(15,35,24,.1)"></div>
+  </div>
+
+  <!-- STEP 0: Path picker — how do you manage bookings today? -->
+  <div id="onbStep0" style="padding:32px 24px;text-align:center">
+    <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#0F2318;margin-bottom:4px">Staff<span style="color:#C9963A">lo</span></div>
+    <div style="font-family:'Inter',sans-serif;font-size:14px;color:#8a8a7a;margin-bottom:28px" data-fr="Votre villa. Votre staff. Gérés." data-en="Your villa. Your staff. Handled.">Your villa. Your staff. Handled.</div>
+    <div style="font-family:'Inter',sans-serif;font-size:15px;font-weight:600;color:#0F2318;margin-bottom:16px" data-fr="Comment gérez-vous vos réservations aujourd'hui ?" data-en="How do you manage your bookings today?">How do you manage your bookings today?</div>
+    <div style="display:flex;flex-direction:column;gap:10px;text-align:left">
+      <button onclick="onbPickPath('ical')" style="display:flex;align-items:center;gap:14px;padding:16px;background:#0F2318;color:#FAF6EE;border:none;border-radius:14px;cursor:pointer;width:100%;font-family:'Inter',sans-serif;transition:opacity .15s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        <span style="font-size:26px;flex-shrink:0">📅</span>
+        <div style="text-align:left">
+          <div style="font-size:14px;font-weight:600" data-fr="Synchroniser mon calendrier" data-en="Sync my calendar">Sync my calendar</div>
+          <div style="font-size:12px;opacity:.65;margin-top:2px" data-fr="Airbnb, Booking, VRBO, Google Cal — collez votre lien iCal" data-en="Airbnb, Booking, VRBO, Google Cal — paste iCal link">Airbnb, Booking, VRBO, Google Cal — paste iCal link</div>
+        </div>
+      </button>
+      <button onclick="onbPickPath('email')" style="display:flex;align-items:center;gap:14px;padding:16px;background:#0F2318;color:#FAF6EE;border:none;border-radius:14px;cursor:pointer;width:100%;font-family:'Inter',sans-serif;transition:opacity .15s" onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        <span style="font-size:26px;flex-shrink:0">📧</span>
+        <div style="text-align:left">
+          <div style="font-size:14px;font-weight:600" data-fr="Connecter mon email" data-en="Connect my email">Connect my email</div>
+          <div style="font-size:12px;opacity:.65;margin-top:2px" data-fr="Gmail, Yahoo, Outlook — import automatique" data-en="Gmail, Yahoo, Outlook — auto-import bookings">Gmail, Yahoo, Outlook — auto-import bookings</div>
+        </div>
+      </button>
+      <button onclick="onbPickPath('manual')" style="display:flex;align-items:center;gap:14px;padding:16px;background:transparent;color:#0F2318;border:1.5px solid rgba(15,35,24,.2);border-radius:14px;cursor:pointer;width:100%;font-family:'Inter',sans-serif;transition:all .15s" onmouseover="this.style.background='rgba(15,35,24,.04)'" onmouseout="this.style.background='transparent'">
+        <span style="font-size:26px;flex-shrink:0">✏️</span>
+        <div style="text-align:left">
+          <div style="font-size:14px;font-weight:600" data-fr="Ajouter un client à la main" data-en="Add a guest manually">Add a guest manually</div>
+          <div style="font-size:12px;color:#8a8a7a;margin-top:2px" data-fr="Pas de calendrier ? Saisissez votre première résa en 30 secondes" data-en="No calendar? Enter your first booking in 30 seconds">No calendar? Enter your first booking in 30 seconds</div>
+        </div>
+      </button>
+      <button onclick="onbPickPath('demo')" style="display:flex;align-items:center;gap:14px;padding:10px 16px;background:transparent;color:#8a8a7a;border:none;cursor:pointer;width:100%;font-family:'Inter',sans-serif">
+        <span style="font-size:20px;flex-shrink:0">👀</span>
+        <div style="font-size:13px;text-align:left" data-fr="Explorer avec les données démo" data-en="Explore with demo data">Explore with demo data</div>
+      </button>
+    </div>
   </div>
 
   <!-- STEP 1: Name your villa -->
@@ -2625,8 +2659,8 @@ body, main { background: var(--cream); }
       data-placeholder-fr="Nom de la villa (ex : Villa DarJ)" data-placeholder-en="Villa name (e.g. Villa Santi)"
       style="width:100%;padding:14px 18px;border:1.5px solid rgba(15,35,24,.15);border-radius:12px;font-family:'Inter',sans-serif;font-size:15px;background:white;color:#0F2318;outline:none;text-align:center;box-sizing:border-box"
       onfocus="this.style.borderColor='#C9963A'" onblur="this.style.borderColor='rgba(15,35,24,.15)'"
-      onkeydown="if(event.key==='Enter')onbNextStep(2)">
-    <button onclick="onbNextStep(2)" style="width:100%;margin-top:20px;padding:14px;background:#0F2318;color:#FAF6EE;border:none;border-radius:12px;font-family:'Inter',sans-serif;font-size:15px;font-weight:500;cursor:pointer" data-fr="Suivant →" data-en="Next →">Next →</button>
+      onkeydown="if(event.key==='Enter')onbNextFromStep1()">
+    <button onclick="onbNextFromStep1()" style="width:100%;margin-top:20px;padding:14px;background:#0F2318;color:#FAF6EE;border:none;border-radius:12px;font-family:'Inter',sans-serif;font-size:15px;font-weight:500;cursor:pointer" data-fr="Suivant →" data-en="Next →">Next →</button>
     <div onclick="onbSkip()" style="margin-top:16px;font-family:'Inter',sans-serif;font-size:13px;color:#8a8a7a;cursor:pointer" data-fr="Passer, j'explore d'abord" data-en="Skip setup, explore first">Skip setup, explore first</div>
   </div>
 
@@ -2649,7 +2683,7 @@ body, main { background: var(--cream); }
     <div id="onbIcalResult" style="margin-top:16px;display:none;padding:12px 16px;border-radius:10px;background:rgba(34,120,70,.08);font-family:'Inter',sans-serif;font-size:13px;color:#1d6b45;text-align:center"></div>
     <button id="onbImportBtn" onclick="onbImportIcal()" style="width:100%;margin-top:20px;padding:14px;background:#0F2318;color:#FAF6EE;border:none;border-radius:12px;font-family:'Inter',sans-serif;font-size:15px;font-weight:500;cursor:pointer" data-fr="Importer →" data-en="Import →">Import →</button>
     <div style="display:flex;gap:12px;margin-top:12px;justify-content:center">
-      <div onclick="onbNextStep(3)" style="font-family:'Inter',sans-serif;font-size:13px;color:#C9963A;cursor:pointer" data-fr="Ajouter un client à la main" data-en="Add a guest manually instead">Add a guest manually instead</div>
+      <div onclick="onbGoStep(3)" style="font-family:'Inter',sans-serif;font-size:13px;color:#C9963A;cursor:pointer" data-fr="Ajouter un client à la main" data-en="Add a guest manually instead">Add a guest manually instead</div>
     </div>
     <div onclick="onbSkip()" style="margin-top:8px;font-family:'Inter',sans-serif;font-size:12px;color:#8a8a7a;cursor:pointer;text-align:center" data-fr="Passer, je le ferai plus tard" data-en="Skip, I'll do this later">Skip, I'll do this later</div>
   </div>
@@ -15241,21 +15275,15 @@ function checkOnboarding() {
           || localStorage.getItem('stafflo_tour_v1_done');
   if (!done) {
     var modal = document.getElementById('onboardModal');
-    if (modal) { modal.style.display = 'flex'; onbNextStep(1); }
+    if (modal) { modal.style.display = 'flex'; onbGoStep(0); }
   }
   updateTrialBanner();
 }
 
-function onbNextStep(step) {
-  if (step === 2) {
-    var name = (document.getElementById('onbVillaName').value || '').trim();
-    if (name) {
-      var cfg = getCfg();
-      cfg.villa = name;
-      setCfg(cfg);
-    }
-  }
-  for (var i = 1; i <= 3; i++) {
+// 4-step flow: 0 = path picker → 1 = villa name → 2 = iCal (skippable) → 3 = meet ARIA.
+// Progress bar shows only on steps 1-3.
+function onbGoStep(step) {
+  for (var i = 0; i <= 3; i++) {
     var el = document.getElementById('onbStep' + i);
     if (el) el.style.display = i === step ? '' : 'none';
   }
@@ -15263,13 +15291,51 @@ function onbNextStep(step) {
     var p = document.getElementById('prog' + j);
     if (p) p.style.background = j <= step ? '#C9963A' : 'rgba(15,35,24,.1)';
   }
+  var bar = document.getElementById('onbProgBar');
+  if (bar) bar.style.display = step === 0 ? 'none' : 'flex';
   if (step === 3) onbGenerateGreeting();
 }
-window.onbNextStep = onbNextStep;
+window.onbGoStep = onbGoStep;
+window.onbNextStep = onbGoStep; // back-compat alias for any external caller
+
+// Path picker on step 0 — records the user's intent and routes accordingly.
+function onbPickPath(path) {
+  window._onbPath = path;
+  if (path === 'demo') { onbSkip(); return; }
+  window._onbSkipIcal = (path === 'manual');
+  window._onbUseEmail = (path === 'email');
+  onbGoStep(1);
+}
+window.onbPickPath = onbPickPath;
+
+// Step 1 → step 2/3 branch based on the path chosen at step 0.
+function onbNextFromStep1() {
+  var name = (document.getElementById('onbVillaName').value || '').trim();
+  if (name) {
+    var cfg = getCfg();
+    cfg.villa = name;
+    setCfg(cfg);
+  }
+  if (window._onbUseEmail) {
+    // Email path: jump to the ARIA greeting, then fire the email OAuth flow.
+    onbGoStep(3);
+    setTimeout(function(){
+      if (typeof connectEmailProvider === 'function') connectEmailProvider('google');
+    }, 200);
+    return;
+  }
+  if (window._onbSkipIcal) {
+    // Manual path: bypass the iCal step.
+    onbGoStep(3);
+    return;
+  }
+  onbGoStep(2);
+}
+window.onbNextFromStep1 = onbNextFromStep1;
 
 function onbImportIcal() {
   var url = (document.getElementById('onbIcalUrl').value || '').trim();
-  if (!url) { onbNextStep(3); return; }
+  if (!url) { onbGoStep(3); return; }
   var btn = document.getElementById('onbImportBtn');
   var res = document.getElementById('onbIcalResult');
   btn.textContent = (lang === 'fr' ? 'Import…' : 'Importing…');
@@ -15288,7 +15354,7 @@ function onbImportIcal() {
   if (!syncFn) {
     btn.textContent = (lang === 'fr' ? 'Suivant →' : 'Next →');
     btn.disabled = false;
-    btn.onclick = function(){ onbNextStep(3); };
+    btn.onclick = function(){ onbGoStep(3); };
     return;
   }
   Promise.resolve(syncFn()).then(function(){
@@ -15301,7 +15367,7 @@ function onbImportIcal() {
     }
     btn.textContent = (lang === 'fr' ? 'Suivant →' : 'Next →');
     btn.disabled = false;
-    btn.onclick = function(){ onbNextStep(3); };
+    btn.onclick = function(){ onbGoStep(3); };
   }).catch(function(){
     btn.textContent = (lang === 'fr' ? 'Importer →' : 'Import →');
     btn.disabled = false;
