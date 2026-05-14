@@ -689,11 +689,24 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .af1-status-dot{width:7px;height:7px;border-radius:50%;background:#7EC850;box-shadow:0 0 0 4px rgba(126,200,80,.18),0 0 10px rgba(126,200,80,.45)}
 @keyframes af1Breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @keyframes af1Glow{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.9;transform:scale(1.12)}}
+/* AriaBrief — auto-generated 1-paragraph brief + single primary action */
+.af1-brief{width:100%;max-width:520px;margin:24px auto 0;background:#fff;border:1px solid rgba(15,35,24,.08);border-left:3px solid var(--gold);border-radius:14px;padding:18px 22px;box-shadow:0 4px 18px rgba(15,35,24,.06);box-sizing:border-box}
+.af1-brief-body{font-family:'Cormorant Garamond','Fraunces',serif;font-size:16px;line-height:1.55;color:var(--ink);letter-spacing:.1px;min-height:24px}
+.af1-brief-skel{height:14px;background:linear-gradient(90deg,rgba(15,35,24,.05) 0%,rgba(201,150,58,.18) 50%,rgba(15,35,24,.05) 100%);background-size:200% 100%;animation:af1Pulse 1.4s ease-in-out infinite;border-radius:4px;margin-bottom:8px}
+.af1-brief-skel.s1{width:92%}
+.af1-brief-skel.s2{width:78%}
+.af1-brief-skel.s3{width:64%;margin-bottom:0}
+.af1-brief-cta{margin-top:16px;width:100%;padding:12px 16px;background:var(--gold);color:#0F2318;border:none;border-radius:10px;font-family:'Inter','DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:transform .12s,box-shadow .12s;box-shadow:0 4px 12px rgba(201,150,58,.25)}
+.af1-brief-cta:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(201,150,58,.35)}
+@keyframes af1Pulse{0%,100%{background-position:200% 0}50%{background-position:-200% 0}}
 @media (max-width: 480px){
   .af1-hero{padding:40px 18px 48px;min-height:55vh}
   .af1-orb-wrap{width:100px;height:100px}
   .af1-orb{width:72px;height:72px}
   .af1-greeting{font-size:20px}
+  .af1-brief{margin-top:18px;padding:16px 18px}
+  .af1-brief-body{font-size:15px}
+  .af1-brief-cta{font-size:13px;padding:11px 14px}
 }
 
 /* Top row: logo + name/tagline left, counter right */
@@ -1689,6 +1702,14 @@ body, main { background: var(--cream); }
   <div class="af1-status">
     <span class="af1-status-dot"></span>
     <span id="af1StatusLabel"></span>
+  </div>
+  <div id="af1Brief" class="af1-brief" style="display:none">
+    <div class="af1-brief-body" id="af1BriefBody">
+      <div class="af1-brief-skel s1"></div>
+      <div class="af1-brief-skel s2"></div>
+      <div class="af1-brief-skel s3"></div>
+    </div>
+    <button id="af1BriefCta" class="af1-brief-cta" style="display:none"></button>
   </div>
 </div>
 
@@ -4058,11 +4079,123 @@ function renderAriaFirstTodayV1() {
   Array.prototype.forEach.call(tab.children, function(child){
     if (child !== hero) child.style.display = 'none';
   });
+
+  // Fire the brief generation in the background (skeleton stays until LLM resolves)
+  try { af1BuildBrief(); } catch(e){ console.warn('[af1BuildBrief launch]', e); }
 }
 window.renderAriaFirstTodayV1 = renderAriaFirstTodayV1;
 
 function af1ApplyGate() { if (isAriaFirstV1Enabled()) renderAriaFirstTodayV1(); }
 window.af1ApplyGate = af1ApplyGate;
+
+// AriaBrief — 1-paragraph LLM-synthesized brief + 1 deterministic primary action.
+// Reads firm bookings (isFirmBooking), unread inbox count, villa state.
+async function af1BuildBrief() {
+  var wrap   = document.getElementById('af1Brief');
+  var bodyEl = document.getElementById('af1BriefBody');
+  var ctaEl  = document.getElementById('af1BriefCta');
+  if (!wrap || !bodyEl) return;
+  var fr  = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+
+  wrap.style.display = '';
+
+  // ── Context: firm bookings + inbox ─────────────────────────────────
+  var todayISO = new Date().toISOString().slice(0,10);
+  var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  var tomorrowISO = tomorrow.toISOString().slice(0,10);
+  var firm = (typeof clients !== 'undefined' && Array.isArray(clients))
+    ? clients.filter(function(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : true; })
+    : [];
+  var inHouse        = firm.find(function(c){ return c.arrival && c.departure && c.arrival <= todayISO && c.departure > todayISO; });
+  var checkinToday   = firm.filter(function(c){ return c.arrival   === todayISO; });
+  var checkinTomorrow= firm.filter(function(c){ return c.arrival   === tomorrowISO; });
+  var checkoutToday  = firm.filter(function(c){ return c.departure === todayISO; });
+  var unreadInbox = 0;
+  try {
+    if (window._inboxEmails) {
+      unreadInbox = Object.keys(window._inboxEmails)
+        .map(function(k){ return window._inboxEmails[k]; })
+        .filter(function(e){ return e && !e.read_at; }).length;
+    }
+  } catch(e){}
+
+  // ── Deterministic primary action (NOT from LLM — reliability) ──────
+  var primary;
+  if (checkinToday.length) {
+    var g = checkinToday[0];
+    primary = {
+      label: (fr ? '💬 Envoyer brief Said pour ' : '💬 Send Said brief for ') + g.name,
+      fn: function(){ if (typeof smartWhatsApp === 'function') smartWhatsApp('staff', 0); }
+    };
+  } else if (checkinTomorrow.length) {
+    var g2 = checkinTomorrow[0];
+    primary = {
+      label: (fr ? '💬 Brief staff — arrivée ' : '💬 Staff brief — arrival ') + g2.name,
+      fn: function(){ if (typeof smartWhatsApp === 'function') smartWhatsApp('staff', 0); }
+    };
+  } else if (checkoutToday.length) {
+    var g3 = checkoutToday[0];
+    primary = {
+      label: (fr ? '⭐ Demander un avis à ' : '⭐ Ask review from ') + g3.name,
+      fn: function(){ if (typeof smartWhatsApp === 'function') smartWhatsApp('guest', g3.id); }
+    };
+  } else if (inHouse) {
+    primary = {
+      label: (fr ? '💬 Message à ' : '💬 Message ') + inHouse.name,
+      fn: function(){ if (typeof smartWhatsApp === 'function') smartWhatsApp('guest', inHouse.id); }
+    };
+  } else if (unreadInbox) {
+    primary = {
+      label: (fr ? '📧 Voir ' : '📧 View ') + unreadInbox + (fr ? ' email(s) non lu(s)' : ' unread email(s)'),
+      fn: function(){ if (typeof goTab === 'function') goTab('today'); }
+    };
+  } else {
+    primary = {
+      label: (fr ? '✅ Vue d\'ensemble' : '✅ Overview'),
+      fn: function(){ if (typeof openAriaModal === 'function') openAriaModal(fr ? 'donne-moi un brief général du jour' : 'give me a general brief for today'); }
+    };
+  }
+
+  // ── LLM context (compact) ──────────────────────────────────────────
+  var ctx = { d: todayISO };
+  if (cfg.villa) ctx.villa = cfg.villa;
+  if (cfg.owner) ctx.owner = cfg.owner;
+  if (inHouse)            ctx.inHouse = { n: inHouse.name, dep: inHouse.departure, g: inHouse.guests };
+  if (checkinToday.length)    ctx.ciTdy = checkinToday.map(function(c){ return { n: c.name, g: c.guests }; });
+  if (checkinTomorrow.length) ctx.ciTmr = checkinTomorrow.map(function(c){ return { n: c.name, g: c.guests }; });
+  if (checkoutToday.length)   ctx.coTdy = checkoutToday.map(function(c){ return c.name; });
+  if (unreadInbox)            ctx.unread = unreadInbox;
+
+  var sys = fr
+    ? 'Tu es ARIA, assistante personnelle du propriétaire. En 1 paragraphe (max 70 mots), résume ce qui compte aujourd\'hui. Direct, conversationnel, pas de liste, pas d\'emoji, pas de salutation. Tu parles à l\'owner.'
+    : 'You are ARIA, the villa owner\'s personal assistant. In 1 paragraph (max 70 words), summarize what matters today. Direct, conversational, no list, no emoji, no greeting. You speak to the owner.';
+  var userCtx = 'CTX: ' + JSON.stringify(ctx);
+
+  function paintCta() {
+    if (!ctaEl) return;
+    ctaEl.style.display = '';
+    ctaEl.textContent = primary.label;
+    ctaEl.onclick = primary.fn;
+  }
+
+  if (typeof callBestAI !== 'function') {
+    bodyEl.textContent = fr ? 'Brief indisponible — proxy AI absent.' : 'Brief unavailable — AI proxy missing.';
+    paintCta();
+    return;
+  }
+
+  try {
+    var raw = await callBestAI('brief', sys, userCtx, 200);
+    var txt = (raw || '').trim();
+    bodyEl.textContent = txt || (fr ? 'Pas assez de données pour un brief — ajoute un séjour confirmé.' : 'Not enough data — add a confirmed stay.');
+  } catch(err) {
+    console.warn('[af1BuildBrief]', err);
+    bodyEl.textContent = fr ? 'Brief indisponible pour le moment.' : 'Brief temporarily unavailable.';
+  }
+  paintCta();
+}
+window.af1BuildBrief = af1BuildBrief;
 
 // ════════════════════════════════════════════════════════════
 // SETTINGS AUTO-SAVE ENGINE
