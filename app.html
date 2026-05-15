@@ -8927,6 +8927,32 @@ async function loadMsgHistory(clientId) {
 function detectCommandIntent(text) {
   // Returns {type:'send', clientName:'...'} or null
   var t = text.toLowerCase().trim();
+
+  // Guard: when both a known staff first name AND a guest name appear in the
+  // text, this is a staff-brief instruction (e.g. "brief Said sur Massi") —
+  // let it fall through to the LLM rather than getting captured as a send/
+  // relance command. Staff names pulled from cfg.staff, fallback to the trio.
+  try {
+    var staffTokens;
+    try {
+      var rawStaff = ((typeof getCfg === 'function' ? getCfg() : {}).staff || '').toLowerCase();
+      staffTokens = rawStaff.split(/[\n,]/).map(function(s){
+        return s.replace(/\(.*?\)/g, '').trim().split(/\s+/)[0];
+      }).filter(function(s){ return s && s.length >= 3; });
+    } catch(e){ staffTokens = []; }
+    if (!staffTokens.length) staffTokens = ['said','faiza','bouchra'];
+    var hasStaff = staffTokens.some(function(s){
+      return new RegExp('\\b' + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(text);
+    });
+    if (hasStaff && typeof clients !== 'undefined' && Array.isArray(clients)) {
+      var hasGuest = clients.some(function(c){
+        var first = ((c && c.name || '').split(/\s+/)[0] || '').toLowerCase();
+        return first && first.length >= 3 && t.indexOf(first) !== -1;
+      });
+      if (hasGuest) return null;
+    }
+  } catch(e){}
+
   var sendPatterns = [
     /(?:relance|relancer|recontacte|rappelle)\s+(\w+)/i,
     /(?:envoie|envoi|send|envoyer)\s+(?:un\s+)?(?:message|msg|whatsapp|wa|sms)?\s*(?:à|a|to)?\s*(\w+)/i,
@@ -9274,9 +9300,12 @@ async function handleChatQuestion(text) {
     (/marketing|message/i.test(text) && /staff brief|brief staff/i.test(text)) ||
     /\b[2-5][\-–\s]?(à\s+)?[3-5]?\s+(actions?|étapes?|steps?|concrete|concrètes?)\b/i.test(text);
 
-  // Load recent chat history from DB (includes previous sessions)
-  var dbHistory = await loadRecentChatContext(12);
-  var historyBlock = dbHistory || buildChatHistoryBlock(8);
+  // Factual questions about today / upcoming / current guests must not be
+  // contaminated by stale conversation history. Detect them and starve the
+  // model down to 2 turns of in-memory context — also skips the DB round-trip.
+  var isFactual = /prochain|arriv|d[ée]part|qui est|combien|calendrier|en cours|current|upcoming|today|aujourd|demain|tomorrow|nobody|personne|sur place|in-house/i.test(text);
+  var dbHistory = isFactual ? null : await loadRecentChatContext(12);
+  var historyBlock = isFactual ? buildChatHistoryBlock(2) : (dbHistory || buildChatHistoryBlock(8));
 
   var systemPrompt;
   if (isOrchestrator) {
@@ -9302,6 +9331,11 @@ async function handleChatQuestion(text) {
     systemPrompt = [
       'Tu es ARIA, l\'assistant personnel intelligent de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
       'Tu réponds en ' + (fr ? 'français' : 'anglais') + '.',
+      '',
+      '════ RÈGLE CRITIQUE — FAITS vs HISTORIQUE ════',
+      "Aujourd'hui : " + today + '.',
+      "Pour toute question sur les arrivées, départs, qui est sur place, qui arrive demain, le calendrier, ou toute donnée factuelle : utilise UNIQUEMENT le bloc CRM ci-dessous. IGNORE TOTALEMENT l'historique de conversation pour les faits — il peut contenir des noms périmés.",
+      "L'historique sert uniquement à comprendre le ton ou les références anaphoriques ('lui', 'elle', 'eux'), JAMAIS comme source de noms ou de dates.",
       '',
       '════ TES 3 MODES DE RÉPONSE ════',
       '',
