@@ -4268,6 +4268,7 @@ const MAX_FREE_STAYS = 3;
 // CONFIG & STATE
 // ════════════════════════════════════════════
 let lang = localStorage.getItem('stafflo_lang') || 'fr';
+try { window.lang = lang; } catch(e){} // expose for callers that read via window (let doesn't bind)
 var clients = []; window.clients = clients; // Patched 2026-05-10: var so window-accessible
 
 // Global date utilities
@@ -8414,6 +8415,7 @@ function updateSessionBadge() {
 // ════════════════════════════════════════════════════════
 function setLang(l) {
   lang = l;
+  try { window.lang = l; } catch(e){} // keep window.lang in sync (let-binding workaround)
   localStorage.setItem('stafflo_lang', l);
   applyLang();
   renderAll();
@@ -27894,28 +27896,41 @@ window.addEventListener('DOMContentLoaded', function() {
 
   function answerAggregateLocally(query, lang){
     var clients = getClients();
-    var fr = lang === 'fr' || (typeof window.lang !== 'undefined' && window.lang === 'fr');
+    // `let lang` at the top of the file isn't bound to window — so localStorage
+    // is the only reliable cross-scope source here. Default FR (app is FR-first).
+    var fr = lang === 'fr'
+          || (typeof window.lang !== 'undefined' && window.lang === 'fr')
+          || (function(){ try { return (localStorage.getItem('stafflo_lang') || 'fr') === 'fr'; } catch(e){ return true; } })();
     var todayISO = localDateISO();
     var L = function(f, e){ return fr ? f : e; };
 
     // ── Helpers respecting contact_type (Option 3 Step 2) ──
+    // Accept booking_status (snake from DB), bookingStatus (camelCase
+    // in-memory), or missing (legacy/unset = client by default — mirrors
+    // isFirmBooking's contract elsewhere).
     function isClient(c){
-      // Primary: contact_type column (new). Fallback: derive from booking_status.
       if (c.contact_type) return c.contact_type === 'client';
-      return ['confirmed','past','cancelled'].indexOf(c.booking_status||'') >= 0;
+      var bs = c.booking_status || c.bookingStatus || '';
+      if (!bs) return true;
+      return ['confirmed','past','cancelled','pending'].indexOf(bs) >= 0;
     }
     function isLead(c){
       if (c.contact_type) return c.contact_type === 'lead';
-      return ['inquiry','declined'].indexOf(c.booking_status||'') >= 0;
+      var bs = c.booking_status || c.bookingStatus || '';
+      return ['inquiry','declined','lead','quoted'].indexOf(bs) >= 0;
     }
     
-    // Filter helpers (only TRUE clients, no leads pollution)
+    // Filter helpers (only TRUE clients, no leads pollution).
+    // Each filter reads booking_status OR bookingStatus, with a sane default.
     var trueClients = clients.filter(isClient);
     var trueLeads = clients.filter(isLead);
-    var confirmed = trueClients.filter(function(c){ return (c.booking_status||'confirmed') === 'confirmed'; });
-    var inquiry = trueLeads.filter(function(c){ return (c.booking_status||'') === 'inquiry'; });
-    var declined = trueLeads.filter(function(c){ return (c.booking_status||'') === 'declined'; });
-    var past_status = trueClients.filter(function(c){ return (c.booking_status||'') === 'past'; });
+    var confirmed = trueClients.filter(function(c){
+      var bs = c.booking_status || c.bookingStatus || 'confirmed';
+      return bs === 'confirmed' || bs === 'pending';
+    });
+    var inquiry = trueLeads.filter(function(c){ return (c.booking_status || c.bookingStatus || '') === 'inquiry'; });
+    var declined = trueLeads.filter(function(c){ return (c.booking_status || c.bookingStatus || '') === 'declined'; });
+    var past_status = trueClients.filter(function(c){ return (c.booking_status || c.bookingStatus || '') === 'past'; });
 
     function fmtClient(c, opts){
       opts = opts || {};
@@ -28098,7 +28113,7 @@ window.addEventListener('DOMContentLoaded', function() {
       var target = new Date();
       target.setDate(target.getDate() + (query.offset || 0));
       var targetISO = localDateISO(target);
-      var arr = confirmed.filter(function(c){ return c.arrival === targetISO; });
+      var arr = confirmed.filter(function(c){ return (c.arrival||'').slice(0,10) === targetISO; });
       if (arr.length === 0) {
         return L('Personne n\'arrive ' + (query.offset===1?'demain':query.offset===0?'aujourd\'hui':'à cette date') + '.',
                  'Nobody arrives ' + (query.offset===1?'tomorrow':query.offset===0?'today':'on that date') + '.');
@@ -28110,7 +28125,7 @@ window.addEventListener('DOMContentLoaded', function() {
     if (query.kind === 'arriving_within') {
       var until = new Date(); until.setDate(until.getDate() + query.days);
       var untilISO = localDateISO(until);
-      var win = confirmed.filter(function(c){ return c.arrival && c.arrival >= todayISO && c.arrival <= untilISO; });
+      var win = confirmed.filter(function(c){ var a = (c.arrival||'').slice(0,10); return a && a >= todayISO && a <= untilISO; });
       win.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
       if (win.length === 0) return L('Aucune arrivée dans les ' + query.days + ' prochains jours.', 'No arrivals in the next ' + query.days + ' days.');
       return L('**' + win.length + ' arrivée(s) dans les ' + query.days + ' jours** :', '**' + win.length + ' arrival(s) in the next ' + query.days + ' days:**') +
@@ -28118,7 +28133,7 @@ window.addEventListener('DOMContentLoaded', function() {
     }
 
     if (query.kind === 'arriving_on_iso') {
-      var arr2 = confirmed.filter(function(c){ return c.arrival === query.iso; });
+      var arr2 = confirmed.filter(function(c){ return (c.arrival||'').slice(0,10) === query.iso; });
       var dateLbl = formatDateHuman(query.iso, {lang: fr?'fr':'en', includeRelative:true});
       if (arr2.length === 0) {
         return L('Personne n\'arrive le ' + dateLbl + '.', 'Nobody arrives on ' + dateLbl + '.');

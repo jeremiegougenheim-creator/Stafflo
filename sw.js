@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v16 (chrome-extension safe)
-const CACHE = 'stafflo-v16';
+// Stafflo Service Worker — v17 (chrome-extension safe)
+const CACHE = 'stafflo-v17';
 const CORE = ['./app.html'];
 
 self.addEventListener('install', e => {
