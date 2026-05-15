@@ -9889,6 +9889,34 @@ function closeInbox() {
   document.body.style.overflow = '';
 }
 
+// Standalone Supabase fetch for inbox emails. No DOM dependency — populates
+// window._inboxEmails and returns the rows. Used by loadInboxEmails (renders
+// the dashboard card), populateInboxRow (renders the inline rows), and
+// refreshInboxRow (manual refresh) so the cache stays fresh even when the
+// dashboard card is not in the DOM.
+async function fetchInboxEmails() {
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  var key = cfg.sbKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
+  var authToken = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token)
+    ? _stafflo_session.access_token : key;
+  if (!key) return [];
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=50', {
+      headers: { apikey: key, Authorization: 'Bearer ' + authToken }
+    });
+    var rows = await r.json();
+    if (!Array.isArray(rows)) return [];
+    var fresh = {};
+    rows.forEach(function(row){ if (row && row.id) fresh[row.id] = row; });
+    window._inboxEmails = fresh;
+    return rows;
+  } catch(e) {
+    console.warn('[fetchInboxEmails]', e);
+    return [];
+  }
+}
+window.fetchInboxEmails = fetchInboxEmails;
+
 async function loadInboxEmails() {
   // Dual-write: inline dashboard card (#inboxList) + modal (#inboxListLegacy)
   var els = Array.from(document.querySelectorAll('#inboxList, #inboxListLegacy'));
@@ -18242,7 +18270,12 @@ function populateInboxRow(rowId) {
 
   list.innerHTML = '<div style="text-align:center;padding:14px;color:var(--muted)">⏳ <span data-fr="Chargement..." data-en="Loading...">Chargement...</span></div>';
 
-  var loadPromise = (typeof loadInboxEmails === 'function') ? Promise.resolve(loadInboxEmails()) : Promise.resolve();
+  // Use fetchInboxEmails directly — bypasses the #inboxList DOM guard inside
+  // loadInboxEmails, which would otherwise short-circuit when the dashboard
+  // card isn't mounted and leave window._inboxEmails stale.
+  var loadPromise = (typeof fetchInboxEmails === 'function')
+    ? Promise.resolve(fetchInboxEmails())
+    : ((typeof loadInboxEmails === 'function') ? Promise.resolve(loadInboxEmails()) : Promise.resolve());
   loadPromise.then(function() {
     var emails = window._inboxEmails ? Object.values(window._inboxEmails) : [];
     if (!emails.length) {
@@ -18325,9 +18358,14 @@ function refreshInboxRow(btn) {
     }
 
     if (typeof loadInboxCount === 'function') loadInboxCount();
-    ['inboxRowToday','inboxRowGuests','inboxRowVilla'].forEach(function(rid){
-      var r = document.getElementById(rid);
-      if (r && r.classList.contains('open')) populateInboxRow(rid);
+    // Refresh the cache from Supabase BEFORE re-rendering the rows so the
+    // dashboard inbox card shows the latest emails (incl. new Gmail pulls).
+    var fetchPromise = (typeof fetchInboxEmails === 'function') ? Promise.resolve(fetchInboxEmails()) : Promise.resolve();
+    fetchPromise.then(function(){
+      ['inboxRowToday','inboxRowGuests','inboxRowVilla'].forEach(function(rid){
+        var r = document.getElementById(rid);
+        if (r && r.classList.contains('open')) populateInboxRow(rid);
+      });
     });
 
     if (btn) setTimeout(function(){ btn.classList.remove('spin'); }, 400);
@@ -25811,14 +25849,12 @@ window.addEventListener('DOMContentLoaded', function() {
 
     var _origLoadInbox = window.loadInboxEmails;
     window.loadInboxEmails = async function() {
-      var el = document.getElementById('inboxList');
-      if (!el) return;
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
 
-      el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:12px;text-align:center">' +
-        (fr ? 'Chargement…' : 'Loading…') + '</div>';
-
       try {
+        // Auto-sync Gmail (silent) — happens regardless of DOM state so the
+        // Supabase email_inbox table is fresh for ALL consumers, not just
+        // the dashboard card.
         var cfg = (typeof getCfg === 'function') ? getCfg() : {};
         if (cfg.email_connection && cfg.email_connection.provider === 'Google' && cfg.email_connection.access_token && typeof syncGmailDirect === 'function') {
           try {
@@ -25830,14 +25866,13 @@ window.addEventListener('DOMContentLoaded', function() {
           } catch(e) {}
         }
 
-        var key = cfg.sbKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
-        var authToken = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token)
-          ? _stafflo_session.access_token : key;
+        // Always populate the cache, regardless of DOM.
+        var rows = await fetchInboxEmails();
 
-        var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=50', {
-          headers: { apikey: key, Authorization: 'Bearer ' + authToken }
-        });
-        var rows = await r.json();
+        // Only now check the DOM. Cache is fresh for populateInboxRow /
+        // refreshInboxRow / chat-bubble consumers even if #inboxList is absent.
+        var el = document.getElementById('inboxList');
+        if (!el) return;
 
         if (!rows || !rows.length) {
           el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:24px 12px;text-align:center;line-height:1.6">' +
@@ -25847,9 +25882,7 @@ window.addEventListener('DOMContentLoaded', function() {
           return;
         }
 
-        window._inboxEmails = window._inboxEmails || {};
         var html = rows.map(function(row){
-          window._inboxEmails[row.id] = row;
           var sender = (row.from_name || row.from_email || '?').split('<')[0].trim().slice(0, 28);
           var subject = (row.subject || '(no subject)').slice(0, 80);
           var d = new Date(row.received_at || row.created_at);
