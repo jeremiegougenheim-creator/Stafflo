@@ -25955,18 +25955,40 @@ window.addEventListener('DOMContentLoaded', function() {
         var i = chev.querySelector('i');
         if (i){ i.className = collapsed ? 'ti ti-chevron-down' : 'ti ti-chevron-up'; i.style.fontSize = '14px'; }
       }
+      // Persistent collapse state — same convention as applyInboxDefaultState:
+      //   localStorage 'stafflo_card_open_<id>' = '1' (open) / '0' (closed) / null (use default).
+      // First load gets the default; once the user toggles, their choice
+      // wins on subsequent loads.
+      var stateKey = cardId ? ('stafflo_card_open_' + cardId) : '';
+      function persistState(collapsed){
+        if (!stateKey) return;
+        try { localStorage.setItem(stateKey, collapsed ? '0' : '1'); } catch(e){}
+      }
+      function applyAndPersist(collapsed){ applyState(collapsed); persistState(collapsed); }
       hd.addEventListener('click', function(e){
         if (card.classList.contains('cardCalendarMiniMirror')) { if (typeof goTab === 'function') goTab('today'); return; }
         if (e.target.closest('.v2-icon-btn:not(._hdChev),.v2-card-more,button:not(._hdChev),input,a')) return;
-        applyState(body.style.display !== 'none');
+        applyAndPersist(body.style.display !== 'none');
       });
       // Click on summary (rich preview) when collapsed → expand
       summary.addEventListener('click', function(e){
         if (e.target.closest('button,input,a')) return;
-        if (body.style.display === 'none') applyState(false);
+        if (body.style.display === 'none') applyAndPersist(false);
       });
       summary.style.cursor = 'pointer';
-      if (card.dataset.collapsed === '1') applyState(true);
+
+      // Saved state always wins over defaults (only when explicitly set).
+      var saved = null;
+      try { saved = stateKey ? localStorage.getItem(stateKey) : null; } catch(e){}
+      if (saved === '1') { applyState(false); }
+      else if (saved === '0') { applyState(true); }
+      // No saved choice → fall back to per-card defaults.
+      // Brief Aria + Aria détecte (the brief + signals cards) open by default
+      // so the owner sees the day's signals without an extra click on first load.
+      else if (cardId === 'card50MorningBrief' || cardId === 'heroAlertsToday') {
+        applyState(false);
+      }
+      else if (card.dataset.collapsed === '1') applyState(true);
       else if (cardId === 'heroActionBoardToday') {
         applyState(false); // To-do always open by default
       }
@@ -25983,7 +26005,7 @@ window.addEventListener('DOMContentLoaded', function() {
           applyState(!hasInHouse);
         }
       }
-      // Default: all cards collapsed on session open
+      // Default: all other cards collapsed on session open
       else {
         applyState(true);
       }
