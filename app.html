@@ -873,8 +873,10 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   .header-right{gap:4px}
   .hdr-btn{padding:4px 8px;font-size:9px}
   .chat-inbox-badge{font-size:8px;padding:1px 4px}
-  /* M1: hide NET TOTAL / CLIENTS stats on mobile so settings + lang stay inside */
-  header .hstat{display:none !important}
+  /* M1: keep NET / CLIENTS numbers visible on mobile (they're clickable
+     shortcuts to Villa / Guests), but hide their labels to save space. */
+  header .hstat .hstat-lbl{display:none !important}
+  header .hstat .hstat-val{font-size:13px}
   #sessionBadge{display:none !important}
 }
 
@@ -2272,11 +2274,11 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
   <div class="header-right">
   <div id="sessionBadge" style="font-size:10px;opacity:.75;margin-right:8px"></div>
     <div class="sync-dot" id="syncDot" onclick="syncNow()" title="Supabase sync"></div>
-    <div class="hstat">
+    <div class="hstat" id="hstatNet" style="cursor:pointer" onclick="goTab('home')" title="Revenu net total — cliquez pour voir Villa" data-title-fr="Revenu net total — cliquez pour voir Villa" data-title-en="Total net revenue — click to view Villa">
       <div class="hstat-val" id="hNet">—</div>
       <div class="hstat-lbl" id="lNet">NET TOTAL</div>
     </div>
-    <div class="hstat">
+    <div class="hstat" id="hstatCount" style="cursor:pointer" onclick="goTab('clients')" title="Nombre de clients — cliquez pour voir Guests" data-title-fr="Nombre de clients — cliquez pour voir Guests" data-title-en="Client count — click to view Guests">
       <div class="hstat-val" id="hCount">—</div>
       <div class="hstat-lbl" id="lCount">CLIENTS</div>
     </div>
@@ -7645,6 +7647,15 @@ function updateHeaderStats() {
   document.getElementById('hNet').textContent = Math.round(total).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
   document.getElementById('hCount').textContent = firm.length;
   document.getElementById('crmCount').textContent = firm.length;
+  // Refresh title tooltips in the active language (also keeps them
+  // accurate after a lang toggle, since attrs were set at render time).
+  try {
+    var _hsFr = (typeof lang !== 'undefined' && lang === 'fr');
+    var _hsNet = document.getElementById('hstatNet');
+    var _hsCnt = document.getElementById('hstatCount');
+    if (_hsNet) _hsNet.title = _hsFr ? 'Revenu net total — cliquez pour voir Villa' : 'Total net revenue — click to view Villa';
+    if (_hsCnt) _hsCnt.title = _hsFr ? 'Nombre de clients — cliquez pour voir Guests' : 'Client count — click to view Guests';
+  } catch(e){}
   document.getElementById('crmNet').textContent = Math.round(total).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
   const withNights = firm.filter(c => c.arrival && c.departure);
   if (withNights.length) {
@@ -15636,9 +15647,10 @@ function showInstallBanner() {
   btn.title = lang==='fr' ? 'Installer Stafflo sur votre écran' : 'Install Stafflo on your screen';
   btn.style.cssText = 'background:none;border:1px solid rgba(201,150,58,.4);color:var(--gold);padding:4px 10px;font-size:10px;font-weight:600;letter-spacing:1px;cursor:pointer;font-family:DM Sans,sans-serif;border-radius:4px;white-space:nowrap';
   btn.textContent = '📲 ' + (lang==='fr' ? 'Installer' : 'Install');
-  // Insert in header-right before the settings button
+  // Append at the end of header-right so the install affordance never
+  // pushes the core stats / language / settings off-screen on mobile.
   const headerRight = document.querySelector('.header-right');
-  if (headerRight) headerRight.insertBefore(btn, headerRight.firstChild);
+  if (headerRight) headerRight.appendChild(btn);
 }
 
 async function installPWA() {
