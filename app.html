@@ -5020,48 +5020,118 @@ function _renderMagicLinkSent(email, isSignup) {
 // persist (no localStorage write, no Supabase push). Each client carries
 // _demo:true so saveLocal / pushToSupabase strip them, and loadLocal
 // filters them on read — reload without ?demo=1 returns the real data.
-function loadDemoData() {
-  var FR = (typeof lang !== 'undefined') && lang === 'fr';
+// Single source of truth for demo data. Both loadDemoData (overlay path
+// behind ?demo=1) and loadDemoSeed (unauth visitor path) consume this.
+// Net is computed; commission follows real source rules (Airbnb 3.6 /
+// Booking 15 / Direct 0). All entries are flagged _demo:true so saveLocal,
+// pushToSupabase and loadLocal strip them — demo data never leaks to the
+// server or persists across a reload without ?demo=1.
+function buildDemoClients() {
   var today = new Date();
   function rel(days) {
     var d = new Date(today); d.setDate(d.getDate() + days);
     return d.toISOString().slice(0,10);
   }
-  var demoClients = [
-    { id:'demo_massi',  name:'Massi Mekla',         nat:'🇫🇷 Français', email:'', phone:'+33612345678',
-      arrival:rel(0),  departure:rel(4),  nights:4, guests:6, price:850, commission:3.6, commMode:'percent',
-      source:'Airbnb',      notes:'Famille — déjà sur place, séjour de 4 nuits',
-      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
-    { id:'demo_sophie', name:'Sophie Laurent',      nat:'🇫🇷 Français', email:'', phone:'+33687654321',
-      arrival:rel(1),  departure:rel(5),  nights:4, guests:4, price:720, commission:15,  commMode:'percent',
-      source:'Booking.com', notes:'Végétarienne · arrivée tardive 22h',
-      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
-    { id:'demo_tim',    name:'Tim Bitici',          nat:'🇩🇪 Deutsch',  email:'', phone:'+491701234567',
-      arrival:rel(8),  departure:rel(12), nights:4, guests:8, price:950, commission:3.6, commMode:'percent',
-      source:'Airbnb',      notes:'Anniversaire 40 ans · gâteau demandé samedi soir',
-      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
-    { id:'demo_chen',   name:'James & Sarah Chen',  nat:'🇬🇧 English',  email:'', phone:'+447700123456',
-      arrival:rel(15), departure:rel(19), nights:4, guests:2, price:680, commission:0,   commMode:'percent',
-      source:'Direct',      notes:'Couple sans enfants, voyage anniversaire',
-      payStatus:'pending', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
-    { id:'demo_olivia', name:'Olivia Martinez',     nat:'🇪🇸 Español',  email:'', phone:'+34611234567',
-      arrival:rel(22), departure:rel(27), nights:5, guests:5, price:780, commission:15,  commMode:'percent',
-      source:'Booking.com', notes:"Groupe d'amis, soirée chef demandée jour 2",
-      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
-    { id:'demo_karim',  name:'Karim Benali',        nat:'🇲🇦 Maroc',    email:'', phone:'+212661234567',
-      arrival:'',       departure:'',       nights:0, guests:4, price:0,   commission:0,   commMode:'percent',
-      source:'Direct',      notes:'Demande devis pour juillet — sans dates fermes',
-      payStatus:'',     bookingStatus:'inquiry',   contact_type:'lead',  createdAt:new Date().toISOString() },
-    { id:'demo_emma',   name:'Emma Wilson',         nat:'🇬🇧 English',  email:'', phone:'+447712345678',
-      arrival:rel(30), departure:rel(35), nights:5, guests:6, price:0,   commission:3.6, commMode:'percent',
-      source:'Airbnb',      notes:'Demande si piscine chauffée + arrivée bébé 8 mois',
-      payStatus:'',     bookingStatus:'inquiry',   contact_type:'lead',  createdAt:new Date().toISOString() },
-    { id:'demo_yuki',   name:'Yuki Tanaka',         nat:'🇯🇵 日本語',   email:'', phone:'+81901234567',
-      arrival:rel(-5), departure:rel(-1), nights:4, guests:3, price:700, commission:15,  commMode:'percent',
-      source:'Booking.com', notes:'Premier séjour terminé hier · relancer pour review',
-      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() }
+  function net(price, comm) { return Math.round(price * (1 - (comm/100))); }
+  var nowISO = new Date().toISOString();
+  var list = [
+    // In-house — anniversaire mariage 15 ans
+    { id:'demo_sophie_b', name:'Sophie Bernard', nat:'🇫🇷 Français',
+      arrival:rel(-2), departure:rel(5), nights:7, guests:6,
+      source:'Airbnb',      price:5250, commission:3.6, commMode:'percent', net:net(5250,3.6),
+      phone:'+33612345678', email:'sophie.bernard@example.fr',
+      notes:'Anniversaire mariage 15 ans, vegan strict, piscine chauffée demandée, chef tous les soirs',
+      payStatus:'paid',    bookingStatus:'confirmed', contact_type:'client', createdAt:nowISO },
+    // Séminaire entreprise
+    { id:'demo_marcus',   name:'Marcus Weber',   nat:'🇩🇪 Deutsch',
+      arrival:rel(3),  departure:rel(8),  nights:5, guests:8,
+      source:'Direct',      price:7350, commission:0,   commMode:'percent', net:net(7350,0),
+      phone:'+491701234567', email:'marcus.weber@example.de',
+      notes:'Séminaire entreprise, 6 cadres + 2 conjoints, Wi-Fi pro requis, transferts aéroport',
+      payStatus:'paid',    bookingStatus:'confirmed', contact_type:'client', createdAt:nowISO },
+    // Famille avec enfants — allergie gluten
+    { id:'demo_sarah',    name:'Sarah Mitchell', nat:'🇬🇧 English',
+      arrival:rel(8),  departure:rel(15), nights:7, guests:4,
+      source:'Booking.com', price:5950, commission:15,  commMode:'percent', net:net(5950,15),
+      phone:'+447700123456', email:'sarah.mitchell@example.co.uk',
+      notes:'Famille 2 enfants (8 et 11 ans), lit bébé pour neveu, allergie gluten (Sarah)',
+      payStatus:'paid',    bookingStatus:'confirmed', contact_type:'client', createdAt:nowISO },
+    // Groupe d'amis — chef tous les soirs
+    { id:'demo_alessandro', name:'Alessandro Romano', nat:'🇮🇹 Italiano',
+      arrival:rel(20), departure:rel(25), nights:5, guests:10,
+      source:'Airbnb',      price:9100, commission:3.6, commMode:'percent', net:net(9100,3.6),
+      phone:'+393331234567', email:'alessandro.romano@example.it',
+      notes:'Groupe d\'amis 30-40 ans, chef demandé tous les soirs, transferts aéroport ×2',
+      payStatus:'paid',    bookingStatus:'confirmed', contact_type:'client', createdAt:nowISO },
+    // Lune de miel
+    { id:'demo_yuki',     name:'Yuki Tanaka',    nat:'🇯🇵 日本語',
+      arrival:rel(30), departure:rel(37), nights:7, guests:2,
+      source:'Booking.com', price:3800, commission:15,  commMode:'percent', net:net(3800,15),
+      phone:'+81901234567', email:'yuki.tanaka@example.jp',
+      notes:'Lune de miel, décoration romantique, excursion Atlas, spa hammam',
+      payStatus:'paid',    bookingStatus:'confirmed', contact_type:'client', createdAt:nowISO },
+    // Inquiry sans dates fermes
+    { id:'demo_karim',    name:'Karim & Leila Benali', nat:'🇲🇦 Maroc',
+      arrival:'',      departure:'',      nights:0, guests:8,
+      source:'Direct',      price:0,    commission:0,   commMode:'percent', net:0,
+      phone:'+212661234567', email:'karim.benali@example.ma',
+      notes:'Intéressés pour Ramadan, budget ~4000€/semaine, 8 personnes',
+      payStatus:'',        bookingStatus:'inquiry',   contact_type:'lead',   createdAt:nowISO },
+    // Inquiry avec dates
+    { id:'demo_emma',     name:'Emma Wilson',    nat:'🇺🇸 English',
+      arrival:rel(45), departure:rel(52), nights:7, guests:5,
+      source:'Direct',      price:0,    commission:0,   commMode:'percent', net:0,
+      phone:'+14155551234', email:'emma.wilson@example.com',
+      notes:'Groupe yoga retreat, végétariennes, cours de cuisine marocaine',
+      payStatus:'',        bookingStatus:'inquiry',   contact_type:'lead',   createdAt:nowISO },
+    // Séjour passé — review déjà laissée
+    { id:'demo_lopez',    name:'Famille Lopez',  nat:'🇪🇸 Español',
+      arrival:rel(-15), departure:rel(-8), nights:7, guests:6,
+      source:'Direct',      price:4900, commission:0,   commMode:'percent', net:net(4900,0),
+      phone:'+34611234567', email:'lopez.familia@example.es',
+      notes:'Repeat guest, 3e séjour, review 5★ laissée',
+      payStatus:'paid',    bookingStatus:'confirmed', contact_type:'client', hostReviewLeft:true, createdAt:nowISO }
   ];
-  demoClients.forEach(function(c){ c._demo = true; });
+  list.forEach(function(c){ c._demo = true; });
+  return list;
+}
+
+// Demo inbox — 5 realistic emails covering the main inbound categories.
+// Populated into window._inboxEmails (the live store the inbox renderer reads),
+// and exposed as window.__DEMO_INBOX for inspection. Cleared on reload-without-demo.
+function buildDemoInbox() {
+  function ago(min) { return new Date(Date.now() - min*60000).toISOString(); }
+  return [
+    { id:'demo_mail_1', from_name:'Alessandro Romano', from_email:'alessandro.romano@example.it',
+      subject:'Chef pour notre séjour de juin',
+      body:'Bonjour, nous arrivons le 4 juin pour 5 nuits avec 10 personnes. Pouvez-vous confirmer la disponibilité du chef tous les soirs ? Nous serions aussi intéressés par 2 transferts aéroport (Marrakech RAK). Merci, Alessandro',
+      received_at:ago(45),  status:'new',  classification:'guest_question',     _demo:true },
+    { id:'demo_mail_2', from_name:'Booking.com',       from_email:'noreply@booking.com',
+      subject:'Confirmation réservation — Sarah Mitchell (23-30 mai)',
+      body:'Vous avez reçu une nouvelle réservation. Voyageur : Sarah Mitchell. Arrivée : 23 mai 2026. Départ : 30 mai 2026. Nuits : 7. Voyageurs : 4. Montant total : 5 950 €. Commission Booking : 15%.',
+      received_at:ago(180), status:'new',  classification:'booking_confirmation', _demo:true },
+    { id:'demo_mail_3', from_name:'Sophie Bernard',    from_email:'sophie.bernard@example.fr',
+      subject:'Quelques questions avant arrivée',
+      body:'Bonjour, nous arrivons demain pour notre anniversaire de mariage. Pourriez-vous confirmer que la piscine est chauffée ? Aussi, nous sommes vegan strict — pouvez-vous prévenir le chef ? Merci, Sophie & Marc',
+      received_at:ago(360), status:'read', classification:'guest_question',     _demo:true },
+    { id:'demo_mail_4', from_name:'Sophie Lefèvre',    from_email:'sophie.lefevre@example.fr',
+      subject:'Disponibilité villa juillet 2026',
+      body:'Bonjour, je cherche une villa pour 8 personnes à Marrakech du 15 au 22 juillet 2026. Budget environ 6 000-8 000 €. Possible de nous envoyer un devis avec services inclus ? Merci d\'avance.',
+      received_at:ago(720), status:'new',  classification:'inquiry',            _demo:true },
+    { id:'demo_mail_5', from_name:'Airbnb',            from_email:'automated@airbnb.com',
+      subject:'Famille Lopez a laissé une évaluation 5★',
+      body:'Famille Lopez a évalué leur séjour : 5★. « Troisième séjour dans cette villa, toujours aussi parfait. L\'équipe est aux petits soins, la piscine impeccable, les enfants ont adoré le jardin. Merci ! » N\'oubliez pas de leur répondre.',
+      received_at:ago(1440), status:'read', classification:'review',            _demo:true }
+  ];
+}
+
+window.__DEMO_CLIENTS = buildDemoClients();
+window.__DEMO_INBOX   = buildDemoInbox();
+
+function loadDemoData() {
+  var FR = (typeof lang !== 'undefined') && lang === 'fr';
+  var demoClients = buildDemoClients();
+  window.__DEMO_CLIENTS = demoClients;
 
   // Merge into clients[] without overwriting real data. Idempotent: prior
   // demo clients are stripped first so re-calling doesn't duplicate.
@@ -5070,16 +5140,27 @@ function loadDemoData() {
     if (clients[i] && clients[i]._demo) clients.splice(i, 1);
   }
   demoClients.forEach(function(c){ clients.push(c); });
+  if (typeof deduplicateClients === 'function') deduplicateClients();
+
+  // Demo inbox: populate live store so the Inbox card has content too.
+  var demoInbox = buildDemoInbox();
+  window.__DEMO_INBOX = demoInbox;
+  if (!window._inboxEmails) window._inboxEmails = {};
+  // Strip any prior demo emails, then add the fresh set.
+  Object.keys(window._inboxEmails).forEach(function(k){
+    if (window._inboxEmails[k] && window._inboxEmails[k]._demo) delete window._inboxEmails[k];
+  });
+  demoInbox.forEach(function(e){ window._inboxEmails[e.id] = e; });
 
   window._demoMode = true;
 
   try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
   try {
-    var msg = FR ? '🎬 Demo · 8 clients chargés (temporaire — disparaissent au reload sans ?demo=1)'
-                 : '🎬 Demo · 8 clients loaded (temporary — gone on reload without ?demo=1)';
+    var msg = FR ? '🎬 Demo · 8 clients + 5 emails chargés (temporaire — disparaissent au reload sans ?demo=1)'
+                 : '🎬 Demo · 8 clients + 5 emails loaded (temporary — gone on reload without ?demo=1)';
     if (typeof toast === 'function') toast(msg);
   } catch(e){}
-  console.log('[demo] 8 demo clients merged. window._demoMode=true. Reload without ?demo=1 to clear.');
+  console.log('[demo] 8 clients + 5 inbox emails merged. window._demoMode=true. Reload without ?demo=1 to clear.');
 }
 window.loadDemoData = loadDemoData;
 
@@ -6064,6 +6145,7 @@ async function loadFromSupabase() {
         messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
         createdAt: r.created_at||new Date().toISOString()
       }; });
+      deduplicateClients();
       saveLocal(); renderAll(); setSyncDot('ok');
       // Refresh all collapsed v2-card summaries with new data (calendar timeline, etc)
       setTimeout(function(){
@@ -6121,6 +6203,56 @@ async function syncNow() {
   toast(lang==='fr' ? '↻ Synchronisé' : '↻ Synced');
 }
 
+// In-memory CRM dedupe: same-name + overlapping-or-missing-dates collapses
+// to a single entry. Before removing the loser, copies any field the winner
+// is missing (phone, notes, source, etc.) so nothing useful is lost. Demo
+// rows and real rows never collapse into each other — the demo flag is a
+// hard partition so saveLocal can still strip _demo cleanly on persist.
+// Idempotent. Does NOT touch Supabase — server-side duplicates handled separately.
+function deduplicateClients() {
+  if (!Array.isArray(clients) || clients.length < 2) return 0;
+  var FIELDS = ['arrival','departure','nights','guests','price','commission','commMode','net',
+                'phone','email','notes','source','nat','bookingStatus','payStatus','contact_type'];
+  function score(c) {
+    return [c.arrival, c.departure, c.price, c.phone, c.notes, c.source, c.guests].filter(Boolean).length;
+  }
+  function mergeInto(winner, loser) {
+    FIELDS.forEach(function(k){
+      if (!winner[k] && loser[k]) winner[k] = loser[k];
+    });
+  }
+  var dominated = {};
+  for (var i = 0; i < clients.length; i++) {
+    if (dominated[i]) continue;
+    for (var j = i + 1; j < clients.length; j++) {
+      if (dominated[j]) continue;
+      var a = clients[i], b = clients[j];
+      // Hard partition: never collapse demo with real.
+      if (!!a._demo !== !!b._demo) continue;
+      var nameA = (a.name || '').trim().toLowerCase();
+      var nameB = (b.name || '').trim().toLowerCase();
+      if (!nameA || nameA !== nameB) continue;
+      // Same arrival OR same departure OR one row has no arrival = duplicate
+      if (a.arrival === b.arrival || a.departure === b.departure || !a.arrival || !b.arrival) {
+        var aWins = score(a) >= score(b);
+        var winnerIdx = aWins ? i : j;
+        var loserIdx  = aWins ? j : i;
+        mergeInto(clients[winnerIdx], clients[loserIdx]);
+        dominated[loserIdx] = true;
+        if (loserIdx === i) break; // i is gone; advance outer loop
+      }
+    }
+  }
+  var removed = Object.keys(dominated).length;
+  if (removed) {
+    clients = clients.filter(function(_, idx){ return !dominated[idx]; });
+    console.log('[Stafflo] Deduplicated ' + removed + ' client(s)');
+    try { if (typeof saveLocal === 'function') saveLocal(); } catch(e){}
+  }
+  return removed;
+}
+window.deduplicateClients = deduplicateClients;
+
 function loadLocal() {
   if (isDemoMode()) return;
   try {
@@ -6128,6 +6260,9 @@ function loadLocal() {
     // Safety net: strip any _demo:true clients that leaked into localStorage
     // (shouldn't happen — saveLocal also filters them — but defense in depth).
     if (Array.isArray(clients)) clients = clients.filter(function(c){ return !c || !c._demo; });
+    if (deduplicateClients() > 0) {
+      try { localStorage.setItem('stafflo_clients', JSON.stringify(clients)); } catch(e){}
+    }
   } catch { clients = []; }
   // Schedule a Supabase-truth reconcile in the background. Runs after this tick
   // so the initial render isn't blocked. Supabase is authoritative for
@@ -6188,42 +6323,13 @@ function isDemoMode() {
 }
 
 function loadDemoSeed() {
-  const today = new Date();
-  const iso = (d) => d.toISOString().slice(0,10);
-  const add = (n) => { const x = new Date(today); x.setDate(x.getDate()+n); return iso(x); };
-
-  clients = [
-    {
-      id: 'demo-sophie',
-      name: 'Sophie Martin',
-      nat: '🇫🇷',
-      arrival: add(-4),
-      departure: add(1),
-      guests: 4,
-      phone: '+33612345678',
-      email: 'sophie.martin@example.com',
-      notes: 'Anniversaire Tom 40 ans samedi soir — décoration florale.\nCouscous traditionnel vendredi soir.\nAllergie noix (Tom).\nDriver aéroport mardi 14h00.',
-      price: 3200,
-      source: 'airbnb',
-      paid: true,
-      __demo: true
-    },
-    {
-      id: 'demo-thomas',
-      name: 'Thomas Chen',
-      nat: '🇬🇧',
-      arrival: add(2),
-      departure: add(7),
-      guests: 6,
-      phone: '+447712345678',
-      email: 'thomas.chen@example.com',
-      notes: 'Vol AF1234 arrivée Marrakech 19h45.\nPremier voyage à Marrakech, famille avec 2 enfants (8 et 11 ans).\nNous adorons le couscous, chef pour 3 dîners.\nDriver pour visite Atlas samedi.',
-      price: 4500,
-      source: 'booking',
-      paid: false,
-      __demo: true
-    }
-  ];
+  // Unauth visitor path. Replaces clients[] with the canonical demo set
+  // (same source of truth as ?demo=1 overlay — see buildDemoClients above).
+  clients = (typeof buildDemoClients === 'function') ? buildDemoClients() : [];
+  if (typeof buildDemoInbox === 'function') {
+    window._inboxEmails = {};
+    buildDemoInbox().forEach(function(e){ window._inboxEmails[e.id] = e; });
+  }
 }
 
 // Note: canonical enterDemoMode is defined earlier (in AUTH MODULE).
