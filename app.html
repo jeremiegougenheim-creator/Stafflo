@@ -9213,6 +9213,19 @@ function buildClientsContextRich(maxItems) {
   }
   var today = new Date();
   var todayISO = today.toISOString().slice(0,10);
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  // Human date "vendredi 15 mai 2026" so the LLM never has to derive a weekday.
+  function fmtDateHuman(iso) {
+    if (!iso) return '?';
+    var d = new Date(iso + 'T12:00:00');
+    var days = fr
+      ? ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
+      : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    var months = fr
+      ? ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+      : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  }
 
   var confirmedOnly = clients.filter(function(c){ return isFirmBooking(c); });
   var leadsOnly = clients.filter(function(c){
@@ -9233,19 +9246,22 @@ function buildClientsContextRich(maxItems) {
   past.sort(function(a,b){ return (b.departure||'').localeCompare(a.departure||''); });
 
   function fmtClient(c) {
-    var bits = [c.name || 'sans nom'];
+    var bits = [c.name || (fr?'sans nom':'unnamed')];
     if (c.nat) bits.push(c.nat);
     if (c.arrival && c.departure) {
-      bits.push('séjour ' + c.arrival + '→' + c.departure);
-      var arrDate = new Date(c.arrival), depDate = new Date(c.departure);
+      bits.push((fr?'arrivée ':'arrival ') + fmtDateHuman(c.arrival) + (fr?' → départ ':' → departure ') + fmtDateHuman(c.departure));
+      var arrDate = new Date(c.arrival + 'T12:00:00'), depDate = new Date(c.departure + 'T12:00:00');
       var diffArr = Math.round((arrDate - today)/86400000);
       var diffDep = Math.round((depDate - today)/86400000);
-      if (diffArr > 0) bits.push('arrive J+' + diffArr);
-      else if (diffDep >= 0) bits.push('reste ' + diffDep + 'j');
-      else bits.push('parti J' + diffDep);
-    } else if (c.arrival) bits.push('arrivée ' + c.arrival);
-    if (c.guests) bits.push(c.guests + 'p');
-    if (c.nights) bits.push(c.nights + 'n');
+      if (diffArr === 0) bits.push(fr?'(AUJOURD\'HUI)':'(TODAY)');
+      else if (diffArr === 1) bits.push(fr?'(DEMAIN)':'(TOMORROW)');
+      else if (diffArr > 1 && diffArr <= 7) bits.push(fr?('(dans '+diffArr+' jours)'):('(in '+diffArr+' days)'));
+      else if (diffArr > 7) bits.push('(J+' + diffArr + ')');
+      else if (diffArr < 0 && diffDep >= 0) bits.push(fr?('(EN COURS, reste '+diffDep+'j)'):('(IN HOUSE, '+diffDep+'d left)'));
+      else if (diffDep < 0) bits.push(fr?('(parti il y a '+Math.abs(diffDep)+'j)'):('('+Math.abs(diffDep)+'d ago)'));
+    } else if (c.arrival) bits.push((fr?'arrivée ':'arrival ') + fmtDateHuman(c.arrival));
+    if (c.guests) bits.push(c.guests + (fr?' personnes':' guests'));
+    if (c.nights) bits.push(c.nights + (fr?' nuits':' nights'));
     if (c.price) bits.push(c.price + '€');
     if (c.net) bits.push('net ' + c.net + '€');
     if (c.source) bits.push(c.source);
@@ -9254,15 +9270,15 @@ function buildClientsContextRich(maxItems) {
   }
 
   function fmtLead(c) {
-    var bits = [c.name || 'sans nom'];
+    var bits = [c.name || (fr?'sans nom':'unnamed')];
     bits.push('stage:' + (c.bookingStatus || 'inquiry'));
     var sc = getLeadScore(c);
     if (sc) bits.push('score:' + sc);
     var d = daysSinceUpdate(c);
     if (isFinite(d)) bits.push('last touch:' + d + 'j');
-    if (c.arrival && c.departure) bits.push('demande ' + c.arrival + '→' + c.departure);
-    else if (c.arrival) bits.push('demande ' + c.arrival);
-    if (c.guests) bits.push(c.guests + 'p');
+    if (c.arrival && c.departure) bits.push((fr?'demande ':'request ') + fmtDateHuman(c.arrival) + ' → ' + fmtDateHuman(c.departure));
+    else if (c.arrival) bits.push((fr?'demande ':'request ') + fmtDateHuman(c.arrival));
+    if (c.guests) bits.push(c.guests + (fr?' personnes':' guests'));
     if (c.price) bits.push('budget ' + c.price + '€');
     if (c.source) bits.push(c.source);
     if (c.notes) bits.push('notes: ' + (c.notes.length > 80 ? c.notes.slice(0,80) + '…' : c.notes));
@@ -9270,7 +9286,7 @@ function buildClientsContextRich(maxItems) {
   }
 
   var lines = [];
-  lines.push('CRM Villa — date: ' + todayISO + ' · ' + confirmedOnly.length + ' confirmed · ' + leadsOnly.length + ' pipeline');
+  lines.push('CRM Villa — date: ' + fmtDateHuman(todayISO) + ' (' + todayISO + ') · ' + confirmedOnly.length + ' confirmed · ' + leadsOnly.length + ' pipeline');
 
   lines.push('');
   lines.push('=== CONFIRMED BOOKINGS ===');
@@ -9309,6 +9325,17 @@ function buildClientsContextRich(maxItems) {
 async function handleChatQuestion(text) {
   var fr = lang === 'fr';
   var today = new Date().toISOString().slice(0,10);
+  // Human-readable "vendredi 15 mai 2026" so the LLM never has to derive a weekday.
+  var todayHuman = (function(){
+    var d = new Date(today + 'T12:00:00');
+    var days = fr
+      ? ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
+      : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    var months = fr
+      ? ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+      : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+  })();
   var cfg = getCfg();
   var ownerName = cfg.owner || 'Jérémie';
   var villaName = cfg.villa || 'Villa DarJ';
@@ -9389,6 +9416,13 @@ async function handleChatQuestion(text) {
       'JAMAIS tu n\'écris "Bonjour, je suis ' + ownerName + '..." sauf en MODE 2.',
       'JAMAIS tu n\'inventes une info qui n\'est pas dans le CRM.',
       '',
+      '════ DATES — toujours humaines ════',
+      'Aujourd\'hui : ' + todayHuman + '.',
+      'Quand tu cites une date, inclus TOUJOURS le jour de la semaine. Ex: "vendredi 15 mai 2026", pas juste "le 15 mai".',
+      'Le bloc CRM ci-dessous tague chaque arrivée avec (AUJOURD\'HUI), (DEMAIN), (dans N jours) ou (EN COURS) — utilise ces tags directement.',
+      'Si tu vois (AUJOURD\'HUI) sur une arrivée → tu dis "arrive aujourd\'hui [jour de la semaine]". JAMAIS "arrive demain". JAMAIS "arrive le 15 mai" tout court.',
+      'Si tu vois (DEMAIN) → "arrive demain [jour de la semaine]".',
+      '',
       '════ RÈGLE CRITIQUE — PIPELINE vs CONFIRMED ════',
       'Le bloc CRM ci-dessous a DEUX sections distinctes :',
       '  • CONFIRMED BOOKINGS : réservations payées / confirmées. Ce sont des SÉJOURS RÉELS.',
@@ -9419,9 +9453,9 @@ async function handleChatQuestion(text) {
       return bs === 'inquiry' || bs === 'lead' || bs === 'quoted';
     });
     userCtx = [
-      'Today: ' + today,
+      'Today: ' + todayHuman + ' (' + today + ')',
       'Confirmed bookings (' + firmActive.length + '): ' + firmActive.slice(0,5).map(function(cl) {
-        return cl.name + (cl.arrival?' arr:'+cl.arrival:'') + (cl.guests?' '+cl.guests+'p':'');
+        return cl.name + (cl.arrival?' arr:'+cl.arrival:'') + (cl.guests?' '+cl.guests+(fr?' personnes':' guests'):'');
       }).join(' · '),
       'Pipeline leads (' + pipelineActive.length + ', NOT confirmed): ' + pipelineActive.slice(0,5).map(function(cl){
         return cl.name + ' [' + (cl.bookingStatus||'inquiry') + ']';
@@ -9439,7 +9473,7 @@ async function handleChatQuestion(text) {
 
     userCtx = [
       '════ DATA CONTEXT ════',
-      'Date du jour : ' + today,
+      'Date du jour : ' + todayHuman + ' (' + today + ')',
       'Heure locale Marrakech : à calculer (GMT+1, ou GMT+0 hiver — vérifier mois courant).',
       '',
       crmCtx,
@@ -24401,6 +24435,18 @@ window.addEventListener('DOMContentLoaded', function() {
     var list = _getClients();
     if (!list || !list.length) return '0';
     var today = _today();
+    var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+    function fmtDateHuman(iso) {
+      if (!iso) return '?';
+      var d = new Date(iso + 'T12:00:00');
+      var days = fr
+        ? ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
+        : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      var months = fr
+        ? ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+        : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+    }
     var qNorm = _stripDia(question || '');
     var scored = list.map(function(cl){
       var s = 0;
@@ -24425,12 +24471,20 @@ window.addEventListener('DOMContentLoaded', function() {
     return scored.slice(0, max || 12).map(function(x){
       var cl = x.cl;
       var bits = [cl.name || '?'];
-      if (cl.arrival)   bits.push('arr ' + cl.arrival);
-      if (cl.departure) bits.push('dep ' + cl.departure);
+      if (cl.arrival)   bits.push((fr?'arr ':'arr ') + fmtDateHuman(cl.arrival));
+      if (cl.departure) bits.push((fr?'dep ':'dep ') + fmtDateHuman(cl.departure));
+      if (cl.guests)    bits.push(cl.guests + (fr?' personnes':' guests'));
+      // Relative tag (most-important context for the LLM)
+      if (cl.arrival === today) bits.push(fr?'(AUJOURD\'HUI)':'(TODAY)');
+      else if (cl.arrival) {
+        var d = _daysBetween(today, cl.arrival);
+        if (d === 1) bits.push(fr?'(DEMAIN)':'(TOMORROW)');
+        else if (d != null && d > 1 && d <= 7) bits.push(fr?('(dans '+d+'j)'):('(in '+d+'d)'));
+      }
       var status;
-      if (cl.arrival && cl.departure && cl.arrival <= today && cl.departure >= today) status = 'en cours';
-      else if (cl.arrival && cl.arrival > today) status = 'à venir';
-      else if (cl.departure && cl.departure < today) status = 'parti';
+      if (cl.arrival && cl.departure && cl.arrival <= today && cl.departure >= today) status = fr?'en cours':'in house';
+      else if (cl.arrival && cl.arrival > today) status = fr?'à venir':'upcoming';
+      else if (cl.departure && cl.departure < today) status = fr?'parti':'past';
       if (status) bits.push(status);
       return bits.join(' · ');
     }).join(' | ');
@@ -24444,6 +24498,14 @@ window.addEventListener('DOMContentLoaded', function() {
       try {
         var fr = lang === 'fr';
         var today = _today();
+        var todayHuman = (function(){
+          var d = new Date(today + 'T12:00:00');
+          var days = fr ? ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
+                        : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+          var months = fr ? ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+                          : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+          return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+        })();
         var cfg = getCfg();
         var ownerName = cfg.owner || 'Jérémie';
         var villaName = cfg.villa || 'Villa DarJ';
@@ -24498,10 +24560,10 @@ window.addEventListener('DOMContentLoaded', function() {
 
         var userCtx;
         if (isOrchestrator) {
-          userCtx = ['Today: ' + today, 'Active clients (' + clientCount + '): ' + clientLine, '', historyBlock, '', 'Situation:', text].join('\n');
+          userCtx = ['Today: ' + todayHuman + ' (' + today + ')', 'Active clients (' + clientCount + '): ' + clientLine, '', historyBlock, '', 'Situation:', text].join('\n');
         } else {
           userCtx = [
-            'Aujourd\'hui: ' + today,
+            'Aujourd\'hui: ' + todayHuman + ' (' + today + ')',
             'Clients (' + clientCount + '): ' + clientLine,
             '', historyBlock, '',
             'Message de ' + ownerName + ': "' + text + '"', '',
