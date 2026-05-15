@@ -9385,7 +9385,13 @@ async function handleChatQuestion(text) {
       '- For guest WhatsApp/email: warm, hospitable, signed ' + ownerName,
       '- For internal_note: short reminder for ' + ownerName + ' himself',
       '- Use guest/staff names when they appear in context',
-      '- CRITICAL: PIPELINE entries (inquiry/quoted leads) are NOT confirmed stays. Never propose an arrival/welcome action for them — only follow-up / quote / archive actions.'
+      '- CRITICAL: PIPELINE entries (inquiry/quoted leads) are NOT confirmed stays. Never propose an arrival/welcome action for them — only follow-up / quote / archive actions.',
+      '',
+      'STAFF BRIEF rule — when an action.kind is "internal_note" or an action.target is "staff" AND the situation asks for a brief / note / résumé / digest pour l\'équipe, the "content" field must:',
+      '  - Split EN COURS stays (arrival <= today AND departure >= today) from À VENIR stays (arrival > today). NEVER list past stays (departure < today).',
+      '  - For each stay: name, guest count, full weekday + day + month (e.g. "vendredi 16 mai") for arrival and departure, number of nights.',
+      '  - Name the responsable: ' + staffList + ' (welcome/transport, meals/dietary, cleaning/linen).',
+      '  - No filler ("je vous tiens au courant", "n\'hésitez pas à me dire"). Concise, structured, actionable.'
     ].join('\n');
   } else {
     // ── REFINED SYSTEM PROMPT: 3 distinct response modes ──
@@ -24556,6 +24562,17 @@ window.addEventListener('DOMContentLoaded', function() {
         var cfg = getCfg();
         var ownerName = cfg.owner || 'Jérémie';
         var villaName = cfg.villa || 'Villa DarJ';
+        var staffList = (function(){
+          try {
+            if (Array.isArray(cfg.staffMembers) && cfg.staffMembers.length) {
+              return cfg.staffMembers.map(function(s){ return ((s && s.name)||'').trim().split(/\s+/)[0]; }).filter(Boolean).join(', ');
+            }
+            if (cfg.staff) {
+              return cfg.staff.split(/[\n,]/).map(function(s){ return s.replace(/\(.*?\)/g,'').trim().split(/\s+/)[0]; }).filter(Boolean).join(', ');
+            }
+          } catch(e){}
+          return 'Said, Faiza, Bouchra';
+        })();
         var clientList = _getClients();
         var isOrchestrator =
           /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]/i.test(text) ||
@@ -24573,7 +24590,7 @@ window.addEventListener('DOMContentLoaded', function() {
           systemPrompt = [
             'You are ARIA, the central nervous system for ' + ownerName + ' (owner of ' + villaName + ' Marrakech).',
             'Your role: take a situation and propose 2-3 concrete, ready-to-execute actions.',
-            'Staff: Said (butler), Faiza (chef), Bouchra (housekeeping). Owner signs as ' + ownerName + '.',
+            'Staff: ' + staffList + '. Owner signs as ' + ownerName + '.',
             '',
             'CRITICAL OUTPUT FORMAT: Return ONLY a valid JSON array, no preamble, no markdown fences, no explanation.',
             'Format: [{"label":"short label max 5 words","kind":"whatsapp|email|sms|internal_note|copy","target":"staff|guest|owner","content":"ready-to-send text"}]',
@@ -24583,7 +24600,13 @@ window.addEventListener('DOMContentLoaded', function() {
             '- "content" must be the FULL ready-to-send message (not a description)',
             '- For staff WhatsApp: write in French, casual but professional, signed ' + ownerName,
             '- For guest WhatsApp/email: warm, hospitable, signed ' + ownerName,
-            '- For internal_note: short reminder for ' + ownerName + ' himself'
+            '- For internal_note: short reminder for ' + ownerName + ' himself',
+            '',
+            "STAFF BRIEF rule — when an action is a brief/note pour l'équipe, the 'content' must:",
+            "  - Split EN COURS stays (arrival <= today AND departure >= today) from À VENIR stays (arrival > today). NEVER list past stays.",
+            "  - For each stay: name, guest count, full weekday + day + month for arrival and departure, number of nights.",
+            "  - Name the responsable (" + staffList + ") if relevant.",
+            "  - No filler. Concise, structured, actionable."
           ].join('\n');
         } else {
           systemPrompt = [
@@ -24591,7 +24614,15 @@ window.addEventListener('DOMContentLoaded', function() {
             'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
             'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
             'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
-            'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.'
+            'Réponds en ' + (fr ? 'français' : 'English') + ' — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.',
+            'Aujourd\'hui : ' + todayHuman + '.',
+            '',
+            '════ BRIEF STAFF — quand ' + ownerName + ' demande un brief ou une note pour l\'équipe ════',
+            'Sépare les séjours EN COURS (arrivée ≤ aujourd\'hui ET départ ≥ aujourd\'hui) des séjours À VENIR (arrivée > aujourd\'hui).',
+            'NE liste PAS les séjours passés (départ < aujourd\'hui).',
+            'Pour CHAQUE séjour : nom, nombre de personnes, jour d\'arrivée complet (ex: "vendredi 16 mai"), jour de départ, nombre de nuits.',
+            'Staff : ' + staffList + '. Indique le responsable concerné si pertinent (accueil/transport, repas/régimes, ménage/linge).',
+            'PAS de "je vous tiens au courant" ou "n\'hésitez pas à me dire". Concis, structuré, ACTIONNABLE.'
           ].join('\n');
         }
 
