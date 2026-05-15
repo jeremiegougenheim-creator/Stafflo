@@ -9335,6 +9335,22 @@ async function handleChatQuestion(text) {
   var cfg = getCfg();
   var ownerName = cfg.owner || 'Jérémie';
   var villaName = cfg.villa || 'Villa DarJ';
+  // Staff first names — read from cfg.staffMembers (array) or cfg.staff
+  // (multi-line "Name (role)"), fall back to the Villa DarJ trio.
+  var staffNames = (function(){
+    try {
+      if (Array.isArray(cfg.staffMembers) && cfg.staffMembers.length) {
+        return cfg.staffMembers.map(function(s){ return ((s && s.name)||'').trim().split(/\s+/)[0]; }).filter(Boolean);
+      }
+      if (cfg.staff) {
+        return cfg.staff.split(/[\n,]/).map(function(s){
+          return s.replace(/\(.*?\)/g,'').trim().split(/\s+/)[0];
+        }).filter(Boolean);
+      }
+    } catch(e){}
+    return ['Said','Faiza','Bouchra'];
+  })();
+  var staffList = staffNames.join(', ');
 
   // Detect ARIA orchestrator request → return JSON action array
   // Same broad detection as in chatSend()
@@ -9418,6 +9434,13 @@ async function handleChatQuestion(text) {
       'Le bloc CRM ci-dessous tague chaque arrivée avec (AUJOURD\'HUI), (DEMAIN), (dans N jours) ou (EN COURS) — utilise ces tags directement.',
       'Si tu vois (AUJOURD\'HUI) sur une arrivée → tu dis "arrive aujourd\'hui [jour de la semaine]". JAMAIS "arrive demain". JAMAIS "arrive le 15 mai" tout court.',
       'Si tu vois (DEMAIN) → "arrive demain [jour de la semaine]".',
+      '',
+      '════ BRIEF STAFF — quand ' + ownerName + ' demande un brief ou une note pour l\'équipe ════',
+      'Sépare les séjours EN COURS (arrivée ≤ aujourd\'hui ET départ ≥ aujourd\'hui) des séjours À VENIR (arrivée > aujourd\'hui).',
+      'NE liste PAS les séjours passés (départ < aujourd\'hui).',
+      'Pour CHAQUE séjour cité, indique : nom, nombre de personnes, jour d\'arrivée complet (ex: "vendredi 16 mai"), jour de départ, nombre de nuits.',
+      'Staff : ' + staffList + '. Indique le responsable concerné si pertinent (accueil/transport, repas/régimes, ménage/linge).',
+      'PAS de formule générique type "je vous tiens au courant" ou "n\'hésitez pas à me dire". Le brief doit être ACTIONNABLE : concis, structuré, par responsable.',
       '',
       '════ RÈGLE CRITIQUE — PIPELINE vs CONFIRMED ════',
       'Le bloc CRM ci-dessous a DEUX sections distinctes :',
