@@ -1577,6 +1577,7 @@ body, main { background: var(--cream); }
 .stafflo-btn-secondary:hover { color: var(--ink); border-color: var(--muted); }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes owFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ══════ Today v3 hi-fi (gated by stafflo_aria_first_v1) ══════ */
 #todayV3 { display: flex; flex-direction: column; gap: 14px; }
@@ -4097,8 +4098,17 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
      ───────────────────────────────────────────────────────────────── -->
 <div id="onboardWizard" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.92);z-index:10000;align-items:center;justify-content:center;padding:16px;overflow-y:auto">
   <div style="background:var(--card);border-radius:18px;width:100%;max-width:480px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.4);margin:auto">
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,var(--green3),#1B4332);padding:20px 24px 16px;color:#fff">
+
+    <!-- ─── Step 0 : Splash (no header / no progress dots) ─── -->
+    <div id="owStep0" class="ow-step" style="display:none;background:linear-gradient(135deg,var(--green3),#1B4332);color:#fff;text-align:center;padding:56px 28px 36px;min-height:360px;flex-direction:column;align-items:center;justify-content:center">
+      <div style="font-family:'Fraunces',serif;font-size:52px;font-weight:300;line-height:1;letter-spacing:.5px;animation:owFadeIn .4s ease both">Staff<em style="color:var(--gold);font-style:italic">lo</em></div>
+      <div style="font-family:'DM Sans',sans-serif;font-size:14px;color:rgba(255,255,255,.78);margin-top:10px;animation:owFadeIn .4s ease .14s both" data-fr="Votre villa, pilotée par l'IA" data-en="Your villa, AI-powered">Votre villa, pilotée par l'IA</div>
+      <button onclick="owGoStep(1)" style="margin-top:36px;padding:14px 30px;background:var(--gold);color:var(--green3);border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;animation:owFadeIn .4s ease .28s both" data-fr="Configurer ma villa →" data-en="Set up my villa →">Configurer ma villa →</button>
+      <button onclick="owSkipAll()" style="margin-top:14px;background:none;border:none;color:rgba(255,255,255,.55);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;padding:6px 14px;text-decoration:underline;text-underline-offset:3px;animation:owFadeIn .4s ease .4s both" data-fr="Plus tard" data-en="Later">Plus tard</button>
+    </div>
+
+    <!-- Header (steps 1-3) -->
+    <div id="owHeader" style="background:linear-gradient(135deg,var(--green3),#1B4332);padding:20px 24px 16px;color:#fff">
       <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:300;margin-bottom:4px">Bienvenue sur Staff<span style="color:var(--gold)">lo</span></div>
       <div style="font-size:12px;color:rgba(255,255,255,.6)" id="owStepLabel">Étape 1 sur 3 · Votre villa</div>
       <div style="display:flex;gap:6px;margin-top:12px">
@@ -4119,26 +4129,27 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
       <label style="display:block;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.4px;margin-bottom:4px;text-transform:uppercase">Votre prénom</label>
       <input id="owOwner" type="text" placeholder="Ex: Jérémie" style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:9px;font-size:14px;font-family:'DM Sans',sans-serif;margin-bottom:14px;box-sizing:border-box">
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-        <div>
-          <label style="display:block;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.4px;margin-bottom:4px;text-transform:uppercase">Ville</label>
-          <input id="owCity" type="text" placeholder="Marrakech" style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:9px;font-size:14px;font-family:'DM Sans',sans-serif;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="display:block;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.4px;margin-bottom:4px;text-transform:uppercase">Pays</label>
-          <select id="owCountry" style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:9px;font-size:14px;font-family:'DM Sans',sans-serif;background:#fff;box-sizing:border-box">
-            <option value="MA">Maroc</option>
-            <option value="GR">Grèce</option>
-            <option value="FR">France</option>
-            <option value="ES">Espagne</option>
-            <option value="IT">Italie</option>
-            <option value="PT">Portugal</option>
-            <option value="TH">Thaïlande</option>
-            <option value="ID">Indonésie</option>
-            <option value="OTHER">Autre</option>
-          </select>
-        </div>
-      </div>
+      <label style="display:block;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.4px;margin-bottom:4px;text-transform:uppercase">Ville</label>
+      <input id="owCity" type="text" placeholder="Marrakech" style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:9px;font-size:14px;font-family:'DM Sans',sans-serif;margin-bottom:14px;box-sizing:border-box">
+
+      <label style="display:block;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.4px;margin-bottom:4px;text-transform:uppercase">Pays</label>
+      <select id="owCountry" style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:9px;font-size:14px;font-family:'DM Sans',sans-serif;background:#fff;margin-bottom:14px;box-sizing:border-box">
+        <option value="MA">Maroc</option>
+        <option value="FR">France</option>
+        <option value="ES">Espagne</option>
+        <option value="PT">Portugal</option>
+        <option value="IT">Italie</option>
+        <option value="GR">Grèce</option>
+        <option value="HR">Croatie</option>
+        <option value="TR">Turquie</option>
+        <option value="TH">Thaïlande</option>
+        <option value="ID">Indonésie / Bali</option>
+        <option value="MX">Mexique</option>
+        <option value="CR">Costa Rica</option>
+        <option value="MU">Île Maurice</option>
+        <option value="MV">Maldives</option>
+        <option value="OTHER">Autre</option>
+      </select>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
         <div>
@@ -4215,7 +4226,7 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 
       <div style="display:flex;gap:10px;margin-top:18px">
         <button onclick="owBack(3)" style="flex:1;padding:12px;background:none;border:1px solid var(--border);border-radius:10px;font-size:13px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif">← Retour</button>
-        <button onclick="owFinish()" id="owFinishBtn" style="flex:2;padding:12px;background:var(--gold);color:var(--green3);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">✓ Terminer</button>
+        <button onclick="owFinish()" id="owFinishBtn" style="flex:2;padding:12px;background:var(--gold);color:var(--green3);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif" data-fr="✓ Lancer Stafflo →" data-en="✓ Launch Stafflo →">✓ Lancer Stafflo →</button>
       </div>
     </div>
   </div>
@@ -16421,26 +16432,33 @@ function showOnboardingWizard() {
   _ow.platform = c.platform || 'airbnb';
   owRenderStaff();
   owPickPlatform(_ow.platform);
-  _ow.step = 1;
-  owGoStep(1);
+  _ow.step = 0;
+  owGoStep(0);
   w.style.display = 'flex';
+  try { if (typeof applyLang === 'function') applyLang(); } catch(e){}
 }
 window.showOnboardingWizard = showOnboardingWizard;
 
 function owGoStep(n) {
   _ow.step = n;
-  for (var i = 1; i <= 3; i++) {
+  for (var i = 0; i <= 3; i++) {
     var el = document.getElementById('owStep' + i);
-    if (el) el.style.display = (i === n) ? 'block' : 'none';
+    if (el) el.style.display = (i === n) ? (i === 0 ? 'flex' : 'block') : 'none';
   }
+  var hdr = document.getElementById('owHeader');
+  if (hdr) hdr.style.display = (n === 0) ? 'none' : '';
   document.querySelectorAll('.ow-dot').forEach(function(d) {
     var s = parseInt(d.dataset.step);
     d.style.background = (s <= n) ? 'var(--gold)' : 'rgba(255,255,255,.2)';
   });
   var lbl = document.getElementById('owStepLabel');
   if (lbl) {
-    var titles = { 1: 'Votre villa', 2: 'Votre équipe', 3: 'Tarification' };
-    lbl.textContent = 'Étape ' + n + ' sur 3 · ' + titles[n];
+    if (n === 0) { lbl.textContent = ''; return; }
+    var fr = (typeof lang !== 'undefined') && lang === 'fr';
+    var titlesFr = { 1: 'Votre villa', 2: 'Votre équipe', 3: 'Tarification' };
+    var titlesEn = { 1: 'Your villa',   2: 'Your team',     3: 'Pricing'     };
+    var t = (fr ? titlesFr : titlesEn)[n];
+    lbl.textContent = (fr ? 'Étape ' : 'Step ') + n + (fr ? ' sur 3 · ' : ' of 3 · ') + t;
   }
 }
 
@@ -16576,13 +16594,23 @@ async function owFinish() {
     // Hide wizard
     document.getElementById('onboardWizard').style.display = 'none';
 
+    // Neutralize the legacy magic-input modal flags so it never re-fires
+    try { localStorage.setItem('stafflo_tour_done', '1'); } catch(e){}
+    try { localStorage.setItem('stafflo_welcome_done', '1'); } catch(e){}
+
+    // Welcome toast
+    try {
+      var FR = (typeof lang !== 'undefined') && lang === 'fr';
+      if (typeof toast === 'function') toast(FR ? 'Bienvenue ! ARIA est prête.' : 'Welcome! ARIA is ready.');
+    } catch(e){}
+
     // Re-render anything that depends on villa profile
     try { if (typeof loadSettingsUI === 'function') loadSettingsUI(); } catch(e){}
     try { if (typeof renderTodayQV === 'function') renderTodayQV(); } catch(e){}
     try { if (typeof updateUserIndicator === 'function') updateUserIndicator(); } catch(e){}
   } catch(e) {
     console.error('owFinish error:', e);
-    if (btn) { btn.disabled = false; btn.textContent = '✓ Terminer'; }
+    if (btn) { btn.disabled = false; btn.textContent = (typeof lang !== 'undefined' && lang === 'fr') ? '✓ Lancer Stafflo →' : '✓ Launch Stafflo →'; }
     alert('Erreur lors de l\'enregistrement. Réessayez.');
     _ow.finishing = false;
     return;
@@ -22357,37 +22385,15 @@ window.addEventListener('DOMContentLoaded', function() {
     try { history.replaceState({ onbV3Step: state.step }, '', '?onboarding=1'); } catch(e){}
   };
 
-  /* Monkey-patch the legacy entry so post-auth bootstrap routes to v3 */
-  if (typeof window.showOnboardingWizard === 'function' && !window.showOnboardingWizard._v3Wrapped) {
-    var _origWiz = window.showOnboardingWizard;
-    window.showOnboardingWizard = function(){ return window.launchOnboardingV3(); };
-    window.showOnboardingWizard._v3Wrapped = true;
-    window._legacyShowOnboardingWizard = _origWiz;
-  } else {
-    // Define it as our entry; later definitions will overwrite (handled by retry below)
-    window.showOnboardingWizard = window.launchOnboardingV3;
-  }
-
-  // If showOnboardingWizard wasn't defined yet at parse time, re-wrap once it appears
-  var wrapRetry = 0;
-  var wrapInterval = setInterval(function(){
-    wrapRetry++;
-    if (wrapRetry > 30) { clearInterval(wrapInterval); return; }
-    var f = window.showOnboardingWizard;
-    if (typeof f === 'function' && !f._v3Wrapped && f !== window.launchOnboardingV3) {
-      window._legacyShowOnboardingWizard = f;
-      window.showOnboardingWizard = function(){ return window.launchOnboardingV3(); };
-      window.showOnboardingWizard._v3Wrapped = true;
-      clearInterval(wrapInterval);
-    }
-  }, 200);
-
+  /* Monkey-patch DISABLED (2026 onboarding hybride redesign).
+     The legacy #onboardWizard (extended with a splash screen) is now the
+     canonical entry. launchOnboardingV3 stays defined as dead-code-for-
+     rollback — call it manually from the console to surface the old v3
+     panel. ?onboarding=1 now routes to showOnboardingWizard. */
   function init(){
-    if (paramSaysLaunch()) {
-      window.launchOnboardingV3();
+    if (paramSaysLaunch() && typeof window.showOnboardingWizard === 'function') {
+      window.showOnboardingWizard();
     }
-    // Auto-launch path is handled by post-auth bootstrap calling
-    // showOnboardingWizard (now wrapped) when cfg.onboarded !== true.
   }
 
   if (document.readyState === 'loading') {
