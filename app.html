@@ -23073,6 +23073,376 @@ window.addEventListener('DOMContentLoaded', function() {
 })();
 </script>
 
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   Guests v5 — DETAIL screen controller (Lot 5 C3)
+   Owns #guestDetailV5: 4 swipeable panes + inline editable prefs +
+   comms timeline (pull-from-existing) + ARIA-generated summary (24h
+   cache) + sticky bottom CTAs.
+   ════════════════════════════════════════════════════════════════════ */
+(function guestsV5DetailController(){
+  var ARIA_CACHE_MS = 24 * 60 * 60 * 1000;
+  var DIETARY_PRESETS  = ['Vegetarian','Vegan','Gluten-free','Halal','Kosher','No nuts','No shellfish','No pork','Lactose-free'];
+  var TAGS_PRESETS_EN  = ['VIP','Returning','Family','Kids','Baby','Business','Honeymoon','Birthday','Press'];
+
+  function $(id){ return document.getElementById(id); }
+  function fr(){ return typeof lang !== 'undefined' && lang === 'fr'; }
+  function escapeHtml(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function initials(n){
+    var p = (n||'').trim().split(/\s+/).filter(Boolean);
+    if (!p.length) return '?';
+    if (p.length === 1) return p[0][0].toUpperCase();
+    return (p[0][0] + p[p.length-1][0]).toUpperCase();
+  }
+  function findClient(id){
+    if (typeof clients === 'undefined') return null;
+    for (var i = 0; i < clients.length; i++) if (clients[i] && clients[i].id === id) return clients[i];
+    return null;
+  }
+  function persistClient(c){
+    try { if (typeof saveLocal === 'function') saveLocal(); } catch(e){}
+    try { if (typeof pushToSupabase === 'function') pushToSupabase(c); } catch(e){}
+  }
+
+  var state = { step: 0, clientId: null };
+  var TABS = ['stay','prefs','comms','notes'];
+
+  function setTab(idx, animate){
+    state.step = Math.max(0, Math.min(TABS.length - 1, idx));
+    var stage = $('v5dStage');
+    if (stage) {
+      if (animate === false) stage.classList.add('is-dragging');
+      stage.style.transform = 'translateX(-' + (state.step * 100) + '%)';
+      if (animate === false) requestAnimationFrame(function(){ stage.classList.remove('is-dragging'); });
+    }
+    document.querySelectorAll('#v5dTabs .v5d-tab').forEach(function(b, i){
+      b.classList.toggle('is-on', i === state.step);
+    });
+  }
+
+  /* ── Stay pane ── */
+  function renderStay(c){
+    var FR = fr();
+    var grid = $('v5dStayGrid');
+    if (grid) {
+      var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
+      var net = c.price ? Math.round(c.price * (1 - (c.commission||0)/100) * nights) : 0;
+      grid.innerHTML = [
+        ['ARRIVAL',    c.arrival || '—'],
+        ['DEPARTURE',  c.departure || '—'],
+        [FR?'INVITÉS':'GUESTS',     c.guests || '—'],
+        ['NET',        net ? (net + '€') : '—']
+      ].map(function(row){
+        return '<div class="v5d-stay-cell"><div class="v5d-stay-lbl">' + row[0] + '</div><div class="v5d-stay-val">' + escapeHtml(String(row[1])) + '</div></div>';
+      }).join('');
+    }
+    // Checklists — reuse the v3_ops storage from Today v3
+    function renderChecklist(hostId, phase, items){
+      var host = $(hostId);
+      if (!host) return;
+      host.innerHTML = items.map(function(it){
+        var key = 'v3_ops_' + phase + '_' + (c.id||'') + '_' + it.k;
+        var done = false;
+        try { done = localStorage.getItem(key) === '1'; } catch(e){}
+        return '<li class="v5d-check-row' + (done?' is-done':'') + '" data-key="' + key + '">' +
+                 '<span class="v5d-check-box">✓</span>' +
+                 '<span class="v5d-check-lbl">' + escapeHtml(it.label) + '</span>' +
+               '</li>';
+      }).join('');
+      host.querySelectorAll('[data-key]').forEach(function(row){
+        row.addEventListener('click', function(){
+          var key = row.getAttribute('data-key');
+          var nowDone = !row.classList.contains('is-done');
+          try { localStorage.setItem(key, nowDone ? '1' : '0'); } catch(e){}
+          row.classList.toggle('is-done', nowDone);
+          if (navigator.vibrate) try { navigator.vibrate(10); } catch(e){}
+        });
+      });
+    }
+    renderChecklist('v5dArrChecklist', 'preArrival', [
+      { k:'staff_brief', label: FR?'Briefer Said + Faiza':'Brief Said + Faiza' },
+      { k:'groceries',   label: FR?'Courses + fleurs':'Groceries + flowers' },
+      { k:'rooms_ready', label: FR?'Chambres prêtes':'Rooms ready' },
+      { k:'driver_conf', label: FR?'Chauffeur confirmé':'Driver confirmed' },
+      { k:'welcome_msg', label: FR?'Message bienvenue':'Welcome message' }
+    ]);
+    renderChecklist('v5dDuringChecklist', 'stay', [
+      { k:'midstay_msg', label: FR?'Check-in mi-séjour':'Mid-stay check-in' },
+      { k:'pool_check',  label: FR?'Piscine 28°C':'Pool 28°C' },
+      { k:'chef_menu',   label: FR?'Menu chef du soir':'Tonight chef menu' }
+    ]);
+    renderChecklist('v5dDepChecklist', 'departure', [
+      { k:'checkout_msg',   label: FR?'Message départ + avis':'Checkout + review message' },
+      { k:'cleaning_brief', label: FR?'Briefer Bouchra ménage':'Brief Bouchra cleaning' },
+      { k:'inventory',      label: FR?'Inventaire chambre':'Room inventory' }
+    ]);
+  }
+
+  /* ── Preferences pane ── */
+  function renderPrefs(c){
+    var FR = fr();
+    // Dietary chips
+    var diet = Array.isArray(c.dietary) ? c.dietary.slice() : [];
+    var dietHost = $('v5dDietaryChips');
+    if (dietHost) {
+      dietHost.innerHTML = DIETARY_PRESETS.map(function(d){
+        var on = diet.indexOf(d) !== -1;
+        return '<button class="v5d-pref-chip' + (on?' is-on':'') + '" data-pref-val="' + escapeHtml(d) + '" type="button">' + escapeHtml(d) + '</button>';
+      }).join('');
+      dietHost.querySelectorAll('[data-pref-val]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var v = b.getAttribute('data-pref-val');
+          var arr = Array.isArray(c.dietary) ? c.dietary.slice() : [];
+          var i = arr.indexOf(v);
+          if (i === -1) arr.push(v); else arr.splice(i, 1);
+          c.dietary = arr;
+          b.classList.toggle('is-on', arr.indexOf(v) !== -1);
+          persistClient(c);
+        });
+      });
+    }
+    // Accessibility textarea
+    var acc = $('v5dAccessibility');
+    if (acc) {
+      acc.value = c.accessibility || '';
+      acc.oninput = function(){ c.accessibility = acc.value; persistClient(c); };
+    }
+    // Kids stepper
+    var kidsVal = $('v5dKidsVal');
+    if (kidsVal) kidsVal.textContent = c.kids != null ? c.kids : 0;
+    document.querySelectorAll('[data-prefs-step="kids"]').forEach(function(b){
+      b.onclick = function(){
+        var d = parseInt(b.getAttribute('data-delta'),10) || 0;
+        var nv = Math.max(0, Math.min(20, (c.kids||0) + d));
+        c.kids = nv;
+        if (kidsVal) kidsVal.textContent = nv;
+        persistClient(c);
+      };
+    });
+    // Special requests textarea
+    var sr = $('v5dSpecialRequests');
+    if (sr) {
+      sr.value = c.specialRequests || '';
+      sr.oninput = function(){ c.specialRequests = sr.value; persistClient(c); };
+    }
+    // Tags chips
+    var tagsHost = $('v5dTagsChips');
+    if (tagsHost) {
+      tagsHost.innerHTML = TAGS_PRESETS_EN.map(function(t){
+        var on = Array.isArray(c.tags) && c.tags.indexOf(t) !== -1;
+        return '<button class="v5d-pref-chip' + (on?' is-on':'') + '" data-tag-val="' + escapeHtml(t) + '" type="button">' + escapeHtml(t) + '</button>';
+      }).join('');
+      tagsHost.querySelectorAll('[data-tag-val]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var v = b.getAttribute('data-tag-val');
+          var arr = Array.isArray(c.tags) ? c.tags.slice() : [];
+          var i = arr.indexOf(v);
+          if (i === -1) arr.push(v); else arr.splice(i, 1);
+          c.tags = arr;
+          b.classList.toggle('is-on', arr.indexOf(v) !== -1);
+          persistClient(c);
+          // Refresh tag chips at the top of the detail hero
+          renderHeroTags(c);
+        });
+      });
+    }
+  }
+
+  function renderHeroTags(c){
+    var host = $('v5dTags');
+    if (!host) return;
+    var bits = [];
+    if (Array.isArray(c.tags)) c.tags.slice(0,5).forEach(function(t){
+      var cls = t === 'VIP' ? 'is-vip' : 'is-tag';
+      bits.push('<span class="v5-badge ' + cls + '">' + escapeHtml(t) + '</span>');
+    });
+    if (Array.isArray(c.dietary)) c.dietary.slice(0,3).forEach(function(d){
+      bits.push('<span class="v5-badge is-diet">' + escapeHtml(d) + '</span>');
+    });
+    host.innerHTML = bits.join('');
+  }
+
+  /* ── Comms pane — pull-from-existing ── */
+  function renderComms(c){
+    var FR = fr();
+    var host = $('v5dTimeline');
+    if (!host) return;
+    var items = [];
+    // 1. Per-client _clientMessages (the AI-extracted messages map)
+    var msgs = (window._clientMessages && window._clientMessages[c.id]) || c.messages || null;
+    if (msgs && typeof msgs === 'object') {
+      Object.keys(msgs).forEach(function(k){
+        var v = msgs[k];
+        if (!v) return;
+        items.push({ type: k.toUpperCase(), text: typeof v === 'string' ? v : (v.text || JSON.stringify(v)), at: c.createdAt || null });
+      });
+    }
+    // 2. email_inbox — filter by name/email if available
+    try {
+      var inbox = window._inboxEmails || {};
+      var name = (c.name||'').toLowerCase();
+      var phone = (c.phone||'').replace(/[\s\-+().]/g,'');
+      Object.keys(inbox).forEach(function(id){
+        var row = inbox[id];
+        if (!row) return;
+        var hay = ((row.from_name||'') + ' ' + (row.from_email||'') + ' ' + (row.subject||'') + ' ' + (row.body||'')).toLowerCase();
+        if (name && hay.indexOf(name.split(' ')[0]) === -1) return;
+        items.push({
+          type: 'EMAIL',
+          text: (row.subject ? row.subject + ' — ' : '') + (row.body ? String(row.body).slice(0, 220) : ''),
+          at: row.received_at || row.created_at || null
+        });
+      });
+    } catch(e){}
+    if (!items.length) {
+      host.innerHTML = '<li style="padding:14px 4px;color:#6B6760;font-size:12.5px;font-style:italic">' + (FR?'Aucun échange récent. Les emails reliés à ce guest apparaîtront ici.':'No recent communications. Emails matched to this guest will appear here.') + '</li>';
+      return;
+    }
+    items.sort(function(a,b){
+      var ta = a.at ? new Date(a.at).getTime() : 0;
+      var tb = b.at ? new Date(b.at).getTime() : 0;
+      return tb - ta;
+    });
+    host.innerHTML = items.slice(0, 12).map(function(it){
+      var when = it.at ? new Date(it.at).toLocaleDateString(FR?'fr-FR':'en-GB', {day:'numeric', month:'short'}) : '';
+      var icon = it.type === 'EMAIL' ? '✉' : it.type === 'WA' || it.type === 'WHATSAPP' ? '💬' : '📋';
+      return '<li class="v5d-tl-item">' +
+               '<span class="v5d-tl-icon">' + icon + '</span>' +
+               '<div class="v5d-tl-body">' +
+                 '<div class="v5d-tl-head">' +
+                   '<span class="v5d-tl-type">' + escapeHtml(it.type) + '</span>' +
+                   '<span class="v5d-tl-date">' + escapeHtml(when) + '</span>' +
+                 '</div>' +
+                 '<div class="v5d-tl-text">' + escapeHtml(it.text || '').slice(0, 280) + '</div>' +
+               '</div>' +
+             '</li>';
+    }).join('');
+  }
+
+  /* ── Notes pane + ARIA-generated summary (24h cache) ── */
+  function renderNotes(c){
+    var FR = fr();
+    var ta = $('v5dNotes');
+    if (ta) {
+      ta.value = c.notes || '';
+      ta.oninput = function(){ c.notes = ta.value; persistClient(c); };
+    }
+    var sum = $('v5dAriaSummary');
+    if (!sum) return;
+    var fresh = c.ariaSummary && c.ariaSummaryAt && (Date.now() - new Date(c.ariaSummaryAt).getTime() < ARIA_CACHE_MS);
+    if (fresh) { sum.textContent = c.ariaSummary; return; }
+    if (c.ariaSummary) {
+      // Render stale summary immediately, then refresh in background
+      sum.textContent = c.ariaSummary;
+    } else {
+      sum.innerHTML = '<div class="v5d-skel" style="height:60px;border-radius:8px"></div>';
+    }
+    // Fire-and-forget LLM call
+    if (typeof callBestAI !== 'function') return;
+    var prompt = [
+      'You are ARIA, a luxury villa manager AI. Write a concise 2-3 sentence summary of this guest for the owner.',
+      'Guest: ' + (c.name || '?'),
+      c.nat ? 'Nationality: ' + c.nat : '',
+      c.arrival ? 'Arrival: ' + c.arrival : '',
+      c.departure ? 'Departure: ' + c.departure : '',
+      c.guests ? 'Guests: ' + c.guests : '',
+      c.source ? 'Channel: ' + c.source : '',
+      Array.isArray(c.tags) && c.tags.length ? 'Tags: ' + c.tags.join(', ') : '',
+      Array.isArray(c.dietary) && c.dietary.length ? 'Dietary: ' + c.dietary.join(', ') : '',
+      c.specialRequests ? 'Special requests: ' + c.specialRequests : '',
+      c.notes ? 'Owner notes: ' + c.notes : '',
+      '',
+      'Output only the summary text, no preamble.'
+    ].filter(Boolean).join('\n');
+    try {
+      Promise.resolve(callBestAI('brief', '', prompt, 220)).then(function(raw){
+        var text = (raw || '').replace(/^["'\s]+|["'\s]+$/g, '').trim();
+        if (!text) return;
+        c.ariaSummary = text;
+        c.ariaSummaryAt = new Date().toISOString();
+        persistClient(c);
+        if (sum) sum.textContent = text;
+      }).catch(function(){
+        if (sum && !c.ariaSummary) sum.textContent = FR ? 'Pas encore de résumé.' : 'No summary yet.';
+      });
+    } catch(e){
+      if (sum && !c.ariaSummary) sum.textContent = FR ? 'Pas encore de résumé.' : 'No summary yet.';
+    }
+  }
+
+  /* ── Swipe nav on .v5d-stage ── */
+  function bindSwipe(){
+    var stage = $('v5dStage');
+    if (!stage || stage.dataset.v5SwipeBound === '1') return;
+    stage.dataset.v5SwipeBound = '1';
+    var startX = 0, startY = 0, dx = 0, dragging = false, baseTx = 0;
+    stage.addEventListener('touchstart', function(e){
+      if (!e.touches || !e.touches.length) return;
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      dx = 0; dragging = true; baseTx = -state.step * stage.clientWidth;
+    }, { passive: true });
+    stage.addEventListener('touchmove', function(e){
+      if (!dragging || !e.touches || !e.touches.length) return;
+      var x = e.touches[0].clientX, y = e.touches[0].clientY;
+      if (Math.abs(y - startY) > Math.abs(x - startX)) { dragging = false; return; }
+      dx = x - startX;
+      stage.classList.add('is-dragging');
+      stage.style.transform = 'translateX(' + (baseTx + dx) + 'px)';
+    }, { passive: true });
+    stage.addEventListener('touchend', function(){
+      if (!dragging) return;
+      dragging = false;
+      stage.classList.remove('is-dragging');
+      stage.style.transform = '';
+      if (Math.abs(dx) > 60) setTab(dx < 0 ? state.step + 1 : state.step - 1, true);
+      else setTab(state.step, true);
+    });
+  }
+
+  function wireTabs(){
+    document.querySelectorAll('#v5dTabs .v5d-tab').forEach(function(btn, i){
+      if (btn.dataset.v5Wired === '1') return;
+      btn.dataset.v5Wired = '1';
+      btn.addEventListener('click', function(){ setTab(i, true); });
+    });
+  }
+
+  function wireCTAs(c){
+    var msgBtn = $('v5dMessageBtn');
+    if (msgBtn) msgBtn.onclick = function(){
+      if (typeof openRelancePopup === 'function') openRelancePopup(c.id);
+      else if (window.StaffloSheet) StaffloSheet.open({ title:(fr()?'Message':'Message'), body:(fr()?'Préparez votre message…':'Compose your message…'), primaryCTA:'OK' });
+    };
+    var ariaBtn = $('v5dAskAriaBtn');
+    if (ariaBtn) ariaBtn.onclick = function(){
+      var prefill = (fr()?'Donne-moi un brief complet sur ':'Brief me on ') + (c.name || (fr()?'ce guest':'this guest'));
+      if (typeof openAriaModal === 'function') openAriaModal(prefill);
+      else if (window.StaffloSheet) StaffloSheet.open({ title:'ARIA', body:prefill, primaryCTA:'OK' });
+    };
+  }
+
+  /* ── Master renderer — called by openGuestDetailV5 ── */
+  window._renderGuestDetailV5 = function(id){
+    var c = findClient(id);
+    if (!c) return;
+    state.clientId = id;
+    var FR = fr();
+    var av = $('v5dAvatar');     if (av) av.textContent = initials(c.name);
+    var nm = $('v5dName');       if (nm) nm.textContent = c.name || '—';
+    var top = $('v5dTopTitle');  if (top) top.textContent = c.name || '—';
+    renderHeroTags(c);
+    try { renderStay(c); }  catch(e){ console.warn('[v5d stay]', e); }
+    try { renderPrefs(c); } catch(e){ console.warn('[v5d prefs]', e); }
+    try { renderComms(c); } catch(e){ console.warn('[v5d comms]', e); }
+    try { renderNotes(c); } catch(e){ console.warn('[v5d notes]', e); }
+    wireTabs();
+    bindSwipe();
+    wireCTAs(c);
+    setTab(0, false);
+  };
+})();
+</script>
+
 <!-- ══ ARIA CENTERED MODAL ═════════════════════════════════ -->
 <div class="aria-modal-bg" id="ariaModal" onclick="if(event.target===this)closeAriaModal()">
   <div class="aria-modal" role="dialog" aria-label="ARIA AI Assistant">
