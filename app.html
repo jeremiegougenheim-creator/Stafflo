@@ -4709,6 +4709,26 @@ function authSignOut() {
 }
 window.authSignOut = authSignOut;
 
+// Force every CRM-driven surface to re-render after demo data is injected.
+// Without this, calendar / brief / alerts stay empty until the user
+// navigates away and back. Safe to call multiple times — each callee is
+// guarded with typeof.
+function refreshDemoSurfaces() {
+  setTimeout(function(){
+    try { if (typeof renderClients     === 'function') renderClients(); }     catch(e){}
+    try { if (typeof updateHeaderStats === 'function') updateHeaderStats(); } catch(e){}
+    try { if (typeof renderStaysBar    === 'function') renderStaysBar(); }    catch(e){}
+    try { if (window.staffloCal && typeof window.staffloCal.render === 'function') window.staffloCal.render(); } catch(e){}
+    try { if (typeof renderTodayQV     === 'function') renderTodayQV(); }     catch(e){}
+    try { if (typeof generateAlerts    === 'function') generateAlerts(null); }catch(e){}
+    try { if (typeof loadMorningBrief  === 'function') loadMorningBrief(true); } catch(e){}
+    try { if (typeof updateAriaCounter === 'function') updateAriaCounter(); } catch(e){}
+    try { if (typeof v2RenderHero      === 'function') v2RenderHero(); }      catch(e){}
+    try { if (typeof loadHomeData      === 'function') loadHomeData(); }      catch(e){}
+  }, 300);
+}
+window.refreshDemoSurfaces = refreshDemoSurfaces;
+
 function enterDemoMode() {
   // Demo mode: clear any auth, load mock data, bypass Supabase entirely
   try { localStorage.removeItem('stafflo_session'); } catch(e){}
@@ -4719,6 +4739,7 @@ function enterDemoMode() {
   if (typeof loadDemoSeed === 'function') loadDemoSeed();
   if (typeof loadDemoData === 'function') loadDemoData();
   if (typeof showDemoBanner === 'function') showDemoBanner();
+  refreshDemoSurfaces();
   return true;
 }
 window.enterDemoMode = enterDemoMode;
@@ -5167,6 +5188,9 @@ function loadDemoData() {
   window._demoMode = true;
 
   try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
+  // Full surface refresh — calendar, alerts, brief, signals counter, hero —
+  // so demo content appears immediately on the ?demo=1 overlay path too.
+  if (typeof refreshDemoSurfaces === 'function') refreshDemoSurfaces();
   try {
     var msg = FR ? '🎬 Demo · 8 clients + 5 emails chargés (temporaire — disparaissent au reload sans ?demo=1)'
                  : '🎬 Demo · 8 clients + 5 emails loaded (temporary — gone on reload without ?demo=1)';
