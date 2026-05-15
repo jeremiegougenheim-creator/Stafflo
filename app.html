@@ -18832,25 +18832,57 @@ window.toggleHeroAction = toggleHeroAction;
 // ── Hero panels — populate from existing data ──
 function v2RenderHero() {
   // Find current and upcoming guests — confirmed/pending only (no leads).
+  // Detection is timestamp-based so a guest departing TODAY still counts as
+  // in-stay (matches the closed-card preview at buildPreview/card50VillaSnap).
   if (typeof clients === 'undefined' || !Array.isArray(clients)) return;
   var today = new Date(); today.setHours(0,0,0,0);
+  var nowTs = Date.now();
   var _firm = function(c){ return typeof isFirmBooking==='function' ? isFirmBooking(c) : true; };
   var current = clients.find(function(c){
-    if (!_firm(c)) return false;
-    if (!c.arrival || !c.departure) return false;
-    var a = new Date(c.arrival), d = new Date(c.departure);
-    return a <= today && today < d;
+    if (!_firm(c) || !c.arrival || !c.departure) return false;
+    return new Date(c.arrival).getTime() <= nowTs && new Date(c.departure).getTime() >= nowTs;
   });
-  var upcoming = clients
+  var upcomingAll = clients
     .filter(function(c){ return _firm(c) && c.arrival && new Date(c.arrival) > today; })
-    .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); })
-    .slice(0, 3);
+    .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
+  var upcoming = upcomingAll.slice(0, 3);
+  var leadsCount = clients.filter(function(c){ var bs = c.bookingStatus; return bs==='inquiry'||bs==='lead'||bs==='quoted'; }).length;
+  var nextArr = upcomingAll[0] || null;
+  var nextDD = nextArr ? Math.round((new Date(nextArr.arrival).setHours(0,0,0,0) - today)/86400000) : null;
 
-  // Today: current guest mini card (enriched)
+  // Today: current guest mini card.
+  // Layout: same compact summary as the closed-card preview at the top
+  // (IN STAY · name · nights + 3-counter strip UPCOMING/PIPELINE/NEXT),
+  // then enriched details below (dates, notes, action buttons). Never
+  // shows "Aucun client en cours" — the counter strip + next-arrival
+  // teaser fill the void instead.
   var cgBody = document.getElementById('card33CurrentGuestBody');
   if (cgBody) {
+    var fr2 = (typeof lang !== 'undefined' && lang === 'fr');
+
+    // 1. Summary strip — mirrors the closed-card preview
+    var summaryHtml = '';
     if (current) {
-      var fr2 = (typeof lang !== 'undefined' && lang === 'fr');
+      var depD = new Date(current.departure);
+      var nightsLeft = Math.max(0, Math.round((depD - nowTs) / 86400000));
+      summaryHtml += '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px">' +
+        '<div style="min-width:0;flex:1">' +
+          '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;font-family:var(--sans);margin-bottom:3px">' + (fr2?'En cours':'In stay') + '</div>' +
+          '<div style="font-weight:600;color:var(--ink);font-size:14px">' + (current.name||'?').replace(/[<>]/g,'') + '</div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#3B6D11;font-weight:600;font-family:var(--sans);white-space:nowrap">' + nightsLeft + (fr2?' nuit(s)':' night(s)') + '</div>' +
+      '</div>';
+    }
+    // 3-counter strip (always visible — UPCOMING / PIPELINE / NEXT)
+    summaryHtml += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:10px">' +
+      '<div style="padding:6px"><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--gold);line-height:1">' + upcomingAll.length + '</div><div style="font-size:9px;letter-spacing:1.2px;color:var(--muted);margin-top:3px;font-family:var(--sans)">' + (fr2?'À VENIR':'UPCOMING') + '</div></div>' +
+      '<div style="padding:6px;border-left:1px solid var(--border);border-right:1px solid var(--border)"><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);line-height:1">' + leadsCount + '</div><div style="font-size:9px;letter-spacing:1.2px;color:var(--muted);margin-top:3px;font-family:var(--sans)">PIPELINE</div></div>' +
+      '<div style="padding:6px"><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);line-height:1">' + (nextDD!==null?'J+'+nextDD:'—') + '</div><div style="font-size:9px;letter-spacing:1.2px;color:var(--muted);margin-top:3px;font-family:var(--sans)">' + (fr2?'PROCHAINE':'NEXT') + '</div></div>' +
+    '</div>';
+
+    // 2. Enriched details (current guest if any, else next-arrival teaser, else empty hint)
+    var enrichedHtml = '';
+    if (current) {
       var nm = (current.name || '').replace(/[<>]/g,'');
       var nat = current.nat || '';
       var arr = current.arrival ? new Date(current.arrival) : null;
@@ -18858,47 +18890,41 @@ function v2RenderHero() {
       var locale = fr2 ? 'fr-FR' : 'en-GB';
       var arrStr = arr ? arr.toLocaleDateString(locale, {day:'numeric', month:'short'}) : '—';
       var depStr = dep ? dep.toLocaleDateString(locale, {day:'numeric', month:'short'}) : '—';
-      // Nights remaining
-      var nightsLeft = '';
-      if (dep) {
-        var ms = dep - today;
-        var n = Math.max(0, Math.ceil(ms / 86400000));
-        nightsLeft = ' · ' + n + (fr2 ? (n>1?' nuits restantes':' nuit restante') : (n>1?' nights left':' night left'));
-      }
       var phone = (current.phone || current.wa || '').trim();
       var notes = current.notes ? String(current.notes).slice(0, 100) : '';
       var price = current.price ? Math.round(current.price) + '€' : '';
       var src = current.source || '';
 
-      var html = '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">';
-      html += '<div style="flex:1;min-width:0">';
-      html += '<div style="font-family:\'Fraunces\',serif;font-size:16px;color:var(--ink);line-height:1.2">' + nm + ' <span style="font-size:14px">' + nat + '</span></div>';
-      html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + (current.guests || '?') + (fr2?' pers':' guests') + (src?' · '+src:'') + (price?' · '+price:'') + '</div>';
-      html += '</div>';
-      html += '<span style="background:rgba(60,108,17,.12);color:var(--green);font-size:9px;font-weight:700;letter-spacing:1px;padding:3px 7px;border-radius:5px;flex-shrink:0;text-transform:uppercase">' + (fr2?'EN COURS':'IN STAY') + '</span>';
-      html += '</div>';
-      // Date row
-      html += '<div style="display:flex;gap:10px;font-size:11px;color:var(--ink);margin-bottom:6px;padding:6px 8px;background:var(--paper);border-radius:6px">';
-      html += '<span><strong style="color:var(--green3)">' + arrStr + '</strong> → <strong style="color:var(--red,#A32D2D)">' + depStr + '</strong>' + nightsLeft + '</span>';
-      html += '</div>';
-      // Notes preview
+      enrichedHtml += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-family:\'Fraunces\',serif;font-size:16px;color:var(--ink);line-height:1.2">' + nm + (nat?' <span style="font-size:14px">' + nat + '</span>':'') + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + (current.guests || '?') + (fr2?' pers':' guests') + (src?' · '+src:'') + (price?' · '+price:'') + '</div>' +
+        '</div>' +
+      '</div>';
+      enrichedHtml += '<div style="display:flex;gap:10px;font-size:11px;color:var(--ink);margin-bottom:6px;padding:6px 8px;background:var(--paper);border-radius:6px">' +
+        '<span><strong style="color:var(--green3)">' + arrStr + '</strong> → <strong style="color:var(--red,#A32D2D)">' + depStr + '</strong></span>' +
+      '</div>';
       if (notes) {
-        html += '<div style="font-size:11px;color:var(--muted);font-style:italic;line-height:1.5;margin-bottom:8px">' + notes + (current.notes && current.notes.length>100?'…':'') + '</div>';
+        enrichedHtml += '<div style="font-size:11px;color:var(--muted);font-style:italic;line-height:1.5;margin-bottom:8px">' + notes + (current.notes && current.notes.length>100?'…':'') + '</div>';
       }
-      // Action buttons
-      html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+      enrichedHtml += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
       if (phone) {
         var waNum = phone.replace(/[^0-9]/g, '');
-        html += '<a href="https://wa.me/' + waNum + '" target="_blank" onclick="event.stopPropagation()" style="flex:1;background:#25D366;color:#fff;border:none;border-radius:7px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:4px">💬 WhatsApp</a>';
+        enrichedHtml += '<a href="https://wa.me/' + waNum + '" target="_blank" onclick="event.stopPropagation()" style="flex:1;background:#25D366;color:#fff;border:none;border-radius:7px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:4px">💬 WhatsApp</a>';
       }
-      html += '<button onclick="event.stopPropagation();if(typeof openAriaModal===\'function\')openAriaModal(\'Briefe-moi sur ' + (current.name||'').replace(/\'/g,'') + '\')" style="flex:1;background:transparent;color:var(--green-mid);border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🧠 Briefer</button>';
-      html += '</div>';
-
-      cgBody.dataset.guestId = current.id || '';
-      cgBody.innerHTML = html;
+      enrichedHtml += '<button onclick="event.stopPropagation();if(typeof openAriaModal===\'function\')openAriaModal(\'Briefe-moi sur ' + nm.replace(/\'/g,'') + '\')" style="flex:1;background:transparent;color:var(--green-mid);border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🧠 ' + (fr2?'Briefer':'Brief') + '</button>';
+      enrichedHtml += '</div>';
+    } else if (nextArr) {
+      var arrN = new Date(nextArr.arrival);
+      var localeN = fr2 ? 'fr-FR' : 'en-GB';
+      var arrNStr = arrN.toLocaleDateString(localeN, {weekday:'short', day:'numeric', month:'short'});
+      enrichedHtml = '<div style="font-size:11px;color:var(--muted);line-height:1.5"><strong style="color:var(--ink);font-weight:600">' + (nextArr.name||'?').replace(/[<>]/g,'').split(' ')[0] + '</strong> ' + (fr2?'arrive':'arrives') + ' <strong style="color:var(--ink)">' + arrNStr + '</strong>' + (nextDD!==null?' (J+'+nextDD+')':'') + '</div>';
     } else {
-      cgBody.innerHTML = '<div style="color:var(--muted);font-style:italic" data-fr="Aucun client en cours" data-en="No guest currently">Aucun client en cours</div>';
+      enrichedHtml = '<div style="color:var(--muted);font-style:italic;font-size:12px">' + (fr2?'Aucun séjour à venir':'No upcoming stay') + '</div>';
     }
+
+    cgBody.dataset.guestId = current ? (current.id || '') : '';
+    cgBody.innerHTML = summaryHtml + enrichedHtml;
   }
   // Guests tab: same data
   var gcBody = document.getElementById('heroGuestsCurrentBody');
@@ -19241,19 +19267,28 @@ function v2RenderHero() {
     } catch(e) { /* keep existing render */ }
   }
 
-  // Today: pipeline (pending inquiries / future bookings count)
+  // Today: pipeline breakdown — firm upcoming vs leads (so "À venir" matches
+  // the closed-card UPCOMING counter, never including pipeline leads).
   var pipeBody = document.getElementById('card33PipelineBody');
   if (pipeBody && Array.isArray(clients)) {
-    var pending = clients.filter(function(c){ return !c.arrival || (c.arrival && new Date(c.arrival) > today); });
-    var inquiries = clients.filter(function(c){ return !c.arrival; });
-    if (pending.length === 0) {
+    var _isLead = function(c){ var bs = c.bookingStatus; return bs==='inquiry'||bs==='lead'||bs==='quoted'; };
+    var firmUpcoming = clients.filter(function(c){ return _firm(c) && c.arrival && new Date(c.arrival) > today; });
+    var leads = clients.filter(_isLead);
+    if (firmUpcoming.length === 0 && leads.length === 0) {
       pipeBody.innerHTML = '<div style="color:var(--muted);font-style:italic" data-fr="Aucune demande en attente" data-en="No pending inquiries">Aucune demande en attente</div>';
     } else {
-      var totalNet = pending.reduce(function(s,c){ return s + (parseFloat(c.net) || 0); }, 0);
+      // Net potential = upcoming firm bookings only (not leads — unconfirmed)
+      var totalNet = firmUpcoming.reduce(function(s,c){
+        var p = parseFloat(c.net);
+        if (isFinite(p)) return s + p;
+        var pr = parseFloat(c.price) || 0;
+        var comm = parseFloat(c.commission) || 0;
+        return s + Math.round(pr * (1 - comm/100));
+      }, 0);
       pipeBody.innerHTML =
-        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--muted)">Demandes</span><span style="font-family:\'Fraunces\',serif;font-size:18px;color:var(--ink)">'+ inquiries.length +'</span></div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--muted)">À venir</span><span style="font-family:\'Fraunces\',serif;font-size:18px;color:var(--ink)">'+ (pending.length - inquiries.length) +'</span></div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:11px;color:var(--muted)">Net potentiel</span><span style="font-family:\'Fraunces\',serif;font-size:16px;color:var(--gold);font-weight:500">'+ Math.round(totalNet) +'€</span></div>';
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--muted)">' + (fr2?'À venir':'Upcoming') + '</span><span style="font-family:\'Fraunces\',serif;font-size:18px;color:var(--ink)">'+ firmUpcoming.length +'</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:11px;color:var(--muted)">Pipeline</span><span style="font-family:\'Fraunces\',serif;font-size:18px;color:var(--ink)">'+ leads.length +'</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:11px;color:var(--muted)">' + (fr2?'Net à venir':'Net upcoming') + '</span><span style="font-family:\'Fraunces\',serif;font-size:16px;color:var(--gold);font-weight:500">'+ Math.round(totalNet) +'€</span></div>';
     }
   }
 }
