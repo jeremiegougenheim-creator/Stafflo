@@ -21325,6 +21325,528 @@ window.addEventListener('DOMContentLoaded', function() {
 })();
 </script>
 
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   Onboarding v3 controller (Lot 3) — 7-screen mobile-first flow
+   Strangler fig: legacy onboardWizard + onboardModal stay in code.
+   Activation:
+     ?onboarding=1   → force launch (test / re-edit)
+     post-auth      → auto-launch if cfg.onboarded !== true (replaces
+                      showOnboardingWizard call via monkey-patch)
+   Persistence:
+     localStorage stafflo_onboarding_state (debounced 300 ms)
+     cfg.onboarding JSON blob + flat duplicates (cfg.villa, cfg.city,
+       cfg.bedrooms, cfg.maxGuests, cfg.staffMembers, cfg.commissions)
+     pushVillaSettings(cfg) for Supabase sync (existing pipeline)
+   ════════════════════════════════════════════════════════════════════ */
+(function onboardingV3Controller(){
+  var ROOT_ID = 'onboardingV3';
+  var STEP_COUNT = 7;
+  var LS_KEY = 'stafflo_onboarding_state';
+  var DEBOUNCE_MS = 300;
+
+  var state = null;
+  var saveTimer = null;
+  var historyDepth = 0;
+
+  function $(id){ return document.getElementById(id); }
+  function root(){ return $(ROOT_ID); }
+  function fr(){ return typeof lang !== 'undefined' && lang === 'fr'; }
+  function safeCfg(){ try { return (typeof getCfg === 'function') ? getCfg() : (JSON.parse(localStorage.getItem('stafflo_cfg')||'{}')); } catch(e){ return {}; } }
+
+  function defaultState(){
+    return {
+      step: 0,
+      data: {
+        villa_name: '',
+        city: '',
+        country: '',
+        bedrooms: 4,
+        max_guests: 8,
+        property_type: '',
+        staff_config: [],
+        services: [],
+        channels: {
+          airbnb:    { enabled:false, commission:3.6 },
+          booking:   { enabled:false, commission:15  },
+          villanovo: { enabled:false, commission:25  },
+          direct:    { enabled:true,  commission:0   }
+        },
+        gmail_attempted: false
+      }
+    };
+  }
+
+  function loadState(){
+    // Priority: localStorage in-progress state > cfg.onboarding (edit mode) > defaults
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.step === 'number') return parsed;
+      }
+    } catch(e){}
+    var cfg = safeCfg();
+    if (cfg && cfg.onboarding && typeof cfg.onboarding === 'object') {
+      var d = defaultState().data;
+      return { step: 0, data: Object.assign(d, cfg.onboarding) };
+    }
+    // Bootstrap from existing flat cfg fields if any (re-edit after legacy onboarding)
+    var s = defaultState();
+    if (cfg) {
+      if (cfg.villa)    s.data.villa_name = cfg.villa;
+      if (cfg.city)     s.data.city = cfg.city;
+      if (cfg.country)  s.data.country = cfg.country;
+      if (cfg.bedrooms) s.data.bedrooms = cfg.bedrooms;
+      if (cfg.maxGuests) s.data.max_guests = cfg.maxGuests;
+    }
+    return s;
+  }
+
+  function debouncedPersist(){
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(function(){
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e){}
+    }, DEBOUNCE_MS);
+  }
+
+  function persistCfg(){
+    try {
+      var cfg = safeCfg();
+      var d = state.data;
+      cfg.onboarding = JSON.parse(JSON.stringify(d));
+      // Flat duplicates for compatibility with existing surfaces
+      if (d.villa_name)  cfg.villa = d.villa_name;
+      if (d.city)        cfg.city = d.city;
+      if (d.country)     cfg.country = d.country;
+      if (d.bedrooms)    cfg.bedrooms = d.bedrooms;
+      if (d.max_guests)  cfg.maxGuests = d.max_guests;
+      if (Array.isArray(d.staff_config)) {
+        cfg.soloOperator = d.staff_config.indexOf('solo') !== -1;
+      }
+      // Commissions: keep the lowest-friction shape — { airbnb:3.6, booking:15, ... }
+      if (d.channels && typeof d.channels === 'object') {
+        var c = {};
+        Object.keys(d.channels).forEach(function(k){
+          var row = d.channels[k];
+          if (row && row.enabled) c[k] = +row.commission || 0;
+        });
+        cfg.commissions = c;
+      }
+      if (typeof setCfg === 'function') setCfg(cfg);
+      else localStorage.setItem('stafflo_cfg', JSON.stringify(cfg));
+      // Best-effort Supabase sync — never block UX
+      if (typeof window.pushVillaSettings === 'function') {
+        window.pushVillaSettings(cfg).catch(function(){});
+      }
+    } catch(e){ console.warn('[onbV3] persistCfg', e); }
+  }
+
+  /* ────── Rendering ────── */
+
+  function applyStep(animate){
+    var stage = $('onbV3Stage');
+    if (stage) {
+      if (animate === false) stage.classList.add('is-dragging');
+      stage.style.transform = 'translateX(-' + (state.step * 100) + '%)';
+      if (animate === false) {
+        // Re-enable transition next frame
+        requestAnimationFrame(function(){ stage.classList.remove('is-dragging'); });
+      }
+    }
+    // Progress segments
+    var segs = document.querySelectorAll('#onbV3Progress .onbV3-seg');
+    segs.forEach(function(seg, i){
+      seg.classList.toggle('is-done', i < state.step);
+      seg.classList.toggle('is-active', i === state.step);
+    });
+    // Back button visibility
+    var back = $('onbV3Back');
+    if (back) back.classList.toggle('is-hidden', state.step === 0);
+    // Primary button text + validity
+    var primary = $('onbV3Next');
+    if (primary) {
+      var labels = {
+        0: { fr:'Configurer ma villa →', en:'Set up my villa →' },
+        1: { fr:'Continuer →',           en:'Continue →' },
+        2: { fr:'Continuer →',           en:'Continue →' },
+        3: { fr:'Continuer →',           en:'Continue →' },
+        4: { fr:'Continuer →',           en:'Continue →' },
+        5: { fr:'Continuer →',           en:'Continue →' },
+        6: { fr:'Connecter Gmail',       en:'Connect Gmail' }
+      };
+      var L = labels[state.step] || labels[1];
+      primary.textContent = fr() ? L.fr : L.en;
+      primary.disabled = !isStepValid(state.step);
+    }
+    // Focus first input on step 1
+    if (state.step === 1) {
+      setTimeout(function(){ var i=$('onbV3VillaName'); if (i && !i.value) i.focus(); }, 280);
+    }
+  }
+
+  function isStepValid(step){
+    var d = state.data;
+    switch (step) {
+      case 0: return true; // splash always advances
+      case 1: return !!(d.villa_name && d.villa_name.trim());
+      case 2: return !!d.property_type;
+      case 3: return Array.isArray(d.staff_config) && d.staff_config.length > 0;
+      case 4: return true; // services optional
+      case 5: return true; // at least Direct is enabled by default
+      case 6: return true;
+      default: return true;
+    }
+  }
+
+  function syncFormFromState(){
+    var d = state.data;
+    if ($('onbV3VillaName')) $('onbV3VillaName').value = d.villa_name || '';
+    if ($('onbV3City'))      $('onbV3City').value      = d.city || '';
+    if ($('onbV3Bedrooms'))  $('onbV3Bedrooms').textContent  = d.bedrooms;
+    if ($('onbV3MaxGuests')) $('onbV3MaxGuests').textContent = d.max_guests;
+    // Property type cards
+    document.querySelectorAll('#onbV3PropTypeCards .onbV3-card').forEach(function(c){
+      c.classList.toggle('is-selected', c.getAttribute('data-value') === d.property_type);
+    });
+    // Staff chips
+    document.querySelectorAll('#onbV3StaffChips .onbV3-chip').forEach(function(c){
+      c.classList.toggle('is-selected', d.staff_config.indexOf(c.getAttribute('data-value')) !== -1);
+    });
+    // Services chips
+    document.querySelectorAll('#onbV3ServicesChips .onbV3-chip').forEach(function(c){
+      c.classList.toggle('is-selected', d.services.indexOf(c.getAttribute('data-value')) !== -1);
+    });
+    // Channels
+    Object.keys(d.channels || {}).forEach(function(k){
+      var toggle = document.querySelector('.onbV3-channel-toggle[data-channel="'+k+'"]');
+      var pct    = document.querySelector('.onbV3-pct-input[data-channel="'+k+'"]');
+      if (toggle) toggle.checked = !!d.channels[k].enabled;
+      if (pct)    pct.value = d.channels[k].commission;
+    });
+  }
+
+  /* ────── Step transitions ────── */
+
+  function go(stepNew, opts){
+    opts = opts || {};
+    if (stepNew < 0 || stepNew >= STEP_COUNT) return;
+    state.step = stepNew;
+    applyStep(opts.animate !== false);
+    debouncedPersist();
+    if (opts.pushHistory) {
+      try { history.pushState({ onbV3Step: stepNew }, '', '?onboarding=1'); } catch(e){}
+      historyDepth++;
+    }
+  }
+
+  function next(){
+    if (!isStepValid(state.step)) return;
+    if (state.step === STEP_COUNT - 1) { complete(false); return; }
+    if (state.step === 0) {
+      // Splash → step 1: also push first history entry so back button works
+      go(state.step + 1, { pushHistory: true });
+    } else {
+      go(state.step + 1, { pushHistory: true });
+    }
+    persistCfg();
+  }
+
+  function back(){
+    if (state.step === 0) return;
+    // Use browser history so popstate handles the visual transition
+    try { history.back(); } catch(e){ go(state.step - 1); }
+  }
+
+  /* ────── Completion ────── */
+
+  function complete(connectGmail){
+    persistCfg();
+    var cfg = safeCfg();
+    cfg.onboarded = true;
+    cfg.onboardedAt = new Date().toISOString();
+    if (typeof setCfg === 'function') setCfg(cfg);
+    else localStorage.setItem('stafflo_cfg', JSON.stringify(cfg));
+    try { localStorage.setItem('stafflo_tour_done', '1'); } catch(e){}
+    try { localStorage.setItem('stafflo_welcome_done', '1'); } catch(e){}
+    try { localStorage.removeItem(LS_KEY); } catch(e){}
+    if (typeof window.pushVillaSettings === 'function') {
+      try { window.pushVillaSettings(cfg).catch(function(){}); } catch(e){}
+    }
+    // Replace history to clear ?onboarding=1
+    try {
+      var path = location.pathname;
+      history.replaceState({}, '', path);
+    } catch(e){}
+    var r = root();
+    if (r) { r.style.display = 'none'; r.setAttribute('aria-hidden','true'); }
+    if (connectGmail && typeof window.connectEmailProvider === 'function') {
+      try { window.connectEmailProvider('google'); } catch(e){}
+    }
+    if (typeof goTab === 'function') { try { goTab('today'); } catch(e){} }
+    try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
+    try { if (typeof updateSetupChecklist === 'function') updateSetupChecklist(); } catch(e){}
+  }
+
+  /* ────── Event wiring ────── */
+
+  function wireOnce(){
+    var r = root();
+    if (!r || r.dataset.onbV3Wired === '1') return;
+    r.dataset.onbV3Wired = '1';
+
+    // Nav buttons
+    $('onbV3Next').addEventListener('click', next);
+    $('onbV3Back').addEventListener('click', back);
+
+    // Splash sign-in
+    var signIn = $('onbV3SignInLink');
+    if (signIn) signIn.addEventListener('click', function(){
+      // Hide v3, surface the auth screen if present
+      r.style.display = 'none';
+      var auth = $('authScreen');
+      if (auth) auth.style.display = 'flex';
+    });
+
+    // Step 6 — "Maybe later"
+    var maybe = $('onbV3MaybeLater');
+    if (maybe) maybe.addEventListener('click', function(){ complete(false); });
+
+    // Step 1 — inputs
+    var vn = $('onbV3VillaName');
+    if (vn) vn.addEventListener('input', function(){ state.data.villa_name = vn.value; debouncedPersist(); applyStep(true); });
+    var city = $('onbV3City');
+    if (city) city.addEventListener('input', function(){ state.data.city = city.value; debouncedPersist(); });
+
+    // Steppers
+    document.querySelectorAll('[data-stepper]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.getAttribute('data-stepper');
+        var delta = parseInt(btn.getAttribute('data-delta'),10) || 0;
+        var dataKey = key === 'bedrooms' ? 'bedrooms' : 'max_guests';
+        var min = key === 'bedrooms' ? 1 : 1;
+        var max = key === 'bedrooms' ? 20 : 30;
+        var cur = state.data[dataKey] || min;
+        var nv = Math.max(min, Math.min(max, cur + delta));
+        state.data[dataKey] = nv;
+        var lbl = $(key === 'bedrooms' ? 'onbV3Bedrooms' : 'onbV3MaxGuests');
+        if (lbl) lbl.textContent = nv;
+        debouncedPersist();
+      });
+    });
+
+    // Geolocation
+    var loc = $('onbV3LocBtn');
+    if (loc) loc.addEventListener('click', detectCity);
+
+    // Property type cards (single select)
+    document.querySelectorAll('#onbV3PropTypeCards .onbV3-card').forEach(function(c){
+      c.addEventListener('click', function(){
+        state.data.property_type = c.getAttribute('data-value');
+        document.querySelectorAll('#onbV3PropTypeCards .onbV3-card').forEach(function(x){
+          x.classList.toggle('is-selected', x === c);
+        });
+        debouncedPersist(); applyStep(true);
+      });
+    });
+
+    // Staff chips (multi, Solo is exclusive)
+    document.querySelectorAll('#onbV3StaffChips .onbV3-chip').forEach(function(c){
+      c.addEventListener('click', function(){
+        var v = c.getAttribute('data-value');
+        var arr = state.data.staff_config || [];
+        if (v === 'solo') {
+          arr = arr.indexOf('solo') !== -1 ? [] : ['solo'];
+        } else {
+          if (arr.indexOf('solo') !== -1) arr = arr.filter(function(x){return x !== 'solo';});
+          if (arr.indexOf(v) === -1) arr.push(v);
+          else arr = arr.filter(function(x){return x !== v;});
+        }
+        state.data.staff_config = arr;
+        document.querySelectorAll('#onbV3StaffChips .onbV3-chip').forEach(function(x){
+          x.classList.toggle('is-selected', arr.indexOf(x.getAttribute('data-value')) !== -1);
+        });
+        debouncedPersist(); applyStep(true);
+      });
+    });
+
+    // Services chips (multi)
+    document.querySelectorAll('#onbV3ServicesChips .onbV3-chip').forEach(function(c){
+      c.addEventListener('click', function(){
+        var v = c.getAttribute('data-value');
+        var arr = state.data.services || [];
+        var i = arr.indexOf(v);
+        if (i === -1) arr.push(v); else arr.splice(i,1);
+        state.data.services = arr;
+        c.classList.toggle('is-selected', arr.indexOf(v) !== -1);
+        debouncedPersist();
+      });
+    });
+
+    // Channels
+    document.querySelectorAll('.onbV3-channel-toggle').forEach(function(t){
+      t.addEventListener('change', function(){
+        var k = t.getAttribute('data-channel');
+        if (!state.data.channels[k]) state.data.channels[k] = { enabled:false, commission:0 };
+        state.data.channels[k].enabled = !!t.checked;
+        debouncedPersist();
+      });
+    });
+    document.querySelectorAll('.onbV3-pct-input').forEach(function(p){
+      p.addEventListener('input', function(){
+        var k = p.getAttribute('data-channel');
+        var v = parseFloat(p.value); if (isNaN(v)) v = 0;
+        if (!state.data.channels[k]) state.data.channels[k] = { enabled:false, commission:0 };
+        state.data.channels[k].commission = v;
+        debouncedPersist();
+      });
+    });
+
+    // Swipe nav on stage
+    bindSwipe();
+
+    // Browser back button
+    window.addEventListener('popstate', function(ev){
+      var st = ev.state || {};
+      if (typeof st.onbV3Step === 'number') {
+        state.step = st.onbV3Step;
+        applyStep(true);
+        debouncedPersist();
+      } else if (root() && root().style.display !== 'none' && state.step > 0) {
+        // Back from step 1 → splash
+        state.step = 0;
+        applyStep(true);
+        debouncedPersist();
+      }
+    });
+  }
+
+  function bindSwipe(){
+    var stage = $('onbV3Stage');
+    if (!stage) return;
+    var startX = 0, startY = 0, dx = 0, dragging = false, baseTx = 0;
+    stage.addEventListener('touchstart', function(e){
+      if (!e.touches || !e.touches.length) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      dx = 0; dragging = true;
+      baseTx = -state.step * stage.clientWidth;
+    }, { passive: true });
+    stage.addEventListener('touchmove', function(e){
+      if (!dragging || !e.touches || !e.touches.length) return;
+      var x = e.touches[0].clientX, y = e.touches[0].clientY;
+      var ax = Math.abs(x - startX), ay = Math.abs(y - startY);
+      if (ay > ax) { dragging = false; return; } // vertical scroll
+      dx = x - startX;
+      stage.classList.add('is-dragging');
+      stage.style.transform = 'translateX(' + (baseTx + dx) + 'px)';
+    }, { passive: true });
+    stage.addEventListener('touchend', function(){
+      if (!dragging) return;
+      dragging = false;
+      stage.classList.remove('is-dragging');
+      stage.style.transform = '';
+      if (Math.abs(dx) > 60) {
+        if (dx < 0) next();
+        else        back();
+      } else {
+        applyStep(true);
+      }
+    });
+  }
+
+  /* ────── Nominatim reverse geocoding ────── */
+
+  function detectCity(){
+    var btn = $('onbV3LocBtn');
+    if (!navigator.geolocation || !btn) return;
+    btn.classList.add('is-loading');
+    navigator.geolocation.getCurrentPosition(function(pos){
+      var lat = pos.coords.latitude, lon = pos.coords.longitude;
+      var url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lon + '&zoom=10&accept-language=' + (fr() ? 'fr' : 'en');
+      fetch(url).then(function(r){ return r.json(); }).then(function(j){
+        btn.classList.remove('is-loading');
+        var a = (j && j.address) || {};
+        var city = a.city || a.town || a.village || a.county || '';
+        var country = a.country || '';
+        if (city) {
+          var label = country ? (city + ', ' + country) : city;
+          $('onbV3City').value = label;
+          state.data.city = label;
+          state.data.country = country;
+          debouncedPersist();
+        }
+      }).catch(function(){ btn.classList.remove('is-loading'); });
+    }, function(){ btn.classList.remove('is-loading'); }, { enableHighAccuracy:false, timeout:8000, maximumAge:600000 });
+  }
+
+  /* ────── Launch + autodetect ────── */
+
+  function paramSaysLaunch(){
+    try { return new URLSearchParams(location.search).get('onboarding') === '1'; } catch(e){ return false; }
+  }
+
+  function shouldAutoLaunch(){
+    if (paramSaysLaunch()) return true;
+    var cfg = safeCfg();
+    if (cfg && cfg.onboarded) return false;
+    return true;
+  }
+
+  window.launchOnboardingV3 = function(){
+    var r = root();
+    if (!r) return;
+    state = loadState();
+    wireOnce();
+    syncFormFromState();
+    r.style.display = 'flex';
+    r.setAttribute('aria-hidden','false');
+    applyStep(false);
+    // Replace history entry with current step so back works
+    try { history.replaceState({ onbV3Step: state.step }, '', '?onboarding=1'); } catch(e){}
+  };
+
+  /* Monkey-patch the legacy entry so post-auth bootstrap routes to v3 */
+  if (typeof window.showOnboardingWizard === 'function' && !window.showOnboardingWizard._v3Wrapped) {
+    var _origWiz = window.showOnboardingWizard;
+    window.showOnboardingWizard = function(){ return window.launchOnboardingV3(); };
+    window.showOnboardingWizard._v3Wrapped = true;
+    window._legacyShowOnboardingWizard = _origWiz;
+  } else {
+    // Define it as our entry; later definitions will overwrite (handled by retry below)
+    window.showOnboardingWizard = window.launchOnboardingV3;
+  }
+
+  // If showOnboardingWizard wasn't defined yet at parse time, re-wrap once it appears
+  var wrapRetry = 0;
+  var wrapInterval = setInterval(function(){
+    wrapRetry++;
+    if (wrapRetry > 30) { clearInterval(wrapInterval); return; }
+    var f = window.showOnboardingWizard;
+    if (typeof f === 'function' && !f._v3Wrapped && f !== window.launchOnboardingV3) {
+      window._legacyShowOnboardingWizard = f;
+      window.showOnboardingWizard = function(){ return window.launchOnboardingV3(); };
+      window.showOnboardingWizard._v3Wrapped = true;
+      clearInterval(wrapInterval);
+    }
+  }, 200);
+
+  function init(){
+    if (paramSaysLaunch()) {
+      window.launchOnboardingV3();
+    }
+    // Auto-launch path is handled by post-auth bootstrap calling
+    // showOnboardingWizard (now wrapped) when cfg.onboarded !== true.
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
 <!-- ══ ARIA CENTERED MODAL ═════════════════════════════════ -->
 <div class="aria-modal-bg" id="ariaModal" onclick="if(event.target===this)closeAriaModal()">
   <div class="aria-modal" role="dialog" aria-label="ARIA AI Assistant">
