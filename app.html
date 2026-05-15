@@ -2912,9 +2912,9 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
           <div class="aria-hero-tagline" id="ariaHeroTagline" data-fr="La mémoire vive de votre villa" data-en="Your villa's living memory">La mémoire vive de votre villa</div>
         </div>
       </div>
-      <div class="aria-hero-counter" id="ariaHeroCounter" title="Actions effectuées par Aria" data-title-fr="Actions effectuées par Aria" data-title-en="Actions performed by Aria">
-        <span class="aria-hero-counter-num" id="ariaCounterNum">0</span>
-        <span class="aria-hero-counter-lbl" data-fr="ACTIONS · 7J" data-en="ACTIONS · 7D">ACTIONS · 7J</span>
+      <div class="aria-hero-counter" id="ariaHeroCounter" title="Signaux actifs détectés par Aria" data-title-fr="Signaux actifs détectés par Aria" data-title-en="Active signals detected by Aria">
+        <span class="aria-hero-counter-num" id="ariaCounterNum">—</span>
+        <span class="aria-hero-counter-lbl" data-fr="SIGNAUX" data-en="SIGNALS">SIGNAUX</span>
       </div>
     </div>
     <div class="aria-hero-input-row" onclick="this.querySelector('.aria-hero-input').focus()">
@@ -3309,9 +3309,9 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
           <div class="aria-hero-tagline" data-fr="La mémoire vive de votre villa" data-en="Your villa's living memory">La mémoire vive de votre villa</div>
         </div>
       </div>
-      <div class="aria-hero-counter" title="Actions effectuées par Aria" data-title-fr="Actions effectuées par Aria" data-title-en="Actions performed by Aria">
-        <span class="aria-hero-counter-num ariaCounterNumMirror">0</span>
-        <span class="aria-hero-counter-lbl" data-fr="ACTIONS · 7J" data-en="ACTIONS · 7D">ACTIONS · 7J</span>
+      <div class="aria-hero-counter" title="Signaux actifs détectés par Aria" data-title-fr="Signaux actifs détectés par Aria" data-title-en="Active signals detected by Aria">
+        <span class="aria-hero-counter-num ariaCounterNumMirror">—</span>
+        <span class="aria-hero-counter-lbl" data-fr="SIGNAUX" data-en="SIGNALS">SIGNAUX</span>
       </div>
     </div>
     <div class="aria-hero-input-row" onclick="this.querySelector('.aria-hero-input').focus()">
@@ -3538,9 +3538,9 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
           <div class="aria-hero-tagline" data-fr="La mémoire vive de votre villa" data-en="Your villa's living memory">La mémoire vive de votre villa</div>
         </div>
       </div>
-      <div class="aria-hero-counter" title="Actions effectuées par Aria" data-title-fr="Actions effectuées par Aria" data-title-en="Actions performed by Aria">
-        <span class="aria-hero-counter-num ariaCounterNumMirror">0</span>
-        <span class="aria-hero-counter-lbl" data-fr="ACTIONS · 7J" data-en="ACTIONS · 7D">ACTIONS · 7J</span>
+      <div class="aria-hero-counter" title="Signaux actifs détectés par Aria" data-title-fr="Signaux actifs détectés par Aria" data-title-en="Active signals detected by Aria">
+        <span class="aria-hero-counter-num ariaCounterNumMirror">—</span>
+        <span class="aria-hero-counter-lbl" data-fr="SIGNAUX" data-en="SIGNALS">SIGNAUX</span>
       </div>
     </div>
     <div class="aria-hero-input-row" onclick="this.querySelector('.aria-hero-input').focus()">
@@ -16090,6 +16090,8 @@ function renderBriefCards(el, cards) {
     var v2Brief = document.getElementById('card50MorningBriefBody');
     if (v2Brief) v2Brief.innerHTML = el.innerHTML;
   } catch(e){}
+  // Refresh the hero SIGNAUX counter — brief-card count is the source.
+  try { if (typeof updateAriaCounter === 'function') updateAriaCounter(); } catch(e){}
 }
 
 function generateStaffChecklist() {
@@ -27733,9 +27735,10 @@ window.addEventListener('DOMContentLoaded', function() {
     ev.stopPropagation();
     if (typeof openAriaModal === 'function') {
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      var briefCount = (window._briefCards || []).length;
       var prefill = fr
-        ? 'Liste-moi les 10 actions prioritaires à faire cette semaine pour la villa, classées par urgence. Pour chacune : staff concerné, deadline, et action concrète à exécuter.'
-        : 'List the top 10 priority actions for the villa this week, sorted by urgency. For each: staff involved, deadline, and concrete action to execute.';
+        ? 'Quelles sont les ' + (briefCount || 5) + ' actions les plus urgentes cette semaine ? Classe par : 1) arrivées/départs imminents, 2) tâches staff en retard, 3) opportunités pricing, 4) relances clients.'
+        : 'What are the ' + (briefCount || 5) + ' most urgent actions this week? Sort by: 1) imminent arrivals/departures, 2) overdue staff tasks, 3) pricing opportunities, 4) guest follow-ups.';
       openAriaModal(prefill);
       // Fire send after modal is open
       setTimeout(function(){
@@ -27745,15 +27748,16 @@ window.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  /* Update counter UI (7-day rolling window) — all 3 tabs */
+  /* Update counter UI — shows active brief-cards count (signals), not raw
+     usage. trackAriaAction() still records interactions to localStorage for
+     analytics, but the hero badge surfaces "things that need attention". */
   function updateAriaCounter(){
     try {
-      var arr = JSON.parse(localStorage.getItem('stafflo_aria_actions') || '[]');
-      var weekAgo = Date.now() - (7 * 86400000);
-      var count = arr.filter(function(x){ return x.t > weekAgo; }).length;
+      var briefCount = (window._briefCards || []).length;
+      var display = briefCount || '—';
       var el = document.getElementById('ariaCounterNum');
-      if (el) el.textContent = count;
-      document.querySelectorAll('.ariaCounterNumMirror').forEach(function(e){ e.textContent = count; });
+      if (el) el.textContent = display;
+      document.querySelectorAll('.ariaCounterNumMirror').forEach(function(e){ e.textContent = display; });
     } catch(e){}
   }
   window.updateAriaCounter = updateAriaCounter;
