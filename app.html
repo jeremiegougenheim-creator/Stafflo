@@ -25533,23 +25533,25 @@ window.addEventListener('DOMContentLoaded', function() {
     try {
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
       var clients = (typeof window.clients !== 'undefined') ? window.clients : [];
-      // Calendar (any: today + mirrors)
+      // Calendar (any: today + mirrors). The expanded card shows the full
+      // ribbon/month grid; the collapsed preview is a one-line week summary
+      // so the two states actually convey different info.
       if (cardId === 'cardCalendarMini' || (card.classList && card.classList.contains('cardCalendarMiniMirror'))) {
         var today = new Date(); today.setHours(0,0,0,0);
-        var soon = clients.filter(function(c){ if(typeof isFirmBooking==='function'&&!isFirmBooking(c))return false; if(!c.arrival)return false; var d=new Date(c.arrival);d.setHours(0,0,0,0); var dd=Math.round((d-today)/86400000); return dd>=0 && dd<=30;});
-        soon.sort(function(a,b){return new Date(a.arrival)-new Date(b.arrival);});
-        if (!soon.length) return pill(fr?'Aucune arrivée':'No arrivals', '#7a8a7a', 'rgba(120,140,120,.12)');
-        // Show up to 3 inline timeline
-        var inline = soon.slice(0, 3).map(function(g){
-          var d = new Date(g.arrival);
-          var dd = Math.round((d-today)/86400000);
-          var lbl = dd===0 ? (fr?'auj.':'today') : dd===1 ? (fr?'dem.':'tom.') : ('J+'+dd);
-          var urgency = dd<=2 ? '#C0392B' : dd<=7 ? '#C9963A' : '#3B6D11';
-          var bg = dd<=2 ? 'rgba(192,57,43,.1)' : dd<=7 ? 'rgba(201,150,58,.12)' : 'rgba(59,109,17,.1)';
-          return pill((g.name||'?').split(' ')[0]+' '+lbl, urgency, bg);
-        }).join(' ');
-        var prefix = soon.length > 3 ? pill('+'+(soon.length-3), '#7a8a7a', 'rgba(120,140,120,.12)') + ' ' : '';
-        return inline + (prefix ? ' ' + prefix : '');
+        var weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7); weekEnd.setHours(0,0,0,0);
+        var firmFn = function(c){ return typeof isFirmBooking !== 'function' || isFirmBooking(c); };
+        var inHouse = clients.find(function(c){ if(!firmFn(c))return false; if(!c.arrival||!c.departure)return false; var a=new Date(c.arrival);a.setHours(0,0,0,0); var d=new Date(c.departure);d.setHours(0,0,0,0); return a.getTime() <= today.getTime() && d.getTime() >= today.getTime(); });
+        var arrivals7 = clients.filter(function(c){ if(!firmFn(c))return false; if(!c.arrival)return false; var d=new Date(c.arrival);d.setHours(0,0,0,0); return d.getTime() > today.getTime() && d.getTime() <= weekEnd.getTime(); });
+        var departures7 = clients.filter(function(c){ if(!firmFn(c))return false; if(!c.departure)return false; var d=new Date(c.departure);d.setHours(0,0,0,0); return d.getTime() >= today.getTime() && d.getTime() <= weekEnd.getTime(); });
+        if (!inHouse && !arrivals7.length && !departures7.length) {
+          return pill(fr?'Semaine calme':'Quiet week', '#7a8a7a', 'rgba(120,140,120,.12)');
+        }
+        var parts = [];
+        if (inHouse) parts.push(pill('🏠 ' + ((inHouse.name||'').split(' ')[0]) + (fr?' en cours':' in stay'), '#3B6D11', 'rgba(59,109,17,.12)'));
+        if (arrivals7.length)   parts.push(pill('🟢 ' + arrivals7.length + ' ' + (fr?(arrivals7.length>1?'arrivées':'arrivée'):(arrivals7.length>1?'arrivals':'arrival')), '#C9963A', 'rgba(201,150,58,.18)'));
+        if (departures7.length) parts.push(pill('🔴 ' + departures7.length + ' ' + (fr?(departures7.length>1?'départs':'départ'):(departures7.length>1?'departures':'departure')), '#C0392B', 'rgba(192,57,43,.12)'));
+        var suffix = '<span style="font-size:10px;color:var(--muted);margin-left:6px;letter-spacing:.5px">' + (fr?'· 7j':'· 7d') + '</span>';
+        return parts.join(' ') + suffix;
       }
       // Inbox
       if (cardId === 'cardInboxMini' || (card.classList && card.classList.contains('cardInboxMiniMirror')) || cardId === 'inboxCardToday') {
