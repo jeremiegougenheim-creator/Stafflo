@@ -10196,23 +10196,46 @@ function closeInbox() {
 // refreshInboxRow (manual refresh) so the cache stays fresh even when the
 // dashboard card is not in the DOM.
 async function fetchInboxEmails() {
+  // Demo-aware: any demo email (__DEMO_INBOX) is always merged into the
+  // live store, whether we have a Supabase key or not. Auth-less visitors
+  // (enterDemoMode → isDemoMode()) and authenticated owners running with
+  // the ?demo=1 overlay (window._demoMode) both need to see them.
+  var demoOn = (typeof isDemoMode === 'function' && isDemoMode()) || !!window._demoMode;
+  var demoRows = (demoOn && Array.isArray(window.__DEMO_INBOX)) ? window.__DEMO_INBOX : [];
+
   var cfg = (typeof getCfg === 'function') ? getCfg() : {};
   var key = cfg.sbKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
   var authToken = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token)
     ? _stafflo_session.access_token : key;
-  if (!key) return [];
+
+  // No key (or pure demo visitor): short-circuit with demo emails only.
+  if (!key) {
+    var demoOnly = {};
+    demoRows.forEach(function(row){ if (row && row.id) demoOnly[row.id] = row; });
+    window._inboxEmails = demoOnly;
+    return demoRows.slice();
+  }
   try {
     var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=50', {
       headers: { apikey: key, Authorization: 'Bearer ' + authToken }
     });
     var rows = await r.json();
-    if (!Array.isArray(rows)) return [];
+    if (!Array.isArray(rows)) rows = [];
     var fresh = {};
     rows.forEach(function(row){ if (row && row.id) fresh[row.id] = row; });
+    // Merge demo emails on top so the ?demo=1 overlay shows demo + real side by side.
+    demoRows.forEach(function(row){ if (row && row.id) fresh[row.id] = row; });
     window._inboxEmails = fresh;
-    return rows;
+    return rows.concat(demoRows);
   } catch(e) {
     console.warn('[fetchInboxEmails]', e);
+    // Network failure mid-demo — keep at least the demo emails visible.
+    if (demoRows.length) {
+      var fallback = {};
+      demoRows.forEach(function(row){ if (row && row.id) fallback[row.id] = row; });
+      window._inboxEmails = fallback;
+      return demoRows.slice();
+    }
     return [];
   }
 }
@@ -10245,11 +10268,23 @@ async function loadInboxEmails() {
   var key = cfg.sbKey || SB_ANON;
   // Use session JWT for RLS — policy is auth.uid() = owner_id
   var authToken = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
+  // Demo overlay: include __DEMO_INBOX in the renderable rows so the list
+  // isn't empty in demo mode and demo + real emails appear side by side.
+  var demoOn = (typeof isDemoMode === 'function' && isDemoMode()) || !!window._demoMode;
+  var demoRows = (demoOn && Array.isArray(window.__DEMO_INBOX)) ? window.__DEMO_INBOX.slice() : [];
   try {
-    var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=20', {
-      headers: { apikey: key, Authorization: 'Bearer ' + authToken }
+    var rows = [];
+    if (key) {
+      var r = await fetch(SB_URL + '/rest/v1/email_inbox?order=received_at.desc&limit=20', {
+        headers: { apikey: key, Authorization: 'Bearer ' + authToken }
+      });
+      rows = await r.json();
+      if (!Array.isArray(rows)) rows = [];
+    }
+    // Merge demo emails (sorted with the rest by received_at desc).
+    rows = rows.concat(demoRows).sort(function(a,b){
+      return new Date(b.received_at||0) - new Date(a.received_at||0);
     });
-    var rows = await r.json();
     if (!rows.length) {
       setHtml('<div style="color:var(--muted);font-size:12px;padding:8px 0;text-align:center">'+
         (lang==='fr' ? 'Aucun email reçu — configurez le transfert automatique ci-dessus' : 'No emails received yet — set up auto-forwarding above') +
