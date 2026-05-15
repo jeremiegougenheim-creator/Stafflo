@@ -22767,6 +22767,312 @@ window.addEventListener('DOMContentLoaded', function() {
 })();
 </script>
 
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   Guests v5 — LIST controller (Lot 5)
+   Strangler fig: gated by stafflo_aria_first_v1.
+   Renders #guestsV5 (current-guest hero, perf strip, search + chips,
+   grid). Detail open is stubbed here; the detail renderer lands in C3.
+   ════════════════════════════════════════════════════════════════════ */
+(function guestsV5ListController(){
+  function $(id){ return document.getElementById(id); }
+  function fr(){ return typeof lang !== 'undefined' && lang === 'fr'; }
+  function flagOn(){
+    try { return typeof isAriaFirstV1Enabled === 'function' && isAriaFirstV1Enabled(); }
+    catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') === '1'; } catch(_) { return false; } }
+  }
+  function safeCfg(){ try { return (typeof getCfg === 'function') ? getCfg() : (JSON.parse(localStorage.getItem('stafflo_cfg')||'{}')); } catch(e){ return {}; } }
+  function firm(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : !!c; }
+  function fmt(n){ try { return Math.round(n).toLocaleString(fr()?'fr-FR':'en-US'); } catch(e){ return String(n); } }
+  function fmtEuro(n){ return fmt(n) + '€'; }
+  function escapeHtml(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function firstName(n){ return (n||'').trim().split(/\s+/)[0] || '?'; }
+  function initials(n){
+    var parts = (n||'').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    if (parts.length === 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+  }
+  function flagEmoji(c){
+    if (!c) return '';
+    // c.nat is something like "🇫🇷 Français" — grab the first 2 code points
+    var nat = c.nat || '';
+    var m = nat.match(/^(\p{Regional_Indicator}\p{Regional_Indicator})/u);
+    return m ? m[1] : (nat ? nat.split(' ')[0] : '');
+  }
+  function todayMid(){ var d = new Date(); d.setHours(0,0,0,0); return d; }
+
+  var filterState = { search: '', chip: 'all' };
+  var searchTimer = null;
+
+  /* ── Hero: current in-house guest ── */
+  function renderHero(){
+    var host = $('v5HeroCurrent');
+    if (!host || typeof clients === 'undefined') { if(host) host.style.display='none'; return; }
+    var today = todayMid();
+    var current = clients.find(function(c){
+      if (!firm(c) || !c.arrival || !c.departure) return false;
+      var a = new Date(c.arrival), d = new Date(c.departure);
+      return a <= today && today < d;
+    });
+    if (!current) { host.style.display = 'none'; return; }
+    var FR = fr();
+    var av = $('v5HeroAvatar'); if (av) av.textContent = initials(current.name);
+    var nm = $('v5HeroName');   if (nm) nm.textContent = current.name || '—';
+    var badges = $('v5HeroBadges');
+    if (badges) {
+      var b = ['<span class="v5-badge is-current">' + (FR?'EN COURS':'CURRENT') + '</span>'];
+      if (Array.isArray(current.tags) && current.tags.indexOf('VIP') !== -1) b.unshift('<span class="v5-badge is-vip">VIP</span>');
+      if (Array.isArray(current.dietary)) current.dietary.slice(0,2).forEach(function(d){ b.push('<span class="v5-badge is-diet">' + escapeHtml(d) + '</span>'); });
+      badges.innerHTML = b.join('');
+    }
+    var meta = $('v5HeroMeta');
+    if (meta) {
+      var flag = flagEmoji(current);
+      var src  = current.source || '—';
+      var nights = (current.arrival && current.departure) ? Math.round((new Date(current.departure) - new Date(current.arrival))/86400000) : 0;
+      var net = current.price ? Math.round(current.price * (1 - (current.commission||0)/100) * nights) : 0;
+      meta.textContent = [flag, src, nights ? (nights + (FR?' nuits':' nights')) : '', net ? fmtEuro(net) : ''].filter(Boolean).join(' · ');
+    }
+    host.style.display = '';
+    var welcome = $('v5HeroWelcome');
+    if (welcome) welcome.onclick = function(){
+      if (typeof openRelancePopup === 'function') openRelancePopup(current.id);
+      else if (window.StaffloSheet) StaffloSheet.open({ title: (FR?'Message bienvenue':'Welcome message'), body: (FR?'Préparez votre message…':'Compose your message…'), primaryCTA:'OK' });
+    };
+    var openBtn = $('v5HeroOpen');
+    if (openBtn) openBtn.onclick = function(){ openGuestDetailV5(current.id); };
+  }
+
+  /* ── Performance: NET / AVG / RETURN + channel bars ── */
+  function renderPerf(){
+    if (typeof clients === 'undefined') return;
+    var firmList = clients.filter(firm);
+    var totalNet = 0, totalNights = 0;
+    var byChannel = {};
+    firmList.forEach(function(c){
+      var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
+      var commPct = +c.commission || 0;
+      var net = (+c.price || 0) * (1 - commPct/100) * nights;
+      totalNet += net;
+      totalNights += nights;
+      var src = c.source || (fr()?'Direct':'Direct');
+      if (!byChannel[src]) byChannel[src] = 0;
+      byChannel[src] += net;
+    });
+    var avg = totalNights ? Math.round(totalNet / totalNights) : 0;
+    // Returning = unique names appearing ≥ 2 times in firm bookings
+    var nameCount = {};
+    firmList.forEach(function(c){ var k = (c.name||'').trim().toLowerCase(); if (k) nameCount[k] = (nameCount[k]||0) + 1; });
+    var returningCount = Object.keys(nameCount).filter(function(k){ return nameCount[k] >= 2; }).length;
+    var t = $('v5PerfNet'); if (t) t.textContent = fmtEuro(Math.round(totalNet));
+    var a = $('v5PerfAvg'); if (a) a.textContent = fmtEuro(avg);
+    var r = $('v5PerfReturn'); if (r) r.textContent = String(returningCount);
+    var bars = $('v5PerfBars');
+    if (bars) {
+      var sorted = Object.keys(byChannel).sort(function(x,y){ return byChannel[y] - byChannel[x]; }).slice(0,3);
+      var max = Math.max.apply(null, sorted.map(function(k){ return byChannel[k]; })) || 1;
+      bars.innerHTML = sorted.map(function(k){
+        var v = byChannel[k];
+        var pct = Math.round(v / max * 100);
+        return '<div class="v5-perf-bar-row">' +
+                 '<span class="v5-perf-bar-name">' + escapeHtml(k) + '</span>' +
+                 '<span class="v5-perf-bar-track"><span class="v5-perf-bar-fill" style="width:'+pct+'%"></span></span>' +
+                 '<span class="v5-perf-bar-val">' + fmtEuro(Math.round(v)) + '</span>' +
+               '</div>';
+      }).join('') || '<div style="color:#6B6760;font-size:11px;font-style:italic">' + (fr()?'Aucun revenu enregistré':'No revenue recorded') + '</div>';
+    }
+  }
+
+  /* ── Filters + grid ── */
+  function clientMatchesFilter(c){
+    if (!firm(c)) return false;
+    var f = filterState.chip;
+    var s = filterState.search.trim().toLowerCase();
+    if (s) {
+      var hay = ((c.name||'') + ' ' + (c.source||'') + ' ' + (c.nat||'') + ' ' + (c.notes||'') + ' ' + ((c.tags||[]).join(' '))).toLowerCase();
+      if (hay.indexOf(s) === -1) return false;
+    }
+    if (f === 'vip')       return Array.isArray(c.tags) && c.tags.indexOf('VIP') !== -1;
+    if (f === 'airbnb')    return /airbnb/i.test(c.source || '');
+    if (f === 'fr')        return /🇫🇷|France|Français/i.test(c.nat || '');
+    if (f === 'returning') {
+      // Recompute lightweight cache once per render via closure inside renderGrid
+      return c._isReturning === true;
+    }
+    return true;
+  }
+
+  function renderGrid(){
+    var grid = $('v5Grid');
+    if (!grid || typeof clients === 'undefined') return;
+    var FR = fr();
+    var firmList = clients.filter(firm);
+    // Compute returning marker once
+    var nameCount = {};
+    firmList.forEach(function(c){ var k = (c.name||'').trim().toLowerCase(); if (k) nameCount[k] = (nameCount[k]||0) + 1; });
+    firmList.forEach(function(c){ c._isReturning = (nameCount[(c.name||'').trim().toLowerCase()] || 0) >= 2; });
+
+    var list = firmList.filter(clientMatchesFilter);
+    list.sort(function(a,b){
+      // Upcoming/in-house first by arrival date asc, past last
+      var today = todayMid();
+      var aArr = a.arrival ? new Date(a.arrival) : null;
+      var bArr = b.arrival ? new Date(b.arrival) : null;
+      var aPast = aArr && a.departure ? new Date(a.departure) < today : false;
+      var bPast = bArr && b.departure ? new Date(b.departure) < today : false;
+      if (aPast !== bPast) return aPast ? 1 : -1;
+      if (!aArr) return 1; if (!bArr) return -1;
+      return aArr - bArr;
+    });
+
+    if (!list.length) {
+      grid.innerHTML = '<div class="v5-empty">' + (FR?'Aucun guest correspondant.':'No matching guests.') + '</div>';
+      return;
+    }
+    grid.innerHTML = list.map(function(c){
+      var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
+      var rev = c.price ? Math.round(c.price * (1 - (c.commission||0)/100) * nights) : 0;
+      var flag = flagEmoji(c);
+      var tags = Array.isArray(c.tags) ? c.tags.slice(0,3) : [];
+      var tagsHtml = tags.length ? '<div class="v5-card-tags">' + tags.map(function(t){
+        return '<span class="v5-badge is-' + (t === 'VIP' ? 'vip' : 'tag') + '">' + escapeHtml(t) + '</span>';
+      }).join('') + '</div>' : '';
+      var arr = c.arrival ? new Date(c.arrival).toLocaleDateString(FR?'fr-FR':'en-GB', {day:'numeric', month:'short'}) : '';
+      var dep = c.departure ? new Date(c.departure).toLocaleDateString(FR?'fr-FR':'en-GB', {day:'numeric', month:'short'}) : '';
+      var dates = arr ? (arr + (dep ? ' → ' + dep : '')) : '';
+      return '<div class="v5-card" data-guest-id="' + escapeHtml(c.id||'') + '">' +
+               '<span class="v5-avatar v5-avatar-sm">' + initials(c.name) + '</span>' +
+               '<div class="v5-card-body">' +
+                 '<div class="v5-card-row1">' +
+                   '<span class="v5-card-name">' + escapeHtml(c.name||'?') + '</span>' +
+                   (flag ? '<span class="v5-card-flag">' + flag + '</span>' : '') +
+                 '</div>' +
+                 '<div class="v5-card-row2">' +
+                   '<span class="v5-card-meta">' + escapeHtml((c.source||'') + (dates ? ' · ' + dates : '')) + '</span>' +
+                   (rev ? '<span class="v5-card-rev">' + fmtEuro(rev) + '</span>' : '') +
+                 '</div>' +
+                 tagsHtml +
+               '</div>' +
+             '</div>';
+    }).join('');
+
+    grid.querySelectorAll('[data-guest-id]').forEach(function(el){
+      el.addEventListener('click', function(){
+        openGuestDetailV5(el.getAttribute('data-guest-id'));
+      });
+    });
+  }
+
+  /* ── Open detail ── stub here; full renderer lands in C3 ── */
+  window.openGuestDetailV5 = function(id){
+    var panel = document.getElementById('guestDetailV5');
+    if (!panel) return;
+    panel.style.display = 'flex';
+    panel.setAttribute('aria-hidden', 'false');
+    panel.dataset.guestId = id || '';
+    requestAnimationFrame(function(){ panel.classList.add('is-open'); });
+    // C3 will populate via a renderer it owns; for now, just expose the id
+    if (typeof window._renderGuestDetailV5 === 'function') {
+      try { window._renderGuestDetailV5(id); } catch(e){ console.warn('[v5d]', e); }
+    }
+  };
+  window.closeGuestDetailV5 = function(){
+    var panel = document.getElementById('guestDetailV5');
+    if (!panel) return;
+    panel.classList.remove('is-open');
+    panel.setAttribute('aria-hidden', 'true');
+    setTimeout(function(){ panel.style.display = 'none'; }, 320);
+  };
+
+  /* ── Wiring ── */
+  function wireOnce(){
+    var root = document.getElementById('guestsV5');
+    if (!root || root.dataset.v5Wired === '1') return;
+    root.dataset.v5Wired = '1';
+
+    var search = $('v5Search');
+    if (search) {
+      search.addEventListener('input', function(){
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(function(){
+          filterState.search = search.value || '';
+          renderGrid();
+        }, 200);
+      });
+    }
+    document.querySelectorAll('#v5FilterChips .v5-fchip').forEach(function(c){
+      c.addEventListener('click', function(){
+        document.querySelectorAll('#v5FilterChips .v5-fchip').forEach(function(x){ x.classList.toggle('is-on', x === c); });
+        filterState.chip = c.getAttribute('data-filter') || 'all';
+        renderGrid();
+      });
+    });
+
+    // Close handlers on the detail panel
+    var back = document.getElementById('v5dBack');
+    if (back) back.addEventListener('click', window.closeGuestDetailV5);
+    // ESC closes detail
+    window.addEventListener('keydown', function(e){
+      var panel = document.getElementById('guestDetailV5');
+      if (e.key === 'Escape' && panel && panel.classList.contains('is-open')) window.closeGuestDetailV5();
+    });
+  }
+
+  window.renderGuestsV5All = function(){
+    if (!flagOn()) return;
+    try { renderHero(); }   catch(e){ console.warn('[v5 hero]', e); }
+    try { renderPerf(); }   catch(e){ console.warn('[v5 perf]', e); }
+    try { renderGrid(); }   catch(e){ console.warn('[v5 grid]', e); }
+    try { wireOnce(); }     catch(e){}
+  };
+
+  /* ── Apply v5 mode on #tab-clients (mirrors Today v3 / Villa v4) ── */
+  function applyV5Mode(){
+    var tab = document.getElementById('tab-clients');
+    var v5 = document.getElementById('guestsV5');
+    var on = flagOn();
+    if (!tab || !v5) return;
+    Array.prototype.forEach.call(tab.children, function(child){
+      if (child && child.id === 'guestDetailV5') return; // detail floats outside the grid
+      if (!on) {
+        if (child === v5) child.style.display = 'none';
+        return;
+      }
+      child.style.display = (child === v5) ? '' : 'none';
+    });
+    if (on) window.renderGuestsV5All();
+  }
+  window.applyV5Mode = applyV5Mode;
+
+  /* ── Wrap existing refresh entry points ── */
+  function wrapRefreshers(){
+    ['renderAll','renderClients','saveLocal'].forEach(function(name){
+      if (typeof window[name] !== 'function' || window[name]._v5Wrapped) return;
+      var orig = window[name];
+      var wrapped = function(){
+        var r = orig.apply(this, arguments);
+        try { if (flagOn()) window.renderGuestsV5All(); } catch(e){}
+        return r;
+      };
+      wrapped._v5Wrapped = true;
+      window[name] = wrapped;
+    });
+  }
+
+  function init(){
+    wrapRefreshers();
+    applyV5Mode();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
 <!-- ══ ARIA CENTERED MODAL ═════════════════════════════════ -->
 <div class="aria-modal-bg" id="ariaModal" onclick="if(event.target===this)closeAriaModal()">
   <div class="aria-modal" role="dialog" aria-label="ARIA AI Assistant">
