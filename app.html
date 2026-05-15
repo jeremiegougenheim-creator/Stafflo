@@ -22049,6 +22049,441 @@ window.addEventListener('DOMContentLoaded', function() {
 })();
 </script>
 
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   Villa v4 controller (Lot 4) — pricing hero + signals + push channels
+   Strangler fig: gated by stafflo_aria_first_v1 (same flag as Today v3).
+   The pricing engine (getPrice/updatePrice/renderScenarios/renderMarket
+   Band) stays untouched — this is UI on top of it.
+   ════════════════════════════════════════════════════════════════════ */
+(function villaV4Controller(){
+  function $(id){ return document.getElementById(id); }
+  function fr(){ return typeof lang !== 'undefined' && lang === 'fr'; }
+  function safeCfg(){ try { return (typeof getCfg === 'function') ? getCfg() : (JSON.parse(localStorage.getItem('stafflo_cfg')||'{}')); } catch(e){ return {}; } }
+  function flagOn(){
+    try { return typeof isAriaFirstV1Enabled === 'function' && isAriaFirstV1Enabled(); }
+    catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') === '1'; } catch(_) { return false; } }
+  }
+  function fmtPrice(n){ try { return Math.round(n).toLocaleString(fr()?'fr-FR':'en-US') + '€'; } catch(e){ return n + '€'; } }
+  function escapeHtml(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+  /* ── HERO: eyebrow + price + sub + modes + ARIA explains ── */
+  function renderV4Hero(){
+    if (typeof getPrice !== 'function') return;
+    var FR = fr();
+    var p = getPrice();
+    var price = p.pricePN;
+
+    // Eyebrow date (TONIGHT · 11 MAY)
+    var eyebrow = $('v4HeroEyebrow');
+    if (eyebrow) {
+      var now = new Date();
+      var dayMonth = now.toLocaleDateString(FR?'fr-FR':'en-US', { day:'numeric', month:'short' }).toUpperCase().replace('.','');
+      eyebrow.textContent = (FR ? 'CE SOIR · ' : 'TONIGHT · ') + dayMonth;
+    }
+
+    var priceEl = $('v4HeroPrice');
+    if (priceEl) priceEl.textContent = fmtPrice(price);
+
+    // Target badge — green check if within floor/cap, red off-target otherwise
+    var target = $('v4HeroTarget');
+    if (target) {
+      var floor = p.floor || 0;
+      var cap = p.cap || Infinity;
+      var ok = price >= floor && price <= cap;
+      target.classList.toggle('is-off', !ok);
+      target.textContent = ok ? '✓' : '!';
+      target.title = ok ? (FR?'Dans la cible':'On target') : (FR?'Hors cible':'Off target');
+    }
+
+    // Sub line — season + per night + target
+    var sub = $('v4HeroSub');
+    if (sub) {
+      var seasonEl = document.getElementById('season');
+      var seasonText = seasonEl && seasonEl.selectedOptions && seasonEl.selectedOptions[0] ? seasonEl.selectedOptions[0].textContent : '';
+      var bits = [seasonText, FR?'par nuit':'per night'];
+      if (p.floor || p.cap) bits.push((FR?'cible':'target') + ' ' + (p.floor||0) + '€–' + (p.cap||'∞') + '€');
+      sub.textContent = bits.filter(Boolean).join(' · ').toLowerCase();
+    }
+
+    // Mode pills sync with global `mods`
+    try {
+      var modsObj = (typeof mods !== 'undefined') ? mods : {};
+      var anyOn = !!(modsObj.event || modsObj.weekend || modsObj.lastmin || modsObj.longstay);
+      document.querySelectorAll('#v4HeroModes .v4-mode').forEach(function(btn){
+        var m = btn.getAttribute('data-mode');
+        var on = (m === 'auto') ? !anyOn : !!modsObj[m];
+        btn.classList.toggle('is-on', on);
+      });
+    } catch(e){}
+
+    // ARIA explains body
+    var explain = $('v4ExplainBody');
+    if (explain) {
+      var parts = [];
+      parts.push((FR?'Base saison':'Season base') + ' : <strong>' + fmtPrice(p.base) + '</strong>');
+      if (typeof mods !== 'undefined') {
+        if (mods.event)    parts.push('+15% ' + (FR?'événement':'event'));
+        if (mods.weekend)  parts.push('+50€ ' + (FR?'week-end':'weekend'));
+        if (mods.lastmin)  parts.push('−15% ' + (FR?'last minute':'last minute'));
+        if (mods.longstay) parts.push('−20% ' + (FR?'long séjour (≥14n)':'long stay (≥14n)'));
+      }
+      if (p.guestExtra) parts.push('+' + fmtPrice(p.guestExtra) + ' ' + (FR?'invités sup.':'extra guests'));
+      parts.push((FR?'Cible':'Target') + ' ' + (p.floor||0) + '€–' + (p.cap||'∞') + '€');
+      parts.push('<span style="color:#C9963A;font-weight:600">' + (FR?'Total':'Total') + ' : ' + fmtPrice(price) + '/n · ' + (FR?'net après Airbnb':'net after Airbnb') + ' ' + fmtPrice(price * (1 - (p.hostFeeRate||0))) + '</span>');
+      explain.innerHTML = parts.join('<br>');
+    }
+  }
+
+  /* ── SIGNALS strip ── */
+  function renderV4Signals(){
+    var FR = fr();
+    var w = document.getElementById('factorWeather');
+    var f = document.getElementById('factorFlights');
+    var e = document.getElementById('factorEvent');
+    var wv = $('v4SigWeatherVal'); if (wv) wv.textContent = (w && w.textContent && w.textContent !== '—') ? w.textContent : '—';
+    var fv = $('v4SigFlightsVal'); if (fv) fv.textContent = (f && f.textContent && f.textContent !== '—') ? f.textContent : '—';
+    var ev = $('v4SigEventVal');   if (ev) ev.textContent = (e && e.textContent && e.textContent !== '—') ? e.textContent : (FR?'Aucun':'None');
+
+    // Occupancy from clients confirmed in next 30 days
+    var occ = $('v4SigOccupancyVal');
+    if (occ && typeof clients !== 'undefined') {
+      var today = new Date(); today.setHours(0,0,0,0);
+      var end = new Date(today.getTime() + 30 * 86400000);
+      var booked = 0;
+      clients.forEach(function(c){
+        if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
+        if (!c.arrival || !c.departure) return;
+        var a = new Date(c.arrival), d = new Date(c.departure);
+        if (d < today || a > end) return;
+        var from = a > today ? a : today;
+        var to = d < end ? d : end;
+        booked += Math.max(0, Math.ceil((to - from) / 86400000));
+      });
+      var pct = Math.min(100, Math.round(booked / 30 * 100));
+      occ.textContent = pct + '% · 30d';
+    }
+  }
+
+  /* ── MARKET table — 5 comps + you, with deltas ── */
+  function renderV4Market(){
+    var host = $('v4MarketTable');
+    var meta = $('v4MarketMeta');
+    if (!host || typeof getPrice !== 'function') return;
+    var FR = fr();
+    var comps = [];
+    try { comps = (typeof loadSavedCompetitors === 'function') ? (loadSavedCompetitors() || []) : []; } catch(e){}
+    if (!comps.length) {
+      host.innerHTML = '<div style="padding:10px 0;color:#6B6760;font-size:12.5px;font-style:italic">' + (FR?'Ajoutez des concurrents dans Settings.':'Add competitors in Settings.') + '</div>';
+      if (meta) meta.textContent = '';
+      return;
+    }
+    var sorted = comps.slice().sort(function(a,b){ return (b.price||0) - (a.price||0); }).slice(0, 5);
+    var avg = Math.round(sorted.reduce(function(s,c){ return s + (c.price||0); }, 0) / Math.max(1, sorted.length));
+    var yourPrice = getPrice().pricePN;
+    var rows = sorted.map(function(c){
+      var d = (c.price||0) - avg;
+      var sign = d > 0 ? '+' : d < 0 ? '−' : '';
+      var dCls = d > 0 ? 'is-pos' : d < 0 ? 'is-neg' : '';
+      return '<div class="v4-market-row">' +
+               '<span class="v4-market-name">' + escapeHtml(c.name||'?') + '</span>' +
+               '<span class="v4-market-price">' + fmtPrice(c.price||0) + '</span>' +
+               '<span class="v4-market-delta ' + dCls + '">' + sign + Math.abs(d) + '€</span>' +
+             '</div>';
+    }).join('');
+    var youDelta = yourPrice - avg;
+    var youSign = youDelta > 0 ? '+' : youDelta < 0 ? '−' : '';
+    var youCls = youDelta > 0 ? 'is-pos' : youDelta < 0 ? 'is-neg' : '';
+    var youRow = '<div class="v4-market-row is-you">' +
+                   '<span class="v4-market-name">' + (FR?'Votre villa':'Your villa') + '</span>' +
+                   '<span class="v4-market-price">' + fmtPrice(yourPrice) + '</span>' +
+                   '<span class="v4-market-delta ' + youCls + '">' + youSign + Math.abs(youDelta) + '€</span>' +
+                 '</div>';
+    host.innerHTML = rows + youRow;
+    if (meta) meta.textContent = sorted.length + ' ' + (FR?'concurrents':'competitors');
+  }
+
+  /* ── OPPORTUNITIES — 3 heuristic items ── */
+  function renderV4Opps(){
+    var host = $('v4OppsList');
+    if (!host) return;
+    var FR = fr();
+    var ops = [];
+    var cfg = safeCfg();
+    if (typeof clients !== 'undefined') {
+      var today = new Date(); today.setHours(0,0,0,0);
+      var firm = clients.filter(function(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : true; });
+      var upcoming = firm.filter(function(c){ return c.arrival && new Date(c.arrival) > today; })
+                         .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
+      // Opp 1: gap to next arrival
+      if (upcoming.length) {
+        var d = Math.round((new Date(upcoming[0].arrival) - today) / 86400000);
+        if (d >= 4) ops.push({ icon:'📅', title: (FR?'Trou de ':'Gap of ') + d + (FR?'j avant ':'d before ') + (upcoming[0].name||'').split(' ')[0], sub: FR?'Optimiser le prix sur ces nuits libres.':'Optimize pricing on those free nights.' });
+        else        ops.push({ icon:'🛬', title: (FR?'Arrivée J+':'Arrival in ') + d + (FR?'':'d') + ' · ' + (upcoming[0].name||'').split(' ')[0], sub: FR?'Préparer le brief staff et la liste courses.':'Prepare staff brief and groceries.' });
+      } else {
+        ops.push({ icon:'📭', title: FR?'Aucune arrivée confirmée':'No confirmed arrivals', sub: FR?'Pousser une promo sur la semaine.':'Push a weekly promo.' });
+      }
+      // Opp 2: market positioning
+      try {
+        var comps = (typeof loadSavedCompetitors === 'function') ? (loadSavedCompetitors() || []) : [];
+        if (comps.length && typeof getPrice === 'function') {
+          var avg = Math.round(comps.reduce(function(s,c){ return s + (c.price||0); }, 0) / comps.length);
+          var yp = getPrice().pricePN;
+          if (yp < avg - 100)      ops.push({ icon:'📈', title: FR?'Sous le marché':'Below market', sub:(FR?'Marché ':'Market ') + avg + '€ · ' + (FR?'remontée ':'+€') + Math.round(avg-yp) + (FR?'€ possible.':' possible.') });
+          else if (yp > avg + 200) ops.push({ icon:'⚠️', title: FR?'Au-dessus du marché':'Above market', sub:(FR?'Marché ':'Market ') + avg + '€ · ' + (FR?'risque de churn last-min.':'last-min churn risk.') });
+          else                     ops.push({ icon:'🎯', title: FR?'Positionnement aligné':'Aligned with market', sub:(FR?'Écart marché ':'Market gap ') + (yp>avg?'+':'') + (yp-avg) + '€.' });
+        }
+      } catch(e){}
+      // Opp 3: long-stay discount
+      if (cfg.commissions && typeof mods !== 'undefined' && !mods.longstay) {
+        ops.push({ icon:'🏖', title: FR?'Tester remise long séjour':'Try long-stay discount', sub: FR?'−20% sur 14n+ pour remplir les semaines creuses.':'−20% on 14n+ to fill empty weeks.' });
+      }
+    }
+    ops = ops.slice(0, 3);
+    if (!ops.length) { host.innerHTML = '<li style="padding:10px 0;color:#6B6760;font-size:12.5px;font-style:italic">' + (FR?'Aucune opportunité détectée.':'No opportunities detected.') + '</li>'; return; }
+    host.innerHTML = ops.map(function(o){
+      return '<li class="v4-opp">' +
+               '<span class="v4-opp-icon">' + o.icon + '</span>' +
+               '<div class="v4-opp-body">' +
+                 '<div class="v4-opp-title">' + escapeHtml(o.title) + '</div>' +
+                 '<div class="v4-opp-sub">' + escapeHtml(o.sub) + '</div>' +
+               '</div>' +
+             '</li>';
+    }).join('');
+  }
+
+  /* ── SCENARIOS — 4 bars (30/50/70/100%) ── */
+  function renderV4Scenarios(){
+    if (typeof getPrice !== 'function') return;
+    var p = getPrice();
+    var pricePN = p.pricePN;
+    var netRate = 1 - (p.hostFeeRate || 0.155);
+    [30, 50, 70, 100].forEach(function(pct){
+      var card = document.querySelector('.v4-scen[data-pct="' + pct + '"]');
+      if (!card) return;
+      var nights = Math.round(30 * pct / 100);
+      var rev = Math.round(nights * pricePN * netRate);
+      var bar = card.querySelector('.v4-scen-bar');
+      var revEl = card.querySelector('.v4-scen-rev');
+      if (bar) bar.style.height = Math.max(6, pct) + '%';
+      if (revEl) revEl.textContent = fmtPrice(rev);
+    });
+  }
+
+  /* ── Mode pill binding — wraps existing toggleMod ── */
+  function wireV4Modes(){
+    document.querySelectorAll('#v4HeroModes .v4-mode').forEach(function(btn){
+      if (btn.dataset.v4Wired === '1') return;
+      btn.dataset.v4Wired = '1';
+      btn.addEventListener('click', function(){
+        var m = btn.getAttribute('data-mode');
+        if (m === 'auto') {
+          // Reset all mods
+          try {
+            ['event','weekend','lastmin','longstay'].forEach(function(k){
+              if (typeof mods !== 'undefined' && mods[k]) {
+                if (typeof toggleMod === 'function') toggleMod(k);
+              }
+            });
+          } catch(e){}
+        } else if (typeof toggleMod === 'function') {
+          toggleMod(m);
+        }
+        // toggleMod calls updatePrice which our wrapper re-renders v4
+      });
+    });
+  }
+
+  /* ── Push channels sheet ── */
+  function openPushSheet(){
+    if (!window.StaffloSheet || typeof getPrice !== 'function') return;
+    var FR = fr();
+    var p = getPrice();
+    var price = p.pricePN;
+    var cfg = safeCfg();
+    var commissions = (cfg && cfg.commissions) || {};
+    // Default channel set if user hasn't onboarded — keep MVP friendly
+    var channels = [
+      { key:'airbnb',   name:'Airbnb',      defaultPct: (commissions.airbnb !== undefined ? commissions.airbnb : (p.hostFeeRate*100)), enabled:true,  feeLabel: FR?'host fee':'host fee' },
+      { key:'booking',  name:'Booking.com', defaultPct: (commissions.booking !== undefined ? commissions.booking : 15),                enabled:false, feeLabel: FR?'commission':'commission' },
+      { key:'direct',   name:'Direct',      defaultPct: (commissions.direct !== undefined ? commissions.direct : 0),                   enabled:false, feeLabel: FR?'sans commission':'no commission' }
+    ];
+
+    var wrap = document.createElement('div');
+    var subEl = document.createElement('div');
+    subEl.style.cssText = 'font-family:DM Sans,Inter,sans-serif;font-size:12px;color:#6B6760;margin-bottom:12px;letter-spacing:.3px';
+    var now = new Date();
+    var dayMonth = now.toLocaleDateString(FR?'fr-FR':'en-US', { day:'numeric', month:'short' }).replace('.','');
+    subEl.textContent = (FR?'Ce soir · ':'Tonight · ') + dayMonth + ' · ' + fmtPrice(price) + '/n';
+    wrap.appendChild(subEl);
+
+    var rowsHost = document.createElement('div');
+    wrap.appendChild(rowsHost);
+
+    function renderRows(){
+      rowsHost.innerHTML = channels.map(function(ch){
+        var net = Math.round(price * (1 - (ch.defaultPct||0)/100));
+        var feeTxt = ch.defaultPct > 0 ? (ch.defaultPct + '% ' + ch.feeLabel) : ch.feeLabel;
+        return '<div class="v4-push-row">' +
+                 '<div class="v4-push-row-left">' +
+                   '<input type="checkbox" class="v4-push-toggle" data-ch="' + ch.key + '"' + (ch.enabled?' checked':'') + '>' +
+                   '<div>' +
+                     '<div class="v4-push-name">' + ch.name + '</div>' +
+                     '<div class="v4-push-fee">' + feeTxt + '</div>' +
+                   '</div>' +
+                 '</div>' +
+                 '<div class="v4-push-net">' +
+                   '<div class="v4-push-net-val">' + fmtPrice(net) + '</div>' +
+                   '<div class="v4-push-net-lbl">' + (FR?'NET / N':'NET / N') + '</div>' +
+                 '</div>' +
+               '</div>';
+      }).join('');
+      rowsHost.querySelectorAll('.v4-push-toggle').forEach(function(t){
+        t.addEventListener('change', function(){
+          var k = t.getAttribute('data-ch');
+          channels.forEach(function(c){ if (c.key === k) c.enabled = !!t.checked; });
+          updatePrimaryLabel();
+        });
+      });
+    }
+
+    var primaryLabel = '';
+    function countActive(){ return channels.filter(function(c){return c.enabled;}).length; }
+    function updatePrimaryLabel(){
+      var n = countActive();
+      primaryLabel = (FR?'Pousser à ':'Push to ') + n + ' ' + (n === 1 ? (FR?'canal':'channel') : (FR?'canaux':'channels')) + ' · ' + fmtPrice(price);
+      var btn = document.querySelector('.stafflo-sheet-btn.is-primary');
+      if (btn) btn.textContent = primaryLabel;
+    }
+
+    renderRows();
+    updatePrimaryLabel(); // initial (will be re-applied after open() builds the btn)
+
+    StaffloSheet.open({
+      title: FR ? 'Pousser le prix aux canaux' : 'Push price to channels',
+      body: wrap,
+      primaryCTA: primaryLabel,
+      secondaryCTA: FR ? 'Annuler' : 'Cancel',
+      onConfirm: function(){
+        var active = channels.filter(function(c){ return c.enabled; });
+        if (!active.length) return;
+        var txt = (FR ? 'Ce soir' : 'Tonight') + ': ' + fmtPrice(price) + (active.length === 1 ? '' : ' · ' + active.map(function(c){return c.name;}).join(', '));
+        // Clipboard copy
+        try { navigator.clipboard && navigator.clipboard.writeText(txt); } catch(e){}
+        // Local log + cfg mirror
+        var entry = { price: price, at: new Date().toISOString(), channels: active.map(function(c){return c.key;}) };
+        try { localStorage.setItem('stafflo_last_push', JSON.stringify(entry)); } catch(e){}
+        try {
+          var cfg2 = safeCfg();
+          cfg2.lastPushed = entry;
+          if (typeof setCfg === 'function') setCfg(cfg2);
+        } catch(e){}
+        // Best-effort PATCH villa_settings (assumes columns exist; silently fails otherwise)
+        try {
+          if (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_user) {
+            var sbUrl = (typeof SB_URL !== 'undefined') ? SB_URL : ((safeCfg().sbUrl)||'');
+            var sbKey = (typeof SB_ANON !== 'undefined') ? SB_ANON : ((safeCfg().sbKey)||'');
+            if (sbUrl && sbKey) {
+              fetch(sbUrl + '/rest/v1/villa_settings?owner_id=eq.' + _stafflo_user.id, {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'apikey': sbKey,
+                  'Authorization': 'Bearer ' + _stafflo_session.access_token,
+                  'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify({
+                  last_pushed_price: price,
+                  last_pushed_at: entry.at,
+                  last_pushed_channels: entry.channels
+                })
+              }).catch(function(){});
+            }
+          }
+        } catch(e){}
+        if (typeof toast === 'function') toast((FR?'✓ Copié · ':'✓ Copied · ') + active.length + (FR?' canaux notés':' channels logged'));
+      }
+    });
+
+    // Re-apply primary label now that the button exists
+    setTimeout(updatePrimaryLabel, 30);
+  }
+
+  /* ── Apply v3 mode on #tab-home (mirrors Today v3 logic) ── */
+  function applyV4Mode(){
+    var tab = document.getElementById('tab-home');
+    var v4 = document.getElementById('villaV3');
+    var on = flagOn();
+    if (!tab || !v4) return;
+    Array.prototype.forEach.call(tab.children, function(child){
+      if (!on) {
+        if (child === v4) child.style.display = 'none';
+        return;
+      }
+      child.style.display = (child === v4) ? '' : 'none';
+    });
+    if (on) renderV4All();
+  }
+
+  window.renderV4All = function(){
+    if (!flagOn()) return;
+    try { renderV4Hero(); }      catch(e){ console.warn('[v4 hero]', e); }
+    try { renderV4Signals(); }   catch(e){ console.warn('[v4 signals]', e); }
+    try { renderV4Market(); }    catch(e){ console.warn('[v4 market]', e); }
+    try { renderV4Opps(); }      catch(e){ console.warn('[v4 opps]', e); }
+    try { renderV4Scenarios(); } catch(e){ console.warn('[v4 scen]', e); }
+    try { wireV4Modes(); }       catch(e){}
+  };
+
+  /* ── Wire the Push CTA + Adjust manually link ── */
+  function wireV4Actions(){
+    var pushBtn = document.getElementById('v4PushBtn');
+    if (pushBtn && pushBtn.dataset.v4Wired !== '1') {
+      pushBtn.dataset.v4Wired = '1';
+      pushBtn.addEventListener('click', openPushSheet);
+    }
+    var adj = document.getElementById('v4AdjustLink');
+    if (adj && adj.dataset.v4Wired !== '1') {
+      adj.dataset.v4Wired = '1';
+      adj.addEventListener('click', function(){
+        // Open existing settings panel (where pricing controls live)
+        if (typeof openSettings === 'function') { openSettings(); return; }
+        // Fallback: scroll to the legacy ctrl-strip if visible
+        var ctrl = document.querySelector('#tab-home .ctrl-strip');
+        if (ctrl) ctrl.scrollIntoView({ behavior:'smooth', block:'start' });
+      });
+    }
+  }
+
+  /* ── Wrap existing pricing refresh entry points (do not modify) ── */
+  function wrapRefreshers(){
+    ['updatePrice','renderScenarios','renderMarketBand','renderCompetitors','loadWeather','loadFlights','loadMarrakechEvents'].forEach(function(name){
+      if (typeof window[name] !== 'function' || window[name]._v4Wrapped) return;
+      var orig = window[name];
+      var wrapped = function(){
+        var r = orig.apply(this, arguments);
+        try { if (flagOn()) window.renderV4All(); } catch(e){}
+        return r;
+      };
+      wrapped._v4Wrapped = true;
+      window[name] = wrapped;
+    });
+  }
+
+  function init(){
+    wrapRefreshers();
+    wireV4Actions();
+    applyV4Mode();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
 <!-- ══ ARIA CENTERED MODAL ═════════════════════════════════ -->
 <div class="aria-modal-bg" id="ariaModal" onclick="if(event.target===this)closeAriaModal()">
   <div class="aria-modal" role="dialog" aria-label="ARIA AI Assistant">
