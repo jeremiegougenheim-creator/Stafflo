@@ -2975,6 +2975,7 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
             <span style="font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;font-family:'DM Sans',sans-serif" data-fr="Détail" data-en="Details">Détail</span>
           </div>
           <span class="inbox-unread-badge" id="inboxUnreadBadgeToday" style="background:var(--gold);color:var(--green-dark);font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px">0</span>
+          <span id="inboxLastSyncLabel" style="font-size:10px;color:var(--muted);font-family:'DM Sans',sans-serif;white-space:nowrap;margin-left:4px"></span>
         </div>
         <div class="inbox-actions" onclick="event.stopPropagation()" style="display:flex;gap:6px">
           <button class="inbox-refresh-btn" id="inboxRefreshBtnToday" onclick="refreshInboxRow(this)" title="Rafraîchir" aria-label="Rafraîchir inbox" data-title-fr="Rafraîchir" data-title-en="Refresh" data-aria-label-fr="Rafraîchir inbox" data-aria-label-en="Refresh inbox" style="background:var(--paper);border:none;color:var(--ink);width:28px;height:28px;border-radius:7px;cursor:pointer">↻</button>
@@ -18229,6 +18230,8 @@ function refreshInboxRow(btn) {
       localStorage.setItem('stafflo_inbox_last_sync', hh + ':' + mm);
       var el = document.getElementById('inboxSetLastSync');
       if (el) el.textContent = hh + ':' + mm;
+      var lbl = document.getElementById('inboxLastSyncLabel');
+      if (lbl) lbl.textContent = 'Sync ' + hh + ':' + mm;
     } catch(e){}
   });
 }
@@ -18251,6 +18254,13 @@ function stopInboxAutoRefresh() {
 // Start once on init
 try { startInboxAutoRefresh(); } catch(e){}
 window.startInboxAutoRefresh = startInboxAutoRefresh;
+
+// Restore last sync label on boot (was persisted on each refresh by refreshInboxRow)
+try {
+  var _savedSync = localStorage.getItem('stafflo_inbox_last_sync');
+  var _syncLbl = document.getElementById('inboxLastSyncLabel');
+  if (_syncLbl && _savedSync) _syncLbl.textContent = 'Sync ' + _savedSync;
+} catch(e){}
 window.stopInboxAutoRefresh = stopInboxAutoRefresh;
 
 // ── Inbox unread badge sync ──
