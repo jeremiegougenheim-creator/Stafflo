@@ -6006,6 +6006,7 @@ async function loadFromSupabase() {
         commMode: r.comm_mode||'percent', source: r.source||'Airbnb',
         notes: r.notes||'', payStatus: r.pay_status||'',
         bookingStatus: r.booking_status||'confirmed',
+        contact_type: r.contact_type || null,
         messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
         createdAt: r.created_at||new Date().toISOString()
       }; });
@@ -9258,7 +9259,13 @@ function buildClientsContextRich(maxItems) {
     } else if (c.arrival) bits.push((fr?'arrivée ':'arrival ') + fmtDateHuman(c.arrival));
     if (c.guests) bits.push(c.guests + (fr?' personnes':' guests'));
     if (c.nights) bits.push(c.nights + (fr?' nuits':' nights'));
-    if (c.price) bits.push(c.price + '€');
+    if (c.price && Number(c.price) > 0) bits.push(c.price + '€');
+    else {
+      // Confirmed/pending stays without a price → flag explicitly so ARIA
+      // says "prix non renseigné" instead of citing 0€.
+      var _bsP = c.bookingStatus || 'confirmed';
+      if (_bsP === 'confirmed' || _bsP === 'pending') bits.push(fr?'prix MANQUANT (à renseigner)':'price MISSING (to be filled)');
+    }
     if (c.net) bits.push('net ' + c.net + '€');
     if (c.source) bits.push(c.source);
     if (c.notes) bits.push('notes: ' + (c.notes.length > 80 ? c.notes.slice(0,80) + '…' : c.notes));
@@ -9268,6 +9275,9 @@ function buildClientsContextRich(maxItems) {
   function fmtLead(c) {
     var bits = [c.name || (fr?'sans nom':'unnamed')];
     bits.push('stage:' + (c.bookingStatus || 'inquiry'));
+    // Expired inquiry: arrival is in the past and never confirmed. Tag so ARIA
+    // never lists it as an upcoming stay (the system prompt also enforces this).
+    if (c.arrival && c.arrival < todayISO) bits.push(fr?'(EXPIRÉE — arrivée passée)':'(EXPIRED — arrival past)');
     var sc = getLeadScore(c);
     if (sc) bits.push('score:' + sc);
     var d = daysSinceUpdate(c);
@@ -9453,7 +9463,12 @@ async function handleChatQuestion(text) {
       '  • CONFIRMED BOOKINGS : réservations payées / confirmées. Ce sont des SÉJOURS RÉELS.',
       '  • PIPELINE : prospects (inquiry/quoted) qui n\'ont PAS confirmé. Ce ne sont PAS des séjours.',
       'Si on te demande les prochaines arrivées, qui arrive demain, qui est sur place, etc. → tu ne cites QUE des CONFIRMED BOOKINGS.',
-      'Les leads dans PIPELINE ne doivent JAMAIS être mentionnés comme des arrivées ou des séjours. Ils sont à convertir, pas à accueillir.'
+      'Les leads dans PIPELINE ne doivent JAMAIS être mentionnés comme des arrivées ou des séjours. Ils sont à convertir, pas à accueillir.',
+      '',
+      '════ DONNÉES MANQUANTES ou ANOMALIES ════',
+      'Si un client a "prix MANQUANT" : dis "prix non renseigné" ou "à compléter", JAMAIS "0€" — c\'est une donnée à corriger côté CRM.',
+      'Si un lead est taggé (EXPIRÉE — arrivée passée) : IGNORE-LE complètement. Ne le cite ni en arrivée, ni en pipeline actif, ni en "prochain séjour". C\'est une demande non confirmée dont la date est passée.',
+      'En général, si une donnée semble incohérente (date passée pour un futur séjour, prix à 0€, nom vide), signale-le brièvement plutôt que d\'inventer.'
     ].join('\n');
   }
 
