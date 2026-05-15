@@ -4279,7 +4279,15 @@ const MAX_FREE_STAYS = 3;
 // ════════════════════════════════════════════
 // CONFIG & STATE
 // ════════════════════════════════════════════
-let lang = localStorage.getItem('stafflo_lang') || 'fr';
+let lang = (function(){
+  // URL param `?lang=en|fr` wins for this session only (no localStorage write)
+  // so a returning user reload without the param goes back to their prior pick.
+  try {
+    var u = new URLSearchParams(location.search).get('lang');
+    if (u === 'fr' || u === 'en') return u;
+  } catch(e){}
+  return localStorage.getItem('stafflo_lang') || 'fr';
+})();
 try { window.lang = lang; } catch(e){} // expose for callers that read via window (let doesn't bind)
 var clients = []; window.clients = clients; // Patched 2026-05-10: var so window-accessible
 
