@@ -4725,12 +4725,23 @@ window.enterDemoMode = enterDemoMode;
 async function initAuth() {
   if (STAFFLO_AUTH.initialized) return;
   STAFFLO_AUTH.initialized = true;
-  // Check demo mode FIRST (URL param OR localStorage flag) — bypasses Supabase
+  // Check demo mode FIRST (URL param OR localStorage flag) — bypasses Supabase.
+  // Smart routing: if ?demo=1 in URL AND a real session exists, skip the
+  // unauth-demo flow and let real auth proceed. Demo CRM data overlay
+  // (loadDemoData) is fired post-auth by the boot hook below.
   try {
     var qs = new URLSearchParams(location.search);
-    if (qs.get('demo') === '1' || localStorage.getItem('stafflo_demo_mode') === '1') {
-      enterDemoMode();
-      return;
+    var hasDemoParam = qs.get('demo') === '1';
+    if (hasDemoParam || localStorage.getItem('stafflo_demo_mode') === '1') {
+      var savedSession = null;
+      try { savedSession = (typeof loadSessionLocal === 'function') ? loadSessionLocal() : null; } catch(e){}
+      if (hasDemoParam && savedSession && savedSession.access_token) {
+        window._pendingDemoData = true;
+        // Fall through to normal auth path; loadDemoData fires after bootstrap.
+      } else {
+        enterDemoMode();
+        return;
+      }
     }
   } catch(e){}
   // Then check saved session
@@ -5005,52 +5016,95 @@ function _renderMagicLinkSent(email, isSignup) {
 // ════════════════════════════════════════════════════════════════
 // DEMO DATA — fake guests, emails, settings for sandbox mode
 // ════════════════════════════════════════════════════════════════
+// Demo overlay: merges 8 fake clients into the in-memory CRM. Does NOT
+// persist (no localStorage write, no Supabase push). Each client carries
+// _demo:true so saveLocal / pushToSupabase strip them, and loadLocal
+// filters them on read — reload without ?demo=1 returns the real data.
 function loadDemoData() {
-  // Inject demo clients
+  var FR = (typeof lang !== 'undefined') && lang === 'fr';
   var today = new Date();
-  function dt(offset) { var d = new Date(today); d.setDate(d.getDate() + offset); return d.toISOString().slice(0,10); }
-  window.__DEMO_CLIENTS = [
-    { id:'demo-1', name:'Sophie Bernard', nat:'🇫🇷', email:'sophie.b@example.com', phone:'+33612345678',
-      arrival: dt(-2), departure: dt(5), nights:7, guests:6, price:5250, net:4436, source:'Airbnb',
-      notes:'Anniversaire mariage 15 ans · vegan · piscine chauffée demandée', status:'active' },
-    { id:'demo-2', name:'Marcus Weber', nat:'🇩🇪', email:'m.weber@example.com', phone:'+491701234567',
-      arrival: dt(3), departure: dt(10), nights:7, guests:8, price:7350, net:6211, source:'Direct',
-      notes:'Entreprise · séminaire 6 cadres + 2 conjoints · besoin Wi-Fi pro', status:'active' },
-    { id:'demo-3', name:'Sarah Mitchell', nat:'🇬🇧', email:'sarah@example.co.uk', phone:'+447700123456',
-      arrival: dt(8), departure: dt(15), nights:7, guests:4, price:5950, net:5028, source:'Booking',
-      notes:'Famille avec 2 enfants 8 et 11 ans · lit bébé pour neveu visite', status:'active' },
-    { id:'demo-4', name:'Alessandro Romano', nat:'🇮🇹', email:'a.romano@example.it', phone:'+393331234567',
-      arrival: dt(20), departure: dt(27), nights:7, guests:10, price:9100, net:7693, source:'Airbnb',
-      notes:'Groupe d\'amis 30-40 ans · chef demandé tous les soirs · transferts aéroport', status:'active' },
-    { id:'demo-5', name:'Famille Lopez', nat:'🇪🇸', email:'lopez@example.es', phone:'+34611234567',
-      arrival: dt(-15), departure: dt(-8), nights:7, guests:6, price:4900, net:4140, source:'Direct',
-      notes:'Repeat guest · 3e séjour', status:'past' }
+  function rel(days) {
+    var d = new Date(today); d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0,10);
+  }
+  var demoClients = [
+    { id:'demo_massi',  name:'Massi Mekla',         nat:'🇫🇷 Français', email:'', phone:'+33612345678',
+      arrival:rel(0),  departure:rel(4),  nights:4, guests:6, price:850, commission:3.6, commMode:'percent',
+      source:'Airbnb',      notes:'Famille — déjà sur place, séjour de 4 nuits',
+      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
+    { id:'demo_sophie', name:'Sophie Laurent',      nat:'🇫🇷 Français', email:'', phone:'+33687654321',
+      arrival:rel(1),  departure:rel(5),  nights:4, guests:4, price:720, commission:15,  commMode:'percent',
+      source:'Booking.com', notes:'Végétarienne · arrivée tardive 22h',
+      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
+    { id:'demo_tim',    name:'Tim Bitici',          nat:'🇩🇪 Deutsch',  email:'', phone:'+491701234567',
+      arrival:rel(8),  departure:rel(12), nights:4, guests:8, price:950, commission:3.6, commMode:'percent',
+      source:'Airbnb',      notes:'Anniversaire 40 ans · gâteau demandé samedi soir',
+      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
+    { id:'demo_chen',   name:'James & Sarah Chen',  nat:'🇬🇧 English',  email:'', phone:'+447700123456',
+      arrival:rel(15), departure:rel(19), nights:4, guests:2, price:680, commission:0,   commMode:'percent',
+      source:'Direct',      notes:'Couple sans enfants, voyage anniversaire',
+      payStatus:'pending', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
+    { id:'demo_olivia', name:'Olivia Martinez',     nat:'🇪🇸 Español',  email:'', phone:'+34611234567',
+      arrival:rel(22), departure:rel(27), nights:5, guests:5, price:780, commission:15,  commMode:'percent',
+      source:'Booking.com', notes:"Groupe d'amis, soirée chef demandée jour 2",
+      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() },
+    { id:'demo_karim',  name:'Karim Benali',        nat:'🇲🇦 Maroc',    email:'', phone:'+212661234567',
+      arrival:'',       departure:'',       nights:0, guests:4, price:0,   commission:0,   commMode:'percent',
+      source:'Direct',      notes:'Demande devis pour juillet — sans dates fermes',
+      payStatus:'',     bookingStatus:'inquiry',   contact_type:'lead',  createdAt:new Date().toISOString() },
+    { id:'demo_emma',   name:'Emma Wilson',         nat:'🇬🇧 English',  email:'', phone:'+447712345678',
+      arrival:rel(30), departure:rel(35), nights:5, guests:6, price:0,   commission:3.6, commMode:'percent',
+      source:'Airbnb',      notes:'Demande si piscine chauffée + arrivée bébé 8 mois',
+      payStatus:'',     bookingStatus:'inquiry',   contact_type:'lead',  createdAt:new Date().toISOString() },
+    { id:'demo_yuki',   name:'Yuki Tanaka',         nat:'🇯🇵 日本語',   email:'', phone:'+81901234567',
+      arrival:rel(-5), departure:rel(-1), nights:4, guests:3, price:700, commission:15,  commMode:'percent',
+      source:'Booking.com', notes:'Premier séjour terminé hier · relancer pour review',
+      payStatus:'paid', bookingStatus:'confirmed', contact_type:'client', createdAt:new Date().toISOString() }
   ];
-  try { localStorage.setItem('stafflo_clients_demo', JSON.stringify(window.__DEMO_CLIENTS)); } catch(e){}
+  demoClients.forEach(function(c){ c._demo = true; });
 
-  // Demo emails
-  window.__DEMO_INBOX = [
-    { id:'em-1', from_name:'Sophie Bernard', from_email:'sophie.b@example.com', subject:'Demande chef ce soir',
-      body:'Bonjour, on adorerait un menu marocain traditionnel ce soir si possible. Tajine agneau pour 4 + option vegan pour moi. Merci !',
-      received_at: new Date(Date.now() - 30*60000).toISOString(), source:'direct', read:false },
-    { id:'em-2', from_name:'Booking.com', from_email:'noreply@booking.com', subject:'Nouvelle réservation confirmée — Sarah Mitchell',
-      body:'Vous avez une nouvelle réservation pour Sarah Mitchell, 4 personnes, du ' + dt(8) + ' au ' + dt(15) + '. Total : 5 950 €.',
-      received_at: new Date(Date.now() - 4*3600000).toISOString(), source:'booking', read:true },
-    { id:'em-3', from_name:'Marcus Weber', from_email:'m.weber@example.com', subject:'Question Wi-Fi',
-      body:'Bonjour Jérémie, on prévoit un séminaire pendant notre séjour. Le Wi-Fi tient combien d\'appareils en simultané ? Merci.',
-      received_at: new Date(Date.now() - 8*3600000).toISOString(), source:'direct', read:false }
-  ];
+  // Merge into clients[] without overwriting real data. Idempotent: prior
+  // demo clients are stripped first so re-calling doesn't duplicate.
+  if (typeof clients === 'undefined' || !Array.isArray(clients)) window.clients = clients = [];
+  for (var i = clients.length - 1; i >= 0; i--) {
+    if (clients[i] && clients[i]._demo) clients.splice(i, 1);
+  }
+  demoClients.forEach(function(c){ clients.push(c); });
 
-  // Demo villa settings
-  window.__DEMO_VILLA = {
-    villa_name: 'Villa Demo Marrakech',
-    bedrooms: 5,
-    base_price: 750,
-    location: 'Marrakech, Maroc',
-    capacity: 10
-  };
+  window._demoMode = true;
+
+  try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
+  try {
+    var msg = FR ? '🎬 Demo · 8 clients chargés (temporaire — disparaissent au reload sans ?demo=1)'
+                 : '🎬 Demo · 8 clients loaded (temporary — gone on reload without ?demo=1)';
+    if (typeof toast === 'function') toast(msg);
+  } catch(e){}
+  console.log('[demo] 8 demo clients merged. window._demoMode=true. Reload without ?demo=1 to clear.');
 }
 window.loadDemoData = loadDemoData;
+
+// Boot watcher: fire loadDemoData when authenticated + ?demo=1 (overlay mode).
+// initAuth has already set window._pendingDemoData = true; we just wait until
+// auth resolves and clients[] is hydrated, then fire once.
+(function watchDemoOverlay(){
+  function tryFire(attempts){
+    if (attempts <= 0) return;
+    if (!window._pendingDemoData) return;
+    var authed = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.user);
+    if (!authed) { setTimeout(function(){ tryFire(attempts - 1); }, 400); return; }
+    if (typeof clients === 'undefined' || !Array.isArray(clients)) {
+      setTimeout(function(){ tryFire(attempts - 1); }, 400); return;
+    }
+    if (typeof window.loadDemoData !== 'function') return;
+    window._pendingDemoData = false;
+    window.loadDemoData();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ tryFire(30); }, 1500); });
+  } else {
+    setTimeout(function(){ tryFire(30); }, 1500);
+  }
+})();
 
 function getFile() { /* placeholder */ }
 
@@ -6030,6 +6084,7 @@ async function loadFromSupabase() {
 }
 
 async function pushToSupabase(client) {
+  if (client && client._demo) return; // demo overlay clients never go to Supabase
   var cfg = getCfg();
   var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
   var key = cfg.sbKey || SB_ANON;
@@ -6068,7 +6123,12 @@ async function syncNow() {
 
 function loadLocal() {
   if (isDemoMode()) return;
-  try { clients = JSON.parse(localStorage.getItem('stafflo_clients') || '[]'); } catch { clients = []; }
+  try {
+    clients = JSON.parse(localStorage.getItem('stafflo_clients') || '[]');
+    // Safety net: strip any _demo:true clients that leaked into localStorage
+    // (shouldn't happen — saveLocal also filters them — but defense in depth).
+    if (Array.isArray(clients)) clients = clients.filter(function(c){ return !c || !c._demo; });
+  } catch { clients = []; }
   // Schedule a Supabase-truth reconcile in the background. Runs after this tick
   // so the initial render isn't blocked. Supabase is authoritative for
   // booking_status (and friends) — any local drift gets corrected on next load.
@@ -6114,7 +6174,10 @@ async function reconcileFromSupabase() {
 window.reconcileFromSupabase = reconcileFromSupabase;
 function saveLocal() {
   if (isDemoMode()) return;
-  localStorage.setItem('stafflo_clients', JSON.stringify(clients));
+  // Strip _demo:true clients (authenticated-user overlay via ?demo=1) so
+  // demo data never persists into the real CRM localStorage.
+  var toSave = Array.isArray(clients) ? clients.filter(function(c){ return !c || !c._demo; }) : [];
+  localStorage.setItem('stafflo_clients', JSON.stringify(toSave));
 }
 
 // ════════════════════════════════════════════
