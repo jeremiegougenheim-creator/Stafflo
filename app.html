@@ -8650,6 +8650,13 @@ function setLang(l) {
   localStorage.setItem('stafflo_lang', l);
   applyLang();
   renderAll();
+  // Re-generate alerts + brief in new language so user-visible strings inside
+  // those AI-generated surfaces (titles, sub-lines, brief cards) switch too.
+  // applyLang() only swaps [data-fr]/[data-en] static nodes; dynamic content
+  // built from templates needs an explicit re-run.
+  if (typeof generateAlerts === 'function') setTimeout(function(){ generateAlerts(null); }, 200);
+  try { localStorage.removeItem('stafflo_brief_cache'); } catch(e){}
+  if (typeof loadMorningBrief === 'function') setTimeout(function(){ loadMorningBrief(true); }, 500);
 }
 
 function toggleLang() { setLang(lang === 'fr' ? 'en' : 'fr'); }
