@@ -5568,10 +5568,13 @@ var staffloCal = (function(){
       // Market comps context (AirROI)
       var mc2 = (typeof getCfg === 'function') ? getCfg().marketComps : null;
       if (mc2 && mc2.adr_eur) {
+        var mcApprox = mc2.comp_bedrooms_used != null && mc2.comp_bedrooms_used !== mc2.bedrooms;
         ctx += '- Données marché AirROI (' + (mc2.fetched_at || '').slice(0,10) + ') : ' +
           'ADR moyen ' + mc2.adr_eur + '€/nuit, occupation ' + (mc2.occupancy_rate || '?') + '%, ' +
           'fourchette ' + (mc2.comp_min_eur || '?') + '–' + (mc2.comp_max_eur || '?') + '€, ' +
-          mc2.comp_count + ' listings comparables.\n';
+          mc2.comp_count + ' listings comparables' +
+          (mcApprox ? ' (APPROXIMATION : données ' + mc2.comp_bedrooms_used + ' chambres, pas d\'exact match pour ' + mc2.bedrooms + ' chambres)' : '') +
+          '.\n';
       }
     } catch(e){}
 
@@ -19612,7 +19615,9 @@ function v2RenderHero() {
         muted:  'background:var(--paper);color:var(--muted);border:1px solid var(--border)'
       };
       var chipsHtml = chips.map(function(c){
-        return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:500;'+toneCss[c.tone]+'">'+c.icon+' '+c.txt+'</span>';
+        var titleAttr = c.title ? ' title="'+String(c.title).replace(/"/g,'&quot;')+'"' : '';
+        var cursorCss = c.title ? ';cursor:help' : '';
+        return '<span'+titleAttr+' style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:500;'+toneCss[c.tone]+cursorCss+'">'+c.icon+' '+c.txt+'</span>';
       }).join('');
 
       var bandHtml = '';
@@ -19693,20 +19698,30 @@ function v2RenderHero() {
         if (mc && mc.adr_eur && mc.fetched_at) {
           var mcAge = Math.round((Date.now() - new Date(mc.fetched_at).getTime()) / 86400000);
           if (mcAge <= 14) {
+            // Flag if AirROI fell back to neighbouring bedrooms (no exact-match data).
+            var bedsUsed = mc.comp_bedrooms_used;
+            var isApprox = bedsUsed != null && bedsUsed !== mc.bedrooms;
+            var approxTip = isApprox
+              ? (fr2
+                  ? 'Pas de données ' + mc.bedrooms + ' chambres exactes — approximation depuis ' + bedsUsed + ' chambres.'
+                  : 'No exact ' + mc.bedrooms + '-bedroom data — approximated from ' + bedsUsed + '-bedroom listings.')
+              : null;
             var mcDelta = villaPrice ? (villaPrice - mc.adr_eur) : 0;
             var mcPct = mc.adr_eur > 0 ? Math.round((mcDelta / mc.adr_eur) * 100) : 0;
             var mcTone = Math.abs(mcPct) <= 15 ? 'green' : mcPct < -25 ? 'red' : mcPct > 25 ? 'gold' : 'muted';
             chips.push({
               icon: '📊',
-              txt: (fr2 ? 'Marché ' : 'Market ') + mc.adr_eur + '€' +
+              txt: (fr2 ? 'Marché ' : 'Market ') + mc.adr_eur + '€' + (isApprox ? '*' : '') +
                 (mcDelta !== 0 ? ' (' + (mcDelta > 0 ? '+' : '') + mcPct + '%)' : ''),
-              tone: mcTone
+              tone: mcTone,
+              title: approxTip
             });
             if (mc.occupancy_rate) {
               chips.push({
                 icon: '🏠',
-                txt: (fr2 ? 'Occupation ' : 'Occupancy ') + Math.round(mc.occupancy_rate) + '%',
-                tone: mc.occupancy_rate > 60 ? 'green' : mc.occupancy_rate < 40 ? 'red' : 'muted'
+                txt: (fr2 ? 'Occupation ' : 'Occupancy ') + Math.round(mc.occupancy_rate) + '%' + (isApprox ? '*' : ''),
+                tone: mc.occupancy_rate > 60 ? 'green' : mc.occupancy_rate < 40 ? 'red' : 'muted',
+                title: approxTip
               });
             }
             // Override manual comp band with AirROI data if available
@@ -19782,7 +19797,9 @@ function v2RenderHero() {
 
       // Re-build chipsHtml with potentially-added Airbnb live chip
       chipsHtml = chips.map(function(c){
-        return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:500;'+toneCss[c.tone]+'">'+c.icon+' '+c.txt+'</span>';
+        var titleAttr = c.title ? ' title="'+String(c.title).replace(/"/g,'&quot;')+'"' : '';
+        var cursorCss = c.title ? ';cursor:help' : '';
+        return '<span'+titleAttr+' style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:500;'+toneCss[c.tone]+cursorCss+'">'+c.icon+' '+c.txt+'</span>';
       }).join('');
 
       villaTonight.textContent = priceTxt;
