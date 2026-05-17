@@ -6,6 +6,13 @@ const SB_URL = Deno.env.get('SUPABASE_URL') || ''
 const SB_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 const MAD_TO_EUR = 0.092 // approximate, update periodically
 
+// Minimal city → AirROI market mapping. Add entries as new cities go live.
+const MARKETS: Record<string, { country: string; region: string | null; locality: string }> = {
+  marrakech: { country: 'Morocco', region: 'Marrakech-Safi', locality: 'Marrakech' },
+  paris:     { country: 'France',  region: 'Île-de-France',  locality: 'Paris' },
+  comporta:  { country: 'Portugal', region: 'Setúbal',       locality: 'Comporta' },
+}
+
 serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -17,13 +24,14 @@ serve(async (req) => {
     const { city, country, bedrooms } = await req.json()
     if (!city || !bedrooms) throw new Error('city and bedrooms required')
 
+    const cityKey = city.toLowerCase()
     const sb = createClient(SB_URL, SB_KEY)
 
-    // Check cache (7-day TTL)
+    // Cache (7-day TTL)
     const { data: cached } = await sb
       .from('market_cache')
       .select('*')
-      .eq('city', city.toLowerCase())
+      .eq('city', cityKey)
       .eq('bedrooms', bedrooms)
       .gte('fetched_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .single()
@@ -34,21 +42,31 @@ serve(async (req) => {
       })
     }
 
-    // Call AirROI API
-    const searchBody = {
-      location: city,
-      country: country || 'morocco',
-      num_bedrooms: { eq: bedrooms },
-      page_size: 15
+    // Resolve market — known city or fallback
+    const market = MARKETS[cityKey] || {
+      country: country || 'Morocco',
+      region: null,
+      locality: city
     }
 
-    const res = await fetch('https://api.airroi.com/v1/listings/search/location', {
+    const body = {
+      market: { ...market, district: null },
+      filter: {
+        bedrooms:  { eq: bedrooms },
+        room_type: { eq: 'entire_home' }
+      },
+      sort: { ttm_revenue: 'desc' },
+      pagination: { page_size: 15, offset: 0 },
+      currency: 'native'
+    }
+
+    const res = await fetch('https://api.airroi.com/listings/search/market', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': AIRROI_KEY
+        'X-API-KEY': AIRROI_KEY
       },
-      body: JSON.stringify(searchBody)
+      body: JSON.stringify(body)
     })
 
     if (!res.ok) {
@@ -56,66 +74,68 @@ serve(async (req) => {
       throw new Error(`AirROI ${res.status}: ${errText.slice(0, 200)}`)
     }
 
-    const result = await res.json()
-    const listings = result.data || result.listings || []
+    const json = await res.json()
+    const results = json.results || []
 
-    if (!listings.length) {
+    if (!results.length) {
       return new Response(JSON.stringify({ source: 'empty', data: null }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    // Calculate aggregates
-    const prices = listings
-      .map((l: any) => l.adr || l.average_daily_rate || l.price)
-      .filter((p: any) => p && p > 0)
-    const occupancies = listings
-      .map((l: any) => l.occupancy_rate || l.occupancy)
-      .filter((o: any) => o != null)
-    const revenues = listings
-      .map((l: any) => l.annual_revenue || l.revenue)
-      .filter((r: any) => r && r > 0)
+    // Pull metrics — TTM is the relevant window for annual benchmarks.
+    const rates = results
+      .map((r: any) => r.performance_metrics?.ttm_avg_rate)
+      .filter((v: any) => typeof v === 'number' && v > 0)
+    const occs = results
+      .map((r: any) => r.performance_metrics?.ttm_occupancy)
+      .filter((v: any) => typeof v === 'number')
+    const revs = results
+      .map((r: any) => r.performance_metrics?.ttm_revenue)
+      .filter((v: any) => typeof v === 'number' && v > 0)
 
     const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null
-
-    // Detect currency — AirROI returns local currency
-    const currency = listings[0]?.currency || 'MAD'
+    const currency = results[0]?.pricing_info?.currency || 'MAD'
     const toEur = currency === 'EUR' ? 1
       : currency === 'MAD' ? MAD_TO_EUR
       : currency === 'USD' ? 0.92
-      : 0.092 // fallback
+      : currency === 'GBP' ? 1.17
+      : 0.092
 
-    const adrLocal = avg(prices)
-    const adrEur = adrLocal ? Math.round(adrLocal * toEur) : null
-    const occRate = avg(occupancies)
-    const annRevLocal = avg(revenues)
-    const compMin = prices.length ? Math.round(Math.min(...prices) * toEur) : null
-    const compMax = prices.length ? Math.round(Math.max(...prices) * toEur) : null
+    const adrLocal = avg(rates)
+    const adrEur   = adrLocal ? Math.round(adrLocal * toEur) : null
+    const occRate  = avg(occs)  // 0–1
+    const annRev   = avg(revs)
+    const compMin  = rates.length ? Math.round(Math.min(...rates) * toEur) : null
+    const compMax  = rates.length ? Math.round(Math.max(...rates) * toEur) : null
 
-    // Top 5 listings summary for display
-    const summary = listings.slice(0, 5).map((l: any) => ({
-      name: l.name || l.title || 'Listing',
-      adr: Math.round((l.adr || l.average_daily_rate || 0) * toEur),
-      occupancy: l.occupancy_rate || l.occupancy,
-      rating: l.rating || l.review_score,
-      url: l.url || l.listing_url
+    const summary = results.slice(0, 5).map((r: any) => ({
+      name: r.listing_info?.listing_name || 'Listing',
+      adr_eur: r.performance_metrics?.ttm_avg_rate
+        ? Math.round(r.performance_metrics.ttm_avg_rate * toEur) : null,
+      occupancy_pct: r.performance_metrics?.ttm_occupancy != null
+        ? Math.round(r.performance_metrics.ttm_occupancy * 100) : null,
+      rating: r.ratings?.rating_overall || null,
+      reviews: r.ratings?.num_reviews || null,
+      bedrooms: r.property_details?.bedrooms || null,
+      superhost: r.host_info?.superhost || false,
+      listing_id: r.listing_info?.listing_id || null
     }))
 
-    // Upsert cache
     const row = {
-      city: city.toLowerCase(),
-      country: (country || 'morocco').toLowerCase(),
+      city: cityKey,
+      country: (country || market.country).toLowerCase(),
       bedrooms,
-      adr_eur: adrEur,
-      adr_local: adrLocal ? Math.round(adrLocal) : null,
+      adr_eur:              adrEur,
+      adr_local:            adrLocal ? Math.round(adrLocal) : null,
       currency,
-      occupancy_rate: occRate ? Math.round(occRate * 10) / 10 : null,
-      annual_revenue_local: annRevLocal ? Math.round(annRevLocal) : null,
-      comp_count: prices.length,
-      comp_min_eur: compMin,
-      comp_max_eur: compMax,
-      listings_summary: summary,
-      fetched_at: new Date().toISOString()
+      occupancy_rate:       occRate != null ? Math.round(occRate * 1000) / 10 : null, // 0–100 with 1 decimal
+      annual_revenue_local: annRev ? Math.round(annRev) : null,
+      comp_count:           rates.length,
+      comp_min_eur:         compMin,
+      comp_max_eur:         compMax,
+      listings_summary:     summary,
+      fetched_at:           new Date().toISOString()
     }
 
     await sb.from('market_cache').upsert(row, { onConflict: 'city,bedrooms' })
