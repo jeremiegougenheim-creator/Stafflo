@@ -5564,6 +5564,15 @@ var staffloCal = (function(){
         '- Capacité incluse : ' + bc + ' guests. Suppl. ' + eg + '€/pers au-delà.\n' +
         '- Plateforme : ' + pf + ' (commission ' + pfFee + ').\n' +
         liveTonight + '\n';
+
+      // Market comps context (AirROI)
+      var mc2 = (typeof getCfg === 'function') ? getCfg().marketComps : null;
+      if (mc2 && mc2.adr_eur) {
+        ctx += '- Données marché AirROI (' + (mc2.fetched_at || '').slice(0,10) + ') : ' +
+          'ADR moyen ' + mc2.adr_eur + '€/nuit, occupation ' + (mc2.occupancy_rate || '?') + '%, ' +
+          'fourchette ' + (mc2.comp_min_eur || '?') + '–' + (mc2.comp_max_eur || '?') + '€, ' +
+          mc2.comp_count + ' listings comparables.\n';
+      }
     } catch(e){}
 
     var prompt = '';
@@ -13552,6 +13561,18 @@ document.addEventListener('DOMContentLoaded', function() {
     update(); // initial state
   })();
 
+  // ── Market comps (AirROI) — non-blocking, 3s after load ──
+  setTimeout(function(){
+    if (typeof fetchMarketComps === 'function') {
+      fetchMarketComps().then(function(mc){
+        if (mc) {
+          try { if (typeof v2RenderHero === 'function') v2RenderHero(); } catch(e){}
+          console.log('Market comps loaded:', mc.adr_eur + '€ ADR, ' + mc.occupancy_rate + '% occ');
+        }
+      });
+    }
+  }, 3000);
+
   // ── Migrate old localStorage key name ──
   try {
     var _old = JSON.parse(localStorage.getItem('stafflocfg') || '{}');
@@ -19001,6 +19022,47 @@ function computeHotelBenchmark(opts) {
 }
 window.computeHotelBenchmark = computeHotelBenchmark;
 
+// ════════════════════════════════════════════════════════════════
+// MARKET COMPS — AirROI auto-populated competitor data
+// Replaces manual competitor cards with real market averages
+// ════════════════════════════════════════════════════════════════
+async function fetchMarketComps(force) {
+  try {
+    var cfg = getCfg();
+    var city = (cfg.city || 'marrakech').trim();
+    var bedrooms = cfg.bedrooms || 5;
+    var country = cfg.country || 'morocco';
+
+    // Check local cache (14-day client-side TTL)
+    if (!force && cfg.marketComps && cfg.marketComps.fetched_at) {
+      var age = Date.now() - new Date(cfg.marketComps.fetched_at).getTime();
+      if (age < 14 * 24 * 60 * 60 * 1000) return cfg.marketComps;
+    }
+
+    var res = await fetch(SB_URL + '/functions/v1/market-comps', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SB_ANON,
+        'Authorization': 'Bearer ' + SB_ANON
+      },
+      body: JSON.stringify({ city: city, bedrooms: bedrooms, country: country })
+    });
+
+    if (!res.ok) throw new Error('market-comps ' + res.status);
+    var json = await res.json();
+    if (!json.data) return null;
+
+    cfg.marketComps = json.data;
+    setCfg(cfg);
+    return json.data;
+  } catch (e) {
+    console.warn('fetchMarketComps:', e);
+    return null;
+  }
+}
+window.fetchMarketComps = fetchMarketComps;
+
 // Read villa config (bedrooms, base price) from cfg + price form
 function getVillaConfig() {
   var cfg = (typeof getCfg === 'function') ? getCfg() : {};
@@ -19624,6 +19686,51 @@ function v2RenderHero() {
             '</div>';
         }
       } catch(e) { console.warn('hotel benchmark:', e); }
+
+      // ── MARKET COMPS (AirROI) ──
+      try {
+        var mc = (typeof getCfg === 'function') ? getCfg().marketComps : null;
+        if (mc && mc.adr_eur && mc.fetched_at) {
+          var mcAge = Math.round((Date.now() - new Date(mc.fetched_at).getTime()) / 86400000);
+          if (mcAge <= 14) {
+            var mcDelta = villaPrice ? (villaPrice - mc.adr_eur) : 0;
+            var mcPct = mc.adr_eur > 0 ? Math.round((mcDelta / mc.adr_eur) * 100) : 0;
+            var mcTone = Math.abs(mcPct) <= 15 ? 'green' : mcPct < -25 ? 'red' : mcPct > 25 ? 'gold' : 'muted';
+            chips.push({
+              icon: '📊',
+              txt: (fr2 ? 'Marché ' : 'Market ') + mc.adr_eur + '€' +
+                (mcDelta !== 0 ? ' (' + (mcDelta > 0 ? '+' : '') + mcPct + '%)' : ''),
+              tone: mcTone
+            });
+            if (mc.occupancy_rate) {
+              chips.push({
+                icon: '🏠',
+                txt: (fr2 ? 'Occupation ' : 'Occupancy ') + Math.round(mc.occupancy_rate) + '%',
+                tone: mc.occupancy_rate > 60 ? 'green' : mc.occupancy_rate < 40 ? 'red' : 'muted'
+              });
+            }
+            // Override manual comp band with AirROI data if available
+            if (mc.comp_min_eur && mc.comp_max_eur && villaPrice) {
+              bandHtml = '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">' +
+                '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10px;color:var(--muted);letter-spacing:.5px;margin-bottom:4px">' +
+                '<span>' + (fr2 ? 'MARCHÉ AIRROI ' : 'AIRROI MARKET ') + (mc.comp_count || '') + '</span>' +
+                '<span>' + mc.comp_min_eur + '€ – ' + mc.comp_max_eur + '€</span></div>' +
+                '<div style="position:relative;height:6px;background:var(--paper);border-radius:99px;overflow:visible">' +
+                (function(){
+                  var range = mc.comp_max_eur - mc.comp_min_eur || 1;
+                  var ourPos = Math.max(0, Math.min(100, ((villaPrice - mc.comp_min_eur) / range) * 100));
+                  var avgPos = Math.max(0, Math.min(100, ((mc.adr_eur - mc.comp_min_eur) / range) * 100));
+                  return '<div style="position:absolute;top:0;left:' + avgPos + '%;width:1px;height:100%;background:var(--border)"></div>' +
+                    '<div style="position:absolute;top:-3px;left:' + ourPos + '%;width:12px;height:12px;border-radius:50%;background:var(--gold);transform:translateX(-50%);box-shadow:0 0 0 2px #fff"></div>';
+                })() +
+                '</div>' +
+                '<div style="font-size:10px;color:var(--muted);margin-top:6px;font-style:italic">' +
+                (fr2 ? 'Source : AirROI · mis à jour il y a ' + mcAge + 'j' : 'Source: AirROI · updated ' + mcAge + 'd ago') +
+                '</div></div>';
+            }
+          }
+        }
+      } catch(e) { console.warn('market comps:', e); }
 
       // ── AIRBNB API SLOT + live price chip ──
       var airbnbCfg = (typeof getAirbnbConfig === 'function') ? getAirbnbConfig() : { apiKey:'' };
