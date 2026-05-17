@@ -3362,9 +3362,16 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
       <div style="color:var(--muted);font-style:italic" data-fr="Aucun client en cours" data-en="No guest currently">Aucun client en cours</div>
     </div>
   </div>
-  <div class="v2-card">
-    <div class="v2-card-hd">
-      <div class="v2-card-title"><i class="ti ti-plane-arrival"></i> <span data-fr="Prochaines arrivées" data-en="Upcoming arrivals">Prochaines arrivées</span></div>
+  <div class="v2-card cardUpcomingArrivals" data-collapsed="0">
+    <div class="v2-card-hd" onclick="toggleUpcomingCard(event)" style="cursor:pointer">
+      <div class="v2-card-title" style="min-width:0;flex:1;overflow:hidden">
+        <i class="ti ti-plane-arrival"></i>
+        <span data-fr="Prochaines arrivées" data-en="Upcoming arrivals" style="white-space:nowrap">Prochaines arrivées</span>
+        <span id="upcomingSummaryPill" style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase;white-space:nowrap"></span>
+      </div>
+      <button class="v2-icon-btn" id="upcomingChevBtn" onclick="event.stopPropagation();toggleUpcomingCard(event)" title="Toggle" style="background:var(--paper);border:none;color:var(--ink);width:28px;height:28px;border-radius:7px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">
+        <i class="ti ti-chevron-up" style="font-size:14px"></i>
+      </button>
     </div>
     <div class="v2-card-body" id="heroGuestsUpcomingBody">
       <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
@@ -19253,6 +19260,52 @@ function toggleHeroAction(storageKey, rowEl) {
 }
 window.toggleHeroAction = toggleHeroAction;
 
+// ── Upcoming arrivals card: bespoke collapse/expand (opts out of the
+//    generic bindHeaderClicks chevron — see early-return there). ──
+function toggleUpcomingCard(e){
+  if (e) e.stopPropagation();
+  var card = document.querySelector('.cardUpcomingArrivals');
+  if (!card) return;
+  var collapsed = card.getAttribute('data-collapsed') === '1';
+  card.setAttribute('data-collapsed', collapsed ? '0' : '1');
+  try { localStorage.setItem('stafflo_upcoming_collapsed', collapsed ? '0' : '1'); } catch(_){}
+  // Reset the "show all" expansion whenever we collapse — avoids weird
+  // state where re-opening jumps straight to full list.
+  if (!collapsed) try { localStorage.setItem('stafflo_upcoming_expanded', '0'); } catch(_){}
+  var chev = document.querySelector('#upcomingChevBtn i');
+  if (chev) chev.className = collapsed ? 'ti ti-chevron-up' : 'ti ti-chevron-down';
+  if (typeof v2RenderHero === 'function') v2RenderHero();
+}
+function expandUpcomingList(e){
+  if (e) e.stopPropagation();
+  try { localStorage.setItem('stafflo_upcoming_expanded', '1'); } catch(_){}
+  if (typeof v2RenderHero === 'function') v2RenderHero();
+}
+function collapseUpcomingList(e){
+  if (e) e.stopPropagation();
+  try { localStorage.setItem('stafflo_upcoming_expanded', '0'); } catch(_){}
+  if (typeof v2RenderHero === 'function') v2RenderHero();
+}
+window.toggleUpcomingCard = toggleUpcomingCard;
+window.expandUpcomingList = expandUpcomingList;
+window.collapseUpcomingList = collapseUpcomingList;
+
+// Restore the user's last collapsed choice across reloads.
+(function(){
+  var saved = null;
+  try { saved = localStorage.getItem('stafflo_upcoming_collapsed'); } catch(_){}
+  if (saved === '1') {
+    document.addEventListener('DOMContentLoaded', function(){
+      var card = document.querySelector('.cardUpcomingArrivals');
+      if (card) {
+        card.setAttribute('data-collapsed', '1');
+        var chev = document.querySelector('#upcomingChevBtn i');
+        if (chev) chev.className = 'ti ti-chevron-down';
+      }
+    });
+  }
+})();
+
 // ── Hero panels — populate from existing data ──
 function v2RenderHero() {
   // Find current and upcoming guests — confirmed/pending only (no leads).
@@ -19360,37 +19413,96 @@ function v2RenderHero() {
   var gcBody = document.getElementById('heroGuestsCurrentBody');
   if (gcBody && cgBody) gcBody.innerHTML = cgBody.innerHTML;
 
-  // Guests tab: upcoming list (enriched)
+  // Guests tab: upcoming list (90-day window, 1 line/guest, collapse states)
   var upBody = document.getElementById('heroGuestsUpcomingBody');
   if (upBody) {
-    if (upcoming.length === 0) {
-      upBody.innerHTML = '<div style="padding:18px 22px;color:var(--muted);font-style:italic;font-size:12px" data-fr="Aucune arrivée prévue" data-en="No arrivals ahead">Aucune arrivée prévue</div>';
+    var fr3 = (typeof lang !== 'undefined' && lang === 'fr');
+    var locale3 = fr3 ? 'fr-FR' : 'en-GB';
+    var todayU = new Date(); todayU.setHours(0,0,0,0);
+    var horizon = new Date(todayU.getTime() + 90 * 86400000);
+
+    // 1 line per guest, sorted by arrival, 90-day window
+    var upcomingAll = clients.filter(function(c){
+      if (!c.arrival) return false;
+      var d = new Date(c.arrival); d.setHours(0,0,0,0);
+      return d >= todayU && d <= horizon;
+    }).sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
+
+    // Count departures in the same window for the pill
+    var upcomingDeparts = clients.filter(function(c){
+      if (!c.departure) return false;
+      var d = new Date(c.departure); d.setHours(0,0,0,0);
+      return d >= todayU && d <= horizon;
+    }).length;
+
+    // Pill (visible whether the card is collapsed or open)
+    var pill = document.getElementById('upcomingSummaryPill');
+    if (pill) {
+      if (upcomingAll.length === 0 && upcomingDeparts === 0) {
+        pill.textContent = fr3 ? '90 JOURS' : '90 DAYS';
+      } else {
+        pill.textContent = upcomingAll.length + (fr3?' ARR.':' ARR.') + ' · ' + upcomingDeparts + (fr3?' DÉP.':' DEP.') + ' · 90J';
+      }
+    }
+
+    var card = upBody.closest('.cardUpcomingArrivals');
+    var collapsed = card && card.getAttribute('data-collapsed') === '1';
+    var expanded = localStorage.getItem('stafflo_upcoming_expanded') === '1';
+
+    if (upcomingAll.length === 0) {
+      upBody.innerHTML = '<div style="padding:18px 22px;color:var(--muted);font-style:italic;font-size:12px">' + (fr3?'Aucune arrivée dans les 90 prochains jours':'No arrivals in the next 90 days') + '</div>';
     } else {
-      var fr3 = (typeof lang !== 'undefined' && lang === 'fr');
-      var locale3 = fr3 ? 'fr-FR' : 'en-GB';
-      upBody.innerHTML = upcoming.map(function(c){
-        var arr2 = new Date(c.arrival);
-        var dep2 = c.departure ? new Date(c.departure) : null;
-        var dateArr = arr2.toLocaleDateString(locale3, {weekday:'short', day:'numeric', month:'short'});
-        var dateDep = dep2 ? dep2.toLocaleDateString(locale3, {day:'numeric', month:'short'}) : '';
-        var nights = (c.nights || (dep2 ? Math.round((dep2-arr2)/86400000) : ''));
-        var daysUntil = Math.round((arr2 - today) / 86400000);
-        var countdown = daysUntil <= 0 ? (fr3?'AUJOURD\'HUI':'TODAY')
-                       : daysUntil === 1 ? (fr3?'DEMAIN':'TOMORROW')
-                       : (fr3?'DANS ':'IN ') + daysUntil + (fr3?' JOURS':' DAYS');
-        var price = c.price ? Math.round(c.price) + '€' : '';
-        var src = c.source || '';
-        return '<div style="padding:14px 20px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'var(--paper)\'" onmouseout="this.style.background=\'\'" onclick="openDetail(\''+c.id+'\')">' +
-                 '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px">' +
-                   '<div style="flex:1;min-width:0;overflow:hidden"><span style="font-weight:600;color:var(--ink);font-size:14px">'+ (c.name||'').replace(/[<>]/g,'') +'</span> <span style="font-size:13px;margin-left:4px">'+ (c.nat||'') +'</span></div>' +
-                   '<div style="font-size:10px;color:var(--gold);font-weight:700;letter-spacing:.6px;white-space:nowrap;flex-shrink:0;font-family:var(--sans)">'+ countdown +'</div>' +
-                 '</div>' +
-                 '<div style="font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;line-height:1.5">' +
-                   '<span><strong style="color:var(--ink);font-weight:600">'+ dateArr +'</strong>'+ (dateDep?' → '+dateDep:'') + (nights?' · '+nights+'n':'') +'</span>' +
-                   '<span>'+ (c.guests||'?') +'p'+ (src?' · '+src:'') + (price?' · '+price:'') +'</span>' +
-                 '</div>' +
-               '</div>';
-      }).join('');
+    // Slice strategy: collapsed→3, open→10, explicitly expanded→all
+    var slice;
+    if (collapsed) slice = upcomingAll.slice(0, 3);
+    else if (expanded) slice = upcomingAll;
+    else slice = upcomingAll.slice(0, 10);
+
+    var rowsHtml = slice.map(function(c){
+      var arr2 = new Date(c.arrival);
+      var dep2 = c.departure ? new Date(c.departure) : null;
+      var dateArr = arr2.toLocaleDateString(locale3, {weekday:'short', day:'numeric', month:'short'});
+      var dateDep = dep2 ? dep2.toLocaleDateString(locale3, {day:'numeric', month:'short'}) : '';
+      var nights = (c.nights || (dep2 ? Math.round((dep2-arr2)/86400000) : ''));
+      var daysUntil = Math.round((arr2 - todayU) / 86400000);
+      var countdown = daysUntil <= 0 ? (fr3?'AUJOURD\'HUI':'TODAY')
+                     : daysUntil === 1 ? (fr3?'DEMAIN':'TOMORROW')
+                     : (fr3?'DANS ':'IN ') + daysUntil + (fr3?' JOURS':' DAYS');
+      var src = c.source || '';
+      var nm = (c.name||'').replace(/[<>]/g,'');
+      var nat = c.nat || '';
+      return '<div style="padding:14px 20px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'var(--paper)\'" onmouseout="this.style.background=\'\'" onclick="openDetail(\''+c.id+'\')">' +
+               '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px">' +
+                 '<div style="flex:1;min-width:0;overflow:hidden"><span style="font-weight:600;color:var(--ink);font-size:14px">'+ nm +'</span> <span style="font-size:13px;margin-left:4px">'+ nat +'</span></div>' +
+                 '<div style="font-size:10px;color:var(--gold);font-weight:700;letter-spacing:.6px;white-space:nowrap;flex-shrink:0;font-family:var(--sans)">'+ countdown +'</div>' +
+               '</div>' +
+               '<div style="font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;line-height:1.5">' +
+                 '<span><strong style="color:var(--ink);font-weight:600">'+ dateArr +'</strong>'+ (dateDep?' → '+dateDep:'') + (nights?' · '+nights+'n':'') +'</span>' +
+                 '<span>'+ (c.guests||'?') +'p'+ (src?' · '+src:'') +'</span>' +
+               '</div>' +
+             '</div>';
+    }).join('');
+
+    var footerHtml = '';
+    if (collapsed && upcomingAll.length > 3) {
+      var remain = upcomingAll.length - 3;
+      footerHtml = '<div style="padding:10px 20px;font-size:11px;color:var(--muted);text-align:center;background:var(--paper);font-style:italic">+ ' + remain + (fr3?' autre événement à venir':' more upcoming') + (remain>1?(fr3?'s':''):'') + '</div>';
+    } else if (!collapsed && !expanded && upcomingAll.length > 10) {
+      var more = upcomingAll.length - 10;
+      footerHtml = '<div style="padding:12px 20px;text-align:center;background:var(--paper);cursor:pointer;border-top:1px solid var(--border)" onclick="expandUpcomingList(event)">' +
+                     '<span style="font-size:11px;color:var(--gold);font-weight:600;letter-spacing:.5px;text-transform:uppercase">' +
+                       (fr3?'Voir les '+more+' suivants':'Show '+more+' more') + ' ↓' +
+                     '</span>' +
+                   '</div>';
+    } else if (!collapsed && expanded && upcomingAll.length > 10) {
+      footerHtml = '<div style="padding:12px 20px;text-align:center;background:var(--paper);cursor:pointer;border-top:1px solid var(--border)" onclick="collapseUpcomingList(event)">' +
+                     '<span style="font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.5px;text-transform:uppercase">' +
+                       (fr3?'Réduire':'Show less') + ' ↑' +
+                     '</span>' +
+                   '</div>';
+    }
+
+    upBody.innerHTML = rowsHtml + footerHtml;
     }
   }
 
@@ -25925,6 +26037,9 @@ window.addEventListener('DOMContentLoaded', function() {
       hd.dataset.hdCollapseReady = '1';
       var cardId = card.id || '';
       if (cardId === 'inboxCompactToggle') return;
+      // Upcoming arrivals owns its own chevron + state machine; skip the
+      // generic one to avoid duplicate toggles and conflicting render paths.
+      if (card.classList.contains('cardUpcomingArrivals')) return;
       var body = card.querySelector('.v2-card-body, .inbox-row-body');
       if (!body) return;
       var bodyId = body.id || '';
