@@ -51,12 +51,9 @@ serve(async (req) => {
 
     const body = {
       market: { ...market, district: null },
-      filter: {
-        bedrooms:  { eq: bedrooms },
-        room_type: { eq: 'entire_home' }
-      },
+      filter: { bedrooms: { eq: bedrooms } },
       sort: { ttm_revenue: 'desc' },
-      pagination: { page_size: 15, offset: 0 },
+      pagination: { page_size: 10, offset: 0 },
       currency: 'native'
     }
 
@@ -76,9 +73,14 @@ serve(async (req) => {
 
     const json = await res.json()
     const results = json.results || []
+    const totalCount = json.pagination?.total_count ?? 0
 
     if (!results.length) {
-      return new Response(JSON.stringify({ source: 'empty', data: null }), {
+      return new Response(JSON.stringify({
+        source: 'empty',
+        data: null,
+        debug: { market, totalCount, bedrooms }
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
