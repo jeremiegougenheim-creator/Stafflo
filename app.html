@@ -3062,6 +3062,18 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
   </div>
 </div>
 
+<!-- Row 4: Pricing Insights — full width -->
+<div class="row row-50">
+  <div class="v2-card" id="cardPricingInsights" data-collapsed="0" style="grid-column:1/-1">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-chart-line"></i> <span data-fr="Pricing" data-en="Pricing">Pricing</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="90 prochains jours" data-en="Next 90 days">90 prochains jours</span></div>
+    </div>
+    <div class="v2-card-body" id="pricingInsightsBody" style="padding:0">
+      <div style="padding:14px 18px;color:var(--muted);font-style:italic;font-size:12px" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
+    </div>
+  </div>
+</div>
+
 <!-- Aria Memory: moved to Settings (header button 🧠 remains as quick access) -->
 
 <!-- Legacy 70/30 cols kept for compatibility (hidden when v2-active) -->
@@ -5576,6 +5588,16 @@ var staffloCal = (function(){
           (mcApprox ? ' (APPROXIMATION : données ' + mc2.comp_bedrooms_used + ' chambres, pas d\'exact match pour ' + mc2.bedrooms + ' chambres)' : '') +
           '.\n';
       }
+
+      // Pricing alerts context — give ARIA the live signals so its pricing
+      // advice stays consistent with what the owner sees on screen.
+      var _pa = (typeof window._pricingAlerts !== 'undefined') ? window._pricingAlerts : [];
+      if (_pa.length) {
+        ctx += '- Alertes pricing actives :\n';
+        _pa.slice(0, 5).forEach(function(a) {
+          ctx += '  · ' + a.title + ' — ' + a.detail + '\n';
+        });
+      }
     } catch(e){}
 
     var prompt = '';
@@ -6361,6 +6383,9 @@ function saveLocal() {
   // demo data never persists into the real CRM localStorage.
   var toSave = Array.isArray(clients) ? clients.filter(function(c){ return !c || !c._demo; }) : [];
   localStorage.setItem('stafflo_clients', JSON.stringify(toSave));
+  // Refresh pricing insights — bookings affect the unbooked-periods scan.
+  // Deferred so the save itself stays synchronous and fast.
+  setTimeout(function(){ try { if (typeof renderPricingInsights === 'function') renderPricingInsights(); } catch(e){} }, 500);
 }
 
 // ════════════════════════════════════════════
@@ -13572,7 +13597,11 @@ document.addEventListener('DOMContentLoaded', function() {
           try { if (typeof v2RenderHero === 'function') v2RenderHero(); } catch(e){}
           console.log('Market comps loaded:', mc.adr_eur + '€ ADR, ' + mc.occupancy_rate + '% occ');
         }
+        // Pricing insights always render (work without market data too)
+        try { if (typeof renderPricingInsights === 'function') renderPricingInsights(); } catch(e){}
       });
+    } else {
+      try { if (typeof renderPricingInsights === 'function') renderPricingInsights(); } catch(e){}
     }
   }, 3000);
 
@@ -16063,6 +16092,12 @@ function briefCardTap(idx) {
   const card = (window._briefCards || [])[idx] || {};
   const fr = lang === 'fr';
 
+  // Pricing: apply the suggested base price in one tap
+  if (act.type === 'pricing_apply' && card._suggestedPrice) {
+    if (typeof applyPricingAlert === 'function') applyPricingAlert(card._suggestedPrice, card._periodLabel || '');
+    return;
+  }
+
   // Navigation actions stay direct
   if (act.type === 'open_guests') return goTab('clients');
   if (act.type === 'open_home')   return goTab('home');
@@ -16314,6 +16349,28 @@ function renderBriefFallback(el, fr) {
       cards.push({urgency:3, icon:'✅', title: fr?'Villa en ordre':'All clear', detail: fr?'Aucune action urgente aujourd\'hui':'No urgent action today', action: fr?'Bonne journée':'Enjoy your day'});
     }
   }
+
+  // ── PRICING ALERTS — top 3 from smart engine ──
+  try {
+    var pAlerts = (typeof computePricingAlerts === 'function') ? computePricingAlerts() : [];
+    pAlerts.slice(0, 3).forEach(function(pa) {
+      // Split leading emoji from title so iconFor renders consistently
+      var emojiMatch = pa.title.match(/^(\p{Emoji}️?|\p{Emoji_Presentation})\s*/u);
+      var icon = emojiMatch ? emojiMatch[1] : '💰';
+      var titleText = emojiMatch ? pa.title.slice(emojiMatch[0].length).trim() : pa.title;
+      cards.push({
+        urgency: pa.urgency,
+        icon: icon,
+        title: titleText,
+        detail: pa.detail,
+        action: pa.action || (fr?'Voir pricing':'View pricing'),
+        action_type: pa.action && pa.suggestedPrice ? 'pricing_apply' : 'open_pricing',
+        _suggestedPrice: pa.suggestedPrice,
+        _periodLabel: pa.period
+      });
+    });
+  } catch(e) { console.warn('pricing alerts in brief:', e); }
+
   renderBriefCards(el, cards.sort((a,b) => b.urgency - a.urgency));
 }
 
@@ -19066,6 +19123,296 @@ async function fetchMarketComps(force) {
 }
 window.fetchMarketComps = fetchMarketComps;
 
+// ════════════════════════════════════════════════════════════════
+// SMART PRICING ALERTS — scan 90 days, suggest by period
+// Combines: season, events, lead time, market ADR, occupancy gaps.
+// Pure client-side; no async, safe to call on every render.
+// ════════════════════════════════════════════════════════════════
+function computePricingAlerts() {
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var cfg = getCfg();
+  var base = parseFloat(cfg.basePrice) || 500;
+  var floor = parseFloat(cfg.minPrice) || Math.round(base * 0.6);
+  var ceil = parseFloat(cfg.maxPrice) || Math.round(base * 2.5);
+  var mc = cfg.marketComps || null;
+  var marketADR = mc ? mc.adr_eur : null;
+  var cls = (typeof window.clients !== 'undefined') ? window.clients : [];
+  var events = (typeof MARRAKECH_EVENTS !== 'undefined') ? MARRAKECH_EVENTS : [];
+
+  var today = new Date(); today.setHours(0,0,0,0);
+  var alerts = [];
+
+  // Day-by-day map for the next 90 days
+  var days = [];
+  for (var i = 0; i < 90; i++) {
+    var d = new Date(today); d.setDate(d.getDate() + i);
+    var dStr = d.toISOString().slice(0,10);
+    var dow = d.getDay();
+    var isWeekend = (dow === 5 || dow === 6 || dow === 0);
+
+    // Booked? — skip inquiries/cancelled
+    var booked = cls.some(function(c) {
+      if (!c.arrival || !c.departure) return false;
+      if (c.bookingStatus === 'inquiry' || c.bookingStatus === 'cancelled') return false;
+      return dStr >= c.arrival && dStr < c.departure;
+    });
+
+    // Event overlap
+    var event = null;
+    var eventImpact = 0;
+    events.forEach(function(ev) {
+      if (ev.date_start && ev.date_end && dStr >= ev.date_start && dStr <= ev.date_end) {
+        event = ev;
+        eventImpact = ev.impact_pct || 0;
+      }
+    });
+
+    var seasonKey = (typeof getSeasonKey === 'function') ? getSeasonKey(d) : 'normal';
+    var seasonMult = { low: 0.85, normal: 1.0, high: 1.15, peak: 1.40 }[seasonKey] || 1.0;
+
+    // Lead-time pricing curve
+    var leadMult;
+    if (i > 90) leadMult = 1.05;
+    else if (i > 30) leadMult = 1.0;
+    else if (i > 7) leadMult = 0.95;
+    else leadMult = 0.85;
+
+    var weekendMult = isWeekend ? 1.10 : 1.0;
+    var eventMult = eventImpact ? (1 + eventImpact / 100) : 1.0;
+
+    var suggested = Math.round(base * seasonMult * leadMult * weekendMult * eventMult / 10) * 10;
+    suggested = Math.max(floor, Math.min(ceil, suggested));
+
+    // Sanity: blend toward market if we're >30% off
+    if (marketADR && Math.abs(suggested - marketADR) / marketADR > 0.30) {
+      suggested = Math.round((suggested * 0.6 + marketADR * 0.4) / 10) * 10;
+      suggested = Math.max(floor, Math.min(ceil, suggested));
+    }
+
+    days.push({
+      date: dStr, day: d, booked: booked, event: event, eventImpact: eventImpact,
+      seasonKey: seasonKey, seasonMult: seasonMult, leadDays: i,
+      isWeekend: isWeekend, suggested: suggested
+    });
+  }
+
+  // Group consecutive unbooked days into periods
+  var periods = [];
+  var current = null;
+  days.forEach(function(day) {
+    if (day.booked) {
+      if (current) { periods.push(current); current = null; }
+      return;
+    }
+    if (!current) {
+      current = { start: day.date, end: day.date, days: [day], hasEvent: !!day.event,
+                  events: day.event ? [day.event] : [], seasonKey: day.seasonKey };
+    } else {
+      current.end = day.date;
+      current.days.push(day);
+      if (day.event) {
+        current.hasEvent = true;
+        if (!current.events.some(function(e){ return e.id === day.event.id; })) {
+          current.events.push(day.event);
+        }
+      }
+    }
+  });
+  if (current) periods.push(current);
+
+  // Alert per period
+  periods.forEach(function(p) {
+    if (p.days.length < 2) return; // skip 1-day gaps
+
+    var avgSuggested = Math.round(p.days.reduce(function(s,d){ return s + d.suggested; }, 0) / p.days.length / 10) * 10;
+    var minLead = p.days[0].leadDays;
+    var priceDelta = avgSuggested - base;
+    var pricePct = Math.round((priceDelta / base) * 100);
+
+    var startFmt = new Date(p.start).toLocaleDateString(fr?'fr-FR':'en-GB', { day:'numeric', month:'short' });
+    var endFmt = new Date(p.end).toLocaleDateString(fr?'fr-FR':'en-GB', { day:'numeric', month:'short' });
+    var rangeFmt = startFmt + ' – ' + endFmt;
+    var nightCount = p.days.length;
+
+    var alert = {
+      period: rangeFmt, start: p.start, end: p.end, nights: nightCount,
+      currentPrice: base, suggestedPrice: avgSuggested, deltaPct: pricePct,
+      seasonKey: p.seasonKey, hasEvent: p.hasEvent, events: p.events,
+      urgency: 5, type: 'info', title: '', detail: '', action: ''
+    };
+
+    if (minLead < 7) {
+      alert.urgency = 9;
+      alert.type = 'warn';
+      alert.title = '⚡ ' + rangeFmt + ' — ' + nightCount + (fr?'n vides, last-minute':'n empty, last-minute');
+      alert.detail = (fr?'Suggéré : ':'Suggested: ') + avgSuggested + '€/n ' +
+        '(' + (pricePct >= 0 ? '+' : '') + pricePct + '% vs base ' + base + '€)';
+      if (avgSuggested < base) {
+        alert.action = fr ? 'Baisser à ' + avgSuggested + '€' : 'Drop to ' + avgSuggested + '€';
+      }
+    } else if (p.hasEvent && p.events.length) {
+      var evName = p.events.map(function(e){ return (fr && e.name_fr) ? e.name_fr : (e.name_en || e.name || ''); }).join(', ');
+      var evImpact = Math.max.apply(null, p.events.map(function(e){ return e.impact_pct || 0; }));
+      alert.urgency = 8;
+      alert.type = 'info';
+      alert.title = '🗓 ' + evName + ' · ' + rangeFmt;
+      alert.detail = (fr?'Impact marché +':'Market impact +') + evImpact + '% · ' +
+        (fr?'Suggéré : ':'Suggested: ') + avgSuggested + '€/n ' +
+        '(' + (pricePct >= 0 ? '+' : '') + pricePct + '%)';
+      alert.action = fr ? 'Monter à ' + avgSuggested + '€' : 'Raise to ' + avgSuggested + '€';
+    } else if (minLead < 30) {
+      alert.urgency = 7;
+      alert.type = nightCount > 7 ? 'warn' : 'info';
+      alert.title = '📅 ' + rangeFmt + ' — ' + nightCount + (fr?'n vides':'n empty');
+      alert.detail = (fr?'Dans ':'In ') + minLead + (fr?'j · Suggéré : ':'d · Suggested: ') + avgSuggested + '€/n';
+      if (avgSuggested < base) {
+        alert.action = fr ? 'Ajuster à ' + avgSuggested + '€' : 'Adjust to ' + avgSuggested + '€';
+      }
+    } else if (minLead < 60) {
+      if (Math.abs(pricePct) < 5) return;
+      alert.urgency = 5;
+      alert.type = 'info';
+      alert.title = '💰 ' + rangeFmt + ' — ' + (fr?'opportunité pricing':'pricing opportunity');
+      alert.detail = (fr?'Saison ':'Season ') + p.seasonKey + ' · ' +
+        (fr?'Suggéré : ':'Suggested: ') + avgSuggested + '€/n ' +
+        '(' + (pricePct >= 0 ? '+' : '') + pricePct + '% vs ' + base + '€)';
+      alert.action = (pricePct > 0)
+        ? (fr ? 'Monter à ' + avgSuggested + '€' : 'Raise to ' + avgSuggested + '€')
+        : (fr ? 'Baisser à ' + avgSuggested + '€' : 'Drop to ' + avgSuggested + '€');
+    } else {
+      if (Math.abs(pricePct) < 15) return;
+      alert.urgency = 3;
+      alert.type = 'info';
+      alert.title = '🔮 ' + rangeFmt + ' — ' + (fr?'planification':'planning ahead');
+      alert.detail = (fr?'Saison ':'Season ') + p.seasonKey + ' · ' +
+        (fr?'Cible : ':'Target: ') + avgSuggested + '€/n';
+      alert.action = null;
+    }
+
+    if (alert.title) alerts.push(alert);
+  });
+
+  // Monthly occupancy
+  var thisMonth = today.toISOString().slice(0,7);
+  var daysInMonth = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
+  var bookedThisMonth = days.filter(function(d){ return d.date.slice(0,7) === thisMonth && d.booked; }).length;
+  var remainingDays = days.filter(function(d){ return d.date.slice(0,7) === thisMonth && !d.booked; }).length;
+  var monthOcc = Math.round(bookedThisMonth / daysInMonth * 100);
+
+  if (monthOcc < 30 && remainingDays > 7) {
+    var dropPrice = Math.max(floor, Math.round(base * 0.9 / 10) * 10);
+    alerts.push({
+      period: today.toLocaleDateString(fr?'fr-FR':'en-GB', { month:'long' }),
+      urgency: 8, type: 'warn',
+      title: '📉 ' + (fr?'Occupation ':'Occupancy ') + monthOcc + '% ' + (fr?'ce mois':'this month'),
+      detail: remainingDays + (fr?' nuits encore vides · Envisagez -10% ou promo last-minute':' nights still empty · Consider -10% or last-minute promo'),
+      suggestedPrice: dropPrice,
+      action: fr ? 'Baisser à ' + dropPrice + '€ ce mois' : 'Drop to ' + dropPrice + '€ this month'
+    });
+  } else if (monthOcc > 80) {
+    var raisePrice = Math.min(ceil, Math.round(base * 1.1 / 10) * 10);
+    alerts.push({
+      period: today.toLocaleDateString(fr?'fr-FR':'en-GB', { month:'long' }),
+      urgency: 4, type: 'good',
+      title: '🎯 ' + (fr?'Occupation ':'Occupancy ') + monthOcc + '% — ' + (fr?'excellent':'excellent'),
+      detail: fr?'Demande forte. Vous pouvez monter les prix de 10% pour les prochaines demandes.':'High demand. You can raise prices 10% for incoming requests.',
+      suggestedPrice: raisePrice,
+      action: fr ? 'Monter à ' + raisePrice + '€' : 'Raise to ' + raisePrice + '€'
+    });
+  }
+
+  alerts.sort(function(a, b) { return b.urgency - a.urgency; });
+  window._pricingAlerts = alerts;
+  return alerts;
+}
+window.computePricingAlerts = computePricingAlerts;
+
+// Apply suggested price (one-tap from alert).
+// Note: cfg.basePrice is the GLOBAL base — Stafflo doesn't yet hold per-night
+// prices (that lives on Airbnb/Booking). Owner has to mirror on the platform.
+function applyPricingAlert(suggestedPrice, periodLabel) {
+  if (!suggestedPrice) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var cfg = getCfg();
+  var oldPrice = cfg.basePrice;
+  cfg.basePrice = suggestedPrice;
+  setCfg(cfg);
+  if (typeof renderTodayQV === 'function') try { renderTodayQV(); } catch(e){}
+  if (typeof v2RenderHero === 'function') try { v2RenderHero(); } catch(e){}
+  if (typeof renderPricingInsights === 'function') try { renderPricingInsights(); } catch(e){}
+  if (typeof toast === 'function') toast(fr
+    ? '✓ Prix mis à jour : ' + suggestedPrice + '€/nuit (était ' + oldPrice + '€)'
+    : '✓ Price updated: ' + suggestedPrice + '€/night (was ' + oldPrice + '€)');
+  try { if (window.posthog) posthog.capture('pricing_alert_applied', {
+    old_price: oldPrice, new_price: suggestedPrice, period: periodLabel
+  }); } catch(e){}
+}
+window.applyPricingAlert = applyPricingAlert;
+
+// Render the Pricing Insights card (dashboard Today).
+// Idempotent — safe to call on every render or settings change.
+function renderPricingInsights() {
+  var body = document.getElementById('pricingInsightsBody');
+  if (!body) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var alerts = (typeof computePricingAlerts === 'function') ? computePricingAlerts() : [];
+  var cfg = getCfg();
+  var mc = cfg.marketComps;
+
+  if (!alerts.length && !mc) {
+    body.innerHTML = '<div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic">' +
+      (fr?'Données marché en cours de chargement…':'Loading market data…') + '</div>';
+    return;
+  }
+
+  var html = '';
+
+  // Market summary header — only when we have AirROI data
+  if (mc && mc.adr_eur) {
+    var bedsUsed = mc.comp_bedrooms_used;
+    var approx = bedsUsed != null && bedsUsed !== mc.bedrooms;
+    html += '<div style="padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">' +
+      '<div style="min-width:0">' +
+        '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">' +
+          (fr?'MARCHÉ':'MARKET') + ' · ' + (cfg.city || 'Marrakech') + ' · ' + (cfg.bedrooms || 5) + 'BR' +
+          (approx ? '<span title="' + (fr?'Données ':'Data from ') + bedsUsed + (fr?' chambres (approx.)':'BR (approx.)') + '" style="cursor:help">*</span>' : '') +
+        '</div>' +
+        '<div style="font-family:\'Fraunces\',serif;font-size:22px;color:var(--gold);margin-top:2px">' + mc.adr_eur + '€<span style="font-size:12px;color:var(--muted);font-family:var(--sans)"> /' + (fr?'nuit':'night') + '</span></div>' +
+      '</div>' +
+      '<div style="text-align:right;flex-shrink:0">' +
+        '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">' + (fr?'VOTRE PRIX':'YOUR PRICE') + '</div>' +
+        '<div style="font-family:\'Fraunces\',serif;font-size:22px;color:var(--ink);margin-top:2px">' + (cfg.basePrice || '?') + '€</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  if (alerts.length) {
+    html += '<div style="padding:8px 12px">';
+    alerts.slice(0, 5).forEach(function(a) {
+      var borderColor = a.type === 'warn' ? 'rgba(192,57,43,.3)' : a.type === 'good' ? 'rgba(59,109,17,.3)' : 'rgba(201,150,58,.2)';
+      var bgColor = a.type === 'warn' ? 'rgba(192,57,43,.04)' : a.type === 'good' ? 'rgba(59,109,17,.04)' : 'transparent';
+      html += '<div style="padding:10px 12px;border-left:3px solid ' + borderColor + ';background:' + bgColor + ';border-radius:0 8px 8px 0;margin-bottom:6px">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--ink);margin-bottom:3px">' + a.title + '</div>' +
+        '<div style="font-size:12px;color:var(--muted);line-height:1.4">' + a.detail + '</div>';
+      if (a.action && a.suggestedPrice) {
+        var safeLabel = (a.period || '').replace(/'/g, "\\'");
+        html += '<button onclick="applyPricingAlert(' + a.suggestedPrice + ',\'' + safeLabel + '\')" ' +
+          'style="margin-top:6px;background:none;border:1.5px solid var(--gold);color:var(--gold);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans)">' +
+          a.action + '</button>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div style="padding:14px 18px;display:flex;align-items:center;gap:8px">' +
+      '<span style="font-size:18px">✅</span>' +
+      '<div style="font-size:13px;color:var(--ink)">' + (fr?'Pricing OK — pas d\'ajustement suggéré':'Pricing OK — no adjustment suggested') + '</div></div>';
+  }
+
+  body.innerHTML = html;
+}
+window.renderPricingInsights = renderPricingInsights;
+
 // Read villa config (bedrooms, base price) from cfg + price form
 function getVillaConfig() {
   var cfg = (typeof getCfg === 'function') ? getCfg() : {};
@@ -19838,6 +20185,9 @@ function v2RenderHero() {
         '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:11px;color:var(--muted)">' + (fr2?'Net à venir':'Net upcoming') + '</span><span style="font-family:\'Fraunces\',serif;font-size:16px;color:var(--gold);font-weight:500">'+ Math.round(totalNet) +'€</span></div>';
     }
   }
+
+  // Pricing insights — render on every hero refresh, no-op if container missing.
+  try { if (typeof renderPricingInsights === 'function') renderPricingInsights(); } catch(e){}
 }
 
 // Re-render v2 hero whenever clients change
