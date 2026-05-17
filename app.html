@@ -8756,18 +8756,20 @@ function _ariaBuildPlaceholderVariants() {
   }
 
   // ── Pattern B: Always-available business actions ──
+  // Lead with non-brief intents so the placeholder doesn't bias the user toward
+  // staff briefs by default.
   var business = fr ? [
-    'Calculer le NET après commission Airbnb…',
-    'Suggérer un prix pour août…',
-    'Analyser un email de Booking.com…',
-    'Rédiger une réponse client en 30 secondes…',
-    'Préparer un brief staff pour demain matin…'
+    'Quel prix pour ce soir ?',
+    'Liste les arrivées de la semaine',
+    'Brief staff pour demain',
+    'Message bienvenue pour le prochain guest',
+    'Analyse cette demande Airbnb'
   ] : [
-    'Calculate NET revenue after Airbnb commission…',
-    'Suggest a price for August…',
-    'Analyse a Booking.com email…',
-    'Draft a guest reply in 30 seconds…',
-    'Prepare tomorrow\'s staff briefing…'
+    'What price tonight?',
+    'List this week\'s arrivals',
+    'Staff brief for tomorrow',
+    'Welcome message for the next guest',
+    'Analyze this Airbnb inquiry'
   ];
   business.forEach(function(v){ variants.push(v); });
 
@@ -9639,6 +9641,11 @@ async function handleChatQuestion(text) {
       '',
       '════ TES 3 MODES DE RÉPONSE ════',
       '',
+      '【MODE 0 — CLARIFICATION】 Si la demande est ambiguë, incompréhensible, trop courte (1-2 caractères, typo évidente type "gest5", "azerty"), un mot isolé sans contexte :',
+      '  → DEMANDE clarification. N\'invente pas une réponse, ne pars pas en MODE 4 par défaut.',
+      '  → Format : "Je n\'ai pas compris. Tu veux dire... ?" + 2-3 suggestions concrètes courtes.',
+      '  → Exemple : "gest5" → "Je n\'ai pas compris. Tu veux :\\n• Les prochaines arrivées ?\\n• Un brief staff ?\\n• Autre chose ?"',
+      '',
       '【MODE 1 — RÉPONSE DIRECTE】 Quand ' + ownerName + ' te pose une question interne (clients, séjours, dates, prix, stats) :',
       '  → Tu réponds de façon directe et concise, comme un assistant qui parle à son patron.',
       '  → PAS de "Bonjour", PAS de signature, PAS de formules de politesse.',
@@ -9662,7 +9669,7 @@ async function handleChatQuestion(text) {
       '  → Tu réponds en 2-3 phrases max, directement, comme un assistant.',
       '  → Pas de message client. Pas de formule de politesse exagérée.',
       '',
-      '【MODE 4 — BRIEF STAFF】 Quand ' + ownerName + ' demande un brief, une note staff, ou le programme pour l\'équipe :',
+      '【MODE 4 — BRIEF STAFF】 UNIQUEMENT quand ' + ownerName + ' demande EXPLICITEMENT un "brief staff", une "note staff", ou "le programme pour l\'équipe" (mots-clés explicites requis) :',
       '  → Format WhatsApp-ready, bullets, 8-15 lignes max.',
       '  → STRUCTURE OBLIGATOIRE :',
       '    1) 🏠 EN COURS (arrivée ≤ aujourd\'hui ET départ ≥ aujourd\'hui) : nom, nb personnes, date départ, nuits restantes.',
@@ -9676,18 +9683,27 @@ async function handleChatQuestion(text) {
       '  → JAMAIS de "Je vous prie de bien vouloir" ou "Cordialement". Ton direct, opérationnel, signé ' + ownerName + '.',
       '  → JAMAIS de doublon : chaque client apparaît UNE SEULE FOIS dans la catégorie qui lui correspond.',
       '  → Si aucun séjour en cours ou à venir, dis-le clairement.',
+      '  → IMPORTANT : "les prochaines arrivées" SANS mention "brief" = MODE 1 (liste simple, pas de structure staff).',
       '',
       '════ RÈGLE D\'OR ════',
-      'Par défaut, tu es en MODE 1, 3 ou 4 (info / conversation / brief staff). Tu passes en MODE 2 SEULEMENT si ' + ownerName + ' te demande explicitement de rédiger un message à quelqu\'un.',
+      'Par défaut, tu es en MODE 0 (clarification si ambigu) ou MODE 1 (réponse directe). Tu passes en MODE 2 SEULEMENT si rédaction explicite demandée. Tu passes en MODE 4 SEULEMENT si "brief"/"note staff" explicite. MODE 3 pour conversation générale.',
       'JAMAIS tu n\'écris "Bonjour, je suis ' + ownerName + '..." sauf en MODE 2.',
       'JAMAIS tu n\'inventes une info qui n\'est pas dans le CRM.',
       '',
-      '════ DATES — toujours humaines ════',
+      '════ DATES — un seul format par réponse ════',
       'Aujourd\'hui : ' + todayHuman + '.',
-      'Quand tu cites une date, inclus TOUJOURS le jour de la semaine. Ex: "vendredi 15 mai 2026", pas juste "le 15 mai".',
+      'UN SEUL format de date par message. Choisis selon le contexte :',
+      '  - MODE 1 conversationnel : "15 mai" ou "demain". Court.',
+      '  - MODE 4 brief staff : "vendredi 15 mai" (jour + date). Toujours pareil dans tout le message.',
+      'JAMAIS "Saturday 15 May 2026" + "15/5" + "15 mai" dans le même message. Choisis UN format et tiens-t\'y.',
       'Le bloc CRM ci-dessous tague chaque arrivée avec (AUJOURD\'HUI), (DEMAIN), (dans N jours) ou (EN COURS) — utilise ces tags directement.',
-      'Si tu vois (AUJOURD\'HUI) sur une arrivée → tu dis "arrive aujourd\'hui [jour de la semaine]". JAMAIS "arrive demain". JAMAIS "arrive le 15 mai" tout court.',
-      'Si tu vois (DEMAIN) → "arrive demain [jour de la semaine]".',
+      'Si tu vois (AUJOURD\'HUI) → "arrive aujourd\'hui". Si (DEMAIN) → "arrive demain".',
+      '',
+      '════ INTERDIT (absolu) ════',
+      'JAMAIS de JSON, d\'objets, de code, de balises techniques visibles. Pas de "ACTION: {...}", pas de "{type:...}", pas de "REPLY:" en préfixe.',
+      'JAMAIS d\'IDs, UUIDs ou identifiants techniques dans la réponse.',
+      'JAMAIS répéter la même info dans plusieurs sections d\'un même message.',
+      'JAMAIS dire "je suis une IA" ou "je ne peux pas".',
       '',
       '════ RÈGLE CRITIQUE — PIPELINE vs CONFIRMED ════',
       'Le bloc CRM ci-dessous a DEUX sections distinctes :',
@@ -9710,6 +9726,11 @@ async function handleChatQuestion(text) {
       "History is only for tone or anaphoric references ('him', 'her', 'them'), NEVER as a source of names or dates.",
       '',
       '════ YOUR 3 RESPONSE MODES ════',
+      '',
+      '【MODE 0 — CLARIFICATION】 If the request is ambiguous, unclear, too short (1-2 characters, obvious typo like "gest5", "azerty"), or an isolated word without context:',
+      '  → ASK for clarification. Do not invent an answer, do not default to MODE 4.',
+      '  → Format: "I didn\'t catch that. Do you mean... ?" + 2-3 short concrete suggestions.',
+      '  → Example: "gest5" → "I didn\'t catch that. Do you mean:\\n• Upcoming arrivals?\\n• A staff brief?\\n• Something else?"',
       '',
       '【MODE 1 — DIRECT ANSWER】 When ' + ownerName + ' asks an internal question (clients, stays, dates, prices, stats):',
       '  → Reply directly and concisely, like an assistant talking to the boss.',
@@ -9734,7 +9755,7 @@ async function handleChatQuestion(text) {
       '  → Reply in 2-3 sentences max, directly, like an assistant.',
       '  → No client message. No overdone pleasantries.',
       '',
-      '【MODE 4 — STAFF BRIEF】 When ' + ownerName + ' asks for a brief, a staff note, or the team schedule:',
+      '【MODE 4 — STAFF BRIEF】 ONLY when ' + ownerName + ' EXPLICITLY asks for a "staff brief", "staff note", or "team schedule" (explicit keywords required):',
       '  → WhatsApp-ready format, bullets, 8-15 lines max.',
       '  → MANDATORY STRUCTURE:',
       '    1) 🏠 IN HOUSE (arrival ≤ today AND departure ≥ today): name, guest count, departure date, nights remaining.',
@@ -9748,18 +9769,27 @@ async function handleChatQuestion(text) {
       '  → NEVER "I kindly ask you to" or "Best regards". Direct, operational tone, signed ' + ownerName + '.',
       '  → NEVER duplicate: each guest appears ONCE in their matching category.',
       '  → If no current or upcoming stay, say so clearly.',
+      '  → IMPORTANT: "upcoming arrivals" WITHOUT "brief" = MODE 1 (simple list, no staff structure).',
       '',
       '════ GOLDEN RULE ════',
-      'By default, you are in MODE 1, 3 or 4 (info / conversation / staff brief). You switch to MODE 2 ONLY if ' + ownerName + ' explicitly asks you to draft a message to someone.',
+      'By default, you are in MODE 0 (clarify if ambiguous) or MODE 1 (direct answer). You switch to MODE 2 ONLY for explicit draft requests. You switch to MODE 4 ONLY for explicit "brief"/"staff note". MODE 3 for general conversation.',
       'NEVER write "Hi, this is ' + ownerName + '..." unless in MODE 2.',
       'NEVER make up info that is not in the CRM.',
       '',
-      '════ DATES — always human-readable ════',
+      '════ DATES — one format per response ════',
       'Today: ' + todayHuman + '.',
-      'When citing a date, ALWAYS include the weekday. Ex: "Friday May 15 2026", not just "May 15".',
+      'ONE date format per message. Pick based on context:',
+      '  - MODE 1 conversational: "May 15" or "tomorrow". Short.',
+      '  - MODE 4 staff brief: "Friday May 15" (weekday + date). Same format everywhere in the message.',
+      'NEVER "Saturday 15 May 2026" + "15/5" + "May 15" in the same message. Pick ONE format and stick to it.',
       'The CRM block below tags each arrival with (TODAY), (TOMORROW), (in N days) or (IN HOUSE) — use these tags directly.',
-      'If you see (TODAY) on an arrival → say "arrives today [weekday]". NEVER "arrives tomorrow". NEVER just "arrives May 15".',
-      'If you see (TOMORROW) → "arrives tomorrow [weekday]".',
+      'If you see (TODAY) → "arrives today". If (TOMORROW) → "arrives tomorrow".',
+      '',
+      '════ FORBIDDEN (absolute) ════',
+      'NEVER expose JSON, objects, code, or technical tags. No "ACTION: {...}", no "{type:...}", no "REPLY:" prefix.',
+      'NEVER mention IDs, UUIDs or technical identifiers in the response.',
+      'NEVER repeat the same info across multiple sections of one message.',
+      'NEVER say "I am an AI" or "I cannot".',
       '',
       '════ CRITICAL RULE — PIPELINE vs CONFIRMED ════',
       'The CRM block below has TWO distinct sections:',
@@ -10053,17 +10083,91 @@ async function handleChatEmailAnalysis(text) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// ARIA response sanitization + ambiguous input guard
+// ════════════════════════════════════════════════════════════════
+//
+// Defensive post-processing for LLM output. The system prompt forbids
+// ACTION:{...} blocks, REPLY: prefixes, etc. — but LLMs sometimes leak
+// them anyway. This runs on every ARIA response before it hits the UI.
+function sanitizeAriaResponse(text) {
+  if (!text) return '';
+  // Strip ACTION:{...} blocks (used by legacy orchestrator path)
+  text = text.replace(/ACTION:\s*\{[\s\S]*?\}/gi, '');
+  // Strip bare JSON objects that look like tool calls
+  text = text.replace(/\{["']?(type|action|clientId|client_id|msg|id_or_name)["']?\s*:[\s\S]*?\}/gi, '');
+  // Strip legacy REPLY: / RÉPONSE: prefixes
+  text = text.replace(/^\s*REPLY:\s*/i, '');
+  text = text.replace(/^\s*RÉPONSE:\s*/i, '');
+  text = text.replace(/^\s*ARIA\s*[·:]\s*REPLY:\s*/i, '');
+  text = text.replace(/^\s*ARIA\s*[·:]\s*/i, '');
+  // Strip placeholder fragments that occasionally leak
+  text = text.replace(/^\s*\[full message signed [^\]]+\]\s*/i, '');
+  text = text.replace(/^― RESTORED CONVERSATION ―\s*/, '');
+  // Strip orphan duplicate signature at the very end ("Signed, jeremie" alone)
+  text = text.replace(/\n+(Signed,\s*j[eé]r[eé]mie|Cordialement,\s*j[eé]r[eé]mie)\s*$/i, '');
+  // Collapse 3+ blank lines down to 2
+  text = text.replace(/\n{3,}/g, '\n\n');
+  return text.trim();
+}
+window.sanitizeAriaResponse = sanitizeAriaResponse;
+
+// Catch obviously-garbled input before spending an LLM call on it.
+// Returns true if input is too ambiguous to deserve a real response.
+function detectAmbiguousInput(text) {
+  if (!text) return true;
+  var trimmed = text.trim().toLowerCase();
+  if (trimmed.length < 3) return true;
+  // No vowels in a short string = likely a typo / mashed keys
+  if (!/[aeiouéèàùâêîôûyœæ]/i.test(trimmed) && trimmed.length < 8) return true;
+  // Pure digits
+  if (/^\d+$/.test(trimmed)) return true;
+  // Common test strings + letter-number scrambles like "gest5", "abc12"
+  if (/^(test|azerty|qwerty|asdf|hello|salut|hi|hey|coucou)\d*$/i.test(trimmed)) return true;
+  if (/^[a-z]+\d+$/i.test(trimmed) && trimmed.length < 8) return true;
+  return false;
+}
+window.detectAmbiguousInput = detectAmbiguousInput;
+
 function addChatBubble(role, text, actions) {
   var msgs = document.getElementById('chatMessages');
   if (!msgs) return;
-  
+
   var div = document.createElement('div');
   div.className = 'chat-bubble ' + role;
-  
-  // Format text — bold **text**, newlines
-  var html = text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br>');
+
+  // Sanitize AI text BEFORE any rendering — strips JSON leaks, REPLY: prefixes,
+  // duplicate signatures. Safety net even with strict system prompt.
+  if (role === 'ai' && typeof sanitizeAriaResponse === 'function') {
+    text = sanitizeAriaResponse(text);
+  }
+
+  // Format text — structured rendering for AI responses.
+  // Long briefs/lists need real hierarchy (section headers, bullets, staff
+  // call-outs) instead of a wall of <br>. User bubbles keep the simple path.
+  var html = text;
+  if (role === 'ai') {
+    // Section headers: lines starting with number + emoji or just emoji + caps
+    html = html.replace(/^(\d+\.?\s*)([\u{1F300}-\u{1FAFF}])\s*(.+?)(:?\s*)$/gmu,
+      '<div style="margin-top:12px;margin-bottom:4px;font-weight:700;font-size:13px;color:var(--ink)">$1$2 $3</div>');
+
+    // Sub-bullets: lines starting with "- "
+    html = html.replace(/^- (.+)$/gm,
+      '<div style="padding-left:16px;position:relative;margin:2px 0"><span style="position:absolute;left:4px;color:var(--gold)">·</span>$1</div>');
+
+    // Bold **text**
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // Staff headers: "Said (butler):" / "Faiza (chef):" etc.
+    html = html.replace(/^(Said|Faiza|Bouchra|Staff)\s*(\([^)]+\))?:?\s*/gm,
+      '<span style="font-weight:600;color:var(--green-dark)">$1 $2</span> ');
+
+    // Remaining newlines
+    html = html.replace(/\n\n/g, '<div style="height:8px"></div>');
+    html = html.replace(/\n/g, '<br>');
+  } else {
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+  }
   div.innerHTML = html;
   
   // Add action buttons
@@ -18295,6 +18399,31 @@ function sendAriaModal() {
   // Track last user question for contextual ARIA actions
   try { if (text) window._lastAriaQuestion = text; } catch(e){}
 
+  // Short-circuit obviously ambiguous input (typos, single chars) before
+  // burning an LLM call — render a clarification bubble locally.
+  if (text && !attach && typeof detectAmbiguousInput === 'function' && detectAmbiguousInput(text)) {
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    var bodyEl = document.getElementById('ariaModalMessages');
+    if (bodyEl) {
+      var uBubble = document.createElement('div');
+      uBubble.className = 'aria-modal-bubble user';
+      var uTxt = document.createElement('div');
+      uTxt.textContent = text;
+      uBubble.appendChild(uTxt);
+      bodyEl.appendChild(uBubble);
+      var aBubble = document.createElement('div');
+      aBubble.className = 'aria-modal-bubble aria';
+      aBubble.innerHTML = '<strong>ARIA</strong><br>' + (fr
+        ? "Je n'ai pas compris ta demande. Tu veux :<br>• Voir les prochaines arrivées ?<br>• Un brief pour le staff ?<br>• Suggérer un prix ?<br>• Autre chose ?"
+        : "I didn't catch that. Do you want:<br>• See upcoming arrivals?<br>• A staff brief?<br>• Suggest a price?<br>• Something else?");
+      bodyEl.appendChild(aBubble);
+      bodyEl.scrollTop = bodyEl.scrollHeight;
+    }
+    input.value = '';
+    onAriaModalInput(input);
+    return;
+  }
+
   var body = document.getElementById('ariaModalMessages');
   if (body) {
     var u = document.createElement('div');
@@ -18354,6 +18483,7 @@ function sendAriaModal() {
     .then(function(d) {
       if (typing) typing.remove();
       var reply = (d && d.text) || (lang==='fr' ? 'Désolé, lecture impossible.' : 'Sorry, could not read the file.');
+      if (typeof sanitizeAriaResponse === 'function') reply = sanitizeAriaResponse(reply);
       var bub = document.createElement('div');
       bub.className = 'aria-modal-bubble aria';
       bub.innerHTML = '<strong>ARIA</strong> · ' + reply.replace(/\n/g,'<br>');
@@ -25115,18 +25245,20 @@ window.addEventListener('DOMContentLoaded', function() {
             '', historyBlock, '',
             'Message de ' + ownerName + ': "' + text + '"', '',
             'Instructions:',
-            '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}',
+            '- Si c\'est une demande de message WA: réponds avec le message PRÊT À ENVOYER, signé ' + ownerName + '. Pas de préambule ("Voici le message :"), pas de JSON, pas de balises techniques.',
             '- Si c\'est une question: réponds directement, max 2-3 phrases. Si la donnée n\'est pas dans la liste Clients ci-dessus, dis "je n\'ai pas cette info" au lieu d\'inventer.',
-            '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule sans répéter ta version précédente.'
+            '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule sans répéter ta version précédente.',
+            '- Si la demande est ambiguë ou incompréhensible (1-2 caractères, typo évidente, mot isolé sans contexte): demande clarification au lieu d\'inventer une réponse.'
           ].join('\n') : [
             'Today: ' + todayHuman + ' (' + today + ')',
             'Clients (' + clientCount + '): ' + clientLine,
             '', historyBlock, '',
             'Message from ' + ownerName + ': "' + text + '"', '',
             'Instructions:',
-            '- If this is a WA message request: reply with REPLY: [full message signed ' + ownerName + '] and ACTION: {"type":"send_wa","clientId":"id_or_name","msg":"..."}',
+            '- If this is a WA message request: reply with the message READY TO SEND, signed ' + ownerName + '. No preamble ("Here is the message:"), no JSON, no technical tags.',
             '- If this is a question: reply directly, max 2-3 sentences. If the data is not in the Clients list above, say "I don\'t have that info" instead of making it up.',
-            '- If this is a correction ("no", "use the first person", "that was a test"): take it into account and rephrase without repeating your previous answer.'
+            '- If this is a correction ("no", "use the first person", "that was a test"): take it into account and rephrase without repeating your previous answer.',
+            '- If the request is ambiguous or unclear (1-2 chars, obvious typo, isolated word without context): ask for clarification instead of guessing.'
           ].join('\n');
         }
 
