@@ -3581,17 +3581,9 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
   </div>
 </div>
 
-<!-- Row 2: Tonight price 50% + Smart Alerts 50% -->
-<div class="row row-50">
-  <div class="v2-card" id="heroVillaTonightCard" style="border-left:3px solid var(--gold);background:linear-gradient(180deg, rgba(201,150,58,.04) 0%, var(--card) 60%)">
-    <div class="v2-card-hd">
-      <div class="v2-card-title"><i class="ti ti-currency-euro" style="color:var(--gold)"></i> <span data-fr="Prix recommandé ce soir" data-en="Tonight's recommended price">Prix recommandé ce soir</span></div>
-    </div>
-    <div class="v2-card-body" id="heroVillaTonightBody" style="padding:14px 18px">
-      <div style="font-family:'Fraunces',serif;font-size:36px;color:var(--gold);font-weight:500;line-height:1" id="heroVillaTonightPrice">—</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:6px;letter-spacing:.3px" data-fr="saison normale · 24°C" data-en="normal season · 24°C">saison normale · 24°C</div>
-    </div>
-  </div>
+<!-- Row 2: Aria détecte (full width — price duplicate card removed; context chips
+     and market band now live under the main Prix recommandé block below). -->
+<div class="row row-50" style="grid-template-columns:1fr">
   <div class="v2-card">
     <div class="v2-card-hd">
       <div class="v2-card-title"><i class="ti ti-bulb"></i> <span data-fr="Aria détecte" data-en="Aria detects">Aria détecte</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Opportunités" data-en="Opportunities">Opportunités</span></div>
@@ -3602,6 +3594,9 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
     </div>
   </div>
 </div>
+
+<!-- Context chips / band / CTAs hook — populated by v2RenderHero (was inside heroVillaTonightBody). -->
+<div id="heroVillaTonightBody" style="padding:0 0 14px 0"></div>
 
 <!-- Row 3: Marché (Inbox déjà couvert en haut) -->
 <div class="row row-100">
@@ -3772,20 +3767,10 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 
   </div>
 
-  <!-- ROW: Scénarios (50%) + Villa Checklist slot (50%, populated by renderVillaOpsExtra) -->
-  <div class="row row-50" id="villaScenarioRow" style="margin-bottom:14px">
-  <!-- REVENUE SCENARIOS -->
-  <div class="hm-card" style="margin-bottom:0">
-    <div class="hm-hdr">
-      <div class="hm-hdr-lbl"><i class="ti ti-trending-up" style="color:var(--gold)"></i> <span data-fr="Scénarios revenus" data-en="Revenue scenarios">Scénarios revenus</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Ce mois" data-en="This month">Ce mois</span></div>
-    </div>
-    <div class="hm-body">
-      <div class="sc-row" id="scenarioContent">
-        <div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-      </div>
-    </div>
-  </div>
-  <!-- Villa Checklist will be injected here by renderVillaOpsExtra() -->
+  <!-- ROW: Villa Checklist slot (full width, populated by renderVillaOpsExtra) -->
+  <!-- Revenue scenarios card removed: low signal/cost ratio, replaced by Pricing Insights elsewhere. -->
+  <div class="row row-50" id="villaScenarioRow" style="margin-bottom:14px;grid-template-columns:1fr">
+  <!-- Villa Checklist injected here by renderVillaOpsExtra() -->
   </div><!-- /villaScenarioRow -->
 
 </div><!-- /home -->
@@ -14162,6 +14147,25 @@ function renderCompetitors() {
   const d = getPrice();
   const yourPrice = d.pricePN;
   const comps = loadSavedCompetitors();
+  // Empty-state: no comps saved → guide owner to add some (no more fake seed).
+  if (!comps.length) {
+    const fr = typeof lang !== 'undefined' && lang === 'fr';
+    const factorEl = document.getElementById('factorComp');
+    if (factorEl) factorEl.textContent = fr ? 'Aucun concurrent' : 'No competitors';
+    const compContent = document.getElementById('compContent');
+    if (compContent) {
+      compContent.innerHTML =
+        '<div style="padding:14px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.5">' +
+          '<div style="font-style:italic;margin-bottom:10px">' +
+            (fr ? 'Aucun concurrent enregistré pour comparer.' : 'No competitors saved to compare against.') +
+          '</div>' +
+          '<button onclick="openAllCompetitors()" style="background:var(--gold);color:var(--green3);border:none;border-radius:8px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">' +
+            (fr ? '+ Ajouter un concurrent' : '+ Add a competitor') +
+          '</button>' +
+        '</div>';
+    }
+    return;
+  }
   const allPrices = [yourPrice, ...comps.map(c => c.price)];
   const maxPrice = Math.max(...allPrices);
   const avgMarket = Math.round(comps.reduce((s,c) => s+c.price, 0) / comps.length);
@@ -14276,10 +14280,13 @@ function saveCompetitors() {
 }
 
 function loadSavedCompetitors() {
+  // No automatic seed — owners add their own via "+ Ajouter concurrent".
+  // MRX_COMP_SUGGESTIONS stays available in the picker for known Marrakech rentals,
+  // but is no longer injected into the saved list.
   try {
     const saved = localStorage.getItem('darj_competitors');
-    return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_COMPETITORS));
-  } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_COMPETITORS)); }
+    return saved ? JSON.parse(saved) : [];
+  } catch(e) { return []; }
 }
 
 function openAllCompetitors() {
@@ -19568,8 +19575,9 @@ function v2RenderHero() {
 
   // (card33VillaBody — price snapshot — removed: lives in Home/Pricing tab now)
   var heroPrice = document.getElementById('heroPricePN');
-  // Villa hero tonight price — with reasoning + competitor delta
-  var villaTonight = document.getElementById('heroVillaTonightPrice');
+  // Villa hero context block — chips/band/CTAs only; the price number itself
+  // lives in #heroPricePN now (price-hero-home), no longer duplicated here.
+  var villaTonight = null;
   var villaTonightBody = document.getElementById('heroVillaTonightBody');
   if (villaTonight && heroPrice) villaTonight.textContent = heroPrice.textContent;
   if (villaTonightBody) {
@@ -19802,10 +19810,10 @@ function v2RenderHero() {
         return '<span'+titleAttr+' style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:500;'+toneCss[c.tone]+cursorCss+'">'+c.icon+' '+c.txt+'</span>';
       }).join('');
 
-      villaTonight.textContent = priceTxt;
+      // Price number is rendered by the price-hero-home block (#heroPricePN);
+      // here we only emit context (chips, band, why, Airbnb/AirDNA hooks).
       villaTonightBody.innerHTML =
-        '<div style="font-family:\'Fraunces\',serif;font-size:32px;color:var(--gold);font-weight:500;line-height:1" id="heroVillaTonightPrice">'+priceTxt+'</div>' +
-        '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'+chipsHtml+'</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:5px;padding:0 16px 4px">'+chipsHtml+'</div>' +
         bandHtml +
         whyBtn +
         detailsWrapHtml +
@@ -19838,6 +19846,8 @@ function v2RenderHero() {
         '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:11px;color:var(--muted)">' + (fr2?'Net à venir':'Net upcoming') + '</span><span style="font-family:\'Fraunces\',serif;font-size:16px;color:var(--gold);font-weight:500">'+ Math.round(totalNet) +'€</span></div>';
     }
   }
+  // Toggle calendar-mirror visibility — empty cards hide when no 7-day signal.
+  try { if (typeof refreshCalendarMirrorsVisibility === 'function') refreshCalendarMirrorsVisibility(); } catch(e){}
 }
 
 // Re-render v2 hero whenever clients change
@@ -25668,24 +25678,67 @@ window.addEventListener('DOMContentLoaded', function() {
   setTimeout(refreshInboxCounter, 1500);
 
   /* ── Mini Calendar + Mini Inbox content updaters (across all tabs) ── */
+  // Hide cardCalendarMini / cardCalendarMiniMirror entirely when no in-house guest
+  // and no arrival/departure in the next 7 days — empty calendar boxes were
+  // adding noise on the Guests and Villa tabs without conveying anything.
+  function refreshCalendarMirrorsVisibility() {
+    try {
+      var clientsList = (typeof window.clients !== 'undefined') ? window.clients : [];
+      var today = new Date(); today.setHours(0,0,0,0);
+      var weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7); weekEnd.setHours(0,0,0,0);
+      var firmFn = function(c){ return typeof isFirmBooking !== 'function' || isFirmBooking(c); };
+      var hasAnything = clientsList.some(function(c){
+        if (!firmFn(c)) return false;
+        if (c.arrival && c.departure) {
+          var a = new Date(c.arrival); a.setHours(0,0,0,0);
+          var d = new Date(c.departure); d.setHours(0,0,0,0);
+          if (a.getTime() <= today.getTime() && d.getTime() >= today.getTime()) return true;
+        }
+        if (c.arrival) {
+          var ad = new Date(c.arrival); ad.setHours(0,0,0,0);
+          if (ad.getTime() > today.getTime() && ad.getTime() <= weekEnd.getTime()) return true;
+        }
+        if (c.departure) {
+          var dd = new Date(c.departure); dd.setHours(0,0,0,0);
+          if (dd.getTime() >= today.getTime() && dd.getTime() <= weekEnd.getTime()) return true;
+        }
+        return false;
+      });
+      var selectors = ['#cardCalendarMini', '.cardCalendarMiniMirror'];
+      selectors.forEach(function(sel){
+        document.querySelectorAll(sel).forEach(function(card){
+          card.style.display = hasAnything ? '' : 'none';
+        });
+      });
+    } catch(e){}
+  }
+  window.refreshCalendarMirrorsVisibility = refreshCalendarMirrorsVisibility;
+  setTimeout(refreshCalendarMirrorsVisibility, 1500);
+  setInterval(refreshCalendarMirrorsVisibility, 60000);
+
   function refreshMiniInbox() {
     try {
+      var els = document.querySelectorAll('.miniInboxMirror');
+      if (!els.length) return;
+      // Single source of truth: copy whatever #inboxList rendered. Avoids the
+      // two-renderer drift where the Today inbox had dates/badges and the
+      // Guests/Villa mirrors had a stripped-down 4-row preview.
+      var src = document.getElementById('inboxList');
+      if (src && src.innerHTML && !/Chargement|Loading/.test(src.innerHTML)) {
+        els.forEach(function(el){ el.innerHTML = src.innerHTML; });
+        return;
+      }
+      // Fallback while #inboxList hasn't rendered yet
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
       var rows = (window._inboxEmails && Object.values(window._inboxEmails)) || [];
-      rows = rows.sort(function(a,b){return new Date(b.received_at||0)-new Date(a.received_at||0);}).slice(0,4);
-      var html = '';
-      if (rows.length) {
-        html = rows.map(function(r){
-          var sender = ((r.from_name || r.from_email || '?').split('<')[0].trim()).slice(0,18);
-          var subj = (r.subject||'(no subject)').slice(0,40);
-          var isNew = !r.read_at;
-          return '<div style="padding:8px 18px;border-bottom:1px solid rgba(0,0,0,.04);font-size:11px;display:flex;align-items:center;gap:8px;cursor:pointer;font-family:var(--sans)" onclick="event.stopPropagation();goTab(\'today\')"><span style="width:6px;height:6px;border-radius:50%;background:'+(isNew?'var(--gold)':'transparent')+';flex-shrink:0"></span><span style="font-weight:'+(isNew?'600':'500')+';color:var(--ink);min-width:70px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+sender+'</span><span style="flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+subj+'</span></div>';
-        }).join('');
-      } else {
-        html = '<div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic">'+(fr?'Aucun message':'No messages')+'</div>';
+      if (!rows.length) {
+        els.forEach(function(el){
+          el.innerHTML = '<div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic">'+(fr?'Aucun message':'No messages')+'</div>';
+        });
+        return;
       }
-      var els = document.querySelectorAll('.miniInboxMirror');
-      els.forEach(function(el){ el.innerHTML = html; });
+      // #inboxList not yet populated but emails exist → trigger main render
+      if (typeof loadInboxEmails === 'function') loadInboxEmails();
     } catch(e){}
   }
   setTimeout(refreshMiniInbox, 1500);
