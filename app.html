@@ -17946,12 +17946,26 @@ function ariaQuickModifier(mode) {
 }
 window.ariaQuickModifier = ariaQuickModifier;
 
+// Toggle the modifier bar (#ariaQuickBar). Called from renderAriaContextualActions
+// after the bar has the right context (a draft message in the modal).
+function setAriaModifierBar(visible) {
+  var bar = document.getElementById('ariaQuickBar');
+  if (!bar) return;
+  bar.style.display = visible ? 'flex' : 'none';
+}
+window.setAriaModifierBar = setAriaModifierBar;
+
 // ── Contextual ARIA actions — chooses follow-up buttons based on
 //   what the USER asked (window._lastAriaQuestion) + what ARIA replied.
 //   Returns up to 3 actions. Each action is { label, prompt? , fn? }.
 function getAriaContextualActions(userQuestion, ariaResponse) {
   var q = (userQuestion || '').toLowerCase();
   var resp = (ariaResponse || '').toLowerCase();
+  // Show the modifier bar (Shorter / Translate / Warmer / Formal / …) only
+  // when the last AI reply looks like a draft message — same heuristic the
+  // contextual actions use below (the 'draft' branch).
+  var isDraftReply = /bonjour|dear |cher |objet:|subject:/.test(resp) || /rédig|écris|draft|prépare|compose/.test(q);
+  try { if (typeof setAriaModifierBar === 'function') setAriaModifierBar(isDraftReply); } catch(e){}
   var actions = [];
   var next = null;
   if (typeof clients !== 'undefined') {
@@ -21362,6 +21376,13 @@ window.addEventListener('DOMContentLoaded', function() {
       });
       html += '</div>';
     }
+    // Discreet Deep-dive entry point. The big toolbar that used to live below
+    // the card is now hidden on this state — Deep dive stays accessible here
+    // because it acts on the card itself (not on a generated message).
+    html += '<div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(201,150,58,.15);text-align:right">' +
+      '<a href="#" onclick="event.preventDefault();ariaQuickModifier(\'deep\')" style="font-size:11px;color:#8A8070;text-decoration:underline;text-decoration-color:rgba(138,128,112,.5);text-underline-offset:2px">' +
+      (f ? '🔍 Analyse approfondie' : '🔍 Deep dive') +
+      '</a></div>';
     html += '</div>';
     return html;
   }
@@ -24289,8 +24310,11 @@ window.addEventListener('DOMContentLoaded', function() {
         <button onclick="clearAriaAttachment()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 0 0 4px" title="Retirer">✕</button>
       </div>
     </div>
-    <!-- Patch 5: Premium quick-options bar (always visible) -->
-    <div id="ariaQuickBar" style="padding:8px 14px;background:var(--paper);border-top:1px solid var(--border);display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;align-items:center">
+    <!-- Modifier bar — hidden by default, shown only after a draft AI reply
+         (welcome/staff message etc.) via setAriaModifierBar(true). On the
+         extraction "fiche" state the bar stays hidden; Deep dive lives as a
+         discreet text link inside the card itself. -->
+    <div id="ariaQuickBar" style="padding:8px 14px;background:var(--paper);border-top:1px solid var(--border);display:none;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;align-items:center">
       <button onclick="ariaQuickModifier('deep')" title="Réponse approfondie via reasoning model" style="flex-shrink:0;background:linear-gradient(135deg,var(--green3),#1B4332);color:#fff;border:none;border-radius:14px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:4px">🧠 <span data-fr="Approfondir" data-en="Deep dive">Approfondir</span></button>
       <button onclick="ariaQuickModifier('shorter')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="↓ Plus court" data-en="↓ Shorter">↓ Plus court</button>
       <button onclick="ariaQuickModifier('translate')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="🌐 Traduire EN" data-en="🌐 Translate FR">🌐 Traduire EN</button>
