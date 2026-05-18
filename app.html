@@ -21467,7 +21467,13 @@ window.addEventListener('DOMContentLoaded', function() {
     var firstName = (g.name||'').split(' ')[0];
     var nights = (g.arrival && g.departure) ? Math.round((new Date(g.departure)-new Date(g.arrival))/86400000) : 0;
     var net = g.price ? Math.round(g.price * (1 - (g.commission||15.5)/100)) : 0;
-    var fmtMoney = function(n){ return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€'; };
+    // Currency-aware: when g.currency exists and isn't EUR (Silan THB case),
+    // route through fmtPriceWithCurrency so the card shows '31,980 THB (~820€)'
+    // instead of '31 980€'. Falls back to the EUR-only formatter when the FX
+    // helper isn't loaded yet (defensive — paste flow may race the FX boot).
+    var fmtMoney = (typeof fmtPriceWithCurrency === 'function' && g && g.currency)
+      ? function(n){ return fmtPriceWithCurrency(n, g.currency); }
+      : function(n){ return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€'; };
 
     // Stocker actions pour callback
     window._ariaPendingActions = window._ariaPendingActions || {};
