@@ -3812,12 +3812,17 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
       </div>
       <div style="font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;line-height:1.5" data-fr="Les analyses IA passent par le proxy sécurisé Stafflo. Vos données clients ne sont jamais utilisées pour entraîner les modèles." data-en="AI calls go through the secure Stafflo proxy. Your guest data is never used to train models.">Les analyses IA passent par le proxy sécurisé Stafflo. Vos données clients ne sont jamais utilisées pour entraîner les modèles.</div>
     </div>
+    <!-- Optional client API keys (fallback when proxy is down). Empty = skip provider. -->
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;font-size:12px;color:var(--muted);padding:6px 0;list-style:none" data-fr="🔑 Clés API personnelles (optionnel)" data-en="🔑 Personal API keys (optional)">🔑 Clés API personnelles (optionnel)</summary>
+      <div style="font-size:11px;color:var(--muted);margin:6px 0 12px;line-height:1.5" data-fr="Utilisées en fallback si le proxy Stafflo est indisponible. Une seule suffit, plusieurs = plus de résilience." data-en="Used as fallback if the Stafflo proxy is unavailable. One is enough, several = more resilience.">Utilisées en fallback si le proxy Stafflo est indisponible. Une seule suffit, plusieurs = plus de résilience.</div>
+      <div class="field"><label data-fr="Gemini (Google AI Studio)" data-en="Gemini (Google AI Studio)">Gemini (Google AI Studio)</label><input id="cfgGeminiKey" type="password" autocomplete="off" placeholder="AIza..."></div>
+      <div class="field"><label data-fr="DeepSeek" data-en="DeepSeek">DeepSeek</label><input id="cfgDeepseekKey" type="password" autocomplete="off" placeholder="sk-..."></div>
+      <div class="field"><label data-fr="Groq" data-en="Groq">Groq</label><input id="cfgGroqKey" type="password" autocomplete="off" placeholder="gsk_..."></div>
+      <div class="field"><label data-fr="Mistral" data-en="Mistral">Mistral</label><input id="cfgMistralKey" type="password" autocomplete="off" placeholder="..."></div>
+    </details>
   </div>
-  <!-- Hidden inputs kept for legacy compatibility (loadSettingsUI / saveSettings still reference these) -->
-  <input type="hidden" id="cfgGeminiKey" value="">
-  <input type="hidden" id="cfgGroqKey" value="">
-  <input type="hidden" id="cfgMistralKey" value="">
-  <input type="hidden" id="cfgDeepseekKey" value="">
+  <!-- Hidden inputs for providers without a visible field (loadSettingsUI / saveSettings still reference these). -->
   <input type="hidden" id="cfgAnthropicKey" value="">
   <input type="hidden" id="cfgOpenaiKey" value="">
   <input type="hidden" id="cfgPerplexityKey" value="">
@@ -15873,6 +15878,31 @@ async function loadMorningBrief(forceRefresh = false) {
 }
 
 
+// ═══ STAFFLO AI ROUTING — server-side proxy + client fallback ═══
+//
+// PROXY (Cloudflare Worker, tier 1, primary path):
+//   extract              → Gemini 2.5 Flash
+//   chat_fr / chat_en    → Gemini 2.5 Flash
+//   write_* / write_guest_* / write_staff → Gemini 2.5 Flash-Lite
+//   fast_classify        → Gemini 2.5 Flash-Lite
+//   brief                → Gemini 2.5 Flash-Lite
+//   reason               → DeepSeek V3.2
+//   vision               → Gemini 2.5 Flash
+//
+// CLIENT FALLBACK (used when proxy is unreachable OR user keys override):
+//   See AI_ROUTES (line ~21761) for the 12-task cascade with adaptive
+//   reordering driven by stafflo_ai_scores_v1 (rolling 50-call window).
+//   Each task has up to 4 providers; per-tier validation; final fail
+//   surfaces a toast to the user.
+//
+// PROVIDERS:
+//   gemini       → gemini-2.5-flash (rich, multimodal)
+//   gemini_lite  → gemini-2.5-flash-lite (cheap, fast — shares geminiKey)
+//   deepseek     → deepseek-chat
+//   groq         → llama-3.3-70b-versatile
+//   mistral      → mistral-small-latest
+//   openai       → gpt-4o-mini (tier 4 backup)
+//
 // ══════════════════════════════════════════════════
 // PROVIDER HELPERS — single source of truth
 // ══════════════════════════════════════════════════
@@ -15930,12 +15960,23 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
   }
 
   // ── Fallback: client API keys ────────────────────────
+  // Note: in practice the Phase 2 wrapper (line ~21761) shadows this function
+  // and uses AI_ROUTES instead. Kept here in sync as a safety net in case the
+  // wrapper is bypassed (e.g. direct call to _origCallBestAI).
   const cfg = getCfg();
   const routes = {
-    extract:  ['groq',    'gemini',  'mistral', 'deepseek'],
-    brief:    ['gemini',  'deepseek','groq',    'mistral'],
-    write_fr: ['mistral', 'gemini',  'groq',    'deepseek'],
-    reason:   ['deepseek','gemini',  'mistral', 'groq'],
+    extract:        ['gemini',      'deepseek', 'groq',    'mistral'],
+    chat_fr:        ['gemini',      'mistral',  'groq',    'deepseek'],
+    chat_en:        ['gemini',      'groq',     'mistral', 'deepseek'],
+    reason:         ['deepseek',    'gemini',   'groq',    'mistral'],
+    vision:         ['gemini'],
+    write_fr:       ['gemini_lite', 'mistral',  'groq',    'gemini'],
+    write_en:       ['gemini_lite', 'groq',     'mistral', 'gemini'],
+    write_guest_fr: ['gemini_lite', 'mistral',  'groq',    'gemini'],
+    write_guest_en: ['gemini_lite', 'groq',     'mistral', 'gemini'],
+    write_staff:    ['gemini_lite', 'mistral',  'groq',    'deepseek'],
+    fast_classify:  ['gemini_lite', 'groq',     'mistral', 'deepseek'],
+    brief:          ['gemini_lite', 'deepseek', 'groq',    'mistral']
   };
   const order = routes[task] || routes.extract;
   for (const pid of order) {
@@ -15961,7 +16002,9 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
 }
 
 function getProviderKey(cfg, provider) {
-  return provider === 'gemini' ? (cfg.geminiKey||'') : provider === 'deepseek' ? (cfg.deepseekKey||'') : provider === 'perplexity' ? (cfg.perplexityKey||'') : provider === 'anthropic' ? (cfg.anthropicKey||'') : provider === 'openai' ? (cfg.openaiKey||'') : provider === 'mistral' ? (cfg.mistralKey||'') : provider === 'groq' ? (cfg.groqKey||'') : '';
+  // gemini and gemini_lite share the same API key (different endpoints, same Google project).
+  if (provider === 'gemini' || provider === 'gemini_lite') return cfg.geminiKey||'';
+  return provider === 'deepseek' ? (cfg.deepseekKey||'') : provider === 'perplexity' ? (cfg.perplexityKey||'') : provider === 'anthropic' ? (cfg.anthropicKey||'') : provider === 'openai' ? (cfg.openaiKey||'') : provider === 'mistral' ? (cfg.mistralKey||'') : provider === 'groq' ? (cfg.groqKey||'') : '';
 }
 
 async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxTokens) {
@@ -15987,10 +16030,12 @@ async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxT
     return d.choices?.[0]?.message?.content || '';
   }
 
-  // Gemini
-  if (provider === 'gemini') {
+  // Gemini family — gemini-2.5-flash (rich) vs gemini-2.5-flash-lite (cheap, fast).
+  // Both share one API key; the slug differs only in the model path.
+  if (provider === 'gemini' || provider === 'gemini_lite') {
+    const modelSlug = provider === 'gemini_lite' ? 'gemini-2.5-flash-lite' : 'gemini-2.5-flash';
     const r = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey,
+      'https://generativelanguage.googleapis.com/v1beta/models/' + modelSlug + ':generateContent?key=' + apiKey,
       {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -16000,7 +16045,7 @@ async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxT
         })
       }
     );
-    if (!r.ok) throw new Error('Gemini ' + r.status + ': ' + await r.text());
+    if (!r.ok) throw new Error(modelSlug + ' ' + r.status + ': ' + await r.text());
     const d = await r.json();
     return d.candidates?.[0]?.content?.parts?.[0]?.text || '';
   }
@@ -21763,15 +21808,24 @@ window.addEventListener('DOMContentLoaded', function() {
      Routes corrigées avec vrais prix mai 2026 + DeepSeek bien positionné
      ══════════════════════════════════════════════════════════════════ */
 
-  // Routes par tâche, ordre = tier 1 → tier 4 (corrigé avec recherche prix réelle)
+  // Routes par tâche, ordre = tier 1 → tier 4.
+  // Convention : gemini = gemini-2.5-flash (rich), gemini_lite = gemini-2.5-flash-lite (cheap+fast).
+  // Même clé API derrière les deux — différencié par endpoint dans callProviderAPI.
   var AI_ROUTES = {
-    extract:        ['groq', 'gemini', 'deepseek', 'openai'],   // JSON simple
-    write_guest_fr: ['mistral', 'deepseek', 'gemini', 'openai'], // FR chaleureux
-    write_guest_en: ['groq', 'openai', 'deepseek', 'gemini'],    // EN chaleureux (Groq 70B)
-    write_staff:    ['groq', 'gemini', 'mistral', 'deepseek'],   // Brief court
-    reason:         ['deepseek', 'openai', 'gemini', 'groq'],    // Raisonnement
-    brief:          ['gemini', 'deepseek', 'groq', 'mistral'],
-    write_fr:       ['mistral', 'deepseek', 'gemini', 'openai']  // Alias
+    // Rich tier 1 — extraction structurée, raisonnement, conversation
+    extract:        ['gemini',      'deepseek', 'groq',    'mistral'],  // JSON structuré complexe
+    chat_fr:        ['gemini',      'mistral',  'groq',    'deepseek'],
+    chat_en:        ['gemini',      'groq',     'mistral', 'deepseek'],
+    reason:         ['deepseek',    'gemini',   'groq',    'mistral'],  // Raisonnement profond
+    vision:         ['gemini'],                                          // single-provider (only Gemini handles images)
+    // Cheap tier 1 — génération texte courte
+    write_fr:       ['gemini_lite', 'mistral',  'groq',    'gemini'],
+    write_en:       ['gemini_lite', 'groq',     'mistral', 'gemini'],
+    write_guest_fr: ['gemini_lite', 'mistral',  'groq',    'gemini'],
+    write_guest_en: ['gemini_lite', 'groq',     'mistral', 'gemini'],
+    write_staff:    ['gemini_lite', 'mistral',  'groq',    'deepseek'],
+    fast_classify:  ['gemini_lite', 'groq',     'mistral', 'deepseek'],
+    brief:          ['gemini_lite', 'deepseek', 'groq',    'mistral']
   };
 
   // Score localStorage : apprend ce qui marche pour CET user
@@ -21843,10 +21897,28 @@ window.addEventListener('DOMContentLoaded', function() {
         return { ok:false, reason:'ai_refused' };
       }
       return { ok:true };
+    },
+    // Lighter check for conversational replies (chat_fr / chat_en).
+    // Same AI-refusal guard but lower length threshold (chat answers are often terse).
+    chat_generic: function(text){
+      if (!text || text.length < 10) return { ok:false, reason:'too_short' };
+      if (/I'?m sorry|I cannot|I can'?t|Je ne peux pas|Désolé.{0,20}je ne peux/i.test(text)) {
+        return { ok:false, reason:'ai_refused' };
+      }
+      return { ok:true };
+    },
+    // fast_classify outputs are deliberately short (1-2 words / labels).
+    classify_short: function(text){
+      if (!text || text.length < 2) return { ok:false, reason:'too_short' };
+      return { ok:true };
     }
   };
   function validateAiOutput(task, text){
-    var v = task === 'extract' ? VALIDATORS.extract : VALIDATORS.write_generic;
+    var v;
+    if (task === 'extract')              v = VALIDATORS.extract;
+    else if (task === 'fast_classify')   v = VALIDATORS.classify_short;
+    else if (task === 'chat_fr' || task === 'chat_en') v = VALIDATORS.chat_generic;
+    else                                  v = VALIDATORS.write_generic;
     return v(text);
   }
 
