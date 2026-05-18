@@ -182,5 +182,8 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 
 ## 12. Limitations connues à NE PAS toucher dans v1
 
-- **Gmail OAuth** : Implicit flow → tokens expirent ~1h, daily reconnect nécessaire. Upgrade vers Authorization Code flow scopé pour un patch séparé, pas dans le pivot ARIA-first.
 - **`deleted_at`** : pas encore d'historique soft-delete dans Supabase. Ne pas ajouter sans demande.
+
+### Limitations résolues (pour mémoire)
+
+- **Gmail OAuth — daily reconnect** (résolu sur `feature/gmail-refresh-fix`). L'OAuth utilisait déjà Authorization Code + offline access, mais `_tryRefreshGmailToken()` appelait `oauth2.googleapis.com/token` directement sans `client_secret` → refus silencieux de Google pour les client_id web-typed. Le refresh passe maintenant par la même edge function que l'échange initial (`gmail-token-exchange` v3, supporte les 2 grants). Plus de reconnexion quotidienne.
