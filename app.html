@@ -2028,6 +2028,55 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 </style>
 </head>
 <body>
+<!-- ══ DEMO MODE BANNER — visible only when ?demo=1 in URL ══════════════ -->
+<div id="demoBanner" style="display:none;position:sticky;top:0;z-index:9999;background:linear-gradient(90deg, rgba(201,150,58,.15), rgba(201,150,58,.25));border-bottom:1px solid var(--gold);padding:8px 14px;text-align:center;font-size:12px;color:var(--ink);font-weight:500;font-family:DM Sans,sans-serif">
+  <span data-fr="🎬 Mode démo — Toutes les données sont des exemples" data-en="🎬 Demo mode — All data shown are examples">🎬 Mode démo — Toutes les données sont des exemples</span>
+  · <a href="?" style="color:var(--gold);text-decoration:underline;font-weight:600" data-fr="Sortir" data-en="Exit">Sortir</a>
+</div>
+<script>
+  if (window.DEMO_MODE) {
+    var _db = document.getElementById('demoBanner');
+    if (_db) _db.style.display = 'block';
+    // If the user is signed in AND opened ?demo=1, warn them once that demo
+    // data is showing instead of their real CRM. Writes are blocked above.
+    window.addEventListener('DOMContentLoaded', function(){
+      setTimeout(function(){
+        try {
+          var hasSession = false;
+          try {
+            var raw = localStorage.getItem('stafflo_session');
+            hasSession = !!(raw && JSON.parse(raw).access_token);
+          } catch(_){}
+          if (!hasSession || sessionStorage.getItem('_demoLogInfoShown') === '1') return;
+          sessionStorage.setItem('_demoLogInfoShown','1');
+          var fr = (typeof lang !== 'undefined' && lang === 'fr');
+          var m = document.createElement('div');
+          m.style.cssText = 'position:fixed;inset:0;background:rgba(15,35,24,.55);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;font-family:DM Sans,sans-serif';
+          m.innerHTML =
+            '<div style="background:#fff;border-radius:14px;max-width:420px;padding:26px 28px;box-shadow:0 20px 60px rgba(0,0,0,.25)">' +
+              '<div style="font-family:Fraunces,serif;font-size:22px;color:#1a3a1a;margin-bottom:10px">' +
+                (fr ? 'Vous êtes connecté.' : "You're signed in.") +
+              '</div>' +
+              '<div style="font-size:14px;color:#5a6b5a;line-height:1.5;margin-bottom:18px">' +
+                (fr
+                  ? "Le mode démo affiche des données d'exemple — vos vraies données ne sont pas modifiées. Fermez la démo pour retrouver votre dashboard."
+                  : "Demo mode shows example data — your real data is not touched. Close the demo to see your real dashboard.") +
+              '</div>' +
+              '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+                '<a href="?" style="padding:9px 16px;background:#C9963A;color:#0F2318;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px">' +
+                  (fr ? 'Sortir de la démo' : 'Exit demo') +
+                '</a>' +
+                '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="padding:9px 16px;background:transparent;color:#5a6b5a;border:1px solid #d5d0c8;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13px">' +
+                  (fr ? 'Continuer la démo' : 'Continue demo') +
+                '</button>' +
+              '</div>' +
+            '</div>';
+          document.body.appendChild(m);
+        } catch(_){}
+      }, 1200);
+    });
+  }
+</script>
 <!-- ══ ONBOARDING V3 — 7-screen mobile-first flow (Lot 3) ══════════════
      Active when ?onboarding=1 in URL or cfg.onboarded !== true post-auth.
      Strangler fig: legacy onboardModal + onboardWizard untouched. -->
@@ -6288,6 +6337,21 @@ window.deduplicateClients = deduplicateClients;
 
 function loadLocal() {
   if (isDemoMode()) return;
+  // URL ?demo=1 mode: serve canned guest pipeline with offsets resolved to
+  // today, never touch localStorage or Supabase.
+  if (window.DEMO_MODE && window.DEMO_SEED && Array.isArray(window.DEMO_SEED.guests)) {
+    clients = window.DEMO_SEED.guests.map(function(g){
+      var arr = window.resolveDemoOffsets(g.arrival);
+      var dep = null;
+      if (arr && g.nights) {
+        var d = new Date(arr); d.setDate(d.getDate() + g.nights);
+        dep = d.toISOString().slice(0,10);
+      }
+      return Object.assign({}, g, { arrival: arr, departure: dep });
+    });
+    window.clients = clients;
+    return;
+  }
   try {
     clients = JSON.parse(localStorage.getItem('stafflo_clients') || '[]');
     // Safety net: strip any _demo:true clients that leaked into localStorage
@@ -10250,6 +10314,40 @@ async function loadInboxEmails() {
   var els = Array.from(document.querySelectorAll('#inboxList, #inboxListLegacy'));
   if (!els.length) return;
   var setHtml = function(h){ els.forEach(function(e){ e.innerHTML = h; }); };
+
+  // URL ?demo=1 mode: render canned inbox; skip Gmail fetch entirely.
+  if (window.DEMO_MODE && window.DEMO_SEED && Array.isArray(window.DEMO_SEED.inbox)) {
+    var frD = (typeof lang !== 'undefined' && lang === 'fr');
+    var rowsD = window.DEMO_SEED.inbox.map(function(e){
+      var d = new Date(); d.setDate(d.getDate() - (e.date_offset_days || 0));
+      return {
+        id: e.id,
+        from_name: e.sender,
+        from_email: (e.sender || '').toLowerCase().replace(/\s+/g,'.') + '@demo',
+        subject: e.subject,
+        snippet: e.preview,
+        received_at: d.toISOString(),
+        read_at: e.is_new ? null : new Date().toISOString(),
+        source: e.source
+      };
+    });
+    window._inboxEmails = {};
+    rowsD.forEach(function(r){ window._inboxEmails[r.id] = r; });
+    setHtml(rowsD.map(function(r){
+      var isNew = !r.read_at;
+      var diff = Math.round((Date.now() - new Date(r.received_at).getTime())/86400000);
+      var dateStr = diff === 0 ? (frD?'auj':'today') : diff + (frD?'j':'d');
+      var senderShort = (r.from_name || '?').slice(0,18);
+      return '<div class="cmp-inbox-row'+(isNew?' cmp-new':'')+'" data-email-id="'+r.id+'" style="padding:10px 18px;border-bottom:1px solid rgba(0,0,0,.04);display:flex;align-items:center;gap:10px;cursor:pointer;font-family:var(--sans)">' +
+        '<span style="width:6px;height:6px;border-radius:50%;background:'+(isNew?'var(--gold)':'transparent')+';flex-shrink:0"></span>' +
+        '<span style="font-weight:'+(isNew?'600':'500')+';color:var(--ink);min-width:90px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+senderShort+'</span>' +
+        '<span style="flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">'+r.subject+'</span>' +
+        '<span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;flex-shrink:0">'+dateStr+'</span>' +
+      '</div>';
+    }).join(''));
+    if (typeof refreshMiniInbox === 'function') refreshMiniInbox();
+    return;
+  }
   var qsa = function(s){
     var out = [];
     els.forEach(function(e){ out.push.apply(out, e.querySelectorAll(s)); });
@@ -14209,6 +14307,83 @@ var MRX_COMP_SUGGESTIONS = [
   { name: 'Villa Mabrouka', price: 1450, source: 'Direct', area: 'Palmeraie' },
 ];
 
+// ════════════════════════════════════════════════════════════════
+// DEMO SEED — single source of truth for ?demo=1 URL-driven mode
+// RAM-only: never persisted to localStorage or Supabase.
+// Coexists with the legacy stafflo_demo_mode/buildDemoClients path —
+// loaders check DEMO_MODE first and substitute richer seed data when
+// the URL flag is set.
+// ════════════════════════════════════════════════════════════════
+window.DEMO_SEED = {
+  guests: [
+    { id:'demo_g1', name:'Sophie Martin',  country:'France',  nat:'🇫🇷', source:'Airbnb',     arrival:'__OFFSET__-2',  nights:4, guests:4,  price:2400, net:2068, bookingStatus:'confirmed', notes:'Famille parisienne — 2 enfants. Pas de porc. Demande lit bébé.', phone:'+33 6 12 34 56 78' },
+    { id:'demo_g2', name:'James Wilson',   country:'UK',      nat:'🇬🇧', source:'Booking.com', arrival:'__OFFSET__+5',  nights:6, guests:8,  price:3200, net:2720, bookingStatus:'confirmed', notes:'Anniversary trip — request champagne on arrival.', phone:'+44 7700 900123' },
+    { id:'demo_g3', name:'Léa Dubois',     country:'France',  nat:'🇫🇷', source:'Airbnb',     arrival:'__OFFSET__+19', nights:7, guests:10, price:4100, net:3534, bookingStatus:'confirmed', notes:'Réunion famille — 3 générations. Chef privé demandé 2 soirs.' },
+    { id:'demo_g4', name:'Marco Rossi',    country:'Italy',   nat:'🇮🇹', source:'Direct',     arrival:'__OFFSET__+46', nights:3, guests:6,  price:1725, net:1725, bookingStatus:'confirmed', notes:'Repeat guest (3rd stay). Loves the pool area.' },
+    { id:'demo_g5', name:'Anna Schmidt',   country:'Germany', nat:'🇩🇪', source:'Airbnb',     arrival:'__OFFSET__-18', nights:5, guests:4,  price:1800, net:1551, bookingStatus:'confirmed', notes:'Left 5★ review. Mentioned Said by name.' }
+  ],
+  competitors: [
+    { name:'Dar Julina — 6ch Palmeraie',     price:1200, source:'Villanovo',         area:'Palmeraie' },
+    { name:'Dar Tahira — 5ch Amelkis',       price:980,  source:'Villanovo',         area:'Al Maaden' },
+    { name:'Villa Akhdar — 5ch Palmeraie',   price:1350, source:'Le Collectionist',  area:'Palmeraie' },
+    { name:'Riad Joya — 4ch Médina',         price:850,  source:'Airbnb',            area:'Médina'    },
+    { name:'Le Collectionist 5ch',           price:2100, source:'Le Collectionist',  area:'Palmeraie' }
+  ],
+  inbox: [
+    { id:'demo_e1', sender:'Airbnb',         subject:'Reservation reminder: James Wilson is coming soon', preview:'Your guest James arrives in 5 days. Confirm check-in details.', date_offset_days:1, source:'airbnb',  is_new:true  },
+    { id:'demo_e2', sender:'Booking.com',    subject:'New enquiry · Marco Rossi · 3 nights July',        preview:'Hi! I would like to book 3 nights starting July 3rd for 6 guests…', date_offset_days:2, source:'booking', is_new:true  },
+    { id:'demo_e3', sender:'Sophie Martin',  subject:'WhatsApp — Question about pool heating',           preview:'Bonjour Said, le chauffage de la piscine est-il actif ce soir ?',   date_offset_days:0, source:'whatsapp', is_new:true },
+    { id:'demo_e4', sender:'Airbnb',         subject:'Review request: Anna Schmidt',                     preview:'Anna left a 5★ review. Reply within 14 days to publish yours.',     date_offset_days:4, source:'airbnb',  is_new:false }
+  ],
+  signals: [
+    { icon:'🗓', tone:'gold', title:'Mawazine Festival Rabat · In 5d · +8%',  detail:'Some guests combine Marrakech + Rabat — activate "Event" modifier', action:'Guests' },
+    { icon:'☀',  tone:'info', title:'Ideal weather 24°C',                     detail:'Garden, terrace and pool — perfect outdoor conditions',              action:'Ask ARIA' },
+    { icon:'⭐', tone:'info', title:'Ask review from Sophie Martin',          detail:'Checked out 4d ago — perfect timing',                                action:'Aria' },
+    { icon:'💰', tone:'info', title:'Optimize next 30 days pricing',          detail:'Ask ARIA for a quick market check vs Marrakech',                     action:'Pricing' }
+  ],
+  stats:   { guests:19, totalNet:11877, avgNight:133 },
+  pricing: { base:650, modifiers:70, total7n:5040, hostFee:781, net:4259, recommended:720, vsMarket:-490, season:'normal' },
+  flights: [
+    { route:'CDG → RAK', time:'14:20', flight:'AF1296', status:'ARR' },
+    { route:'LHR → RAK', time:'16:55', flight:'BA0426', status:'ARR' },
+    { route:'AMS → RAK', time:'19:15', flight:'KL1583', status:'TMRW' }
+  ]
+};
+
+// Resolve a stored "__OFFSET__±N" date placeholder to today + N days (ISO).
+window.resolveDemoOffsets = function(s) {
+  if (!s || typeof s !== 'string' || !s.startsWith('__OFFSET__')) return s;
+  var d = new Date();
+  var n = parseInt(s.replace('__OFFSET__',''), 10) || 0;
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0,10);
+};
+
+// DEMO_MODE flag — URL-driven, set ONCE at boot, never persisted.
+window.DEMO_MODE = (function(){
+  try { return new URLSearchParams(location.search).get('demo') === '1'; }
+  catch(e) { return false; }
+})();
+
+// ── Write blocker (allowlist by prefix) ────────────────────────────
+// In DEMO_MODE we block stafflo_* and darj_* localStorage writes so
+// browsing the demo never pollutes a real account. Supabase auth keys
+// (sb-*) and service-worker keys keep flowing so login still works if
+// the user happens to be authed.
+if (window.DEMO_MODE) {
+  var _DEMO_BLOCKED = /^(stafflo_|darj_)/i;
+  var _origSet = localStorage.setItem.bind(localStorage);
+  var _origRemove = localStorage.removeItem.bind(localStorage);
+  localStorage.setItem = function(k, v) {
+    if (_DEMO_BLOCKED.test(k)) { try { console.warn('[DEMO] localStorage.setItem blocked:', k); } catch(_){}; return; }
+    return _origSet(k, v);
+  };
+  localStorage.removeItem = function(k) {
+    if (_DEMO_BLOCKED.test(k)) { try { console.warn('[DEMO] localStorage.removeItem blocked:', k); } catch(_){}; return; }
+    return _origRemove(k);
+  };
+}
+
 function addCompetitor() {
   var fr = lang === 'fr';
   var form = document.getElementById('compForm');
@@ -14280,7 +14455,12 @@ function saveCompetitors() {
 }
 
 function loadSavedCompetitors() {
-  // No automatic seed — owners add their own via "+ Ajouter concurrent".
+  // URL ?demo=1 mode: serve canned competitor set so the dashboard looks
+  // populated for pitch / landing handoff. No localStorage involvement.
+  if (window.DEMO_MODE && window.DEMO_SEED && Array.isArray(window.DEMO_SEED.competitors)) {
+    return JSON.parse(JSON.stringify(window.DEMO_SEED.competitors));
+  }
+  // No automatic seed for real accounts — owners add their own via "+ Ajouter concurrent".
   // MRX_COMP_SUGGESTIONS stays available in the picker for known Marrakech rentals,
   // but is no longer injected into the saved list.
   try {
@@ -14326,6 +14506,15 @@ function renderScenarios(pricePN) {
 // TODAY TAB — alerts, brief, quick view
 // ════════════════════════════════════════════════════════
 async function generateAlerts(weatherTemp) {
+  // URL ?demo=1 mode: short-circuit with canned signals so the
+  // "Aria détecte / Aria detects" card looks alive for the pitch.
+  if (window.DEMO_MODE && window.DEMO_SEED && Array.isArray(window.DEMO_SEED.signals)) {
+    const alertsD = window.DEMO_SEED.signals.map(function(s){
+      return { type: s.tone === 'gold' ? 'urgent' : 'info', title: s.icon + ' ' + s.title, sub: s.detail };
+    });
+    try { if (typeof renderAlerts === 'function') renderAlerts(alertsD); } catch(e){}
+    return alertsD;
+  }
   const alerts = [];
   const fr = lang === 'fr';
   const now = new Date();
