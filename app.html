@@ -6457,7 +6457,7 @@ async function analyze() {
     : 'No existing clients.';
 
   // ── PASS 1 system prompt — extraction only, tight schema ──────
-  const p1Schema = `{"guest":{"existing_id":null,"match_confidence":"none","name":"Full Name","nat":"🇫🇷 Français","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":4,"guests":6,"price":2116,"currency":"EUR","commission":15.5,"source":"Airbnb","phone":"","returning":false,"bookingStatus":"inquiry","question":"verbatim guest question if inquiry else null","notes":"ops details: diet, kids ages, occasions, transport, arrival time","lang":"${guestLang}"},"alerts":[{"type":"urgent","text":"specific action"}],"price_advice":{"amount":750,"reason":"brief"}}`;
+  const p1Schema = `{"guest":{"existing_id":null,"match_confidence":"none","name":"Full Name","nat":"🇫🇷 Français","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":4,"guests":6,"price":2116,"currency":"EUR","room_segments":null,"commission":15.5,"source":"Airbnb","phone":"","returning":false,"bookingStatus":"inquiry","question":"verbatim guest question if inquiry else null","notes":"ops details: diet, kids ages, occasions, transport, arrival time","lang":"${guestLang}"},"alerts":[{"type":"urgent","text":"specific action"}],"price_advice":{"amount":750,"reason":"brief"}}`;
 
   const p1Prompt = [
     `Villa ops ${villaName}, ${cityName}. Owner: ${ownerName}. Today: ${today}.`,
@@ -6473,7 +6473,33 @@ async function analyze() {
     'currency = ISO code from price markers (EUR, USD, GBP, THB, IDR, MAD, AED). Default "EUR" only when no currency marker is found anywhere in the thread.',
     'commission from "Host service fee %" field if present.',
     'existing_id: check CRM list above — match by name (first name alone counts if unique), phone, or arrival date. WhatsApp chats: guest = non-owner participant (not Jérémie/owner).',
-    'nat: flag emoji + language from city/country context.',
+    '',
+    'MULTIPLE OFFERS RULE: A long negotiation thread can contain several offers with different dates/prices. Use ONLY the most recent CONFIRMED reservation — never an intermediate offer.',
+    '  Confirmation markers (high → low priority): "confirmation number", "booking confirmed", "we are pleased to confirm", "payment has been completed", "payment done"; failing that, the last offer both parties explicitly agree on.',
+    '  IGNORE: initial offers that were superseded, counter-proposals that were not accepted, abandoned pricing attempts.',
+    '  If nothing is explicitly confirmed → bookingStatus="inquiry" and take the latest offer on the table.',
+    '',
+    'ROOM SEGMENT DETECTION: If the booking involves MULTIPLE rooms with different date ranges (room move during the stay), extract a room_segments array.',
+    '  Format: [{"from":"YYYY-MM-DD","to":"YYYY-MM-DD","room_type":"label","notes":"optional"}]',
+    '  Trigger phrases: "move once", "first N nights in X then M nights in Y", "26-31 in villa A then 31-3 in villa B".',
+    '  If a SINGLE room covers the whole stay → leave room_segments=null (do not invent segments).',
+    '  arrival = earliest segment.from, departure = latest segment.to, nights = sum of segments.',
+    '',
+    'NATIONALITY ("nat"): flag emoji + nationality label.',
+    '  Acceptable sources: flag already in guest name, city/country of the guest, language of the guest emails, email TLD (.fr, .il, .co.uk…).',
+    '  IGNORE: the host villa / hotel address, the booking platform address, host signature coordinates. Do NOT mirror the city of the rental into nat.',
+    '  Example: "Adi Fadlon" from a @gmail.com address booking in Marrakech → nat="" if no other hint (NEVER "🇲🇦 Marocain").',
+    '  If no clear nationality → leave "" (empty). Empty beats wrong.',
+    '',
+    'BOOKER vs CO-TRAVELERS: If multiple people appear in the thread:',
+    '  name = the BOOKER (the one on the official confirmation, the one who pays, the one in the "Dear [name]" of the host\'s last confirmation email).',
+    '  notes MUST include "co-traveler(s): [Full Name] ([email])" for each additional person.',
+    '  Capture every email found in notes if multiple people are mentioned.',
+    '  phone = booker\'s phone if available, otherwise any available phone.',
+    '',
+    'ALERTS — REPEATED REQUESTS: If a specific request appears 2+ times in the thread (e.g. "bottle sanitizer" repeated), add it as alerts entry with type:"urgent".',
+    '  Safety / baby / medical / allergy requests → always type:"urgent" even if mentioned only once.',
+    '',
     'alerts: 2-3 specific ops items. price_advice: Apr750 JulAug850 Dec950 Xmas1500 wknd+50.',
   ].join('\n');
 
@@ -8267,6 +8293,42 @@ function openDetail(id) {
     }).join('') + '</div>';
 
   // Assemble
+  // Mini-timeline for multi-room bookings (room move during stay).
+  // Hidden unless cl.room_segments has at least 2 entries.
+  var roomSegmentsHTML = '';
+  if (Array.isArray(cl.room_segments) && cl.room_segments.length >= 2) {
+    var segRows = cl.room_segments.map(function(seg, i){
+      if (!seg || !seg.from) return '';
+      var fromD = fmtDate(seg.from, true);
+      var toD = seg.to ? fmtDate(seg.to, true) : '?';
+      var segNights = (seg.from && seg.to)
+        ? Math.max(1, Math.round((new Date(seg.to) - new Date(seg.from)) / 86400000))
+        : null;
+      var label = (seg.room_type || (fr?'Chambre':'Room')) + ' ' + (i+1);
+      return '<div style="display:flex;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px dashed rgba(0,0,0,.06)">' +
+               '<span style="font-family:Fraunces,serif;font-size:13px;color:var(--ink);min-width:90px">' + label + '</span>' +
+               '<span style="font-size:12px;color:var(--muted);flex:1">' + fromD + ' → ' + toD + (segNights ? (' · ' + segNights + 'n') : '') + '</span>' +
+             '</div>';
+    }).filter(Boolean).join(
+      '<div style="text-align:center;font-size:10px;color:var(--gold);letter-spacing:1px;padding:2px 0">↓ ' + (fr?'CHANGEMENT DE CHAMBRE':'ROOM MOVE') + '</div>'
+    );
+    roomSegmentsHTML =
+      '<div style="margin:10px 16px 0;padding:10px 14px;background:rgba(201,150,58,.04);border:1px solid rgba(201,150,58,.2);border-left:3px solid var(--gold);border-radius:0 10px 10px 0">' +
+        '<div style="font-size:10px;color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;font-weight:700;margin-bottom:6px">' +
+          (fr?'Séjour multi-chambres':'Multi-room stay') +
+          ' · ' + cl.room_segments.length + (fr?' segments':' segments') +
+        '</div>' +
+        segRows +
+      '</div>';
+  }
+
+  // Net display picks up cl.currency (added in extract-price-fx). For EUR
+  // bookings the result is unchanged; for foreign-currency it shows as
+  // "820€ (31,980 THB)".
+  var netCell = (net && typeof fmtPriceWithCurrency === 'function')
+    ? fmtPriceWithCurrency(net, cl.currency)
+    : (net ? Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '€' : '—');
+
   document.getElementById('detailBody').innerHTML =
     '<div style="background:var(--green3);padding:20px 20px 16px;border-radius:20px 20px 0 0;display:flex;align-items:center;gap:14px">' +
       '<div style="width:52px;height:52px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-family:Fraunces,serif;font-size:20px;color:var(--green3);font-weight:600;flex-shrink:0">'+initials(cl.name)+'</div>' +
@@ -8280,9 +8342,10 @@ function openDetail(id) {
        fmtDate(cl.departure,true)+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Départ':'Departure')+'</span>',
        (n||'—')+'n<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Nuits':'Nights')+'</span>',
        guestsDisplay+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Pers.':'Guests')+'</span>',
-       (net?Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')+'€':'—')+'<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">'+(fr?'Net':'Net')+'</span>'
+       netCell + '<br><span style="font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase">' + (fr?'Net':'Net') + '</span>'
       ].map(function(h){return '<div style="padding:10px 6px;text-align:center;font-size:12px;font-weight:700;color:var(--ink)">'+h+'</div>';}).join('') +
     '</div>' +
+    roomSegmentsHTML +
     '<div id="detailGuestSummary" style="min-height:90px"></div>' +
     '<div style="padding:10px 16px 4px">'+renderReadinessBar(cl,fr)+'</div>' +
     '<div id="detailContextZone" style="padding:0 16px 8px"></div>' +
