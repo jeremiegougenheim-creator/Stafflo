@@ -6457,7 +6457,7 @@ async function analyze() {
     : 'No existing clients.';
 
   // ── PASS 1 system prompt — extraction only, tight schema ──────
-  const p1Schema = `{"guest":{"existing_id":null,"match_confidence":"none","name":"Full Name","nat":"🇫🇷 Français","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":4,"guests":6,"price":2116,"commission":15.5,"source":"Airbnb","phone":"","returning":false,"bookingStatus":"inquiry","question":"verbatim guest question if inquiry else null","notes":"ops details: diet, kids ages, occasions, transport, arrival time","lang":"${guestLang}"},"alerts":[{"type":"urgent","text":"specific action"}],"price_advice":{"amount":750,"reason":"brief"}}`;
+  const p1Schema = `{"guest":{"existing_id":null,"match_confidence":"none","name":"Full Name","nat":"🇫🇷 Français","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":4,"guests":6,"price":2116,"currency":"EUR","commission":15.5,"source":"Airbnb","phone":"","returning":false,"bookingStatus":"inquiry","question":"verbatim guest question if inquiry else null","notes":"ops details: diet, kids ages, occasions, transport, arrival time","lang":"${guestLang}"},"alerts":[{"type":"urgent","text":"specific action"}],"price_advice":{"amount":750,"reason":"brief"}}`;
 
   const p1Prompt = [
     `Villa ops ${villaName}, ${cityName}. Owner: ${ownerName}. Today: ${today}.`,
@@ -6468,7 +6468,10 @@ async function analyze() {
     p1Schema,
     '',
     'Rules: bookingStatus="inquiry" if question/availability check. "confirmed" if paid booking.',
-    'price=Guest paid total (not host payout). commission from "Host service fee %" field.',
+    'PRICE: SCAN THE ENTIRE THREAD top-to-bottom for booking costs, not just the latest message. The price may appear in any email in the chain, including older messages. Look for: "Total Booking Cost", "Total", "Price", "Rate", "Sub-total", and numeric values next to "THB", "IDR", "MAD", "AED", "USD", "GBP", "EUR", "€", "$", "£", "฿". When multiple amounts appear (deposit + total, partial payments, taxes), always use the FULL TOTAL booking cost — never the deposit alone.',
+    'price = guest paid total (not host payout). Keep the ORIGINAL numeric amount (do NOT convert currencies).',
+    'currency = ISO code from price markers (EUR, USD, GBP, THB, IDR, MAD, AED). Default "EUR" only when no currency marker is found anywhere in the thread.',
+    'commission from "Host service fee %" field if present.',
     'existing_id: check CRM list above — match by name (first name alone counts if unique), phone, or arrival date. WhatsApp chats: guest = non-owner participant (not Jérémie/owner).',
     'nat: flag emoji + language from city/country context.',
     'alerts: 2-3 specific ops items. price_advice: Apr750 JulAug850 Dec950 Xmas1500 wknd+50.',
@@ -6609,8 +6612,16 @@ function renderResult(json) {
   if (depEl) depEl.textContent = g.departure ? fmtDate(g.departure, true) : '—';
   document.getElementById('resNights').textContent = g.nights || '—';
   document.getElementById('resGuests').textContent = g.guests || '—';
+  // Net is computed in the original currency, then displayed with EUR conversion
+  // when applicable. For EUR bookings the output is unchanged ("4357€"); for
+  // foreign-currency bookings the net shows as "820€ (31,980 THB)".
   const net = g.price ? Math.round(g.price * (1 - (g.commission||3.6)/100)) : null;
-  document.getElementById('resNet').textContent = net ? Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€' : '—';
+  const _netDisplay = (net == null)
+    ? '—'
+    : (typeof fmtPriceWithCurrency === 'function')
+      ? fmtPriceWithCurrency(net, g.currency)
+      : Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + '€';
+  document.getElementById('resNet').textContent = _netDisplay;
   
   // Notes from AI
   const notesEl = document.getElementById('resNotes');
@@ -14089,6 +14100,82 @@ function updatePrice() {
   renderScenarios(d.pricePN);
   if (typeof renderAutoBadges === 'function') renderAutoBadges();
 }
+
+// ════════════════════════════════════════════════════════════════
+// FX rates — live fetch from open.er-api.com (free, no key, daily ECB+).
+// Cache 24h in localStorage so the dashboard renders instantly on reload.
+// Hardcoded fallback kicks in if both cache and network are unavailable.
+// ════════════════════════════════════════════════════════════════
+var FX_FALLBACK = { EUR:1, USD:0.86, GBP:1.15, MAD:0.093, THB:0.026, IDR:0.000049, AED:0.234 };
+var _fxRates = null; // populated lazily by getFxRates()
+
+async function fetchLiveFX() {
+  try {
+    var cachedRaw = localStorage.getItem('stafflo_fx_cache');
+    if (cachedRaw) {
+      var cached = JSON.parse(cachedRaw);
+      if (cached && cached.rates && (Date.now() - (cached.fetchedAt||0)) < 24*60*60*1000) {
+        return cached.rates;
+      }
+    }
+  } catch(e){}
+  try {
+    var res = await fetch('https://open.er-api.com/v6/latest/EUR');
+    if (!res.ok) throw new Error('fx ' + res.status);
+    var data = await res.json();
+    if (data.result !== 'success' || !data.rates) throw new Error('fx bad payload');
+    // API returns "1 EUR = X currency". We need the inverse to convert amount→EUR.
+    var inverted = { EUR: 1 };
+    Object.keys(data.rates).forEach(function(k){
+      var v = data.rates[k];
+      if (typeof v === 'number' && v > 0) inverted[k] = 1 / v;
+    });
+    try { localStorage.setItem('stafflo_fx_cache', JSON.stringify({ rates: inverted, fetchedAt: Date.now() })); } catch(e){}
+    return inverted;
+  } catch(e) {
+    console.warn('[fx] live fetch failed, using fallback:', e.message);
+    return FX_FALLBACK;
+  }
+}
+
+async function getFxRates() {
+  if (_fxRates) return _fxRates;
+  _fxRates = await fetchLiveFX();
+  return _fxRates;
+}
+window.getFxRates = getFxRates;
+
+// Kick off the fetch at boot so the cache is warm before first render. Non-blocking.
+(function(){
+  function bootFx(){ getFxRates().catch(function(){}); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootFx);
+  else bootFx();
+})();
+
+// Synchronous conversion. Uses cached rates if available, otherwise fallback.
+function convertToEur(amount, currency) {
+  if (amount == null || !isFinite(amount)) return null;
+  var c = (currency || 'EUR').toUpperCase();
+  var rates = _fxRates || FX_FALLBACK;
+  var rate = rates[c];
+  if (rate == null) { console.warn('[fx] unknown currency:', currency); return Math.round(amount); }
+  return Math.round(amount * rate);
+}
+window.convertToEur = convertToEur;
+
+// Display amount with original currency in parens when non-EUR:
+// "820€ (31,980 THB)" if non-EUR, "820€" otherwise.
+function fmtPriceWithCurrency(amount, currency) {
+  if (amount == null || !isFinite(amount)) return '—';
+  var c = (currency || 'EUR').toUpperCase();
+  if (c === 'EUR' || c === '' || c == null) {
+    return Math.round(amount).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '€';
+  }
+  var eur = convertToEur(amount, c);
+  var origStr = Math.round(amount).toLocaleString('en-US') + ' ' + c;
+  return (eur != null ? eur : Math.round(amount)) + '€ (' + origStr + ')';
+}
+window.fmtPriceWithCurrency = fmtPriceWithCurrency;
 
 function getPrice() {
   const base = parseInt(document.getElementById('season').value);
