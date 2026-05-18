@@ -1,0 +1,127 @@
+=== TEST 04 — Silan Residence (killer case) ===
+Difficulty: ⭐⭐⭐⭐ Hard
+Purpose: Le cas qui a cassé Stafflo en prod. Si ce test passe, le système est solide.
+
+Bugs ciblés :
+- Multi-devises (THB → EUR)
+- Multi-offres dans le fil (anciennes vs finale)
+- Multi-rooms (room move au milieu du séjour)
+- Booker ≠ co-traveler
+- Demandes répétées (bottle sanitizer x2)
+- Nationalité ≠ adresse villa
+- Bébé / infant
+
+=== PASTE THIS INTO STAFFLO ===
+
+Dear Mr. Picker,
+
+Yes, sir. We have a sanitizer machine, and we will set up in your house please.
+
+Thank you so much.
+
+Warm regards,
+Silan Team
+
+SILAN RESIDENCE
+37/9 Moo.7 Koh Phangan, Koh Phangan
+Surat Thani, Thailand 84280
+Contact (Call & WhatsApp): +66 97 924 3394
+
+On May 18 2026, at 1:02 pm, Tomer Picker <tomerpicker@gmail.com> wrote:
+Thank you!
+Just to confirm - will a bottle sanitizer be available in the room during our stay?
+
+On Mon, 18 May 2026 at 5:29 Silan Residence Front Office <stay@silanresidence.com> wrote:
+Dear Tomer, Noted with thanks. Warm regards, Eve
+
+On May 17 2026, at 7:17 pm, Tomer Picker <tomerpicker@gmail.com> wrote:
+Hello! I wanted to ask if the hotel can provide a bottle sanitizer during our stay. Thank you!
+
+On Thu, May 7, 2026 at 8:01 AM Silan Residence Front Office <stay@silanresidence.com> wrote:
+Dear Adi,
+Thank you for choosing Silan Residence Koh Phangan.
+We are pleased to confirm your reservation. Your confirmation number is LH26050450641005.
+Please find your booking confirmation attached for your reference.
+We look forward to welcoming you soon.
+
+On May 6 2026, at 6:43 pm, Adi Fadlon <adi33003@gmail.com> wrote:
+Hi Eve, The payment has been completed. We would really appreciate it if you could keep us in mind regarding the room arrangement, as we would strongly prefer not to move rooms during our stay. Best regards, Adi
+
+On Wed, 6 May 2026 at 7:51 Silan Residence Front Office <stay@silanresidence.com> wrote:
+Dear Adi,
+Kindly use the link below to complete the required deposit according to our policy:
+https://book.tab.travel/BLRS345
+Please make the payment within 24 hours.
+
+On Mon, May 4, 2026 at 11:05 AM Silan Residence Front Office <stay@silanresidence.com> wrote:
+Dear Adi,
+Thank you for your confirmation. May I please inform you of your pre-reservation details.
+
+House Type: One bedroom villa with garden view and family zone/ Room only
+Arrival Date: 26 MAY 2026
+Departure Date: 31 MAY 2026
+No. of nights: 5 Nights
+
+House Type: Stylish house with one bedroom, garden view and family zone/ Room only
+Arrival Date: 31 MAY 2026
+Departure Date: 3 JUN 2026
+No. of nights: 3 Nights
+
+No. of guest: 2 Adults 1 Infant
+Remark: Baby cot set-up
+
+Total Booking Cost: 31,980 THB.
+
+To confirm your booking, we kindly request a 50% deposit of the total booking cost.
+
+On May 2 2026, at 9:06 Silan Residence Front Office <stay@silanresidence.com> wrote:
+Dear Tomer,
+Thank you for your confirmation. May I please inform you of your pre-reservation details.
+House Type: One bedroom villa with garden view and family zone/ Room only
+Arrival Date: 25 MAY 2026
+Departure Date: 31 MAY 2026
+No. of nights: 6 Nights
+No. of guest: 2 Adults 1 Infant
+Total Booking Cost: 20,000 THB.
+
+[NOTE: cette offre a été REMPLACÉE par l'offre suivante du 4 mai. NE PAS l'utiliser comme résa finale.]
+
+On Apr 29 2026, at 8:17 pm, Adi Fadlon <adi33003@gmail.com> wrote:
+Hi Eve, thank you for the offer. My name is Adi. Our dates are from May 26 to June 3. We strongly prefer not to move rooms during the stay, as it involves packing and unpacking again, and with a baby we have a lot of equipment. Is there a single room we could stay in for the entire period? Preferably with a sea view, of course. Thank you.
+
+=== EXPECTED OUTPUT ===
+
+✓ name: Adi Fadlon (booker — sur la confirmation LH26050450641005, c'est elle qui paye)
+   OR Tomer Picker (co-traveler) — clarifier dans le prompt qui prime
+✓ email: adi33003@gmail.com (primary booker) AND/OR tomerpicker@gmail.com in notes
+✓ arrival: 2026-05-26 (PAS 25 mai = ancienne offre)
+✓ departure: 2026-06-03 (PAS 31 mai = ancienne offre)
+✓ nights: 8 (PAS 6 = ancienne offre)
+✓ guests: 3 (2 adults + 1 infant) — capture l'infant
+✓ price: 31980
+✓ currency: THB (PAS EUR)
+✓ price_eur_display: ~820€ (31980 / 39)
+✓ commission: 0 (Direct)
+✓ bookingStatus: confirmed (confirmation number présent + paiement validé)
+✓ source: Direct
+✓ confirmation_number: LH26050450641005 (in notes or dedicated field)
+✓ room_segments: [
+    { from: 2026-05-26, to: 2026-05-31, room_type: "One bedroom villa with garden view" },
+    { from: 2026-05-31, to: 2026-06-03, room_type: "Stylish house with garden view" }
+  ]
+✓ notes contains: baby cot, prefers same room, room move once, payment completed
+✓ alerts: at least 1 alert urgency:high for "bottle sanitizer" (mentionné 2x)
+✗ NATIONALITY: PAS "Koh Phangan, Surat Thani, Thailand" (c'est la villa, pas le guest)
+   Acceptable: empty, OR "Israeli" si extracteur est malin (Adi Fadlon = israélien typique)
+✓ lang: en (anglais dominant dans le fil)
+
+SCORE TARGET: 12/12 (le test ultime — accepter 10/12 minimum pour considérer "passé")
+
+=== KNOWN TRAPS ===
+
+🚩 Trap #1 (LE PIRE) : 20000 dans le fil → si pris comme prix EUR = 20000€ au lieu de 820€
+🚩 Trap #2 : Dates 25-31 mai dans le fil = ANCIENNE offre, pas la résa finale
+🚩 Trap #3 : "Koh Phangan, Surat Thani, Thailand" = adresse villa, PAS nationalité guest
+🚩 Trap #4 : Tomer Picker apparaît plus souvent que Adi dans le fil, mais Adi est sur la confirmation
+🚩 Trap #5 : "bottle sanitizer" mentionné 2x → demande safety bébé → alert urgency:high
+🚩 Trap #6 : Room move EXISTE et est explicite → room_segments obligatoire

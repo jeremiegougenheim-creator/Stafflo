@@ -1,0 +1,109 @@
+=== TEST 06 — Multi-personnes (qui est le booker ?) ===
+Difficulty: ⭐⭐⭐ Medium+
+Purpose: Vérifier l'identification correcte du BOOKER quand 3+ personnes apparaissent dans le fil.
+
+Scénario : Un assistant administratif réserve pour son patron + invités, paye avec sa CB mais le contact principal pendant le séjour est le patron.
+
+=== PASTE THIS INTO STAFFLO ===
+
+From: Elena Rossi <e.rossi@montecarlo-holdings.mc>
+To: jeremiegougenheim@gmail.com
+Subject: Re: Réservation Villa DarJ - 5-12 novembre 2026
+
+Bonjour,
+
+Voici les détails finaux pour la réservation Villa DarJ :
+
+DATES : 5 au 12 novembre 2026 (7 nuits)
+VOYAGEURS : 5 personnes
+- M. Alexander Petroff (client principal - sur place)
+- Mme Natalia Petroff (épouse)
+- M. Viktor Sokolov (associé)
+- Mme Larisa Sokolov (épouse de Viktor)
+- M. Petroff Jr (fils, 22 ans)
+
+Tarif convenu : 7 800 €
+
+PAIEMENT : J'effectue le virement aujourd'hui depuis le compte de Montecarlo Holdings (référence facture MCH-2026-1184).
+
+CONTACT PENDANT LE SÉJOUR : merci de vous adresser DIRECTEMENT à M. Alexander Petroff (a.petroff@mp-investments.ru, +7 916 234 5612, parle anglais et français). Je gère uniquement l'administratif depuis Monaco — pas besoin de me contacter sauf urgence.
+
+PRÉFÉRENCES de M. Petroff :
+- Champagne Krug Grande Cuvée + caviar pour l'arrivée (à débourser - vous facturez Montecarlo Holdings)
+- Chauffeur disponible 7j/7 pour excursions (M. Petroff aime visiter la palmeraie et les souks)
+- Cuisine internationale, pas que marocaine. M. Petroff apprécie particulièrement les poissons et fruits de mer.
+- Discrétion totale demandée (pas de photos sur réseaux, pas de mention publique)
+
+VOL d'arrivée : 5 nov, jet privé arrivée 14h à Menara. Chauffeur villa à prévoir pour groupe + bagages (5 personnes + valises golf).
+
+Pouvez-vous confirmer réception et envoyer la facture à : compta@montecarlo-holdings.mc
+
+Cordialement,
+Elena Rossi
+Executive Assistant
+Montecarlo Holdings SARL
++377 97 98 12 34
+
+---
+
+[Email précédent - 18 oct]
+From: Elena Rossi
+Bonjour,
+Je contacte de la part de M. Alexander Petroff qui souhaite réserver votre villa pour la semaine du 5 novembre. Pouvez-vous m'envoyer un devis pour 5 personnes 7 nuits ?
+Cordialement,
+Elena Rossi
+Executive Assistant for M. Petroff
+
+=== EXPECTED OUTPUT ===
+
+✓ name: Alexander Petroff (le CLIENT, pas l'assistante)
+   → C'est le contact pendant le séjour. Le brief staff, welcome message, etc. doivent s'adresser à lui.
+
+✓ phone: +7 916 234 5612 (Petroff, PAS Elena)
+✓ email: a.petroff@mp-investments.ru (primary contact)
+✓ nationality: 🇷🇺 Russian (ou empty acceptable)
+✓ arrival: 2026-11-05
+✓ departure: 2026-11-12
+✓ nights: 7
+✓ guests: 5 (couple Petroff + couple Sokolov + son Petroff Jr 22)
+✓ price: 7800
+✓ currency: EUR
+✓ commission: 0 (Direct)
+✓ bookingStatus: confirmed (paiement effectué + détails finalisés)
+✓ source: Direct
+✓ lang: fr (l'email est en FR)
+
+NOTES doit contenir :
+✓ Booker administratif: Elena Rossi (e.rossi@montecarlo-holdings.mc, +377 97 98 12 34)
+✓ Facturation: Montecarlo Holdings, ref MCH-2026-1184, compta@montecarlo-holdings.mc
+✓ Couple Sokolov (Viktor + Larisa) + fils Petroff Jr 22 ans
+✓ Champagne Krug + caviar arrivée (à facturer en sus)
+✓ Chauffeur 7j/7 (palmeraie, souks)
+✓ Cuisine internationale, poissons/fruits de mer préférés
+✓ Discrétion totale
+✓ Jet privé Menara 5 nov 14h, navette villa requise (bagages golf)
+
+ALERTS (urgency:high si feature implémentée) :
+- "VIP - discrétion totale, pas de photos publiques"
+- "Facturation Montecarlo Holdings, pas adresse personnelle"
+
+SCORE TARGET: 8/8
+
+=== KNOWN TRAPS ===
+
+🚩 #1 BIG ONE : Elena Rossi est mentionnée 10x dans le fil, c'est elle qui écrit, qui paye.
+   MAIS le client final = Alexander Petroff. Stafflo doit comprendre que le BOOKER administratif ≠ CLIENT.
+
+   Comment Stafflo doit décider ? La signature "Executive Assistant for M. Petroff" + "CONTACT PENDANT LE SÉJOUR" sont les indices clés.
+
+🚩 #2 : Email FR mais client final russophone → langue convo = FR (avec Elena) mais welcome message au guest devrait être en EN ou FR selon Petroff
+
+🚩 #3 : Le prix 7800€ est le TARIF villa. Le Krug+caviar est en SUS (facturé séparément). Ne pas additionner.
+
+🚩 #4 : Le numéro +377 = Monaco (Elena), le +7 = Russie (Petroff). Le bon téléphone pour les briefs staff = +7 (Petroff).
+
+🚩 #5 : "discrétion totale" → ARIA ne doit jamais suggérer "poster sur réseaux", "demander review Airbnb publique", etc.
+
+🚩 #6 : Jet privé arrivée Menara → chauffeur villa requis (logistique). Pas un "taxi à recommander".
+
+🚩 #7 : 5 valises de golf → housekeeping doit prévoir espace de stockage (note logistique)
