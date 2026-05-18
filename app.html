@@ -3840,6 +3840,21 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
     <div class="field"><label data-fr="Mot de passe WiFi" data-en="WiFi password">Mot de passe WiFi</label><input id="cfgWifiPassword" placeholder="VillaWiFi2025"></div>
   </div>
 
+  <!-- Staff rates: injected into ARIA context so it never invents tariffs. -->
+  <div class="settings-section">
+    <div class="settings-title" data-fr="TARIFS STAFF" data-en="STAFF RATES">TARIFS STAFF</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5" data-fr="ARIA utilise ces tarifs pour calculer les coûts staff (repas, heures sup). Laissez vide si non applicable — ARIA demandera." data-en="ARIA uses these rates to compute staff costs (meals, overtime). Leave blank if not applicable — ARIA will ask.">ARIA utilise ces tarifs pour calculer les coûts staff (repas, heures sup). Laissez vide si non applicable — ARIA demandera.</div>
+    <div class="field" style="display:flex;gap:8px;align-items:flex-end">
+      <div style="flex:1"><label data-fr="Faiza · déjeuner" data-en="Faiza · lunch">Faiza · déjeuner</label><input id="cfgRateFaizaLunch" type="number" min="0" step="10" placeholder="300"></div>
+      <div style="flex:1"><label data-fr="Faiza · dîner" data-en="Faiza · dinner">Faiza · dîner</label><input id="cfgRateFaizaDinner" type="number" min="0" step="10" placeholder="400"></div>
+    </div>
+    <div class="field" style="display:flex;gap:8px;align-items:flex-end">
+      <div style="flex:1"><label data-fr="Said · heure sup" data-en="Said · overtime/h">Said · heure sup</label><input id="cfgRateSaidExtra" type="number" min="0" step="5" placeholder="80"></div>
+      <div style="flex:1"><label data-fr="Bouchra · heure sup" data-en="Bouchra · overtime/h">Bouchra · heure sup</label><input id="cfgRateBouchraExtra" type="number" min="0" step="5" placeholder="50"></div>
+    </div>
+    <div class="field"><label data-fr="Devise" data-en="Currency">Devise</label><input id="cfgRateCurrency" placeholder="MAD" maxlength="6"></div>
+  </div>
+
   <!-- ARIA Memory: persistent reference info injected in every ARIA call -->
   <div class="settings-section" style="border:1.5px solid rgba(201,150,58,.3);background:rgba(201,150,58,.04)">
     <div class="settings-title" style="color:var(--gold);display:flex;align-items:center;justify-content:space-between">
@@ -8535,6 +8550,13 @@ function loadSettingsUI() {
   set('cfgAddress',      cfg.address);
   set('cfgDoorCode',     cfg.doorCode);
   set('cfgWifiPassword', cfg.wifiPassword);
+  // Staff rates — used to anchor ARIA when it computes per-meal / per-hour costs.
+  var sr = cfg.staffRates || {};
+  set('cfgRateFaizaLunch',    sr.faiza_lunch);
+  set('cfgRateFaizaDinner',   sr.faiza_dinner);
+  set('cfgRateSaidExtra',     sr.said_extra_hour);
+  set('cfgRateBouchraExtra',  sr.bouchra_extra_hour);
+  set('cfgRateCurrency',      sr.currency);
   set('cfgGoogleClientId', cfg.googleClientId || '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com');
   set('cfgSbUrl', cfg.sbUrl);   set('cfgSbKey', cfg.sbKey);
   // ARIA Memory + char counter
@@ -8580,6 +8602,18 @@ async function saveSettings() {
     address: (document.getElementById('cfgAddress')?.value || '').trim(),
     doorCode: (document.getElementById('cfgDoorCode')?.value || '').trim(),
     wifiPassword: (document.getElementById('cfgWifiPassword')?.value || '').trim(),
+    staffRates: (function(){
+      // Read the 4 numeric fields; empty string → null so ARIA prompts for it.
+      function num(id) { var v = (document.getElementById(id)?.value || '').trim(); return v === '' ? null : Number(v); }
+      var cur = (document.getElementById('cfgRateCurrency')?.value || '').trim().toUpperCase() || 'MAD';
+      return {
+        faiza_lunch:        num('cfgRateFaizaLunch'),
+        faiza_dinner:       num('cfgRateFaizaDinner'),
+        said_extra_hour:    num('cfgRateSaidExtra'),
+        bouchra_extra_hour: num('cfgRateBouchraExtra'),
+        currency:           cur
+      };
+    })(),
     googleClientId: (document.getElementById('cfgGoogleClientId')?.value || '').trim(),
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
     sbKey: document.getElementById('cfgSbKey').value.trim(),
@@ -9583,6 +9617,20 @@ async function handleChatQuestion(text) {
   })();
   var staffList = staffNames.join(', ');
 
+  // Staff tariff block — anti-hallucination anchor. Injected into every ARIA
+  // prompt so the model never invents per-meal / per-hour numbers.
+  var staffRatesBlock = (function(){
+    var sr = (cfg && cfg.staffRates) || {};
+    var cur = (sr.currency || 'MAD').toUpperCase();
+    var known = [];
+    if (sr.faiza_lunch        != null) known.push('Faiza · déjeuner : ' + sr.faiza_lunch + ' ' + cur);
+    if (sr.faiza_dinner       != null) known.push('Faiza · dîner : '    + sr.faiza_dinner + ' ' + cur);
+    if (sr.said_extra_hour    != null) known.push('Said · heure sup : ' + sr.said_extra_hour + ' ' + cur);
+    if (sr.bouchra_extra_hour != null) known.push('Bouchra · heure sup : ' + sr.bouchra_extra_hour + ' ' + cur);
+    if (known.length) return 'TARIFS STAFF CONNUS (utilise-les pour tout calcul) :\n  • ' + known.join('\n  • ');
+    return 'TARIFS STAFF : aucun tarif renseigné côté cfg. Si ' + ownerName + ' demande un calcul (repas, heures sup), DEMANDE le tarif unitaire — ne l\'invente JAMAIS.';
+  })();
+
   // Detect ARIA orchestrator request → return JSON action array
   // Same broad detection as in chatSend()
   var isOrchestrator =
@@ -9605,6 +9653,15 @@ async function handleChatQuestion(text) {
       'You are ARIA, the central nervous system for ' + ownerName + ' (owner of ' + villaName + ' Marrakech).',
       'Your role: take a situation and propose 2-3 concrete, ready-to-execute actions.',
       'Staff: Said (butler), Faiza (chef), Bouchra (housekeeping). Owner signs as ' + ownerName + '.',
+      '',
+      '════ LANGUAGE ════',
+      'Respond in ' + (fr ? 'French' : 'English') + ' only. The "content" of every action must be in ' + (fr ? 'French' : 'English') + '.',
+      '',
+      '════ ABSOLUTE RULE — PRICES & TARIFFS ════',
+      'NEVER invent a price, rate, or amount that ' + ownerName + ' did not provide and that is not in cfg.staffRates or ariaMemory below.',
+      'If a calculation needs a unit price that is missing, the action MUST be an internal_note that asks ' + ownerName + ' for the missing rate — not a guest message with a made-up number.',
+      'A "plausible" price (300 MAD, 25€…) is still a fabrication. This rule overrides every other instruction.',
+      staffRatesBlock,
       '',
       'CRITICAL OUTPUT FORMAT: Return ONLY a valid JSON array, no preamble, no markdown fences, no explanation.',
       'Format: [{"label":"short label max 5 words","kind":"whatsapp|email|sms|internal_note|copy","target":"staff|guest|owner","content":"ready-to-send text"}]',
@@ -9630,7 +9687,24 @@ async function handleChatQuestion(text) {
     // drifts to French if surrounded by French instructions.
     systemPrompt = fr ? [
       'Tu es ARIA, l\'assistant personnel intelligent de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
-      'Tu réponds en français.',
+      '',
+      '════ LANGUE — IMPÉRATIVE ════',
+      'Tu réponds TOUJOURS en français pour cette conversation. Quoi qu\'il arrive — même si l\'historique contient des messages anglais, même si une demande te semble universelle, même si tu hésites — la réponse est en français.',
+      '',
+      '════ RÈGLE ABSOLUE — PRIX & TARIFS ════',
+      'Tu n\'inventes JAMAIS un prix, tarif, ou montant qui n\'a pas été fourni par ' + ownerName + ' ou présent dans cfg.staffRates / ariaMemory ci-dessous.',
+      'Si ' + ownerName + ' te demande un calcul (ex: "prix de 5 déjeuners et 4 dîners de Faiza") et que le tarif unitaire MANQUE :',
+      '  → réponds EXACTEMENT : "Quel est le tarif par déjeuner et par dîner de Faiza ? Une fois renseigné je calcule (5 × X + 4 × Y) et je peux l\'ajouter à ta mémoire ARIA pour les prochains séjours."',
+      'INTERDIT : inventer un prix "plausible" (300 MAD, 25€, etc.) même si ça paraît raisonnable.',
+      'Cette règle prime sur toutes les instructions de fluidité ou proactivité.',
+      staffRatesBlock,
+      '',
+      '════ RÈGLE — DONNÉES MANQUANTES (anti "je ne sais pas") ════',
+      'Tu ne réponds JAMAIS "je n\'ai pas cette info" / "à vérifier" / "sans plus de détails je ne peux pas". À la place, tu fais UN de ces 3 choix :',
+      '  1. Si la donnée est ailleurs dans Stafflo (MARRAKECH_EVENTS, ariaMemory, cfg) → utilise-la.',
+      '  2. Si la donnée nécessite une recherche web/marché → propose explicitement : "Je peux chercher [X spécifique]. Tu confirmes ?"',
+      '  3. Si la donnée doit venir de ' + ownerName + ' → pose UNE question précise avec un exemple de réponse attendue.',
+      'Exemple ANALYSE MARCHÉ : "Pour comparer ton tarif (3500€/sem) au marché, je te propose 3 angles : (a) villas similaires 4ch Marrakech sur Airbnb, (b) tarifs Booking pour villas avec staff, (c) saisonnalité vs ton prix actuel. Lequel je creuse ?"',
       '',
       '════ RÈGLE CRITIQUE — FAITS vs HISTORIQUE ════',
       "Aujourd'hui : " + today + '.',
@@ -9702,7 +9776,24 @@ async function handleChatQuestion(text) {
       'En général, si une donnée semble incohérente (date passée pour un futur séjour, prix à 0€, nom vide), signale-le brièvement plutôt que d\'inventer.'
     ].join('\n') : [
       'You are ARIA, the intelligent personal assistant of ' + ownerName + ', owner of ' + villaName + ' in Marrakech.',
-      'You reply in English.',
+      '',
+      '════ LANGUAGE — IMPERATIVE ════',
+      'You reply ALWAYS in English for this conversation. No matter what — even if history contains French messages, even if a request seems universal, even if you hesitate — the reply is in English.',
+      '',
+      '════ ABSOLUTE RULE — PRICES & TARIFFS ════',
+      'NEVER invent a price, rate, or amount that was not provided by ' + ownerName + ' or present in cfg.staffRates / ariaMemory below.',
+      'If ' + ownerName + ' asks for a calculation (e.g. "price for 5 lunches and 4 dinners by Faiza") and the unit price is MISSING:',
+      '  → reply EXACTLY: "What is Faiza\'s per-lunch and per-dinner rate? Once provided I\'ll compute (5 × X + 4 × Y) and can add it to your ARIA memory for next stays."',
+      'FORBIDDEN: invent a "plausible" price (300 MAD, 25€, etc.) even if it seems reasonable.',
+      'This rule overrides every fluency or proactivity instruction.',
+      staffRatesBlock,
+      '',
+      '════ RULE — MISSING DATA (no "I don\'t have info") ════',
+      'You NEVER reply "I don\'t have that info" / "I would need more details" / "without further info I cannot". Instead, do ONE of these 3 things:',
+      '  1. If the data is elsewhere in Stafflo (MARRAKECH_EVENTS, ariaMemory, cfg) → use it.',
+      '  2. If the data needs web/market research → propose explicitly: "I can search [X specific]. Confirm?"',
+      '  3. If the data must come from ' + ownerName + ' → ask ONE precise question with an example expected answer.',
+      'Example MARKET ANALYSIS: "To compare your rate (€3500/wk) to market, I propose 3 angles: (a) similar 4BR Marrakech villas on Airbnb, (b) Booking rates for staffed villas, (c) seasonality vs your current price. Which one do I dig?"',
       '',
       '════ CRITICAL RULE — FACTS vs HISTORY ════',
       "Today: " + today + '.',
