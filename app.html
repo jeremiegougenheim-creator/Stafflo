@@ -3021,6 +3021,23 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
   </div>
 </div>
 
+<!-- Row 2.5: Leads pipeline — full width, populated by renderLeadsCard() -->
+<div class="row row-100">
+  <div class="v2-card" id="cardLeadsPipeline" data-collapsed="0">
+    <div class="v2-card-hd">
+      <div class="v2-card-title">
+        <i class="ti ti-message-circle"></i>
+        <span data-fr="Demandes en cours" data-en="Pending leads">Demandes en cours</span>
+        <span id="leadsPipelinePill" style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase"></span>
+      </div>
+      <button class="v2-icon-btn" onclick="if(typeof renderLeadsCard==='function')renderLeadsCard()" title="Rafraîchir" aria-label="Rafraîchir" data-title-fr="Rafraîchir" data-title-en="Refresh">↻</button>
+    </div>
+    <div class="v2-card-body" id="leadsPipelineBody" style="padding:0">
+      <div style="padding:14px 18px;color:var(--muted);font-style:italic;font-size:12px" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
+    </div>
+  </div>
+</div>
+
 <!-- Row 3: Villa & Pipeline 50% + To-do staff 50% -->
 <div class="row row-50">
   <div class="v2-card" id="card50VillaSnap" data-collapsed="1">
@@ -19714,7 +19731,199 @@ function v2RenderHero() {
         '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0"><span style="font-size:11px;color:var(--muted)">' + (fr2?'Net à venir':'Net upcoming') + '</span><span style="font-family:\'Fraunces\',serif;font-size:16px;color:var(--gold);font-weight:500">'+ Math.round(totalNet) +'€</span></div>';
     }
   }
+  // Refresh dedicated leads pipeline card whenever the hero refreshes
+  try { if (typeof renderLeadsCard === 'function') renderLeadsCard(); } catch(e){}
 }
+
+// ════════════════════════════════════════════════════════════════
+// LEADS PIPELINE — dedicated dashboard card (inquiry/lead/quoted)
+// Lists up to 3 active requests with a context-aware next action.
+// ════════════════════════════════════════════════════════════════
+function renderLeadsCard() {
+  var body = document.getElementById('leadsPipelineBody');
+  var pill = document.getElementById('leadsPipelinePill');
+  if (!body) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var locale = fr ? 'fr-FR' : 'en-GB';
+  var cls = (typeof window.clients !== 'undefined' && Array.isArray(window.clients)) ? window.clients : [];
+
+  var leads = cls.filter(function(c){
+    var bs = c && c.bookingStatus;
+    return bs === 'inquiry' || bs === 'lead' || bs === 'quoted';
+  });
+
+  // Sort: un-replied first (no _clientMessages entry), then by createdAt DESC.
+  function hasReplied(c){
+    try {
+      var m = (window._clientMessages && window._clientMessages[c.id]) || c.messages || null;
+      if (!m) return false;
+      if (Array.isArray(m)) return m.length > 0;
+      // Map shape: any non-empty value counts as a draft/sent message
+      return Object.keys(m).some(function(k){
+        var v = m[k];
+        return v && (typeof v === 'string' ? v.trim() : v.text || v.sent_at);
+      });
+    } catch(e) { return false; }
+  }
+  leads.sort(function(a,b){
+    var ra = hasReplied(a) ? 1 : 0;
+    var rb = hasReplied(b) ? 1 : 0;
+    if (ra !== rb) return ra - rb; // un-replied first
+    var ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    var tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return tb - ta; // newest first within each group
+  });
+
+  if (pill) {
+    pill.textContent = leads.length === 0
+      ? (fr ? '0 ACTIF' : '0 ACTIVE')
+      : leads.length + (fr ? (leads.length>1?' ACTIFS':' ACTIF') : (leads.length>1?' ACTIVE':' ACTIVE'));
+  }
+
+  if (leads.length === 0) {
+    body.innerHTML = '<div style="padding:32px 18px;text-align:center;color:var(--muted);font-size:13px">' +
+      (fr ? 'Aucune demande en cours — tout est traité ✓' : 'No pending leads — all caught up ✓') +
+    '</div>';
+    return;
+  }
+
+  function sourcePillStyle(src){
+    var s = (src || '').toLowerCase();
+    if (s.indexOf('airbnb') >= 0)  return 'background:rgba(255,90,95,.12);color:#C03B40';
+    if (s.indexOf('booking') >= 0) return 'background:rgba(0,53,128,.10);color:#003580';
+    if (s.indexOf('whatsapp') >= 0)return 'background:rgba(37,211,102,.14);color:#1A8A47';
+    if (s.indexOf('vrbo') >= 0)    return 'background:rgba(0,124,143,.12);color:#007C8F';
+    return 'background:rgba(201,150,58,.14);color:#A57930'; // Direct / unknown
+  }
+  function ageLabel(c){
+    if (!c.createdAt) return '';
+    var diff = Math.round((Date.now() - new Date(c.createdAt).getTime()) / 86400000);
+    if (diff <= 0) return fr ? 'today' : 'today';
+    if (diff === 1) return fr ? 'hier' : 'yesterday';
+    return fr ? ('il y a ' + diff + 'j') : (diff + 'd ago');
+  }
+  function fmtDates(c){
+    if (!c.arrival) return '';
+    var a = new Date(c.arrival).toLocaleDateString(locale, { day:'numeric', month:'short' });
+    if (!c.departure) return a;
+    var d = new Date(c.departure).toLocaleDateString(locale, { day:'numeric', month:'short' });
+    return a + '–' + d;
+  }
+  function pickAction(c){
+    var replied = hasReplied(c);
+    var ageDays = c.createdAt ? Math.round((Date.now() - new Date(c.createdAt).getTime()) / 86400000) : 0;
+    var hasDates = !!(c.arrival && c.departure);
+    var noPrice = !c.price || +c.price === 0;
+    if (!replied && ageDays > 2) {
+      return { label: fr?'Relancer':'Follow up', tone:'warn', urgent:true, kind:'follow_up' };
+    }
+    if (!replied) {
+      return { label: fr?'Répondre':'Reply', tone:'gold', urgent:false, kind:'reply' };
+    }
+    if (hasDates && noPrice) {
+      return { label: fr?'Suggérer prix':'Suggest price', tone:'gold', urgent:true, kind:'price' };
+    }
+    return { label: fr?'Voir détail':'View details', tone:'muted', urgent:false, kind:'detail' };
+  }
+  function actionStyle(tone){
+    if (tone === 'warn')   return 'border:1.5px solid #C0392B;color:#C0392B';
+    if (tone === 'gold')   return 'border:1.5px solid var(--gold);color:var(--gold)';
+    return 'border:1.5px solid var(--border);color:var(--muted)';
+  }
+
+  var visible = leads.slice(0, 3);
+  var rowsHtml = visible.map(function(c){
+    var nm = (c.name || (fr?'sans nom':'unnamed')).replace(/[<>]/g,'');
+    var src = c.source || (fr?'Direct':'Direct');
+    var dates = fmtDates(c);
+    var guests = c.guests ? (c.guests + 'p') : '';
+    var age = ageLabel(c);
+    var noPrice = c.arrival && (!c.price || +c.price === 0);
+    var act = pickAction(c);
+    var line2Parts = [];
+    line2Parts.push('<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;'+sourcePillStyle(src)+'">'+src+'</span>');
+    if (dates) line2Parts.push(dates + (guests ? ' (' + guests + ')' : ''));
+    else if (guests) line2Parts.push(guests);
+    if (noPrice) line2Parts.push('<span style="color:#C0392B">'+(fr?'prix?':'no price')+'</span>');
+    if (age) line2Parts.push(age);
+
+    var safeId = (c.id || '').replace(/'/g, "\\'");
+    // Whole-row click → openDetail. Inner button keeps its own onclick + stopPropagation.
+    return '<div style="padding:14px 18px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" ' +
+             'onmouseover="this.style.background=\'var(--paper)\'" onmouseout="this.style.background=\'\'" ' +
+             'onclick="if(typeof openDetail===\'function\')openDetail(\''+safeId+'\')">' +
+             '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">' +
+               '<div style="flex:1;min-width:0">' +
+                 '<div style="font-family:\'Fraunces\',serif;font-size:15px;font-weight:600;color:var(--ink);line-height:1.2">'+nm+'</div>' +
+                 '<div style="font-size:11px;color:var(--muted);margin-top:5px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;line-height:1.6">' + line2Parts.join('<span style="opacity:.4">·</span>') + '</div>' +
+               '</div>' +
+               '<button onclick="event.stopPropagation();leadsCardAction(\''+safeId+'\',\''+act.kind+'\')" ' +
+                       'style="flex-shrink:0;background:transparent;border-radius:8px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.2px;white-space:nowrap;'+actionStyle(act.tone)+'">' +
+                 (act.urgent ? '⚠ ' : '') + act.label +
+               '</button>' +
+             '</div>' +
+           '</div>';
+  }).join('');
+
+  var footerHtml = '';
+  if (leads.length > 3) {
+    var rest = leads.length - 3;
+    footerHtml = '<div style="padding:12px 18px;text-align:center;background:var(--paper);cursor:pointer;border-top:1px solid var(--border)" onclick="goTab(\'clients\');setTimeout(function(){var t=document.querySelector(\'[data-tab=pipeline]\');if(t)t.click();},150)">' +
+                   '<span style="font-size:11px;color:var(--gold);font-weight:600;letter-spacing:.5px;text-transform:uppercase">' +
+                     '+ ' + rest + (fr ? (rest>1?' autres demandes':' autre demande') : (rest>1?' more leads':' more lead')) + ' →' +
+                   '</span>' +
+                 '</div>';
+  }
+
+  body.innerHTML = rowsHtml + footerHtml;
+}
+window.renderLeadsCard = renderLeadsCard;
+
+// Action dispatcher for the leads card buttons — pre-fills ARIA so the owner
+// gets a ready-to-send draft instead of staring at a blank input.
+function leadsCardAction(clientId, kind) {
+  var cls = (typeof window.clients !== 'undefined') ? window.clients : [];
+  var c = cls.find(function(x){ return x && x.id === clientId; });
+  if (!c) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var firstName = (c.name||'').split(' ')[0] || (fr?'le guest':'guest');
+  var datesLine = '';
+  if (c.arrival) {
+    var locale = fr ? 'fr-FR' : 'en-GB';
+    var a = new Date(c.arrival).toLocaleDateString(locale, { day:'numeric', month:'long' });
+    var d = c.departure ? new Date(c.departure).toLocaleDateString(locale, { day:'numeric', month:'long' }) : '?';
+    datesLine = (fr?'Dates demandées : ':'Requested dates: ') + a + ' → ' + d + (c.guests ? (fr?' · '+c.guests+' personnes':' · '+c.guests+' guests') : '');
+  }
+  var notes = c.notes ? '\n' + (fr?'Notes guest : ':'Guest notes: ') + c.notes : '';
+
+  if (kind === 'detail') {
+    if (typeof openDetail === 'function') openDetail(clientId);
+    return;
+  }
+
+  var prompt;
+  if (kind === 'follow_up') {
+    prompt = fr
+      ? 'Rédige un message de relance chaleureux mais bref pour ' + firstName + '. Sa demande est restée sans réponse. ' + datesLine + notes
+      : 'Draft a warm but brief follow-up for ' + firstName + '. Their inquiry has gone unanswered. ' + datesLine + notes;
+  } else if (kind === 'price') {
+    prompt = fr
+      ? 'Propose un prix pour ' + firstName + ' selon les dates et la saison, puis rédige le message de devis. ' + datesLine + notes
+      : 'Suggest a price for ' + firstName + ' based on dates and season, then draft the quote message. ' + datesLine + notes;
+  } else {
+    // reply
+    prompt = fr
+      ? 'Rédige une réponse à la demande de ' + firstName + '. ' + datesLine + notes
+      : 'Draft a reply to ' + firstName + "'s inquiry. " + datesLine + notes;
+  }
+
+  if (typeof openAriaModal === 'function') openAriaModal(prompt);
+  else if (typeof sendAriaSearchToModal === 'function') {
+    var input = document.querySelector('.aria-searchbar-input');
+    if (input) { input.value = prompt; sendAriaSearchToModal(input); }
+  }
+}
+window.leadsCardAction = leadsCardAction;
 
 // Re-render v2 hero whenever clients change
 (function() {
