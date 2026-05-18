@@ -12095,26 +12095,26 @@ async function _pkceChallenge() {
 }
 
 // Refresh Gmail access_token using stored refresh_token. Returns the new token or null.
+// Routes through the Supabase edge function so the client_secret stays server-side —
+// calling oauth2.googleapis.com directly with a web-typed client_id fails (Google rejects
+// the grant when client_secret is missing), which is why owners had to re-auth daily.
 async function _tryRefreshGmailToken() {
   var cfg = getCfg();
   var conn = cfg.email_connection || {};
-  var clientId = (cfg.googleClientId || cfg.google_client_id || '').trim();
-  if (!conn.refresh_token || !clientId) return null;
+  if (!conn.refresh_token) return null;
   try {
-    var r = await fetch('https://oauth2.googleapis.com/token', {
+    var r = await fetch(SB_URL + '/functions/v1/gmail-token-exchange', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        refresh_token: conn.refresh_token,
-        grant_type: 'refresh_token'
-      }).toString()
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: conn.refresh_token })
     });
     if (!r.ok) return null;
     var data = await r.json();
     if (!data.access_token) return null;
     conn.access_token = data.access_token;
     conn.expires_at = Date.now() + (parseInt(data.expires_in || 3600, 10) * 1000);
+    // Google may rotate the refresh_token on use — pick it up if returned.
+    if (data.refresh_token) conn.refresh_token = data.refresh_token;
     delete conn.last_error;
     delete conn.last_error_at;
     // Persist locally + Supabase (saveEmailConnection mirrors to villa_settings)
