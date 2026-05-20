@@ -20138,6 +20138,36 @@ function v2RenderHero() {
       var doneCount = actions.filter(function(a){ return localStorage.getItem(keyPrefix+a.k+'_'+gid) === 'done'; }).length;
       if (actCount) actCount.textContent = doneCount + '/' + actions.length;
     }
+
+    // Phase-aware header CTA on #heroActionBoardToday:
+    //   departure phase → swap "Brief staff" for "Récap fin de séjour"
+    //     and route to ariaOpenWithMealRecapPrompt(guest)
+    //   else → restore original briefAllStaff() behaviour
+    try {
+      var hdrBtn = document.querySelector('#heroActionBoardToday .v2-card-hd button[data-orig-onclick], #heroActionBoardToday .v2-card-hd button[onclick*="briefAllStaff"]');
+      if (hdrBtn){
+        if (!hdrBtn.dataset.origOnclick) hdrBtn.dataset.origOnclick = hdrBtn.getAttribute('onclick') || 'briefAllStaff()';
+        var hdrLbl = hdrBtn.querySelector('span[data-fr], span:last-child');
+        if (ctx && ctx.phase === 'departure' && typeof window.ariaOpenWithMealRecapPrompt === 'function'){
+          var depG = ctx.guest;
+          if (hdrLbl){
+            hdrLbl.textContent = fr_ ? 'Récap fin de séjour' : 'End-of-stay recap';
+            try { hdrLbl.setAttribute('data-fr','Récap fin de séjour'); hdrLbl.setAttribute('data-en','End-of-stay recap'); } catch(e){}
+          }
+          hdrBtn.removeAttribute('onclick');
+          hdrBtn.onclick = function(){ try { window.ariaOpenWithMealRecapPrompt(depG); } catch(e){} };
+          hdrBtn.title = fr_ ? 'Récap fin de séjour' : 'End-of-stay recap';
+        } else {
+          if (hdrLbl){
+            hdrLbl.textContent = fr_ ? 'Brief staff' : 'Brief staff';
+            try { hdrLbl.setAttribute('data-fr','Brief staff'); hdrLbl.setAttribute('data-en','Brief staff'); } catch(e){}
+          }
+          hdrBtn.onclick = null;
+          hdrBtn.setAttribute('onclick', hdrBtn.dataset.origOnclick);
+          hdrBtn.title = 'Brief staff';
+        }
+      }
+    } catch(e){}
   }
 
   // Today + Villa: smart alerts mirror
@@ -24120,10 +24150,12 @@ window.addEventListener('DOMContentLoaded', function() {
     var host = $('v5HeroCurrent');
     if (!host || typeof clients === 'undefined') { if(host) host.style.display='none'; return; }
     var today = todayMid();
+    // Include checkout-today so the hero stays visible while the owner sends
+    // the end-of-stay recap (Welcome btn swaps to Récap fin de séjour below).
     var current = clients.find(function(c){
       if (!firm(c) || !c.arrival || !c.departure) return false;
       var a = new Date(c.arrival), d = new Date(c.departure);
-      return a <= today && today < d;
+      return a <= today && today <= d;
     });
     if (!current) { host.style.display = 'none'; return; }
     var FR = fr();
@@ -24146,10 +24178,24 @@ window.addEventListener('DOMContentLoaded', function() {
     }
     host.style.display = '';
     var welcome = $('v5HeroWelcome');
-    if (welcome) welcome.onclick = function(){
-      if (typeof openRelancePopup === 'function') openRelancePopup(current.id);
-      else if (window.StaffloSheet) StaffloSheet.open({ title: (FR?'Message bienvenue':'Welcome message'), body: (FR?'Préparez votre message…':'Compose your message…'), primaryCTA:'OK' });
-    };
+    if (welcome) {
+      // Phase-aware: on the guest's checkout day, swap "Welcome message" for
+      // "Récap fin de séjour" and route to the ARIA meal-recap prompt.
+      var _todayISO = (new Date()).toISOString().slice(0,10);
+      var _checkoutToday = current && current.departure === _todayISO;
+      if (_checkoutToday && typeof window.ariaOpenWithMealRecapPrompt === 'function'){
+        welcome.textContent = FR ? 'Récap fin de séjour' : 'End-of-stay recap';
+        try { welcome.setAttribute('data-fr','Récap fin de séjour'); welcome.setAttribute('data-en','End-of-stay recap'); } catch(e){}
+        welcome.onclick = function(){ try { window.ariaOpenWithMealRecapPrompt(current); } catch(e){} };
+      } else {
+        welcome.textContent = FR ? 'Message bienvenue' : 'Welcome message';
+        try { welcome.setAttribute('data-fr','Message bienvenue'); welcome.setAttribute('data-en','Welcome message'); } catch(e){}
+        welcome.onclick = function(){
+          if (typeof openRelancePopup === 'function') openRelancePopup(current.id);
+          else if (window.StaffloSheet) StaffloSheet.open({ title: (FR?'Message bienvenue':'Welcome message'), body: (FR?'Préparez votre message…':'Compose your message…'), primaryCTA:'OK' });
+        };
+      }
+    }
     var openBtn = $('v5HeroOpen');
     if (openBtn) openBtn.onclick = function(){ openGuestDetailV5(current.id); };
   }
