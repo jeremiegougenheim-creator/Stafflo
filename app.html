@@ -3840,6 +3840,22 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
     <div class="field"><label data-fr="Mot de passe WiFi" data-en="WiFi password">Mot de passe WiFi</label><input id="cfgWifiPassword" placeholder="VillaWiFi2025"></div>
   </div>
 
+  <!-- Meal pricing — populated by renderMealPricingSettings() -->
+  <div class="settings-section" id="settingsMealPricing">
+    <div class="settings-title" data-fr="TARIFS REPAS" data-en="MEAL PRICING">TARIFS REPAS</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.4" data-fr="Prix par personne, par catégorie. Activez celles que vous proposez ; cochez « inclus » pour ne pas facturer en extra." data-en="Per-person price by category. Enable the ones you offer; tick &quot;included&quot; to keep out of extras.">Prix par personne, par catégorie. Activez celles que vous proposez ; cochez « inclus » pour ne pas facturer en extra.</div>
+    <div id="mealCategoriesList"></div>
+    <button type="button" onclick="addMealCategoryRow()" style="margin-top:8px;font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="+ Ajouter une catégorie" data-en="+ Add category">+ Ajouter une catégorie</button>
+  </div>
+
+  <!-- Exchange rates — populated by renderExchangeRatesSettings() -->
+  <div class="settings-section" id="settingsExchangeRates">
+    <div class="settings-title" data-fr="DEVISES / TAUX DE CHANGE" data-en="CURRENCIES / EXCHANGE RATES">DEVISES / TAUX DE CHANGE</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.4" data-fr="Taux indicatif. Si le guest a un pays renseigné dans une devise listée, les montants seront aussi affichés en devise locale (~)." data-en="Indicative rate. If the guest has a country in a listed currency, amounts will also display in local currency (~).">Taux indicatif. Si le guest a un pays renseigné dans une devise listée, les montants seront aussi affichés en devise locale (~).</div>
+    <div id="exchangeRatesList"></div>
+    <button type="button" onclick="addExchangeRateRow()" style="margin-top:8px;font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="+ Ajouter une devise" data-en="+ Add currency">+ Ajouter une devise</button>
+  </div>
+
   <!-- ARIA Memory: persistent reference info injected in every ARIA call -->
   <div class="settings-section" style="border:1.5px solid rgba(201,150,58,.3);background:rgba(201,150,58,.04)">
     <div class="settings-title" style="color:var(--gold);display:flex;align-items:center;justify-content:space-between">
@@ -4422,6 +4438,14 @@ function handleAlertClick(action, alertEl) {
   var kind = parts[0];
   var target = parts[1];
 
+  if (kind === 'meal_recap') {
+    // Phase 4: open ARIA chat pre-filled so Phase 2 picks up the WhatsApp paste.
+    var g = (window.clients||[]).find(function(c){return c.id===target;});
+    if (g && typeof window.ariaOpenWithMealRecapPrompt === 'function') {
+      try { window.ariaOpenWithMealRecapPrompt(g); } catch(e){}
+    }
+    return;
+  }
   if (kind === 'review') {
     // Open guest detail and prefill Aria with host review prompt
     var guestId = target;
@@ -4740,6 +4764,11 @@ function enterDemoMode() {
   if (typeof loadDemoData === 'function') loadDemoData();
   if (typeof showDemoBanner === 'function') showDemoBanner();
   refreshDemoSurfaces();
+  // Pre-hydrate Villa tab in background so collapsed-card peeks have data ready
+  // (don't await — Today stays the active tab, this just warms the cache)
+  setTimeout(function(){
+    try { if (typeof loadHomeData === 'function') loadHomeData(); } catch(e){}
+  }, 800);
   return true;
 }
 window.enterDemoMode = enterDemoMode;
@@ -5196,6 +5225,27 @@ function loadDemoData() {
                  : '🎬 Demo · 8 clients + 5 emails loaded (temporary — gone on reload without ?demo=1)';
     if (typeof toast === 'function') toast(msg);
   } catch(e){}
+
+  // ── Pré-hydratation pour peek-summaries (collapsed cards) ──
+  // Météo : 24°C ensoleillé (Marrakech saison normale)
+  window._weatherData = { temp: 24, condition: 'Ensoleillé', icon: '☀️', min: 18, max: 27, humidity: 45, wind: 12 };
+  // Vols RAK : démo 7 arrivées AUJ, 12 DEM
+  window._flightData = { todayCount: 7, tomorrowCount: 12 };
+  // Compétiteurs (Marrakech) — affichés dans peek summary "Concurrents"
+  try {
+    var existingComps = JSON.parse(localStorage.getItem('stafflo_competitors') || '[]');
+    if (!existingComps.length) {
+      var demoComps = [
+        { name: 'Villa 5ch Palmeraie (Airbnb)', price: 850, source: 'Airbnb' },
+        { name: 'Villa 5ch staff Booking', price: 920, source: 'Booking' },
+        { name: 'Dar Tahira — 5ch Amelkis', price: 980, source: 'Villanovo' },
+        { name: 'Dar Julina — 6ch Palmeraie', price: 1200, source: 'Villanovo' },
+        { name: 'Le Collectionist 5ch', price: 2100, source: 'Le Collectionist' }
+      ];
+      try { localStorage.setItem('stafflo_competitors', JSON.stringify(demoComps)); } catch(e){}
+    }
+  } catch(e){}
+
   console.log('[demo] 8 clients + 5 inbox emails merged. window._demoMode=true. Reload without ?demo=1 to clear.');
 }
 window.loadDemoData = loadDemoData;
@@ -5642,6 +5692,298 @@ function getSessionKeyFromUrl() {
 }
 
 function setCfg(c) { localStorage.setItem('stafflo_cfg', JSON.stringify(c)); }
+
+// ─── Meal pricing module ──────────────────────────────────────────────
+// Categories + exchange rates live on cfg, persisted via setCfg (localStorage).
+// Supabase sync deferred until a JSON column is added to villa_settings.
+var DEFAULT_MEAL_CATEGORIES = [
+  { id: 'petit_dejeuner', label: 'Petit-déjeuner',         defaultPrice: 0,  enabled: true,  included: true  },
+  { id: 'brunch',         label: 'Brunch',                 defaultPrice: 25, enabled: true,  included: false },
+  { id: 'dejeuner',       label: 'Déjeuner',               defaultPrice: 20, enabled: true,  included: false },
+  { id: 'diner',          label: 'Dîner',                  defaultPrice: 30, enabled: true,  included: false },
+  { id: 'afternoon_tea',  label: 'Thé / Goûter',           defaultPrice: 10, enabled: true,  included: false },
+  { id: 'cocktail_hour',  label: 'Cocktail / Apéritif',    defaultPrice: 15, enabled: true,  included: false },
+  { id: 'snack',          label: 'Snack / En-cas',         defaultPrice: 5,  enabled: false, included: false },
+  { id: 'special_dinner', label: 'Dîner spécial / Gala',   defaultPrice: 50, enabled: false, included: false },
+  { id: 'bbq',            label: 'BBQ / Grillades',        defaultPrice: 25, enabled: false, included: false },
+  { id: 'picnic',         label: 'Panier pique-nique',     defaultPrice: 15, enabled: false, included: false },
+  { id: 'cooking_class',  label: 'Cours de cuisine',       defaultPrice: 40, enabled: false, included: false },
+  { id: 'room_service',   label: 'Room service / Plateau', defaultPrice: 10, enabled: false, included: false },
+  { id: 'kids_meal',      label: 'Repas enfant',           defaultPrice: 10, enabled: false, included: false }
+];
+
+var DEFAULT_EXCHANGE_RATES = {
+  GBP: 0.86, USD: 1.09, MAD: 10.8, CHF: 0.94,
+  SAR: 4.09, AED: 4.00, CAD: 1.49
+};
+
+function getMealCategories() {
+  try {
+    var cfg = getCfg();
+    var arr = cfg.meal_categories;
+    if (!Array.isArray(arr) || !arr.length) return JSON.parse(JSON.stringify(DEFAULT_MEAL_CATEGORIES));
+    return arr;
+  } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_MEAL_CATEGORIES)); }
+}
+function saveMealCategories(arr) {
+  try { var cfg = getCfg(); cfg.meal_categories = arr; setCfg(cfg); } catch(e){}
+}
+function getExchangeRates() {
+  try {
+    var cfg = getCfg();
+    var obj = cfg.exchange_rates;
+    if (!obj || typeof obj !== 'object') return Object.assign({}, DEFAULT_EXCHANGE_RATES);
+    return obj;
+  } catch(e) { return Object.assign({}, DEFAULT_EXCHANGE_RATES); }
+}
+function saveExchangeRates(obj) {
+  try { var cfg = getCfg(); cfg.exchange_rates = obj; setCfg(cfg); } catch(e){}
+}
+
+function renderMealPricingSettings() {
+  var host = document.getElementById('mealCategoriesList');
+  if (!host) return;
+  var cats = getMealCategories();
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  host.innerHTML = '';
+  cats.forEach(function(cat){
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)';
+
+    var enab = document.createElement('input');
+    enab.type = 'checkbox';
+    enab.checked = !!cat.enabled;
+    enab.style.cssText = 'width:16px;height:16px;cursor:pointer;flex-shrink:0';
+    enab.title = fr?'Activer dans l\'interface':'Show in UI';
+    enab.addEventListener('change', function(){ updateMealCategory(cat.id, 'enabled', enab.checked); });
+    row.appendChild(enab);
+
+    var lbl = document.createElement('input');
+    lbl.type = 'text';
+    lbl.value = cat.label || '';
+    lbl.placeholder = fr?'Nom':'Name';
+    lbl.style.cssText = 'flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:13px;font-family:inherit';
+    lbl.addEventListener('change', function(){ updateMealCategory(cat.id, 'label', (lbl.value.trim() || cat.label)); });
+    row.appendChild(lbl);
+
+    var price = document.createElement('input');
+    price.type = 'number';
+    price.value = (cat.defaultPrice != null) ? cat.defaultPrice : 0;
+    price.min = 0;
+    price.step = 1;
+    price.style.cssText = 'width:70px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:13px;font-family:inherit;text-align:right';
+    price.addEventListener('change', function(){
+      var v = parseFloat(price.value);
+      updateMealCategory(cat.id, 'defaultPrice', isNaN(v) ? 0 : v);
+    });
+    row.appendChild(price);
+
+    var eur = document.createElement('span');
+    eur.textContent = '€';
+    eur.style.cssText = 'font-size:13px;color:var(--muted);flex-shrink:0';
+    row.appendChild(eur);
+
+    var incLbl = document.createElement('label');
+    incLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);cursor:pointer;flex-shrink:0';
+    var inc = document.createElement('input');
+    inc.type = 'checkbox';
+    inc.checked = !!cat.included;
+    inc.addEventListener('change', function(){ updateMealCategory(cat.id, 'included', inc.checked); });
+    incLbl.appendChild(inc);
+    incLbl.appendChild(document.createTextNode(' ' + (fr?'inclus':'included')));
+    row.appendChild(incLbl);
+
+    var isDefault = DEFAULT_MEAL_CATEGORIES.some(function(d){ return d.id === cat.id; });
+    if (!isDefault) {
+      var rm = document.createElement('button');
+      rm.type = 'button';
+      rm.textContent = '×';
+      rm.title = fr?'Supprimer':'Remove';
+      rm.style.cssText = 'flex-shrink:0;width:24px;height:24px;padding:0;border:none;background:transparent;color:var(--muted);font-size:16px;cursor:pointer;border-radius:4px';
+      rm.addEventListener('click', function(){
+        if (confirm(fr?'Supprimer cette catégorie ?':'Remove this category?')) removeMealCategory(cat.id);
+      });
+      row.appendChild(rm);
+    }
+    host.appendChild(row);
+  });
+}
+
+function updateMealCategory(id, field, value) {
+  var cats = getMealCategories();
+  for (var i = 0; i < cats.length; i++) {
+    if (cats[i].id === id) { cats[i][field] = value; break; }
+  }
+  saveMealCategories(cats);
+}
+function removeMealCategory(id) {
+  var cats = getMealCategories().filter(function(c){ return c.id !== id; });
+  saveMealCategories(cats);
+  renderMealPricingSettings();
+}
+function addMealCategoryRow() {
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  var name = prompt(fr?'Nom de la catégorie ?':'Category name?');
+  if (!name) return;
+  name = name.trim();
+  if (!name) return;
+  var id = 'custom_' + name.toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,30) + '_' + Date.now().toString(36);
+  var cats = getMealCategories();
+  cats.push({ id: id, label: name, defaultPrice: 0, enabled: true, included: false });
+  saveMealCategories(cats);
+  renderMealPricingSettings();
+}
+
+function renderExchangeRatesSettings() {
+  var host = document.getElementById('exchangeRatesList');
+  if (!host) return;
+  var rates = getExchangeRates();
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  host.innerHTML = '';
+  Object.keys(rates).forEach(function(code){
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)';
+
+    var lbl = document.createElement('span');
+    lbl.textContent = code;
+    lbl.style.cssText = 'font-family:"JetBrains Mono","Menlo",monospace;font-size:12px;font-weight:600;color:var(--ink);width:50px;flex-shrink:0';
+    row.appendChild(lbl);
+
+    var rate = document.createElement('input');
+    rate.type = 'number';
+    rate.value = rates[code];
+    rate.min = 0;
+    rate.step = 0.01;
+    rate.style.cssText = 'flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:13px;font-family:inherit;text-align:right';
+    rate.addEventListener('change', function(){
+      var v = parseFloat(rate.value);
+      if (!isNaN(v) && v > 0) updateExchangeRate(code, v);
+    });
+    row.appendChild(rate);
+
+    var per = document.createElement('span');
+    per.textContent = code + '/EUR';
+    per.style.cssText = 'font-size:11px;color:var(--muted);flex-shrink:0';
+    row.appendChild(per);
+
+    var rm = document.createElement('button');
+    rm.type = 'button';
+    rm.textContent = '×';
+    rm.title = fr?'Supprimer':'Remove';
+    rm.style.cssText = 'flex-shrink:0;width:24px;height:24px;padding:0;border:none;background:transparent;color:var(--muted);font-size:16px;cursor:pointer;border-radius:4px';
+    rm.addEventListener('click', function(){ removeExchangeRate(code); });
+    row.appendChild(rm);
+
+    host.appendChild(row);
+  });
+}
+
+function updateExchangeRate(code, value) {
+  var rates = getExchangeRates();
+  rates[code] = value;
+  saveExchangeRates(rates);
+}
+function removeExchangeRate(code) {
+  var rates = getExchangeRates();
+  delete rates[code];
+  saveExchangeRates(rates);
+  renderExchangeRatesSettings();
+}
+function addExchangeRateRow() {
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  var code = prompt(fr?'Code devise (3 lettres, ex: JPY) ?':'Currency code (3 letters, e.g. JPY)?');
+  if (!code) return;
+  code = code.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) { alert(fr?'Code invalide (3 lettres)':'Invalid code (3 letters)'); return; }
+  var v = prompt(fr?'Taux pour 1 EUR ?':'Rate for 1 EUR?');
+  var rate = parseFloat(v);
+  if (isNaN(rate) || rate <= 0) { alert(fr?'Taux invalide':'Invalid rate'); return; }
+  var rates = getExchangeRates();
+  rates[code] = rate;
+  saveExchangeRates(rates);
+  renderExchangeRatesSettings();
+}
+
+// ─── Checkout reminder settings ─────────────────────────────────────────
+// cfg.checkout_reminder = { enabled, hour, push_enabled }. Defaults below.
+function getCheckoutReminderCfg() {
+  try {
+    var c = (getCfg().checkout_reminder) || {};
+    return {
+      enabled: c.enabled !== false,
+      hour: (typeof c.hour === 'number') ? c.hour : 9,
+      push_enabled: c.push_enabled !== false
+    };
+  } catch(e) { return { enabled: true, hour: 9, push_enabled: true }; }
+}
+
+// ─── Meal recap support helpers ─────────────────────────────────────────
+// findChefStaff: name of staff with role matching /chef|cuisinier|cuisinière|cook/i,
+// falls back to literal "Faiza" when no staff configured.
+function findChefStaff() {
+  try {
+    var cfg = getCfg();
+    if (Array.isArray(cfg.staffMembers)) {
+      var chef = cfg.staffMembers.find(function(s){
+        return s && /chef|cuisini[èe]r|cook/i.test(s.role || '');
+      });
+      if (chef && chef.name) return chef.name.trim().split(/\s+/)[0];
+    }
+    if (typeof cfg.staff === 'string' && cfg.staff) {
+      var lines = cfg.staff.split(/\n/);
+      for (var i = 0; i < lines.length; i++) {
+        if (/chef|cuisini[èe]r|cook/i.test(lines[i])) {
+          var nm = lines[i].replace(/\(.*?\)/g, '').trim().split(/\s+/)[0];
+          if (nm) return nm;
+        }
+      }
+    }
+  } catch(e){}
+  return 'Faiza';
+}
+
+// findGuestInInstruction: match a first-name or full-name token in the instruction
+// against clients[]. Longest match wins. Used to scope meal-recap to a specific stay.
+function findGuestInInstruction(instruction) {
+  if (typeof clients === 'undefined' || !Array.isArray(clients) || !clients.length) return null;
+  var inst = (instruction || '').toLowerCase();
+  if (!inst) return null;
+  var sorted = clients.slice().sort(function(a,b){
+    return ((b && b.name)||'').length - ((a && a.name)||'').length;
+  });
+  for (var i = 0; i < sorted.length; i++) {
+    var name = ((sorted[i] && sorted[i].name)||'').trim();
+    if (!name || name.length < 3) continue;
+    if (inst.indexOf(name.toLowerCase()) !== -1) return sorted[i];
+    var first = name.split(/\s+/)[0].toLowerCase();
+    if (first.length >= 3 && new RegExp('\\b' + first.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b').test(inst)) return sorted[i];
+  }
+  return null;
+}
+
+// guessGuestCurrency: returns a 3-letter currency code based on client country / nat flag.
+// Used by meal recap to dual-display amounts (€ + ~local).
+var _FLAG_TO_CURRENCY = {
+  '🇬🇧': 'GBP', '🇺🇸': 'USD', '🇲🇦': 'MAD', '🇨🇭': 'CHF',
+  '🇸🇦': 'SAR', '🇦🇪': 'AED', '🇨🇦': 'CAD'
+};
+function guessGuestCurrency(client) {
+  if (!client) return 'EUR';
+  if (client.currency) return String(client.currency).toUpperCase();
+  var nat = client.nat || '';
+  for (var flag in _FLAG_TO_CURRENCY) {
+    if (nat.indexOf(flag) !== -1) return _FLAG_TO_CURRENCY[flag];
+  }
+  var country = (client.country || '').toLowerCase();
+  if (/uk|united kingdom|royaume[\s-]?uni|britain|england/.test(country)) return 'GBP';
+  if (/\bus\b|usa|united states|[ée]tats[\s-]?unis|america/.test(country)) return 'USD';
+  if (/morocco|maroc/.test(country)) return 'MAD';
+  if (/switzerland|suisse|schweiz/.test(country)) return 'CHF';
+  if (/saudi|arabie\s+saoudite/.test(country)) return 'SAR';
+  if (/uae|emirates|[ée]mirats/.test(country)) return 'AED';
+  if (/canada/.test(country)) return 'CAD';
+  return 'EUR';
+}
 
 // ─── AriaFirst v1 — strangler fig gate (CLAUDE.md §2) ───────────────────
 // Activation: ?aria_first=1 in URL OR localStorage.stafflo_aria_first_v1 === '1'.
@@ -8566,6 +8908,9 @@ function loadSettingsUI() {
       es.style.borderColor = 'var(--border)';
     }
   }
+  // Meal pricing + exchange rates (auto-save UI; rows persist via setCfg on change)
+  try { renderMealPricingSettings(); } catch(e){}
+  try { renderExchangeRatesSettings(); } catch(e){}
 }
 
 async function saveSettings() {
@@ -9348,6 +9693,98 @@ function chatAutoResize(el) {
   document.getElementById('chatSendBtn').disabled = !el.value.trim();
 }
 
+// ── Instruction + pasted-block pattern detection ──
+// Splits "fais X avec ce bloc" inputs into { instruction, contextType, contextBlock }
+// so the email/extract heuristic doesn't get drowned by the dominant pasted block.
+// Returns hasContext: false when the leading instruction is missing — pure pastes
+// keep going through the existing CRM-ingest path.
+function detectInstructionWithContext(input) {
+  var EMPTY = { hasContext: false, instruction: '', contextType: null, contextBlock: '' };
+  if (!input || typeof input !== 'string') return EMPTY;
+  var text = input;
+  var lines = text.split(/\r?\n/);
+  var MIN_INSTRUCTION = 8;
+
+  // WhatsApp: ≥2 timestamped lines
+  var waRe = /^\[\d{1,2}\/\d{1,2}\/\d{2,4},?\s+\d{1,2}:\d{2}(:\d{2})?\]\s+[^:]+:/;
+  var waIdx = -1, waCount = 0;
+  for (var i = 0; i < lines.length; i++) {
+    if (waRe.test(lines[i])) {
+      if (waIdx === -1) waIdx = i;
+      waCount++;
+    }
+  }
+  if (waCount >= 2 && waIdx > 0) {
+    var instWA = lines.slice(0, waIdx).join('\n').trim();
+    if (instWA.length >= MIN_INSTRUCTION) {
+      return { hasContext: true, instruction: instWA, contextType: 'whatsapp',
+               contextBlock: lines.slice(waIdx).join('\n').trim() };
+    }
+  }
+
+  // Email: From:/Subject:/De :/Objet : OR >3 quoted '>' lines
+  var hdrRe = /^\s*(from|subject|de|objet)\s*[:：]/i;
+  var hdrIdx = -1;
+  for (var j = 0; j < lines.length; j++) {
+    if (hdrRe.test(lines[j])) { hdrIdx = j; break; }
+  }
+  if (hdrIdx === -1) {
+    var qLines = lines.filter(function(l){ return /^\s*>/.test(l); });
+    if (qLines.length > 3) {
+      for (var j2 = 0; j2 < lines.length; j2++) {
+        if (/^\s*>/.test(lines[j2])) { hdrIdx = j2; break; }
+      }
+    }
+  }
+  if (hdrIdx > 0) {
+    var instE = lines.slice(0, hdrIdx).join('\n').trim();
+    if (instE.length >= MIN_INSTRUCTION) {
+      return { hasContext: true, instruction: instE, contextType: 'email',
+               contextBlock: lines.slice(hdrIdx).join('\n').trim() };
+    }
+  }
+
+  // Booking: ≥2 keyword hits AND a €amount
+  var kwCount = (text.match(/\b(check.?in|check.?out|nights|guests|voyageurs|nuits)\b/gi) || []).length;
+  if (kwCount >= 2 && /\d+\s*€/.test(text)) {
+    var bIdx = -1;
+    for (var k = 0; k < lines.length; k++) {
+      if (/\b(check.?in|check.?out|nights|guests|voyageurs|nuits)\b/i.test(lines[k])) { bIdx = k; break; }
+    }
+    if (bIdx > 0) {
+      var instB = lines.slice(0, bIdx).join('\n').trim();
+      if (instB.length >= MIN_INSTRUCTION) {
+        return { hasContext: true, instruction: instB, contextType: 'booking',
+                 contextBlock: lines.slice(bIdx).join('\n').trim() };
+      }
+    }
+  }
+
+  // Generic text block: input >300 chars, split on first blank line or early colon
+  if (text.length > 300) {
+    var blankIdx = -1;
+    for (var m = 0; m < lines.length - 1; m++) {
+      if (lines[m].trim() && !lines[m+1].trim()) { blankIdx = m + 1; break; }
+    }
+    var instT = '', blockT = '';
+    if (blankIdx > 0) {
+      instT = lines.slice(0, blankIdx).join('\n').trim();
+      blockT = lines.slice(blankIdx).join('\n').trim();
+    } else {
+      var colon = text.indexOf(':');
+      if (colon > 0 && colon < 200) {
+        instT = text.slice(0, colon).trim();
+        blockT = text.slice(colon + 1).trim();
+      }
+    }
+    if (instT.length >= MIN_INSTRUCTION && blockT.length > 200) {
+      return { hasContext: true, instruction: instT, contextType: 'text', contextBlock: blockT };
+    }
+  }
+
+  return EMPTY;
+}
+
 async function chatSend() {
   var inp = document.getElementById('chatInput');
   var text = inp.value.trim();
@@ -9393,6 +9830,19 @@ async function chatSend() {
 
     // Check if it's a question about clients/villa
     var isQuestion = /qui|quand|combien|quel|comment|prochain|demain|aujourd|revenu|alerte|check/i.test(text);
+
+    // Instruction + pasted-block pattern: "fais X avec ce bloc collé".
+    // Routes to a structured TASK/CONTEXT prompt instead of the email/extract path,
+    // so the leading instruction isn't drowned by the dominant pasted block.
+    if (!isAriaOrchestrator) {
+      var iwc = detectInstructionWithContext(text);
+      if (iwc.hasContext) {
+        typing.style.display = 'none';
+        await handleInstructionWithContext(iwc);
+        return;
+      }
+    }
+
     // Tightened email detection: require STRONG signals, not just keyword matches.
     // A prompt mentioning "airbnb" or "guests" in passing should NOT trigger extraction.
     var hasEmailHeaders =
@@ -9547,6 +9997,191 @@ function buildClientsContextRich(maxItems) {
   } catch(e){}
 
   return lines.join('\n');
+}
+
+// ── Meal recap handler ──
+// Two-step pipeline: extract meals from WhatsApp (Groq, JSON) → generate guest-facing
+// end-of-stay message (Mistral, FR). Triggered when an instruction asks for a meal
+// recap / fin de séjour / facture AND the pasted WhatsApp block mentions the chef.
+async function handleMealRecap(parts, chefName) {
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  var ownerName = cfg.owner || 'Jérémie';
+  var villaName = cfg.villa || 'Villa DarJ';
+
+  var client = findGuestInInstruction(parts.instruction);
+  var nights = 0;
+  if (client && client.arrival && client.departure) {
+    var a = new Date(client.arrival + 'T12:00:00');
+    var d = new Date(client.departure + 'T12:00:00');
+    nights = Math.max(1, Math.round((d - a) / 86400000));
+  }
+  var guestCount = (client && client.guests) ? client.guests : 4;
+  var enabledCats = getMealCategories().filter(function(c){ return c.enabled; });
+
+  // ── Step 1: extract meals (Groq, JSON-only) ──
+  var extractSys = 'Tu es ARIA, assistant Stafflo. Réponds UNIQUEMENT en JSON valide, aucun texte avant ou après.';
+  var extractUser = [
+    'TASK : Analyser cette conversation WhatsApp entre ' + ownerName + ' et ' + chefName + ' (cuisinière) pour extraire les repas préparés pendant le séjour.',
+    '',
+    'GUEST : ' + (client && client.name ? client.name : '(non identifié)'),
+    'SÉJOUR : ' + ((client && client.arrival) || '?') + ' → ' + ((client && client.departure) || '?') + ' (' + (nights || '?') + ' nuits)',
+    'GUESTS : ' + guestCount + ' personnes',
+    '',
+    'CONVERSATION :',
+    parts.contextBlock,
+    '',
+    'CATÉGORIES DE REPAS DISPONIBLES (avec prix par personne) :',
+    JSON.stringify(enabledCats.map(function(c){ return { id:c.id, label:c.label, defaultPrice:c.defaultPrice, included:!!c.included }; }), null, 2),
+    '',
+    'Réponds UNIQUEMENT en JSON valide :',
+    '{',
+    '  "meals": [',
+    '    { "date": "YYYY-MM-DD", "category_id": "dejeuner", "count_persons": 4, "note": "" }',
+    '  ],',
+    '  "ambiguous": ["description de ce qui n\'est pas clair"],',
+    '  "summary": { "petit_dejeuner": 0, "dejeuner": 0, "diner": 0 }',
+    '}',
+    '',
+    'Règles :',
+    '- Si le nombre de personnes n\'est pas mentionné, utilise ' + guestCount + ' par défaut',
+    '- Si une date est ambiguë, propose la plus probable et mets-la en "ambiguous"',
+    '- "Petit-déjeuner" est souvent implicite (chaque matin du séjour) sauf indication contraire',
+    '- Compte les repas mentionnés OU déduits logiquement du contexte',
+    '- N\'utilise que les category_id présents dans la liste ci-dessus'
+  ].join('\n');
+
+  var extracted = { meals: [], ambiguous: [], summary: {} };
+  try {
+    var extractedRaw = await callBestAI('extract', extractSys, extractUser, 900);
+    var jsonMatch = (extractedRaw || '').match(/\{[\s\S]*\}/);
+    if (jsonMatch) extracted = JSON.parse(jsonMatch[0]);
+  } catch(e) {
+    addChatBubble('ai', '⚠ Extraction repas a échoué: ' + (e.message || 'erreur'), [
+      { label: '👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' }
+    ]);
+    return;
+  }
+
+  // ── Step 2: generate guest message (Mistral, FR) ──
+  var guestCurrency = guessGuestCurrency(client);
+  var rates = getExchangeRates();
+  var rate = (guestCurrency !== 'EUR' && rates[guestCurrency]) ? rates[guestCurrency] : null;
+
+  var writeSys = [
+    'Tu es ARIA, assistant pour ' + ownerName + ' (gestion ' + villaName + ').',
+    'Tu rédiges un message WhatsApp de fin de séjour, envoyé au guest, au nom de ' + ownerName + '.',
+    'Règles :',
+    '- Ton chaleureux et professionnel, en français',
+    '- Lister chaque catégorie de repas EXTRAS (exclure tout repas marqué "included") : quantité × prix par personne = sous-total en € (et ~devise locale entre parenthèses si applicable)',
+    '- Afficher le total des extras repas en € (et ~devise locale si applicable)',
+    '- Proposer un mode de paiement (espèces ou virement)',
+    '- Remercier et inviter à revenir',
+    '- Ne PAS mentionner la commission plateforme ni le net propriétaire (info interne uniquement, sert juste à te contextualiser)',
+    '- Signer "' + ownerName + '"',
+    '- Génère DIRECTEMENT le message final, sans préambule.'
+  ].join('\n');
+
+  var writeUser = [
+    'GUEST : ' + (client && client.name ? client.name : '(guest)'),
+    'SÉJOUR : ' + ((client && client.arrival) || '?') + ' → ' + ((client && client.departure) || '?') + ' (' + (nights || '?') + ' nuits)',
+    'NOMBRE DE GUESTS : ' + guestCount,
+    'DEVISE GUEST : ' + guestCurrency,
+    rate ? ('TAUX DE CHANGE : 1 EUR = ' + rate + ' ' + guestCurrency + ' (indicatif, préfixer "~")') : 'TAUX DE CHANGE : N/A (guest en €)',
+    '',
+    'RÉCAP REPAS (extraction WhatsApp) :',
+    JSON.stringify(extracted.meals || [], null, 2),
+    '',
+    'SUMMARY (totaux par catégorie) :',
+    JSON.stringify(extracted.summary || {}, null, 2),
+    '',
+    'TARIFS RÉFÉRENCE (prix par personne ; included:true = ne pas facturer) :',
+    JSON.stringify(enabledCats.map(function(c){ return { id:c.id, label:c.label, price:c.defaultPrice, included:!!c.included }; }), null, 2),
+    '',
+    'INFO INTERNE (ne PAS surface dans le message) :',
+    'TOTAL SÉJOUR : ' + (client && client.price ? client.price + '€' : 'N/A'),
+    (client && client.commission) ? ('COMMISSION : ' + client.commission + '%') : '',
+    (client && client.net) ? ('NET PROPRIÉTAIRE : ' + client.net + '€') : '',
+    '',
+    (extracted.ambiguous && extracted.ambiguous.length) ? ('À VÉRIFIER (mentionner en fin de message) : ' + extracted.ambiguous.join(' / ')) : ''
+  ].filter(function(s){ return s !== ''; }).join('\n');
+
+  var finalMsg = '';
+  var ok = false;
+  try {
+    finalMsg = await callBestAI('write_fr', writeSys, writeUser, 900);
+    ok = !!(finalMsg && !/^\s*⚠/.test(finalMsg));
+  } catch(e) {
+    finalMsg = '⚠ ' + (e.message || 'Erreur');
+  }
+  // Mark done so Phase 4 checkout alert turns green and the daily notif suppresses.
+  if (ok && client && client.id && client.departure){
+    try { localStorage.setItem('stafflo_meal_recap_done_' + client.id + '_' + client.departure, String(Date.now())); } catch(e){}
+  }
+  addChatBubble('ai', finalMsg || '...', [
+    { label: '👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' }
+  ]);
+}
+
+// ── Handler for "instruction + pasted block" inputs ──
+// Builds a TASK/CONTEXT prompt and calls write_fr (Mistral) for warm FR output.
+// Branches to handleMealRecap when WhatsApp + chef + meal-intent are detected.
+async function handleInstructionWithContext(parts) {
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  var ownerName = cfg.owner || 'Jérémie';
+  var villaName = cfg.villa || 'Villa DarJ';
+
+  // Meal recap special path: WhatsApp + chef name in block + meal-intent in instruction
+  if (parts.contextType === 'whatsapp') {
+    var isMealRecap = /repas|fin de s[ée]jour|co[ûu]ts?|facture|r[ée]cap|meal|food|bill|invoice/i.test(parts.instruction);
+    if (isMealRecap) {
+      var chefName = findChefStaff();
+      var chefRe = new RegExp('\\b' + chefName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+      if (chefRe.test(parts.contextBlock)) {
+        await handleMealRecap(parts, chefName);
+        return;
+      }
+    }
+  }
+
+  var historyBlock = '';
+  try {
+    var db = await loadRecentChatContext(8);
+    historyBlock = db || buildChatHistoryBlock(6);
+  } catch(e) { historyBlock = ''; }
+
+  var typeLabel = ({
+    whatsapp: 'WhatsApp',
+    email: 'email',
+    booking: 'booking',
+    text: 'texte'
+  })[parts.contextType] || 'données';
+
+  var systemPrompt = [
+    'Tu es ARIA, assistant pour ' + ownerName + ' (gestion ' + villaName + ', villa de luxe à Marrakech).',
+    'Le user a collé un bloc de ' + typeLabel + ' et te demande d\'exécuter une TASK en l\'utilisant.',
+    'Exécute la TASK en utilisant le CONTEXT. Réponds en français, ton chaleureux et professionnel.',
+    'Si la TASK demande un texte à envoyer (WhatsApp, email), génère DIRECTEMENT le texte final, sans préambule.',
+    'Si des données manquent dans le CONTEXT pour exécuter la TASK, propose une action concrète (jamais "à vérifier").'
+  ].join('\n');
+
+  var userParts = [];
+  if (historyBlock) { userParts.push(historyBlock); userParts.push(''); }
+  userParts.push('════ TASK (ce que le user demande) ════');
+  userParts.push(parts.instruction);
+  userParts.push('');
+  userParts.push('════ CONTEXT (données collées par le user, type: ' + parts.contextType + ') ════');
+  userParts.push(parts.contextBlock);
+  var userCtx = userParts.join('\n');
+
+  var raw = '';
+  try {
+    raw = await callBestAI('write_fr', systemPrompt, userCtx, 700);
+  } catch(e) {
+    raw = '⚠ ' + (e.message || 'Erreur');
+  }
+  addChatBubble('ai', raw || '...', [
+    { label: '👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' }
+  ]);
 }
 
 async function handleChatQuestion(text) {
@@ -14318,6 +14953,23 @@ async function generateAlerts(weatherTemp) {
   const checkin3d     = clients.filter(c => _live(c) && c.arrival === dateInDays(3));
   const checkout1d    = clients.filter(c => _live(c) && c.departure === dateInDays(1));
 
+  // ── Meal recap reminder — one alert per checkout-today guest ──
+  // Status flips to green ('good') once handleMealRecap (Phase 2) has run today,
+  // tracked via localStorage key stafflo_meal_recap_done_{clientId}_{departureDate}.
+  checkoutToday.forEach(function(c){
+    var doneKey = 'stafflo_meal_recap_done_' + c.id + '_' + (c.departure || today);
+    var done = false;
+    try { done = !!localStorage.getItem(doneKey); } catch(e){}
+    alerts.push({
+      type: done ? 'good' : 'warn',
+      title: '🏁 ' + (fr?'Récap fin de séjour':'End-of-stay recap') + ' — ' + (c.name||'?'),
+      sub: done
+        ? (fr?'Récap déjà généré. Cliquez pour le refaire si besoin.':'Recap already generated. Click to redo if needed.')
+        : (fr?'Check-out aujourd\'hui · récap repas à envoyer. Cliquez pour ouvrir ARIA.':'Check-out today · meal recap to send. Click to open ARIA.'),
+      _mealRecapGuestId: c.id
+    });
+  });
+
   // Same-day turnover (checkout + checkin same day) — critical
   if (checkoutToday.length && checkinToday.length) {
     alerts.push({type:'urgent',
@@ -14616,6 +15268,7 @@ async function generateAlerts(weatherTemp) {
   const routeAlert = (a) => {
     const txt = ((a.title||'') + ' ' + (a.sub||'')).toLowerCase();
     if (a._reviewGuestId) return { action: 'review:'+a._reviewGuestId, label: fr?'→ Rédiger':'→ Draft' };
+    if (a._mealRecapGuestId) return { action: 'meal_recap:'+a._mealRecapGuestId, label: fr?'→ ARIA récap':'→ ARIA recap' };
     if (/commentaire|review|rating|avis/i.test(txt)) return { action: 'open:aria-review', label: fr?'→ Aria':'→ Aria' };
     if (/prix|rate|pricing|marché|market|tarif|price/i.test(txt)) return { action: 'goto:home', label: fr?'→ Pricing':'→ Pricing' };
     if (/email|inbox|message|booking|airbnb/i.test(txt)) return { action: 'goto:inbox', label: fr?'→ Inbox':'→ Inbox' };
@@ -14746,6 +15399,8 @@ async function loadWeather() {
     const sunrise = new Date(cur.sys.sunrise * 1000).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'});
     const sunset = new Date(cur.sys.sunset * 1000).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'});
     const icon = getWeatherIcon(cur.weather[0].main);
+    // Expose for collapsed-card peek summaries
+    window._weatherData = { temp: temp, condition: desc, icon: icon, min: tempMin, max: tempMax, humidity: humidity, wind: wind };
 
     let impact = 'Conditions normales';
     let impactColor = 'var(--green)';
@@ -14832,6 +15487,8 @@ async function loadWeather() {
       <div style="font-size:10px;color:var(--text3);margin-top:8px;text-align:right">OpenWeatherMap · Marrakech · Mis à jour ${new Date().toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}</div>`;
 
   } catch(e) {
+    // Expose fallback for collapsed-card peek summaries
+    window._weatherData = { temp: 24, condition: 'Ensoleillé', icon: '☀️', min: 18, max: 27, humidity: 45, wind: 12 };
     document.getElementById('weatherContent').innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
         <div style="font-size:28px">🌤</div>
@@ -19481,6 +20138,36 @@ function v2RenderHero() {
       var doneCount = actions.filter(function(a){ return localStorage.getItem(keyPrefix+a.k+'_'+gid) === 'done'; }).length;
       if (actCount) actCount.textContent = doneCount + '/' + actions.length;
     }
+
+    // Phase-aware header CTA on #heroActionBoardToday:
+    //   departure phase → swap "Brief staff" for "Récap fin de séjour"
+    //     and route to ariaOpenWithMealRecapPrompt(guest)
+    //   else → restore original briefAllStaff() behaviour
+    try {
+      var hdrBtn = document.querySelector('#heroActionBoardToday .v2-card-hd button[data-orig-onclick], #heroActionBoardToday .v2-card-hd button[onclick*="briefAllStaff"]');
+      if (hdrBtn){
+        if (!hdrBtn.dataset.origOnclick) hdrBtn.dataset.origOnclick = hdrBtn.getAttribute('onclick') || 'briefAllStaff()';
+        var hdrLbl = hdrBtn.querySelector('span[data-fr], span:last-child');
+        if (ctx && ctx.phase === 'departure' && typeof window.ariaOpenWithMealRecapPrompt === 'function'){
+          var depG = ctx.guest;
+          if (hdrLbl){
+            hdrLbl.textContent = fr_ ? 'Récap fin de séjour' : 'End-of-stay recap';
+            try { hdrLbl.setAttribute('data-fr','Récap fin de séjour'); hdrLbl.setAttribute('data-en','End-of-stay recap'); } catch(e){}
+          }
+          hdrBtn.removeAttribute('onclick');
+          hdrBtn.onclick = function(){ try { window.ariaOpenWithMealRecapPrompt(depG); } catch(e){} };
+          hdrBtn.title = fr_ ? 'Récap fin de séjour' : 'End-of-stay recap';
+        } else {
+          if (hdrLbl){
+            hdrLbl.textContent = fr_ ? 'Brief staff' : 'Brief staff';
+            try { hdrLbl.setAttribute('data-fr','Brief staff'); hdrLbl.setAttribute('data-en','Brief staff'); } catch(e){}
+          }
+          hdrBtn.onclick = null;
+          hdrBtn.setAttribute('onclick', hdrBtn.dataset.origOnclick);
+          hdrBtn.title = 'Brief staff';
+        }
+      }
+    } catch(e){}
   }
 
   // Today + Villa: smart alerts mirror
@@ -21145,22 +21832,43 @@ window.addEventListener('DOMContentLoaded', function() {
     var actions = [];
 
     if (g.bookingStatus !== 'inquiry'){
-      // 1. Bienvenue
-      actions.push({
-        id:'welcome', icon:'💬',
-        label: f ? 'Message bienvenue à '+firstName : 'Welcome message to '+firstName,
-        target:'guest', kind:'whatsapp',
-        ai_task: 'write_guest_'+guestLang,
-        purpose:'welcome', guest:g, family:fam, lang:guestLang
-      });
-      // 2. Brief staff
-      actions.push({
-        id:'staff', icon:'📋',
-        label: f ? 'Brief Said + Faiza + Bouchra' : 'Brief Said + Faiza + Bouchra',
-        target:'staff', kind:'whatsapp',
-        ai_task: 'write_staff',
-        purpose:'staff_brief', guest:g, family:fam, lang:'fr'
-      });
+      // Phase: when has checkout happened? (≤ 0 = today or earlier)
+      var departureDays = null;
+      if (g.departure){
+        var dp = new Date(g.departure); dp.setHours(0,0,0,0);
+        var today2 = new Date(); today2.setHours(0,0,0,0);
+        departureDays = Math.round((dp - today2)/86400000);
+      }
+      var checkedOut = (departureDays !== null && departureDays <= 0);
+
+      if (checkedOut){
+        // Stay ended today or earlier → end-of-stay recap.
+        // Click opens ARIA pre-filled so Phase 2 handler picks up the WhatsApp paste.
+        actions.push({
+          id:'meal_recap', icon:'🏁',
+          label: f ? 'Récap fin de séjour pour '+firstName : 'End-of-stay recap for '+firstName,
+          target:'guest', kind:'open_aria',
+          ai_task: 'write_fr',
+          purpose:'meal_recap', guest:g, family:fam, lang:guestLang
+        });
+      } else {
+        // Upcoming or in-house → welcome message
+        actions.push({
+          id:'welcome', icon:'💬',
+          label: f ? 'Message bienvenue à '+firstName : 'Welcome message to '+firstName,
+          target:'guest', kind:'whatsapp',
+          ai_task: 'write_guest_'+guestLang,
+          purpose:'welcome', guest:g, family:fam, lang:guestLang
+        });
+        // Brief staff
+        actions.push({
+          id:'staff', icon:'📋',
+          label: f ? 'Brief Said + Faiza + Bouchra' : 'Brief Said + Faiza + Bouchra',
+          target:'staff', kind:'whatsapp',
+          ai_task: 'write_staff',
+          purpose:'staff_brief', guest:g, family:fam, lang:'fr'
+        });
+      }
     } else {
       // Inquiry → réponse à la demande
       actions.push({
@@ -21372,11 +22080,41 @@ window.addEventListener('DOMContentLoaded', function() {
     if (card) card.style.display = 'none';
   };
 
+  // Opens the main ARIA chat panel and seeds it with a meal-recap prompt so the
+  // owner can paste the chef's WhatsApp conversation. The Phase 1 detector +
+  // Phase 2 handler then run the extract+write_fr pipeline on submit.
+  // Exposed on window so handleAlertClick + scheduleAllNotifs can call it.
+  window.ariaOpenWithMealRecapPrompt = ariaOpenWithMealRecapPrompt;
+  function ariaOpenWithMealRecapPrompt(guest){
+    if (!guest) return;
+    var firstName = ((guest.name||'').split(' ')[0]) || 'guest';
+    var chefName = (typeof findChefStaff === 'function') ? findChefStaff() : 'Faiza';
+    var placeholder = '[Colle ici la conversation WhatsApp avec ' + chefName + ' pendant le séjour]';
+    var seed = 'fais le récap fin de séjour pour ' + firstName + ' avec les coûts des repas :\n\n' + placeholder + '\n';
+    var inp = document.getElementById('chatInput');
+    if (!inp){ alert('Ouvre ARIA et tape :\n\n' + seed); return; }
+    inp.value = seed;
+    try { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, 220) + 'px'; } catch(e){}
+    try { var sb = document.getElementById('chatSendBtn'); if (sb) sb.disabled = false; } catch(e){}
+    try {
+      var pIdx = seed.indexOf(placeholder);
+      if (pIdx >= 0) inp.setSelectionRange(pIdx, pIdx + placeholder.length);
+    } catch(e){}
+    try { inp.scrollIntoView({ block:'center', behavior:'smooth' }); } catch(e){}
+    try { inp.focus(); } catch(e){}
+  }
+
   // Génère le contenu d'une action via LLM puis montre les boutons d'envoi
   window.ariaSmartActionGenerate = async function(groupId, idx, btn){
     var actions = (window._ariaPendingActions||{})[groupId];
     if (!actions || !actions[idx]) return;
     var a = actions[idx]; var f = fr();
+    // Meal recap bypasses the LLM here; it pre-fills the ARIA chat input so the
+    // owner pastes the chef WhatsApp block and Phase 2 takes over.
+    if (a.purpose === 'meal_recap'){
+      ariaOpenWithMealRecapPrompt(a.guest);
+      return;
+    }
     btn.disabled = true; btn.textContent = '⏳ ' + (f?'Génération...':'Generating...');
     try {
       var p = buildAiPrompt(a);
@@ -23412,10 +24150,12 @@ window.addEventListener('DOMContentLoaded', function() {
     var host = $('v5HeroCurrent');
     if (!host || typeof clients === 'undefined') { if(host) host.style.display='none'; return; }
     var today = todayMid();
+    // Include checkout-today so the hero stays visible while the owner sends
+    // the end-of-stay recap (Welcome btn swaps to Récap fin de séjour below).
     var current = clients.find(function(c){
       if (!firm(c) || !c.arrival || !c.departure) return false;
       var a = new Date(c.arrival), d = new Date(c.departure);
-      return a <= today && today < d;
+      return a <= today && today <= d;
     });
     if (!current) { host.style.display = 'none'; return; }
     var FR = fr();
@@ -23438,10 +24178,24 @@ window.addEventListener('DOMContentLoaded', function() {
     }
     host.style.display = '';
     var welcome = $('v5HeroWelcome');
-    if (welcome) welcome.onclick = function(){
-      if (typeof openRelancePopup === 'function') openRelancePopup(current.id);
-      else if (window.StaffloSheet) StaffloSheet.open({ title: (FR?'Message bienvenue':'Welcome message'), body: (FR?'Préparez votre message…':'Compose your message…'), primaryCTA:'OK' });
-    };
+    if (welcome) {
+      // Phase-aware: on the guest's checkout day, swap "Welcome message" for
+      // "Récap fin de séjour" and route to the ARIA meal-recap prompt.
+      var _todayISO = (new Date()).toISOString().slice(0,10);
+      var _checkoutToday = current && current.departure === _todayISO;
+      if (_checkoutToday && typeof window.ariaOpenWithMealRecapPrompt === 'function'){
+        welcome.textContent = FR ? 'Récap fin de séjour' : 'End-of-stay recap';
+        try { welcome.setAttribute('data-fr','Récap fin de séjour'); welcome.setAttribute('data-en','End-of-stay recap'); } catch(e){}
+        welcome.onclick = function(){ try { window.ariaOpenWithMealRecapPrompt(current); } catch(e){} };
+      } else {
+        welcome.textContent = FR ? 'Message bienvenue' : 'Welcome message';
+        try { welcome.setAttribute('data-fr','Message bienvenue'); welcome.setAttribute('data-en','Welcome message'); } catch(e){}
+        welcome.onclick = function(){
+          if (typeof openRelancePopup === 'function') openRelancePopup(current.id);
+          else if (window.StaffloSheet) StaffloSheet.open({ title: (FR?'Message bienvenue':'Welcome message'), body: (FR?'Préparez votre message…':'Compose your message…'), primaryCTA:'OK' });
+        };
+      }
+    }
     var openBtn = $('v5HeroOpen');
     if (openBtn) openBtn.onclick = function(){ openGuestDetailV5(current.id); };
   }
@@ -26169,7 +26923,25 @@ window.addEventListener('DOMContentLoaded', function() {
       });
       summary.style.cursor = 'pointer';
       card.style.cursor = 'pointer';
-      applyState(true);
+      // 3-tier default policy:
+      //   - Concurrents → open (key strategic info)
+      //   - Météo, Vols, Scénarios, Checklist → peek (collapsed with rich summary)
+      // User overrides persist via localStorage key stafflo_card_state_{label}
+      var lblTxt = ((card.querySelector('.hm-hdr-lbl')||{}).textContent || '').toLowerCase().trim();
+      var stateKey = 'stafflo_card_state_' + lblTxt.replace(/[^a-z0-9]/g,'_').slice(0,40);
+      var savedState = null;
+      try { savedState = localStorage.getItem(stateKey); } catch(e){}
+      var defaultCollapsed = true;
+      if (lblTxt.indexOf('concurrent') !== -1 || lblTxt.indexOf('competitor') !== -1) defaultCollapsed = false;
+      if (lblTxt.indexOf('marché') !== -1 || lblTxt.indexOf('market') !== -1) defaultCollapsed = false;
+      var initialCollapsed = (savedState === 'open') ? false : (savedState === 'closed') ? true : defaultCollapsed;
+      // Persist on toggle
+      var origApplyState = applyState;
+      applyState = function(collapsed){
+        origApplyState(collapsed);
+        try { localStorage.setItem(stateKey, collapsed ? 'closed' : 'open'); } catch(e){}
+      };
+      applyState(initialCollapsed);
     });
     // Refresh visible summaries
     document.querySelectorAll('.hm-card-summary').forEach(function(s){
@@ -28213,6 +28985,39 @@ window.addEventListener('DOMContentLoaded', function() {
         markSent(key2);
       }
     });
+
+    // 2b. CHECKOUT TODAY — meal recap reminder. One notif per stay,
+    // gated by cfg.checkout_reminder.hour (default 9). Click opens ARIA pre-filled.
+    var crCfg = (typeof getCheckoutReminderCfg === 'function') ? getCheckoutReminderCfg() : { enabled:true, hour:9, push_enabled:true };
+    if (crCfg.enabled && crCfg.push_enabled){
+      clients.forEach(function(c){
+        if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
+        if (!c.departure) return;
+        var dep = new Date(c.departure); dep.setHours(0,0,0,0);
+        if (dep.getTime() !== today.getTime()) return;
+        if (now.getHours() < crCfg.hour) return;
+        var coKey = 'coTd_' + c.id + '_' + c.departure;
+        if (alreadySent(coKey)) return;
+        // Also suppress if owner already generated the recap earlier today
+        var doneKey = 'stafflo_meal_recap_done_' + c.id + '_' + c.departure;
+        var alreadyDone = false;
+        try { alreadyDone = !!localStorage.getItem(doneKey); } catch(e){}
+        if (alreadyDone) { markSent(coKey); return; }
+        var nights = (c.arrival && c.departure) ? Math.max(1, Math.round((new Date(c.departure) - new Date(c.arrival))/DAY)) : 0;
+        showNotif(
+          '🏁 ' + (fr?'Check-out':'Check-out') + ' : ' + (c.name||'?'),
+          (c.guests||'?') + (fr?' pers':' pax') + (nights?' · '+nights+(fr?' nuits':' nights'):'') + (fr?' · Récap repas à envoyer':' · Meal recap to send'),
+          coKey,
+          function(){
+            if (typeof openDetail === 'function') openDetail(c.id);
+            if (typeof window.ariaOpenWithMealRecapPrompt === 'function') {
+              setTimeout(function(){ try { window.ariaOpenWithMealRecapPrompt(c); } catch(e){} }, 300);
+            }
+          }
+        );
+        markSent(coKey);
+      });
+    }
 
     // 2. REVIEW REMINDERS J+1, J+2, J+7, J+14
     clients.forEach(function(c){
