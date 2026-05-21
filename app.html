@@ -3062,6 +3062,19 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
   </div>
 </div>
 
+<!-- Row: Leads & Pipeline -->
+<div class="row row-100">
+  <div class="v2-card" id="cardLeadsPipeline">
+    <div class="v2-card-hd">
+      <div class="v2-card-title">🎯 <span data-fr="Leads à relancer" data-en="Leads to follow up">Leads à relancer</span></div>
+      <div id="cardLeadsPipelineCount" style="font-size:11px;color:var(--muted);font-weight:500"></div>
+    </div>
+    <div class="v2-card-body" id="cardLeadsPipelineBody" style="padding:12px 14px">
+      <div style="color:var(--muted);font-style:italic" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
+    </div>
+  </div>
+</div>
+
 <!-- Aria Memory: moved to Settings (header button 🧠 remains as quick access) -->
 
 <!-- Legacy 70/30 cols kept for compatibility (hidden when v2-active) -->
@@ -25224,6 +25237,120 @@ window.addEventListener('DOMContentLoaded', function() {
   } else {
     wireHooks();
     setTimeout(wireHooks, 500);
+  }
+})();
+
+/* ── Leads & Pipeline dashboard card ── */
+(function(){
+  function escHtml(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  function leadAgeMs(c){
+    var t = c && (c.updatedAt || c.createdAt);
+    if (!t) return 9999 * 86400000;
+    var d = new Date(t);
+    var n = d.getTime();
+    return isNaN(n) ? 9999 * 86400000 : (Date.now() - n);
+  }
+  function leadTemp(c){
+    var d = leadAgeMs(c) / 86400000;
+    if (d < 2) return 'hot';
+    if (d < 7) return 'warm';
+    return 'cold';
+  }
+  function ageLabel(c, fr){
+    var d = Math.round(leadAgeMs(c) / 86400000);
+    if (d < 1) return fr ? '< 1j' : '< 1d';
+    if (d === 1) return fr ? 'Il y a 1j' : '1d ago';
+    return fr ? ('Il y a ' + d + 'j') : (d + 'd ago');
+  }
+  var tempOrder = { hot: 0, warm: 1, cold: 2 };
+
+  window.renderLeadsPipelineCard = function(){
+    var body = document.getElementById('cardLeadsPipelineBody');
+    var countEl = document.getElementById('cardLeadsPipelineCount');
+    if (!body) return;
+    var fr = (typeof lang !== 'undefined') && lang === 'fr';
+    if (typeof clients === 'undefined' || !Array.isArray(clients)) return;
+
+    var leads = clients.filter(function(c){
+      return c && (c.bookingStatus === 'inquiry' || c.bookingStatus === 'lead');
+    });
+    if (countEl) countEl.textContent = leads.length ? String(leads.length) : '';
+
+    if (!leads.length) {
+      body.innerHTML = '<div style="text-align:center;padding:18px 8px;color:var(--muted)">' +
+        '<div style="font-size:22px;margin-bottom:4px">🌿</div>' +
+        '<div style="font-size:13px" data-fr="Aucun lead en attente" data-en="No leads waiting">' +
+        (fr ? 'Aucun lead en attente' : 'No leads waiting') + '</div></div>';
+      return;
+    }
+
+    leads.sort(function(a, b){
+      var ta = leadTemp(a), tb = leadTemp(b);
+      if (ta !== tb) return tempOrder[ta] - tempOrder[tb];
+      return leadAgeMs(a) - leadAgeMs(b);
+    });
+
+    var top = leads.slice(0, 5);
+    var rows = top.map(function(c){
+      var temp = leadTemp(c);
+      var dot = temp === 'hot' ? '🔴' : (temp === 'warm' ? '🟡' : '⚪');
+      var border = temp === 'hot' ? '3px solid #C9963A' : '3px solid var(--border)';
+      var nameRaw = c.name || (fr ? 'Sans nom' : 'Unnamed');
+      var srcRaw = c.source || c.platform || (fr ? 'Direct' : 'Direct');
+      var age = ageLabel(c, fr);
+      var ph = String(c.phone || '').replace(/[^\d+]/g,'').replace(/^\+/, '');
+      var waBtn = ph
+        ? '<button onclick="event.stopPropagation();window.open(\'https://wa.me/' + ph + '\',\'_blank\')" title="WhatsApp" style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif;flex-shrink:0">💬</button>'
+        : '';
+      var idEsc = String(c.id || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      return '<div onclick="if(typeof openDetail===\'function\')openDetail(\'' + idEsc + '\')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-left:' + border + ';background:var(--paper);border-radius:8px;cursor:pointer;transition:background .15s" onmouseover="this.style.background=\'var(--card)\'" onmouseout="this.style.background=\'var(--paper)\'">' +
+        '<span style="font-size:13px;flex-shrink:0">' + dot + '</span>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-weight:600;font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(nameRaw) + '</div>' +
+          '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + escHtml(srcRaw) + ' · ' + escHtml(age) + '</div>' +
+        '</div>' +
+        waBtn +
+      '</div>';
+    }).join('');
+
+    var seeAll = leads.length > 5
+      ? '<div style="margin-top:10px;text-align:right"><a href="#" onclick="event.preventDefault();crmFilter=\'inquiry\';if(typeof goTab===\'function\')goTab(\'clients\');" style="font-size:12px;color:var(--gold);text-decoration:none;font-weight:600">' + (fr ? ('Voir tous (' + leads.length + ')') : ('See all (' + leads.length + ')')) + ' →</a></div>'
+      : '';
+
+    body.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px">' + rows + '</div>' + seeAll;
+  };
+
+  function wireLeadsHooks(){
+    if (typeof window.renderAll === 'function' && !window.renderAll._leadsCardWrapped) {
+      var _orig = window.renderAll;
+      window.renderAll = function(){
+        var r = _orig.apply(this, arguments);
+        try { window.renderLeadsPipelineCard(); } catch(e){}
+        return r;
+      };
+      window.renderAll._leadsCardWrapped = true;
+    }
+    if (typeof window.loadHomeData === 'function' && !window.loadHomeData._leadsCardWrapped) {
+      var _origL = window.loadHomeData;
+      window.loadHomeData = function(){
+        var r = _origL.apply(this, arguments);
+        try { window.renderLeadsPipelineCard(); } catch(e){}
+        return r;
+      };
+      window.loadHomeData._leadsCardWrapped = true;
+    }
+    try { window.renderLeadsPipelineCard(); } catch(e){}
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ wireLeadsHooks(); setTimeout(wireLeadsHooks, 500); });
+  } else {
+    wireLeadsHooks();
+    setTimeout(wireLeadsHooks, 500);
   }
 })();
 </script>
