@@ -25023,13 +25023,9 @@ window.addEventListener('DOMContentLoaded', function() {
         <strong>ARIA</strong> · <span data-fr="Comment puis-je vous aider ?" data-en="How can I help?">Comment puis-je vous aider ?</span>
         <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
           <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;font-weight:600" data-fr="Actions rapides" data-en="Quick actions">Actions rapides</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <div id="ariaContextChips" style="display:flex;flex-wrap:wrap;gap:6px">
             <button class="aria-quick-chip" onclick="ariaQuickAction('paste_email')" data-fr="📧 Coller email" data-en="📧 Paste email">📧 Coller email</button>
-            <button class="aria-quick-chip" onclick="ariaQuickAction('staff_brief')" data-fr="📋 Brief staff" data-en="📋 Staff brief">📋 Brief staff</button>
-            <button class="aria-quick-chip" onclick="ariaQuickAction('who_arrives')" data-fr="❓ Qui arrive ?" data-en="❓ Who arrives?">❓ Qui arrive ?</button>
             <button class="aria-quick-chip" onclick="ariaQuickAction('upload_file')" data-fr="📎 Joindre fichier" data-en="📎 Attach file">📎 Joindre fichier</button>
-            <button class="aria-quick-chip" onclick="ariaQuickAction('write_msg')" data-fr="✍ Rédiger message" data-en="✍ Write message">✍ Rédiger message</button>
-            <button class="aria-quick-chip" onclick="ariaQuickAction('weather')" data-fr="🌤 Météo & marché" data-en="🌤 Weather & market">🌤 Météo & marché</button>
           </div>
         </div>
       </div>
@@ -25065,6 +25061,172 @@ window.addEventListener('DOMContentLoaded', function() {
     </div>
   </div>
 </div>
+
+<script>
+/* ── ARIA dynamic contextual welcome chips ── */
+(function(){
+  function todayStr(){
+    var d = new Date();
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,'0');
+    var dd = String(d.getDate()).padStart(2,'0');
+    return y+'-'+m+'-'+dd;
+  }
+  function daysUntil(s, today){
+    if (!s) return Infinity;
+    try {
+      var d = new Date(s+'T00:00:00');
+      var n = new Date(today+'T00:00:00');
+      return Math.round((d - n) / 86400000);
+    } catch(e){ return Infinity; }
+  }
+  function firmOf(c){
+    if (typeof isFirmBooking === 'function') return isFirmBooking(c);
+    return c && (c.bookingStatus === 'confirmed' || c.bookingStatus === 'pending');
+  }
+
+  window.getAriaContextualActions = function(){
+    var actions = [];
+    actions.push({
+      label_fr: '📧 Coller email', label_en: '📧 Paste email',
+      run: function(){ if (typeof ariaQuickAction === 'function') ariaQuickAction('paste_email'); }
+    });
+    actions.push({
+      label_fr: '📎 Joindre fichier', label_en: '📎 Attach file',
+      run: function(){ if (typeof ariaQuickAction === 'function') ariaQuickAction('upload_file'); }
+    });
+
+    if (typeof clients === 'undefined' || !Array.isArray(clients)) return actions;
+    var today = todayStr();
+
+    var inHouse = clients.find(function(c){
+      return firmOf(c) && c.arrival && c.departure && c.arrival <= today && c.departure >= today;
+    });
+    var nextArrival = clients
+      .filter(function(c){ return firmOf(c) && c.arrival && c.arrival > today; })
+      .sort(function(a,b){ return a.arrival < b.arrival ? -1 : 1; })[0];
+    var leadsCount = clients.filter(function(c){
+      return c && (c.bookingStatus === 'inquiry' || c.bookingStatus === 'lead');
+    }).length;
+
+    if (inHouse) {
+      actions.push({
+        label_fr: '📋 Brief staff', label_en: '📋 Staff brief',
+        run: function(){ if (typeof ariaQuickAction === 'function') ariaQuickAction('staff_brief'); }
+      });
+      var first = (inHouse.name || '').split(' ')[0] || '';
+      if (inHouse.phone) {
+        var ph = String(inHouse.phone).replace(/[^\d+]/g,'').replace(/^\+/, '');
+        if (ph) {
+          actions.push({
+            label_fr: '💬 Message ' + first, label_en: '💬 Message ' + first,
+            run: function(){ window.open('https://wa.me/' + ph, '_blank'); }
+          });
+        }
+      }
+      var dep = inHouse.departure;
+      var depDelta = daysUntil(dep, today);
+      if (dep === today || depDelta === 1) {
+        actions.push({
+          label_fr: '🧾 Récap fin de séjour', label_en: '🧾 End-of-stay recap',
+          run: function(){ if (typeof window.ariaOpenWithMealRecapPrompt === 'function') window.ariaOpenWithMealRecapPrompt(inHouse); }
+        });
+      }
+      var nightsLeft = Math.max(1, depDelta);
+      var nm = inHouse.name || 'le client';
+      var gn = inHouse.guests || '?';
+      actions.push({
+        label_fr: '🍽 Provisions', label_en: '🍽 Groceries',
+        run: function(){ if (typeof openAriaModal === 'function') openAriaModal('Liste des courses pour ' + nm + ', ' + gn + ' personnes, ' + nightsLeft + ' nuits restantes'); }
+      });
+    } else if (nextArrival && daysUntil(nextArrival.arrival, today) < 3) {
+      var nName = nextArrival.name || 'le client';
+      var nId = nextArrival.id;
+      actions.push({
+        label_fr: '📋 Préparer arrivée', label_en: '📋 Prepare arrival',
+        run: function(){ if (typeof openAriaModal === 'function') openAriaModal('Checklist arrivée pour ' + nName); }
+      });
+      actions.push({
+        label_fr: '✉️ Message bienvenue', label_en: '✉️ Welcome message',
+        run: function(){ if (typeof openRelancePopup === 'function') openRelancePopup(nId); }
+      });
+      actions.push({
+        label_fr: '☁️ Météo', label_en: '☁️ Weather',
+        run: function(){ if (typeof ariaQuickAction === 'function') ariaQuickAction('weather'); }
+      });
+    } else if (!nextArrival || daysUntil(nextArrival.arrival, today) >= 7) {
+      actions.push({
+        label_fr: '📊 État villa', label_en: '📊 Villa status',
+        run: function(){ if (typeof openAriaModal === 'function') openAriaModal('État de la villa : occupation, prochaines arrivées, alertes en cours.'); }
+      });
+      actions.push({
+        label_fr: '💰 Pricing', label_en: '💰 Pricing',
+        run: function(){ if (typeof openAriaModal === 'function') openAriaModal('Analyse pricing pour les 30 prochains jours'); }
+      });
+      actions.push({
+        label_fr: '☁️ Météo', label_en: '☁️ Weather',
+        run: function(){ if (typeof ariaQuickAction === 'function') ariaQuickAction('weather'); }
+      });
+    }
+
+    if (leadsCount > 0) {
+      actions.push({
+        label_fr: '🎯 Relancer leads', label_en: '🎯 Follow up leads',
+        run: function(){ if (typeof openAriaModal === 'function') openAriaModal('Liste les leads à relancer avec suggestion de message'); }
+      });
+    }
+
+    return actions;
+  };
+
+  window.renderAriaContextChips = function(){
+    var box = document.getElementById('ariaContextChips');
+    if (!box) return;
+    var fr = (typeof lang !== 'undefined') && lang === 'fr';
+    var actions = [];
+    try { actions = window.getAriaContextualActions() || []; } catch(e){ return; }
+    if (!actions.length) return;
+    box.innerHTML = '';
+    actions.slice(0, 6).forEach(function(a){
+      var b = document.createElement('button');
+      b.className = 'aria-quick-chip';
+      b.setAttribute('data-fr', a.label_fr || '');
+      b.setAttribute('data-en', a.label_en || a.label_fr || '');
+      b.textContent = fr ? (a.label_fr || '') : (a.label_en || a.label_fr || '');
+      b.onclick = function(){ try { if (typeof a.run === 'function') a.run(); } catch(e){} };
+      box.appendChild(b);
+    });
+  };
+
+  function wireHooks(){
+    if (typeof window.openAriaModal === 'function' && !window.openAriaModal._ariaChipsWrapped) {
+      var _orig = window.openAriaModal;
+      window.openAriaModal = function(){
+        var r = _orig.apply(this, arguments);
+        try { setTimeout(window.renderAriaContextChips, 0); } catch(e){}
+        return r;
+      };
+      window.openAriaModal._ariaChipsWrapped = true;
+    }
+    if (typeof window.renderAll === 'function' && !window.renderAll._ariaChipsWrapped) {
+      var _origR = window.renderAll;
+      window.renderAll = function(){
+        var r = _origR.apply(this, arguments);
+        try { window.renderAriaContextChips(); } catch(e){}
+        return r;
+      };
+      window.renderAll._ariaChipsWrapped = true;
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ wireHooks(); setTimeout(wireHooks, 500); });
+  } else {
+    wireHooks();
+    setTimeout(wireHooks, 500);
+  }
+})();
+</script>
 
 <!-- ══ INBOX SETTINGS MODAL ═══════════════════════════════ -->
 <div class="inbox-settings-modal" id="inboxSettingsModal" onclick="if(event.target===this)closeInboxSettings()">
