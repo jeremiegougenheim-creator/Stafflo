@@ -812,7 +812,7 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .aria-modal-bg{display:none;position:fixed;inset:0;background:rgba(10,25,15,.65);z-index:9995;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px)}
 .aria-modal-bg.open{display:flex}
 .aria-modal{background:var(--card);border-radius:16px;width:60vw;max-width:60vw;height:90vh;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.45)}
-@media(max-width:768px){.aria-modal{width:96vw;max-width:96vw;height:88vh;max-height:88vh}}
+@media(max-width:768px){.aria-modal{width:96vw;max-width:96vw;height:70vh;max-height:70vh}}
 .aria-modal-hd{background:var(--green3);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;color:#fff}
 .aria-modal-body{flex:1;overflow-y:auto;padding:14px 16px;background:#F5F1E6;position:relative;border-bottom:1px solid rgba(15,35,24,.06);box-shadow:inset 0 -8px 12px -8px rgba(0,0,0,.04)}
 .aria-modal-input-area{padding:14px;background:var(--card);border-top:1px solid rgba(15,35,24,.08);display:flex;gap:8px;align-items:flex-end;box-shadow:0 -2px 6px rgba(0,0,0,.02)}
@@ -826,6 +826,11 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .aria-quick-chip{background:#fff;border:1px solid rgba(201,150,58,.3);border-radius:18px;padding:7px 13px;font-size:12px;font-weight:500;color:var(--ink);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;white-space:nowrap}
 .aria-quick-chip:hover{background:var(--green3);color:#fff;border-color:var(--green3);transform:translateY(-1px);box-shadow:0 4px 10px rgba(0,0,0,.08)}
 .aria-quick-chip:active{transform:translateY(0)}
+/* Fix: hide ghost/empty contextual chips */
+.aria-modal-bubble button:empty,
+.aria-modal-bubble div[style*="border-radius:14px"] button:empty {
+  display:none !important
+}
 
 /* Inbox v2 — collapsible row */
 .inbox-row{background:var(--card);border-radius:14px;box-shadow:0 2px 14px rgba(26,18,8,.07);border:1px solid var(--border);overflow:hidden}
@@ -27474,7 +27479,16 @@ window.addEventListener('DOMContentLoaded', function() {
 (function staffloPatchV6(){
   'use strict';
 
-  /* ── Block ghost contextual chips on Stafflo email bubbles ── */
+  /* ── Detect drafted messages (greetings + named recipient + substantial body) ── */
+  // Used to suppress ghost contextual chips on ARIA bubbles that contain a
+  // ready-to-send WhatsApp/email draft (those have their own send/edit/copy
+  // actions injected elsewhere — chips on top look like empty ovals).
+  function isDraftedMessage(bubble) {
+    var t = (bubble && bubble.textContent) || '';
+    return /^["«]?(Bonjour|Hello|Hi|Salut|Cher|Dear)\s+[A-ZÀ-Ü]/im.test(t) && t.length > 200;
+  }
+
+  /* ── Block ghost contextual chips on Stafflo email bubbles + drafted messages ── */
   if (typeof window.appendContextualChips === 'function') {
     var _origChips = window.appendContextualChips;
     window.appendContextualChips = function(bubble) {
@@ -27485,9 +27499,11 @@ window.addEventListener('DOMContentLoaded', function() {
         bubble.classList.contains('stafflo-lead-card') ||
         bubble.dataset && bubble.dataset.staffloEmail === '1'
       )) return;
+      // Don't add chips to drafted-message bubbles (greeting + named guest + body)
+      if (isDraftedMessage(bubble)) return;
       return _origChips.apply(this, arguments);
     };
-    console.log('[stafflo-v6] ✓ blocked ghost chips on stafflo bubbles');
+    console.log('[stafflo-v6] ✓ blocked ghost chips on stafflo bubbles + drafted messages');
   }
 
   /* ── Helpers ── */
