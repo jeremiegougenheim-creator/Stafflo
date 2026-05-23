@@ -6520,7 +6520,7 @@ async function loadFromSupabase() {
   if (!key) { loadLocal(); return; }
   setSyncDot('busy');
   try {
-    var r = await fetch(url + '/rest/v1/crm_clients?select=*&order=created_at.desc', {
+    var r = await fetch(url + '/rest/v1/crm_clients?select=*,guest:guests(id,total_stays,first_stay)&order=created_at.desc', {
       headers: { apikey: key, Authorization: 'Bearer ' + key }
     });
     if (r.ok) {
@@ -6534,7 +6534,10 @@ async function loadFromSupabase() {
         bookingStatus: r.booking_status||'confirmed',
         contact_type: r.contact_type || null,
         messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
-        createdAt: r.created_at||new Date().toISOString()
+        createdAt: r.created_at||new Date().toISOString(),
+        guestId: r.guest_id || null,
+        totalStays: r.guest ? (r.guest.total_stays || 1) : null,
+        firstStay: r.guest ? r.guest.first_stay : null
       }; });
       deduplicateClients();
       saveLocal(); renderAll(); setSyncDot('ok');
@@ -6569,7 +6572,8 @@ async function pushToSupabase(client) {
     comm_mode:client.commMode||'percent', source:client.source||'Direct',
     notes:client.notes||'', pay_status:client.payStatus||'',
     booking_status:client.bookingStatus||'confirmed',
-    messages: client.messages || null
+    messages: client.messages || null,
+    guest_id: client.guestId || null
   };
   setSyncDot('busy');
   try {
@@ -8230,6 +8234,15 @@ function renderClients() {
     else if (score === 'cold') scoreBadge = '<span style="background:#8a8a7a;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle">COLD</span>';
     else if (score === 'lost') scoreBadge = '<span style="background:#8a8a7a;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle;text-decoration:line-through">LOST</span>';
 
+    // Repeat-guest badge — visible only when this guest has stayed before (total_stays > 1)
+    var repeatBadge = '';
+    if (cl.totalStays && cl.totalStays > 1) {
+      var n = cl.totalStays;
+      var ordEn = (n===2?'nd':n===3?'rd':'th');
+      var stayLbl = fr ? (n + 'e séjour') : (n + ordEn + ' stay');
+      repeatBadge = '<span style="background:#1d6b45;color:white;font-size:9px;padding:2px 6px;border-radius:4px;font-weight:600;margin-left:6px;vertical-align:middle">🔄 ' + stayLbl + '</span>';
+    }
+
     // No-reply indicator (scored leads only) — 5 tiers with "sans réponse" wording.
     var noReply = '';
     if (score) {
@@ -8299,7 +8312,7 @@ function renderClients() {
       '<div class="cc-top">' +
         '<div class="cc-avatar">' + initials(cl.name) + '</div>' +
         '<div>' +
-          '<div class="cc-name">' + (cl.name||'') + scoreBadge + '</div>' +
+          '<div class="cc-name">' + (cl.name||'') + scoreBadge + repeatBadge + '</div>' +
           '<div class="cc-sub">' + (cl.nat||'') + (cl.source ? ' · ' + cl.source : '') + (noReply ? ' · ' + noReply : '') + '</div>' +
         '</div>' +
         '<span class="cc-badge ' + bClass + '">' + bText + '</span>' +
@@ -21748,6 +21761,15 @@ window.addEventListener('DOMContentLoaded', function() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+    // Link to guests table (repeat-guest dedup). Failures are tolerated —
+    // client persists with guestId=null and we fall back to single-stay behaviour.
+    var guestRow = await findOrCreateGuest(client);
+    if (guestRow){
+      client.guestId    = guestRow.id;
+      client.totalStays = guestRow.totalStays;
+      client.firstStay  = guestRow.firstStay;
+    }
+
     clients.unshift(client);
     if (typeof saveLocal==='function') saveLocal();
     if (typeof renderAll==='function') renderAll();
@@ -21798,7 +21820,8 @@ window.addEventListener('DOMContentLoaded', function() {
         comm_mode: client.commMode||'percent', source: client.source||'Direct',
         notes: client.notes||'', pay_status: client.payStatus||'',
         booking_status: client.bookingStatus||'confirmed',
-        messages: client.messages || null
+        messages: client.messages || null,
+        guest_id: client.guestId || null
       };
       // Token JWT prioritaire si user authentifié (RLS)
       var auth = key;
@@ -21825,6 +21848,85 @@ window.addEventListener('DOMContentLoaded', function() {
       console.error('[stafflo] safePushToSupabase exception:', e);
       if (typeof setSyncDot==='function') setSyncDot('err');
       return false;
+    }
+  }
+
+  // ──────────────── Repeat-guest dedup (Session 2) ────────────────
+  // Looks up an existing guest by email > phone > (name + nat). If found,
+  // increments total_stays and returns the id. If not, creates a new
+  // guests row with total_stays=1. Returns null on no useful identity or
+  // network failure (caller proceeds without guest_id — backwards compat).
+  async function findOrCreateGuest(g){
+    try {
+      if (!g || !g.name) return null;
+      var cfg = (typeof getCfg==='function') ? getCfg() : {};
+      var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+      var key = cfg.sbKey || SB_ANON;
+      if (!key) return null;
+      var auth = key;
+      try {
+        if (typeof _stafflo_session!=='undefined' && _stafflo_session && _stafflo_session.access_token){
+          auth = _stafflo_session.access_token;
+        }
+      } catch(e){}
+      var headers = { apikey: key, Authorization: 'Bearer '+auth };
+
+      var emailLc = (g.email||'').trim().toLowerCase();
+      var phone   = (g.phone||'').trim();
+      var nameLc  = (g.name||'').trim().toLowerCase();
+      var natLc   = (g.nat||'').trim().toLowerCase();
+
+      // Build lookup queries in priority order: email > phone > (name + nat)
+      var queries = [];
+      if (emailLc) queries.push('email=ilike.' + encodeURIComponent(emailLc));
+      if (phone)   queries.push('phone=eq.'    + encodeURIComponent(phone));
+      if (nameLc)  queries.push('name=ilike.'  + encodeURIComponent(nameLc) +
+                                '&nat=ilike.'  + encodeURIComponent(natLc));
+
+      for (var i = 0; i < queries.length; i++) {
+        var lookupUrl = url + '/rest/v1/guests?' + queries[i] +
+                        '&select=id,total_stays,first_stay&limit=1';
+        var r = await fetch(lookupUrl, { headers: headers });
+        if (!r.ok) continue;
+        var rows = await r.json();
+        if (rows && rows.length) {
+          var match = rows[0];
+          var newTotal = (match.total_stays || 1) + 1;
+          // Atomic-enough increment for a single-user app
+          await fetch(url + '/rest/v1/guests?id=eq.' + match.id, {
+            method: 'PATCH',
+            headers: Object.assign({}, headers, { 'Content-Type':'application/json', Prefer:'return=minimal' }),
+            body: JSON.stringify({ total_stays: newTotal })
+          });
+          return { id: match.id, totalStays: newTotal, firstStay: match.first_stay, isNew: false };
+        }
+      }
+
+      // No match — create new guest row (owner_id defaults to auth.uid() server-side)
+      var newRow = {
+        name: g.name,
+        email: emailLc || null,
+        phone: phone || null,
+        nat: g.nat || null,
+        first_stay: g.arrival || null,
+        total_stays: 1,
+        notes: g.notes || null
+      };
+      var c = await fetch(url + '/rest/v1/guests', {
+        method: 'POST',
+        headers: Object.assign({}, headers, { 'Content-Type':'application/json', Prefer:'return=representation' }),
+        body: JSON.stringify(newRow)
+      });
+      if (!c.ok) {
+        console.warn('[guests] create failed', c.status, await c.text().catch(function(){return '';}));
+        return null;
+      }
+      var arr = await c.json();
+      if (arr && arr.length) return { id: arr[0].id, totalStays: 1, firstStay: arr[0].first_stay, isNew: true };
+      return null;
+    } catch(e){
+      console.warn('[guests] findOrCreateGuest exception:', e);
+      return null;
     }
   }
 
