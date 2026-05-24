@@ -4493,9 +4493,10 @@ function handleAlertClick(action, alertEl) {
     }, 250);
   } else if (kind === 'open' && target.startsWith('aria')) {
     // Pre-fill ARIA with the alert context — ARIA = central nervous system
-    var prefill = (target === 'aria-event')
-      ? (fr?'Comment je peux tirer parti de cet événement ? Donne-moi 2-3 actions concrètes (message guests, ajustement prix, brief staff). Signal : ':'How can I leverage this event? Give me 2-3 concrete actions (guest message, price adjustment, staff brief). Signal: ') + alertText
-      : (fr?'Signal détecté. Donne-moi 2-3 actions concrètes que je peux faire maintenant : ':'Signal detected. Give me 2-3 concrete actions I can take now: ') + alertText;
+    var prefill = '__orchestrator:true\n' +
+      ((target === 'aria-event')
+        ? (fr?'Événement détecté':'Event detected') + ': ' + alertText
+        : (fr?'Signal':'Signal') + ': ' + alertText);
     if (typeof openAriaModal === 'function') {
       openAriaModal(prefill);
       // Auto-send so the modal isn't "blank" — user sees the question fly + reply stream
@@ -6776,6 +6777,21 @@ function cleanJsonStr(s) {
     .replace(/^[`\s]+/,'').replace(/[`\s]+$/,'')
     .trim();
 }
+function buildExtractSystemPrompt(today) {
+  return [
+    'ROLE: Extract guest data from Airbnb/Booking/WhatsApp emails.',
+    'OUTPUT: JSON only, no markdown, no comments.',
+    '{"name":"Full Name","nat":"🇫🇷 Français","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":4,"guests":6,"price":2116,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"inquiry","notes":""}',
+    'RULES:',
+    '- bookingStatus: "inquiry" if question/availability, "confirmed" if paid booking',
+    '- price: guest paid total (NOT host payout)',
+    '- commission: from "Host service fee %" field. Airbnb=15.5, Booking=15, Direct=0',
+    '- Fuzzy dates (just a month): use 1st of that month',
+    '- nat: flag emoji + language deduced from context',
+    '- notes: allergies, kids ages, occasions, transport, diet. Max 200 chars',
+    'Today: ' + today
+  ].join('\n');
+}
 async function analyze() {
   const text = document.getElementById('pasteInput').value.trim();
   if (!text) return;
@@ -6817,22 +6833,20 @@ async function analyze() {
     : 'No existing clients.';
 
   // ── PASS 1 system prompt — extraction only, tight schema ──────
-  const p1Schema = `{"guest":{"existing_id":null,"match_confidence":"none","name":"Full Name","nat":"🇫🇷 Français","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":4,"guests":6,"price":2116,"commission":15.5,"source":"Airbnb","phone":"","returning":false,"bookingStatus":"inquiry","question":"verbatim guest question if inquiry else null","notes":"ops details: diet, kids ages, occasions, transport, arrival time","lang":"${guestLang}"},"alerts":[{"type":"urgent","text":"specific action"}],"price_advice":{"amount":750,"reason":"brief"}}`;
+  const p1System = buildExtractSystemPrompt(today);
 
   const p1Prompt = [
-    `Villa ops ${villaName}, ${cityName}. Owner: ${ownerName}. Today: ${today}.`,
-    inHouse ? `In house: ${inHouse.name} until ${inHouse.departure}.` : 'No current guests.',
+    `Villa: ${villaName}, ${cityName}. Owner: ${ownerName}.`,
+    inHouse ? `In house: ${inHouse.name} until ${inHouse.departure}.` : '',
     clientCtx,
     '',
-    'Extract from pasted message. Return ONLY valid JSON, no markdown:',
-    p1Schema,
+    'EXAMPLE INPUT:',
+    '"New reservation from Maria Santos, Lisbon. Check-in Dec 20, Check-out Dec 27. 4 guests. Total: €5,250. Host payout: €4,462. Host service fee: 15%."',
+    'EXAMPLE OUTPUT:',
+    '{"name":"Maria Santos","nat":"🇵🇹 Portugais","arrival":"2026-12-20","departure":"2026-12-27","nights":7,"guests":4,"price":5250,"commission":15,"source":"Airbnb","phone":"","bookingStatus":"confirmed","notes":""}',
     '',
-    'Rules: bookingStatus="inquiry" if question/availability check. "confirmed" if paid booking.',
-    'price=Guest paid total (not host payout). commission from "Host service fee %" field.',
-    'existing_id: check CRM list above — match by name (first name alone counts if unique), phone, or arrival date. WhatsApp chats: guest = non-owner participant (not Jérémie/owner).',
-    'nat: flag emoji + language from city/country context.',
-    'alerts: 2-3 specific ops items. price_advice: Apr750 JulAug850 Dec950 Xmas1500 wknd+50.',
-  ].join('\n');
+    'Now extract from this message:'
+  ].filter(Boolean).join('\n');
 
   try {
     // Show skeleton card immediately
@@ -6843,7 +6857,7 @@ async function analyze() {
 
     // ── PASS 1: Fast extraction (~300ms) ──────────────────────
     setProgressiveStatus(lang==='fr'?'Identification du client…':'Identifying guest…');
-    const raw1 = await callBestAI('extract', p1Prompt, text, 600);
+    const raw1 = await callBestAI('extract', p1System, p1Prompt + '\n' + text, 600);
     if (!raw1) throw new Error(fr ? 'Réponse IA vide' : 'Empty AI response');
 
     let g1 = {};
@@ -9815,9 +9829,13 @@ async function chatSend() {
   // Track last user question for contextual ARIA actions
   try { window._lastAriaQuestion = text; } catch(e){}
 
+  // Strip internal orchestrator flag from display
+  var isAriaOrchestrator = /^__orchestrator:true\b/m.test(text);
+  var displayText = isAriaOrchestrator ? text.replace(/^__orchestrator:true\n?/, '') : text;
+
   // Add user bubble
-  addChatBubble('user', text);
-  
+  addChatBubble('user', displayText);
+
   // Show typing
   var typing = document.getElementById('chatTyping');
   typing.style.display = 'block';
@@ -9826,25 +9844,13 @@ async function chatSend() {
   try {
     // Detect intent
     var cmd = detectCommandIntent(text);
-    
+
     if (cmd && cmd.type === 'send') {
       // Followup/relance command
       typing.style.display = 'none';
       await handleChatSendCommand(cmd.client, text);
       return;
     }
-    
-    // ARIA orchestrator prompts: skip email-extraction route, go straight to chat
-    // Broad detection — matches both hardcoded prompts AND user-typed action requests
-    var isAriaOrchestrator =
-      /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]/i.test(text) ||
-      /JSON format/i.test(text) ||
-      // Action request patterns (FR + EN)
-      /\b(donne[\-\s]?moi|give me|propose|suggest|recommend)\b[\s\S]{0,40}\b(\d+[\-\s]?(à\s+)?\d*\s+)?(actions?|étapes?|steps?|concrete|concrètes?|priorités?)/i.test(text) ||
-      // Marketing / pricing / staff brief triple combos = orchestrator territory
-      (/marketing|message/i.test(text) && /staff brief|brief staff/i.test(text)) ||
-      // Explicit "2-3 actions" patterns
-      /\b[2-5][\-–\s]?(à\s+)?[3-5]?\s+(actions?|étapes?|steps?|concrete|concrètes?)\b/i.test(text);
 
     // Check if it's a question about clients/villa
     var isQuestion = /qui|quand|combien|quel|comment|prochain|demain|aujourd|revenu|alerte|check/i.test(text);
@@ -10236,14 +10242,9 @@ async function handleChatQuestion(text) {
   })();
   var staffList = staffNames.join(', ');
 
-  // Detect ARIA orchestrator request → return JSON action array
-  // Same broad detection as in chatSend()
-  var isOrchestrator =
-    /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]/i.test(text) ||
-    /JSON format/i.test(text) ||
-    /\b(donne[\-\s]?moi|give me|propose|suggest|recommend)\b[\s\S]{0,40}\b(\d+[\-\s]?(à\s+)?\d*\s+)?(actions?|étapes?|steps?|concrete|concrètes?|priorités?)/i.test(text) ||
-    (/marketing|message/i.test(text) && /staff brief|brief staff/i.test(text)) ||
-    /\b[2-5][\-–\s]?(à\s+)?[3-5]?\s+(actions?|étapes?|steps?|concrete|concrètes?)\b/i.test(text);
+  // Detect ARIA orchestrator — only from internal flag (__orchestrator:true prefix)
+  var isOrchestrator = /^__orchestrator:true\b/m.test(text);
+  if (isOrchestrator) text = text.replace(/^__orchestrator:true\n?/, '');
 
   // Factual questions about today / upcoming / current guests must not be
   // contaminated by stale conversation history. Detect them and starve the
@@ -10254,177 +10255,29 @@ async function handleChatQuestion(text) {
 
   var systemPrompt;
   if (isOrchestrator) {
-    systemPrompt = [
-      'You are ARIA, the central nervous system for ' + ownerName + ' (owner of ' + villaName + ' Marrakech).',
-      'Your role: take a situation and propose 2-3 concrete, ready-to-execute actions.',
-      'Staff: Said (butler), Faiza (chef), Bouchra (housekeeping). Owner signs as ' + ownerName + '.',
-      '',
-      'CRITICAL OUTPUT FORMAT: Return ONLY a valid JSON array, no preamble, no markdown fences, no explanation.',
-      'Format: [{"label":"short label max 5 words","kind":"whatsapp|email|sms|internal_note|copy","target":"staff|guest|owner","content":"ready-to-send text"}]',
-      '',
-      'Rules:',
-      '- 2 or 3 actions max, sorted by priority',
-      '- "content" must be the FULL ready-to-send message (not a description)',
-      '- For staff WhatsApp: write in French, casual but professional, signed ' + ownerName,
-      '- For guest WhatsApp/email: warm, hospitable, signed ' + ownerName,
-      '- For internal_note: short reminder for ' + ownerName + ' himself',
-      '- Use guest/staff names when they appear in context',
-      '- CRITICAL: PIPELINE entries (inquiry/quoted leads) are NOT confirmed stays. Never propose an arrival/welcome action for them — only follow-up / quote / archive actions.',
-      '',
-      'STAFF BRIEF rule — when an action.kind is "internal_note" or an action.target is "staff" AND the situation asks for a brief / note / résumé / digest pour l\'équipe, the "content" field must:',
-      '  - Split EN COURS stays (arrival <= today AND departure >= today) from À VENIR stays (arrival > today). NEVER list past stays (departure < today).',
-      '  - For each stay: name, guest count, full weekday + day + month (e.g. "vendredi 16 mai") for arrival and departure, number of nights.',
-      '  - Name the responsable: ' + staffList + ' (welcome/transport, meals/dietary, cleaning/linen).',
-      '  - No filler ("je vous tiens au courant", "n\'hésitez pas à me dire"). Concise, structured, actionable.'
-    ].join('\n');
+    systemPrompt = (fr
+      ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\nPropose 2-3 actions prêtes à l\'emploi. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"message complet signé ' + ownerName + '"}]'
+      : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\nPropose 2-3 ready-to-use actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"full message signed ' + ownerName + '"}]');
+  // -- end orchestrator systemPrompt
   } else {
-    // ── REFINED SYSTEM PROMPT: 3 distinct response modes (bilingual) ──
-    // Entire prompt mirrored in EN when lang !== 'fr' — the model otherwise
-    // drifts to French if surrounded by French instructions.
     systemPrompt = fr ? [
-      'Tu es ARIA, l\'assistant personnel intelligent de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
-      'Tu réponds en français.',
-      '',
-      '════ RÈGLE CRITIQUE — FAITS vs HISTORIQUE ════',
-      "Aujourd'hui : " + today + '.',
-      "Pour toute question sur les arrivées, départs, qui est sur place, qui arrive demain, le calendrier, ou toute donnée factuelle : utilise UNIQUEMENT le bloc CRM ci-dessous. IGNORE TOTALEMENT l'historique de conversation pour les faits — il peut contenir des noms périmés.",
-      "L'historique sert uniquement à comprendre le ton ou les références anaphoriques ('lui', 'elle', 'eux'), JAMAIS comme source de noms ou de dates.",
-      '',
-      '════ TES 3 MODES DE RÉPONSE ════',
-      '',
-      '【MODE 1 — RÉPONSE DIRECTE】 Quand ' + ownerName + ' te pose une question interne (clients, séjours, dates, prix, stats) :',
-      '  → Tu réponds de façon directe et concise, comme un assistant qui parle à son patron.',
-      '  → PAS de "Bonjour", PAS de signature, PAS de formules de politesse.',
-      '  → PAS de guillemets autour de la réponse.',
-      '  → PAS de mise en forme d\'email ou de message.',
-      '  → Tu cites les noms, dates, montants présents dans le CRM.',
-      '  → Si l\'info n\'est pas dans le CRM, tu dis honnêtement "Aucun client correspondant" ou "Données non disponibles dans le CRM".',
-      '  → Exemple : "les prochaines arrivées ?" → "Massi Mekla arrive demain (15 mai, 3 nuits). Puis Tim le 22 mai (7 nuits). Rien d\'autre cette semaine."',
-      '  → Autres exemples de questions MODE 1 : "qui arrive demain", "combien de bookings ce mois", "quel est le NET sur Sophie", "le prochain séjour", "qui est sur place".',
-      '',
-      '【MODE 2 — RÉDACTION MESSAGE】 Quand ' + ownerName + ' te demande EXPLICITEMENT de rédiger / écrire / préparer un message :',
-      '  → Indicateurs : "rédige", "écris", "prépare", "draft", "compose", "réponds à", "envoie".',
-      '  → SEULEMENT là tu rédiges un texte formaté avec salutation + signature.',
-      '  → Tu rédiges au nom de ' + ownerName + ', signé "' + ownerName + '".',
-      '  → Tu utilises le ton chaleureux/professionnel selon le destinataire.',
-      '  → Tu mets le message entre guillemets et signé proprement.',
-      '  → "brief" / "note" / "résumé" SANS verbe de rédaction = MODE 1 (réponse directe, pas de Bonjour/signature).',
-      '  → "rédige un brief" / "prépare une note" = MODE 2 (texte formaté avec Bonjour/signature).',
-      '',
-      '【MODE 3 — CONVERSATION/CONSEIL】 Quand ' + ownerName + ' te pose une question générale (météo, heure, conseil business, idée) :',
-      '  → Tu réponds en 2-3 phrases max, directement, comme un assistant.',
-      '  → Pas de message client. Pas de formule de politesse exagérée.',
-      '',
-      '【MODE 4 — BRIEF STAFF】 Quand ' + ownerName + ' demande un brief, une note staff, ou le programme pour l\'équipe :',
-      '  → Format WhatsApp-ready, bullets, 8-15 lignes max.',
-      '  → STRUCTURE OBLIGATOIRE :',
-      '    1) 🏠 EN COURS (arrivée ≤ aujourd\'hui ET départ ≥ aujourd\'hui) : nom, nb personnes, date départ, nuits restantes.',
-      '    2) ✈️ PROCHAINES ARRIVÉES (arrivée > aujourd\'hui, max 7 jours) : nom, nb personnes, date arrivée (jour complet ex: "samedi 17 mai"), nuits.',
-      '    3) 🚪 PROCHAINS DÉPARTS (départ dans les 3 prochains jours) : nom, date départ.',
-      '  → RÉPARTITION STAFF : pour chaque séjour, indique les tâches par responsable :',
-      '    - Said (majordome) : accueil, transport, coordination.',
-      '    - Faiza (chef) : repas, régimes, courses, allergies.',
-      '    - Bouchra (housekeeping) : chambres, linge, ménage.',
-      '  → Inclure les notes guest pertinentes (allergies, bébé, végétarien, anniversaire, etc.).',
-      '  → JAMAIS de "Je vous prie de bien vouloir" ou "Cordialement". Ton direct, opérationnel, signé ' + ownerName + '.',
-      '  → JAMAIS de doublon : chaque client apparaît UNE SEULE FOIS dans la catégorie qui lui correspond.',
-      '  → Si aucun séjour en cours ou à venir, dis-le clairement.',
-      '',
-      '════ RÈGLE D\'OR ════',
-      'Par défaut, tu es en MODE 1, 3 ou 4 (info / conversation / brief staff). Tu passes en MODE 2 SEULEMENT si ' + ownerName + ' te demande explicitement de rédiger un message à quelqu\'un.',
-      'JAMAIS tu n\'écris "Bonjour, je suis ' + ownerName + '..." sauf en MODE 2.',
-      'JAMAIS tu n\'inventes une info qui n\'est pas dans le CRM.',
-      '',
-      '════ DATES — toujours humaines ════',
-      'Aujourd\'hui : ' + todayHuman + '.',
-      'Quand tu cites une date, inclus TOUJOURS le jour de la semaine. Ex: "vendredi 15 mai 2026", pas juste "le 15 mai".',
-      'Le bloc CRM ci-dessous tague chaque arrivée avec (AUJOURD\'HUI), (DEMAIN), (dans N jours) ou (EN COURS) — utilise ces tags directement.',
-      'Si tu vois (AUJOURD\'HUI) sur une arrivée → tu dis "arrive aujourd\'hui [jour de la semaine]". JAMAIS "arrive demain". JAMAIS "arrive le 15 mai" tout court.',
-      'Si tu vois (DEMAIN) → "arrive demain [jour de la semaine]".',
-      '',
-      '════ RÈGLE CRITIQUE — PIPELINE vs CONFIRMED ════',
-      'Le bloc CRM ci-dessous a DEUX sections distinctes :',
-      '  • CONFIRMED BOOKINGS : réservations payées / confirmées. Ce sont des SÉJOURS RÉELS.',
-      '  • PIPELINE : prospects (inquiry/quoted) qui n\'ont PAS confirmé. Ce ne sont PAS des séjours.',
-      'Si on te demande les prochaines arrivées, qui arrive demain, qui est sur place, etc. → tu ne cites QUE des CONFIRMED BOOKINGS.',
-      'Les leads dans PIPELINE ne doivent JAMAIS être mentionnés comme des arrivées ou des séjours. Ils sont à convertir, pas à accueillir.',
-      '',
-      '════ DONNÉES MANQUANTES ou ANOMALIES ════',
-      'Si un client a "prix MANQUANT" : dis "prix non renseigné" ou "à compléter", JAMAIS "0€" — c\'est une donnée à corriger côté CRM.',
-      'Si un lead est taggé (EXPIRÉE — arrivée passée) : IGNORE-LE complètement. Ne le cite ni en arrivée, ni en pipeline actif, ni en "prochain séjour". C\'est une demande non confirmée dont la date est passée.',
-      'En général, si une donnée semble incohérente (date passée pour un futur séjour, prix à 0€, nom vide), signale-le brièvement plutôt que d\'inventer.'
+      'Tu es ARIA, assistant de ' + ownerName + ' pour ' + villaName + ' (Marrakech).',
+      'Staff : ' + staffList + '.',
+      'Réponds en français, concis (2-4 phrases max).',
+      'Si on te demande un message WA/email : rédige-le complet, signé ' + ownerName + '.',
+      'Si tu ne trouves pas l\'info dans le CRM ci-dessous, dis-le.',
+      'Aujourd\'hui : ' + todayHuman + '. Dates = toujours avec le jour de la semaine.',
+      'CRM : CONFIRMED = séjours réels. PIPELINE = prospects non confirmés, JAMAIS des arrivées.',
+      'Prix MANQUANT = "à compléter", pas "0€". Leads EXPIRÉES = ignorer.'
     ].join('\n') : [
-      'You are ARIA, the intelligent personal assistant of ' + ownerName + ', owner of ' + villaName + ' in Marrakech.',
-      'You reply in English.',
-      '',
-      '════ CRITICAL RULE — FACTS vs HISTORY ════',
-      "Today: " + today + '.',
-      "For any question about arrivals, departures, who's on site, who arrives tomorrow, the calendar, or any factual data: use ONLY the CRM block below. IGNORE the conversation history entirely for facts — it may contain stale names.",
-      "History is only for tone or anaphoric references ('him', 'her', 'them'), NEVER as a source of names or dates.",
-      '',
-      '════ YOUR 3 RESPONSE MODES ════',
-      '',
-      '【MODE 1 — DIRECT ANSWER】 When ' + ownerName + ' asks an internal question (clients, stays, dates, prices, stats):',
-      '  → Reply directly and concisely, like an assistant talking to the boss.',
-      '  → NO "Hi", NO signature, NO pleasantries.',
-      '  → NO quotation marks around the reply.',
-      '  → NO email or message formatting.',
-      '  → Cite names, dates, amounts from the CRM.',
-      '  → If info is not in the CRM, say honestly "No matching client" or "Data not available in CRM".',
-      '  → Example: "next arrivals?" → "Massi Mekla arrives tomorrow (May 15, 3 nights). Then Tim on May 22 (7 nights). Nothing else this week."',
-      '  → Other MODE 1 examples: "who arrives tomorrow", "how many bookings this month", "what is the NET on Sophie", "next stay", "who is on site".',
-      '',
-      '【MODE 2 — DRAFT MESSAGE】 When ' + ownerName + ' EXPLICITLY asks you to draft / write / prepare a message:',
-      '  → Triggers: "draft", "write", "prepare", "compose", "reply to", "send".',
-      '  → ONLY then do you produce a formatted text with greeting + signature.',
-      '  → You write on behalf of ' + ownerName + ', signed "' + ownerName + '".',
-      '  → Use a warm/professional tone depending on the recipient.',
-      '  → Put the message in quotes and sign it cleanly.',
-      '  → "brief" / "note" / "summary" WITHOUT a draft-verb = MODE 1 (direct reply, no greeting/signature).',
-      '  → "draft a brief" / "prepare a note" = MODE 2 (formatted text with greeting/signature).',
-      '',
-      '【MODE 3 — CONVERSATION/ADVICE】 When ' + ownerName + ' asks a general question (weather, time, business advice, idea):',
-      '  → Reply in 2-3 sentences max, directly, like an assistant.',
-      '  → No client message. No overdone pleasantries.',
-      '',
-      '【MODE 4 — STAFF BRIEF】 When ' + ownerName + ' asks for a brief, a staff note, or the team schedule:',
-      '  → WhatsApp-ready format, bullets, 8-15 lines max.',
-      '  → MANDATORY STRUCTURE:',
-      '    1) 🏠 IN HOUSE (arrival ≤ today AND departure ≥ today): name, guest count, departure date, nights remaining.',
-      '    2) ✈️ UPCOMING ARRIVALS (arrival > today, max 7 days): name, guest count, arrival date (full day e.g. "Saturday May 17"), nights.',
-      '    3) 🚪 UPCOMING DEPARTURES (departure within next 3 days): name, departure date.',
-      '  → STAFF TASKS: for each stay, assign tasks by responsible:',
-      '    - Said (butler): welcome, transport, coordination.',
-      '    - Faiza (chef): meals, dietary, groceries, allergies.',
-      '    - Bouchra (housekeeping): rooms, linen, cleaning.',
-      '  → Include relevant guest notes (allergies, infant, vegetarian, birthday, etc.).',
-      '  → NEVER "I kindly ask you to" or "Best regards". Direct, operational tone, signed ' + ownerName + '.',
-      '  → NEVER duplicate: each guest appears ONCE in their matching category.',
-      '  → If no current or upcoming stay, say so clearly.',
-      '',
-      '════ GOLDEN RULE ════',
-      'By default, you are in MODE 1, 3 or 4 (info / conversation / staff brief). You switch to MODE 2 ONLY if ' + ownerName + ' explicitly asks you to draft a message to someone.',
-      'NEVER write "Hi, this is ' + ownerName + '..." unless in MODE 2.',
-      'NEVER make up info that is not in the CRM.',
-      '',
-      '════ DATES — always human-readable ════',
-      'Today: ' + todayHuman + '.',
-      'When citing a date, ALWAYS include the weekday. Ex: "Friday May 15 2026", not just "May 15".',
-      'The CRM block below tags each arrival with (TODAY), (TOMORROW), (in N days) or (IN HOUSE) — use these tags directly.',
-      'If you see (TODAY) on an arrival → say "arrives today [weekday]". NEVER "arrives tomorrow". NEVER just "arrives May 15".',
-      'If you see (TOMORROW) → "arrives tomorrow [weekday]".',
-      '',
-      '════ CRITICAL RULE — PIPELINE vs CONFIRMED ════',
-      'The CRM block below has TWO distinct sections:',
-      '  • CONFIRMED BOOKINGS: paid / confirmed reservations. These are REAL STAYS.',
-      '  • PIPELINE: prospects (inquiry/quoted) who have NOT confirmed. These are NOT stays.',
-      'If asked about upcoming arrivals, who arrives tomorrow, who is on site, etc. → cite ONLY CONFIRMED BOOKINGS.',
-      'Leads in PIPELINE must NEVER be mentioned as arrivals or stays. They are to be converted, not welcomed.',
-      '',
-      '════ MISSING DATA or ANOMALIES ════',
-      'If a client has "price MISSING": say "price not set" or "to be filled", NEVER "0€" — that is a CRM gap to fix.',
-      'If a lead is tagged (EXPIRED — arrival past): IGNORE IT completely. Do not cite it as arrival, active pipeline, or "next stay". It is an unconfirmed inquiry whose date has passed.',
-      'In general, if data seems inconsistent (past date for a future stay, 0€ price, empty name), flag it briefly instead of making something up.'
+      'You are ARIA, assistant to ' + ownerName + ' for ' + villaName + ' (Marrakech).',
+      'Staff: ' + staffList + '.',
+      'Reply in English, concise (2-4 sentences max).',
+      'If asked to draft a WA/email message: write it complete, signed ' + ownerName + '.',
+      'If info is not in the CRM below, say so.',
+      'Today: ' + todayHuman + '. Dates = always include weekday.',
+      'CRM: CONFIRMED = real stays. PIPELINE = unconfirmed prospects, NEVER arrivals.',
+      'Missing price = "to be filled", not "0€". Expired leads = ignore.'
     ].join('\n');
   }
 
@@ -10445,27 +10298,17 @@ async function handleChatQuestion(text) {
 
   var userCtx;
   if (isOrchestrator) {
-    // For orchestrator, send the prompt as-is — it already has the structure.
-    // Filter to firm bookings so the orchestrator never schedules an action against
-    // an unconfirmed lead as if it were an upcoming stay.
     var firmActive = clients.filter(function(cl){ return isFirmBooking(cl); });
-    var pipelineActive = clients.filter(function(cl){
-      var bs = cl.bookingStatus;
-      return bs === 'inquiry' || bs === 'lead' || bs === 'quoted';
-    });
     userCtx = [
-      'Today: ' + todayHuman + ' (' + today + ')',
-      'Confirmed bookings (' + firmActive.length + '): ' + firmActive.slice(0,5).map(function(cl) {
-        return cl.name + (cl.arrival?' arr:'+cl.arrival:'') + (cl.guests?' '+cl.guests+(fr?' personnes':' guests'):'');
-      }).join(' · '),
-      'Pipeline leads (' + pipelineActive.length + ', NOT confirmed): ' + pipelineActive.slice(0,5).map(function(cl){
-        return cl.name + ' [' + (cl.bookingStatus||'inquiry') + ']';
+      (fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman,
+      (fr ? 'Clients confirmés' : 'Confirmed') + ': ' + firmActive.slice(0,5).map(function(cl) {
+        return cl.name + (cl.arrival?' arr:'+cl.arrival:'') + (cl.guests?' '+cl.guests+(fr?' pers':' guests'):'');
       }).join(' · '),
       '',
-      historyBlock,
+      'Situation: ' + text,
       '',
-      'Situation:',
-      text
+      (fr ? 'Exemple' : 'Example') + ':',
+      '[{"label":"Brief Said WhatsApp","kind":"whatsapp","target":"staff","content":"Said, ' + (fr ? 'arrivée demain...' : 'arrival tomorrow...') + ' ' + ownerName + '"}]'
     ].join('\n');
   } else {
     var crmCtx = (typeof buildClientsContextRich === 'function')
@@ -10473,23 +10316,12 @@ async function handleChatQuestion(text) {
       : 'Clients: ' + clients.filter(function(cl){ return typeof isFirmBooking === 'function' ? isFirmBooking(cl) : true; }).slice(0,8).map(function(cl){ return cl.name + (cl.arrival?' →'+cl.arrival:''); }).join(', ');
 
     userCtx = [
-      '════ DATA CONTEXT ════',
-      'Date du jour : ' + todayHuman + ' (' + today + ')',
-      'Heure locale Marrakech : à calculer (GMT+1, ou GMT+0 hiver — vérifier mois courant).',
-      '',
+      (fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman,
       crmCtx,
       '',
       historyBlock,
       '',
-      '════ MESSAGE DE ' + ownerName.toUpperCase() + ' ════',
-      '"' + text + '"',
-      '',
-      '════ INSTRUCTIONS ════',
-      '1. Identifie le MODE de réponse (1=info CRM, 2=rédaction message, 3=conversation/conseil, 4=brief staff).',
-      '2. Si MODE 2 (rédaction explicitement demandée) : écris le message au nom de ' + ownerName + ', entre guillemets.',
-      '3. Si MODE 1, 3 ou 4 : réponds DIRECTEMENT à ' + ownerName + '. PAS de message client. Pour MODE 4, suis la structure 🏠 EN COURS / ✈️ ARRIVÉES / 🚪 DÉPARTS + tâches Said/Faiza/Bouchra.',
-      '4. Sois concis (2-4 phrases sauf si rédaction longue).',
-      '5. Si l\'info demandée n\'est pas dans le CRM, dis-le clairement sans inventer.'
+      ownerName + ': "' + text + '"'
     ].join('\n');
   }
 
@@ -10516,9 +10348,9 @@ async function handleChatQuestion(text) {
       aiTask = 'reason';
       aiMaxTokens = 800;
     }
-    // Writing: ONLY on explicit imperative verbs at start
+    // Writing: ONLY on explicit imperative verbs at start + complement
     else if (/^(écris|rédige|prépare un message|prepare un message|réponds à|reponds à|draft|write|compose|envoie un (message|email|wa))/i.test(text.trim()) ||
-             /\b(écris|rédige|réponds à)\b.{0,50}\b(message|email|wa|whatsapp|sms)/i.test(lc)) {
+             /\b(écris|rédige|réponds à)\b.{0,50}\b(message|email|wa|whatsapp|sms)\b.{0,30}\b(pour|à|de|au|aux|for|to)\b/i.test(lc)) {
       aiTask = 'write_fr';
       aiMaxTokens = 700;
     }
@@ -10638,19 +10470,10 @@ async function handleChatEmailAnalysis(text) {
     return;
   }
 
-  var hasFrench = /\b(bonjour|merci|nous|pour|séjour|réservation|adultes)\b/i.test(text);
-  var guestLang = hasFrench ? 'French' : 'English';
-  
-  var p1Prompt = [
-    'Extract from pasted message. Return ONLY valid JSON, no markdown.',
-    '{"guest":{"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"confirmed","notes":""},"alerts":[{"type":"info","text":""}],"price_advice":{"amount":750,"reason":""}}',
-    'Rules: bookingStatus="inquiry" if question, "confirmed" if booking.',
-    'price=Guest paid total.',
-    'Today: ' + today
-  ].join('\n');
-  
+  var p1System = buildExtractSystemPrompt(today);
+
   try {
-    var raw = await callBestAI('extract', p1Prompt, text, 600);
+    var raw = await callBestAI('extract', p1System, text, 600);
     document.getElementById('chatTyping').style.display = 'none';
     
     var g = {};
@@ -16454,10 +16277,7 @@ async function loadMorningBrief(forceRefresh = false) {
   const checkinToday = clients.filter(c => _live(c) && c.arrival === today);
   const checkinTomorrow = clients.filter(c => _live(c) && c.arrival === tomorrowStr);
   const upcoming7 = clients.filter(c => _live(c) && c.arrival && c.arrival > today && new Date(c.arrival) <= in7);
-  const totalRevenue = clients.reduce((s,c) => isFirmBooking(c) ? s + (parseFloat(c.price)||0) : s, 0);
-  const occupancyDays = clients.filter(c => isFirmBooking(c) && c.arrival && c.departure).reduce((s,c) => {
-    return s + Math.max(0, Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000));
-  }, 0);
+  // totalRevenue and occupancyDays removed — not used in structured brief prompt
 
   // Weather
   const wTemp = document.getElementById('factorWeather')?.textContent?.match(/\d+/)?.[0];
@@ -16473,29 +16293,39 @@ async function loadMorningBrief(forceRefresh = false) {
     return new Date(e.date_start) <= in7 && new Date(e.date_end) >= new Date(today);
   });
 
-  // Build context — drop empty/null fields to save tokens
-  const ctx = { d: today };
-  if (cfg.villa) ctx.villa = cfg.villa;
-  if (cfg.city) ctx.city = cfg.city;
-  if (cfg.owner) ctx.owner = cfg.owner;
-  if (inHouse) ctx.inHouse = {n:inHouse.name, dep:inHouse.departure, g:inHouse.guests};
-  if (checkoutToday.length) ctx.coTdy = checkoutToday.map(c=>c.name);
-  if (checkinToday.length) ctx.ciTdy = checkinToday.map(c=>({n:c.name, g:c.guests}));
-  if (checkinTomorrow.length) ctx.ciTmr = checkinTomorrow.map(c=>({n:c.name, g:c.guests}));
-  if (upcoming7.length) ctx.next7 = upcoming7.map(c=>({n:c.name, a:c.arrival, g:c.guests, p:c.price}));
-  if (clients.length) ctx.totGuests = clients.length;
-  if (totalRevenue) ctx.totRev = Math.round(totalRevenue);
-  if (wTemp) ctx.wx = wTemp + 'C ' + wDesc;
-  if (yourPrice) ctx.myPrice = yourPrice;
-  if (avgMarket) ctx.mkt = avgMarket;
-  if (activeEvents.length) ctx.events = activeEvents.map(e=>({n:e.name||e.name_fr, i:e.impact}));
+  // Build human-readable context lines (no JSON — small models understand natural language better)
+  const dataLines = ['DATE: ' + today];
+  if (wTemp) dataLines.push((fr?'MÉTÉO':'WEATHER') + ': ' + wTemp + '°C ' + wDesc);
+  dataLines.push('');
+  if (inHouse) dataLines.push((fr?'EN COURS':'IN HOUSE') + ': ' + inHouse.name + ' (' + (fr?'départ ':'checkout ') + inHouse.departure + ', ' + (inHouse.guests||'?') + (fr?' pers':' guests') + ')');
+  if (checkoutToday.length) dataLines.push((fr?'DÉPART AUJOURD\'HUI':'CHECKOUT TODAY') + ': ' + checkoutToday.map(c=>c.name).join(', '));
+  if (checkinToday.length) dataLines.push((fr?'ARRIVÉE AUJOURD\'HUI':'ARRIVING TODAY') + ': ' + checkinToday.map(c=>c.name + ' (' + (c.guests||'?') + (fr?' pers':' guests') + ')').join(', '));
+  if (checkinTomorrow.length) dataLines.push((fr?'ARRIVÉE DEMAIN':'ARRIVING TOMORROW') + ': ' + checkinTomorrow.map(c=>c.name + ' (' + (c.guests||'?') + (fr?' pers':' guests') + ')').join(', '));
+  if (upcoming7.length) dataLines.push((fr?'PROCHAINS 7J':'NEXT 7 DAYS') + ': ' + upcoming7.map(c=>c.name + ' (' + c.arrival + ', ' + (c.guests||'?') + (fr?' pers, ':' guests, ') + (c.price?c.price+'€':'?') + ')').join(', '));
+  dataLines.push('');
+  if (yourPrice) dataLines.push((fr?'PRIX':'PRICE') + ': ' + yourPrice + '€/nuit' + (avgMarket ? ' (' + (fr?'marché':'market') + ': ' + avgMarket + ')' : ''));
+  if (activeEvents.length) dataLines.push((fr?'ÉVÉNEMENTS':'EVENTS') + ': ' + activeEvents.map(e=>(e.name||e.name_fr) + (e.impact?' (impact: '+e.impact+')':'')).join(', '));
 
-  const prompt =
-    'Villa ops assistant. Find 4-5 top actions for TODAY. Cross-correlate signals (weather+guests=pool prep; below-market+event=raise price; checkout+checkin same/adjacent day=tight turnaround). Use real names/temps/prices from data. Respond in ' + (fr?'French':'English') + '.\n' +
-    'CTX:' + JSON.stringify(ctx) + '\n' +
-    'Return ONLY JSON array, no markdown:\n' +
-    '[{"urgency":1-10,"icon":"emoji","title":"max 7w","detail":"why+consequence, 1 sentence","why":"data points used, max 15w","action":"next step, max 5w","action_type":"whatsapp|open_guests|open_home|copy|none"}]\n' +
-    'urgency: 10=arriving now, 1=fyi. If guest arriving 0-3d, include staff prep card (action_type=whatsapp, checklist in detail).';
+  const briefSystem = fr
+    ? 'Tu es l\'assistant ops d\'une villa de luxe. Tu génères le brief matinal : 4-5 cartes d\'action prioritaires basées sur les données réelles. Langue : français. JSON array uniquement.'
+    : 'You are a luxury villa ops assistant. Generate the morning brief: 4-5 priority action cards based on real data. Language: English. JSON array only.';
+
+  const briefUser = [
+    dataLines.join('\n'),
+    '',
+    (fr ? 'Retourne UNIQUEMENT un JSON array' : 'Return ONLY a JSON array') + ':',
+    '[{"urgency":8,"icon":"🛬","title":"' + (fr?'Préparer arrivée Ahmed':'Prepare Ahmed arrival') + '","detail":"' + (fr?'6 pers dont 3 enfants arrivent demain — prévoir lits enfants et menu adapté':'6 guests incl. 3 kids arriving tomorrow — prepare kids beds and adapted menu') + '","why":"' + (fr?'arrivée J-1 + enfants':'arrival D-1 + children') + '","action":"Brief Said WhatsApp","action_type":"whatsapp"}]',
+    '',
+    (fr ? 'Corrélations à vérifier' : 'Cross-correlations to check') + ':',
+    (fr ? '- Chaleur + guests = piscine/parasols' : '- Heat + guests = pool/parasols'),
+    (fr ? '- Checkout + checkin même jour = turnaround serré' : '- Checkout + checkin same day = tight turnaround'),
+    (fr ? '- Prix < marché + événement = opportunité hausse' : '- Price < market + event = raise opportunity'),
+    '',
+    (fr ? 'Échelle urgency : 10=maintenant, 8=aujourd\'hui, 6=demain, 4=cette semaine, 2=info.' : 'Urgency scale: 10=now, 8=today, 6=tomorrow, 4=this week, 2=fyi.'),
+    (fr ? 'Max 5 cartes. Trier par urgency desc.' : 'Max 5 cards. Sort by urgency desc.')
+  ].join('\n');
+
+  const prompt = briefUser;
 
   try {
     let raw = '';
@@ -16504,7 +16334,7 @@ async function loadMorningBrief(forceRefresh = false) {
       const r = await fetch(STAFFLO_PROXY, {
         method: 'POST',
         headers: proxyHeaders(),
-        body: JSON.stringify({ task: 'brief', system: '', user: prompt, max_tokens: 1000 })
+        body: JSON.stringify({ task: 'brief', system: briefSystem, user: prompt, max_tokens: 700 })
       });
       const d = await r.json();
       if (!r.ok || d.error) {
@@ -16526,7 +16356,7 @@ async function loadMorningBrief(forceRefresh = false) {
       const nk2 = document.getElementById('briefNoKey');
       if (nk2) nk2.style.display = 'none';
       // Auto-route: Gemini (quality reasoning), fallback Groq
-      raw = await callBestAI('brief', '', prompt, 1000);
+      raw = await callBestAI('brief', briefSystem, prompt, 700);
     }
 
     const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
@@ -16733,23 +16563,11 @@ function briefCardTap(idx) {
     var ctxWhy    = (card.why || '').trim();
     var prebuilt  = (act.label || '').trim();
 
-    var prompt = (fr
-      ? 'Centre nerveux ARIA : nouvelle situation à gérer.\n\n' +
-        '🎯 Sujet : ' + ctxTitle + '\n' +
-        '📝 Détails : ' + ctxDetail + '\n' +
-        (ctxWhy ? '🧠 Pourquoi : ' + ctxWhy + '\n' : '') +
-        (prebuilt ? '✉️ Message pré-rédigé suggéré : ' + prebuilt + '\n' : '') +
-        '\nDonne-moi 2 ou 3 actions concrètes, chacune avec un libellé court (max 5 mots) et le contenu prêt à l\'emploi. Format JSON :\n' +
-        '[{"label":"Notifier Said WhatsApp","kind":"whatsapp","target":"staff","content":"..."},{"label":"...","kind":"...","target":"...","content":"..."}]\n\n' +
-        'Types de "kind" valides : whatsapp, email, sms, internal_note, copy. Cibles : staff, guest, owner.'
-      : 'ARIA central nervous system: new situation to handle.\n\n' +
-        '🎯 Topic: ' + ctxTitle + '\n' +
-        '📝 Details: ' + ctxDetail + '\n' +
-        (ctxWhy ? '🧠 Why: ' + ctxWhy + '\n' : '') +
-        (prebuilt ? '✉️ Suggested pre-built message: ' + prebuilt + '\n' : '') +
-        '\nGive me 2 or 3 concrete actions, each with a short label (max 5 words) and ready-to-use content. JSON format:\n' +
-        '[{"label":"Notify Said WhatsApp","kind":"whatsapp","target":"staff","content":"..."},{"label":"...","kind":"...","target":"...","content":"..."}]\n\n' +
-        'Valid "kind" types: whatsapp, email, sms, internal_note, copy. Targets: staff, guest, owner.');
+    var prompt = '__orchestrator:true\n' +
+      (fr ? 'Sujet' : 'Topic') + ': ' + ctxTitle + '\n' +
+      (fr ? 'Détails' : 'Details') + ': ' + ctxDetail +
+      (ctxWhy ? '\n' + (fr ? 'Pourquoi' : 'Why') + ': ' + ctxWhy : '') +
+      (prebuilt ? '\n' + (fr ? 'Message suggéré' : 'Suggested message') + ': ' + prebuilt : '');
 
     if (typeof openAriaModal === 'function') {
       openAriaModal(prompt);
@@ -18352,7 +18170,7 @@ function mirrorChatBubble(node) {
   try {
     if (clone.classList.contains('user')) {
       var fullText = clone.textContent || '';
-      if (fullText.length > 240 && /ARIA central nervous system|Centre nerveux ARIA|JSON format|Signal d[ée]tect[ée]/i.test(fullText)) {
+      if (fullText.length > 120 && /(?:Topic|Sujet)\s*[:：]/i.test(fullText)) {
         var fr = (typeof lang !== 'undefined' && lang === 'fr');
         // Extract topic line if present
         var topicMatch = fullText.match(/(?:Topic|Sujet)\s*[:：]\s*([^\n]+)/i);
@@ -18970,6 +18788,7 @@ function sendAriaModal() {
   // Track last user question for contextual ARIA actions
   try { if (text) window._lastAriaQuestion = text; } catch(e){}
 
+  var displayText = text.replace(/^__orchestrator:true\n?/, '');
   var body = document.getElementById('ariaModalMessages');
   if (body) {
     var u = document.createElement('div');
@@ -18980,9 +18799,9 @@ function sendAriaModal() {
       fileLine.innerHTML = '<span>📎</span><span>' + (attach.filename || 'fichier') + '</span>';
       u.appendChild(fileLine);
     }
-    if (text) {
+    if (displayText) {
       var txt = document.createElement('div');
-      txt.textContent = text;
+      txt.textContent = displayText;
       u.appendChild(txt);
     }
     body.appendChild(u);
@@ -21278,28 +21097,7 @@ window.addEventListener('DOMContentLoaded', function() {
   // - emails Airbnb "inquiry" (Enquiry, demande sans dates fixes)
   // - emails Booking
   function buildExtractPrompt(today){
-    var system =
-'You extract guest data from Airbnb/Booking emails. Return ONLY valid JSON, no markdown, no comments.\n' +
-'JSON shape: {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","guests":0,"children":0,"infants":0,"price":0,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"confirmed","notes":""}\n' +
-'Rules:\n' +
-'- "name": full name of guest (extract even if email is just an enquiry)\n' +
-'- "nat": city, country if mentioned (e.g. "Paris, France")\n' +
-'- "arrival"/"departure": YYYY-MM-DD format. If only month mentioned (e.g. "in May"), use first matching weekend.\n' +
-'- "guests": total adult+child+infant. If "2 adults, 1 child, 1 infant" → 4.\n' +
-'- "children": 1-12yo count. "infants": 0-2yo count.\n' +
-'- "bookingStatus": "inquiry" if asking question or interested, "confirmed" if reservation done.\n' +
-'- "price": "Guest paid" total in EUR (number only). 0 if not mentioned.\n' +
-'- "commission": Airbnb=15.5, Booking=15, Direct=0.\n' +
-'- "notes": IMPORTANT — capture allergies, preferences, special requests, reason for trip, family details, vegetarian/vegan, language preference, anything useful for staff. MAX 200 chars.\n' +
-'- If you cannot find a name, set "name": "" and the rest as best-effort. NEVER refuse.\n' +
-'Today: ' + today + '\n\n' +
-'Example 1 (confirmed booking):\n' +
-'INPUT: "Massi Mekla Identity verified Paris, France Bonjour, avec ma femme et mes 2 enfants de 7 mois et 3 ans... CONFIRMATION CODE HMF8MQ49HW Check-in Fri 15 May Checkout Tue 19 May 2 adults 1 child 1 infant GUEST PAID 2035.20 EUR HOST PAYOUT 1656.65"\n' +
-'OUTPUT: {"name":"Massi Mekla","nat":"Paris, France","arrival":"2026-05-15","departure":"2026-05-19","guests":4,"children":1,"infants":1,"price":2035.20,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"confirmed","notes":"famille avec bébé 7 mois et enfant 3 ans, échappée familiale loin de Paris"}\n\n' +
-'Example 2 (inquiry):\n' +
-'INPUT: "Sophie Martin Identity verified Lyon, France Bonjour, je serais intéressée par votre villa pour août, peut-être 1 semaine avec mon mari et nos 3 enfants. Avez-vous des dates de disponibles ?"\n' +
-'OUTPUT: {"name":"Sophie Martin","nat":"Lyon, France","arrival":"","departure":"","guests":5,"children":3,"infants":0,"price":0,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"inquiry","notes":"intéressée août, 1 semaine, couple + 3 enfants"}\n';
-    return system;
+    return buildExtractSystemPrompt(today);
   }
 
   // ──────────────── Fix 2 : décide si la fiche CRM mérite d'être créée ────────────────
@@ -26057,12 +25855,8 @@ window.addEventListener('DOMContentLoaded', function() {
           return 'Said, Faiza, Bouchra';
         })();
         var clientList = _getClients();
-        var isOrchestrator =
-          /ARIA central nervous system|Centre nerveux ARIA|Signal d[ée]tect[ée]/i.test(text) ||
-          /JSON format/i.test(text) ||
-          /\b(donne[\-\s]?moi|give me|propose|suggest|recommend)\b[\s\S]{0,40}\b(\d+[\-\s]?(à\s+)?\d*\s+)?(actions?|étapes?|steps?|concrete|concrètes?|priorités?)/i.test(text) ||
-          (/marketing|message/i.test(text) && /staff brief|brief staff/i.test(text)) ||
-          /\b[2-5][\-–\s]?(à\s+)?[3-5]?\s+(actions?|étapes?|steps?|concrete|concrètes?)\b/i.test(text);
+        var isOrchestrator = /^__orchestrator:true\b/m.test(text);
+        if (isOrchestrator) text = text.replace(/^__orchestrator:true\n?/, '');
 
         var dbHistory = null;
         try { dbHistory = await loadRecentChatContext(12); } catch(e) {}
@@ -26184,7 +25978,7 @@ window.addEventListener('DOMContentLoaded', function() {
           var lc = text.toLowerCase();
           var wordCount = text.split(/\s+/).length;
           if (/compare|analyse|stratégie|stratégies|optim|recommend|conseil|que dois-je|comment je|that should|why|pourquoi|expliqu/i.test(lc) && wordCount > 8) { aiTask = 'reason'; aiMaxTokens = 800; }
-          else if (/écris|rédige|message|email|mail|réponse à|réponds à|draft|write|compose|texte pour/i.test(lc) && wordCount > 5) { aiTask = 'write_fr'; aiMaxTokens = 700; }
+          else if (/^(écris|rédige|prépare un message|réponds à|draft|write|compose|envoie un (message|email|wa))/i.test(text.trim()) || /\b(écris|rédige|réponds à)\b.{0,50}\b(message|email|wa|whatsapp|sms|pour|à)\b/i.test(lc)) { aiTask = 'write_fr'; aiMaxTokens = 700; }
           else if (text.length > 400 && /check.?in|check.?out|arrival|departure|booking|reservation|airbnb|guest|night/i.test(lc)) { aiTask = 'extract'; aiMaxTokens = 600; }
           else if (wordCount < 8 && /\?$/.test(text.trim())) { aiTask = 'fast_classify'; aiMaxTokens = 300; }
         }
@@ -26263,13 +26057,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
   /* ── #4 Brief→ARIA UX clean ── */
   function _isOrchestratorPrompt(text) {
-    if (!text || text.length < 60) return false;
-    var hits = 0;
-    if (/Centre nerveux ARIA|ARIA central nervous system|Signal d[ée]tect[ée]/i.test(text)) hits++;
-    if (/Format JSON|JSON format/i.test(text)) hits++;
-    if (/donne[\-\s]?moi 2|give me 2/i.test(text)) hits++;
-    if (/"kind"|"target"|"content"/.test(text)) hits++;
-    return hits >= 2;
+    return /^__orchestrator:true\b/m.test(text || '');
   }
   function _extractSignalLabel(text, fr) {
     var m = text.match(/🎯\s*(?:Sujet|Topic)\s*:\s*(.+?)(?:\n|$)/i);
