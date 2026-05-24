@@ -25864,72 +25864,28 @@ window.addEventListener('DOMContentLoaded', function() {
 
         var systemPrompt;
         if (isOrchestrator) {
-          systemPrompt = [
-            'You are ARIA, the central nervous system for ' + ownerName + ' (owner of ' + villaName + ' Marrakech).',
-            'Your role: take a situation and propose 2-3 concrete, ready-to-execute actions.',
-            'Staff: ' + staffList + '. Owner signs as ' + ownerName + '.',
-            '',
-            'CRITICAL OUTPUT FORMAT: Return ONLY a valid JSON array, no preamble, no markdown fences, no explanation.',
-            'Format: [{"label":"short label max 5 words","kind":"whatsapp|email|sms|internal_note|copy","target":"staff|guest|owner","content":"ready-to-send text"}]',
-            '',
-            'Rules:',
-            '- 2 or 3 actions max, sorted by priority',
-            '- "content" must be the FULL ready-to-send message (not a description)',
-            '- For staff WhatsApp: write in French, casual but professional, signed ' + ownerName,
-            '- For guest WhatsApp/email: warm, hospitable, signed ' + ownerName,
-            '- For internal_note: short reminder for ' + ownerName + ' himself',
-            '',
-            "STAFF BRIEF rule — when an action is a brief/note pour l'équipe, the 'content' must:",
-            "  - Split EN COURS stays (arrival <= today AND departure >= today) from À VENIR stays (arrival > today). NEVER list past stays.",
-            "  - For each stay: name, guest count, full weekday + day + month for arrival and departure, number of nights.",
-            "  - Name the responsable (" + staffList + ") if relevant.",
-            "  - No filler. Concise, structured, actionable."
-          ].join('\n');
+          systemPrompt = (fr
+            ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\nPropose 2-3 actions prêtes à l\'emploi. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"message complet signé ' + ownerName + '"}]'
+            : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\nPropose 2-3 ready-to-use actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"full message signed ' + ownerName + '"}]');
         } else {
           systemPrompt = fr ? [
-            'Tu es l\'assistant personnel de ' + ownerName + ', propriétaire de la ' + villaName + ' à Marrakech.',
-            'Tu aides ' + ownerName + ' à gérer ses clients, rédiger des messages et organiser les séjours.',
-            'Quand ' + ownerName + ' dit "utilise la première personne" ou "dis je" → il veut que le message soit écrit PAR LUI (je = ' + ownerName + ').',
-            'Quand tu rédiges un message WA, tu l\'écris AU NOM de ' + ownerName + ', signé "' + ownerName + '".',
-            'Réponds en français — JAMAIS en tant que la villa, toujours en tant qu\'assistant de ' + ownerName + '.',
-            'Aujourd\'hui : ' + todayHuman + '.',
-            '',
-            '【MODE 4 — BRIEF STAFF】 Quand ' + ownerName + ' demande un brief, une note staff, ou le programme pour l\'équipe :',
-            '  → Format WhatsApp-ready, bullets, 8-15 lignes max.',
-            '  → STRUCTURE OBLIGATOIRE :',
-            '    1) 🏠 EN COURS (arrivée ≤ aujourd\'hui ET départ ≥ aujourd\'hui) : nom, nombre de pax, date de départ, nuits restantes.',
-            '    2) ✈️ PROCHAINES ARRIVÉES (arrivée > aujourd\'hui, max 7 jours) : nom, nb pax, date d\'arrivée complète (ex: "samedi 17 mai"), nuits.',
-            '    3) 🚪 PROCHAINS DÉPARTS (départ dans les 3 prochains jours) : nom, date de départ.',
-            '  → RÉPARTITION STAFF : pour chaque séjour, attribue les tâches par responsable :',
-            '    - Said (majordome) : accueil, transport, coordination.',
-            '    - Faiza (chef) : repas, régimes, courses, allergies.',
-            '    - Bouchra (housekeeping) : chambres, linge, ménage.',
-            '  → Inclus les notes guest pertinentes (allergies, bébé, végétarien, anniversaire, etc.).',
-            '  → JAMAIS "Je vous prie de" ou "Cordialement". Ton direct, opérationnel, signé ' + ownerName + '.',
-            '  → JAMAIS de doublon : chaque guest apparaît UNE seule fois dans la catégorie qui le concerne.',
-            '  → Si aucun séjour en cours ou à venir, dis-le clairement.'
+            'Tu es ARIA, assistant de ' + ownerName + ' pour ' + villaName + ' (Marrakech).',
+            'Staff : ' + staffList + '.',
+            'Réponds en français, concis (2-4 phrases max).',
+            'Si on te demande un message WA/email : rédige-le complet, signé ' + ownerName + '.',
+            'Si tu ne trouves pas l\'info dans le CRM ci-dessous, dis-le.',
+            'Aujourd\'hui : ' + todayHuman + '. Dates = toujours avec le jour de la semaine.',
+            'CRM : CONFIRMED = séjours réels. PIPELINE = prospects non confirmés, JAMAIS des arrivées.',
+            'Prix MANQUANT = "à compléter", pas "0€". Leads EXPIRÉES = ignorer.'
           ].join('\n') : [
-            'You are the personal assistant of ' + ownerName + ', owner of ' + villaName + ' in Marrakech.',
-            'You help ' + ownerName + ' manage clients, draft messages and organise stays.',
-            'When ' + ownerName + ' says "use the first person" or "say I" → the message must be written BY HIM (I = ' + ownerName + ').',
-            'When you draft a WA message, you write it ON BEHALF of ' + ownerName + ', signed "' + ownerName + '".',
-            'Reply in English — NEVER as the villa, always as ' + ownerName + '\'s assistant.',
-            'Today: ' + todayHuman + '.',
-            '',
-            '【MODE 4 — STAFF BRIEF】 When ' + ownerName + ' asks for a brief, a staff note, or the team schedule:',
-            '  → WhatsApp-ready format, bullets, 8-15 lines max.',
-            '  → MANDATORY STRUCTURE:',
-            '    1) 🏠 IN HOUSE (arrival ≤ today AND departure ≥ today): name, guest count, departure date, nights remaining.',
-            '    2) ✈️ UPCOMING ARRIVALS (arrival > today, max 7 days): name, guest count, arrival date (full day e.g. "Saturday May 17"), nights.',
-            '    3) 🚪 UPCOMING DEPARTURES (departure within next 3 days): name, departure date.',
-            '  → STAFF TASKS: for each stay, assign tasks by responsible:',
-            '    - Said (butler): welcome, transport, coordination.',
-            '    - Faiza (chef): meals, dietary, groceries, allergies.',
-            '    - Bouchra (housekeeping): rooms, linen, cleaning.',
-            '  → Include relevant guest notes (allergies, infant, vegetarian, birthday, etc.).',
-            '  → NEVER "I kindly ask you to" or "Best regards". Direct, operational tone, signed ' + ownerName + '.',
-            '  → NEVER duplicate: each guest appears ONCE in their matching category.',
-            '  → If no current or upcoming stay, say so clearly.'
+            'You are ARIA, assistant to ' + ownerName + ' for ' + villaName + ' (Marrakech).',
+            'Staff: ' + staffList + '.',
+            'Reply in English, concise (2-4 sentences max).',
+            'If asked to draft a WA/email message: write it complete, signed ' + ownerName + '.',
+            'If info is not in the CRM below, say so.',
+            'Today: ' + todayHuman + '. Dates = always include weekday.',
+            'CRM: CONFIRMED = real stays. PIPELINE = unconfirmed prospects, NEVER arrivals.',
+            'Missing price = "to be filled", not "0€". Expired leads = ignore.'
           ].join('\n');
         }
 
@@ -25949,26 +25905,23 @@ window.addEventListener('DOMContentLoaded', function() {
 
         var userCtx;
         if (isOrchestrator) {
-          userCtx = ['Today: ' + todayHuman + ' (' + today + ')', 'Active clients (' + clientCount + '): ' + clientLine, '', historyBlock, '', 'Situation:', text].join('\n');
+          userCtx = [
+            (fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman,
+            (fr ? 'Clients confirmés' : 'Confirmed') + ' (' + clientCount + '): ' + clientLine,
+            '',
+            'Situation: ' + text,
+            '',
+            (fr ? 'Exemple' : 'Example') + ':',
+            '[{"label":"Brief Said WhatsApp","kind":"whatsapp","target":"staff","content":"Said, ' + (fr ? 'arrivée demain...' : 'arrival tomorrow...') + ' ' + ownerName + '"}]'
+          ].join('\n');
         } else {
-          userCtx = fr ? [
-            'Aujourd\'hui: ' + todayHuman + ' (' + today + ')',
+          userCtx = [
+            (fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman,
             'Clients (' + clientCount + '): ' + clientLine,
-            '', historyBlock, '',
-            'Message de ' + ownerName + ': "' + text + '"', '',
-            'Instructions:',
-            '- Si c\'est une demande de message WA: réponds avec RÉPONSE: [le message complet signé ' + ownerName + '] et ACTION: {"type":"send_wa","clientId":"id_ou_nom","msg":"..."}',
-            '- Si c\'est une question: réponds directement, max 2-3 phrases. Si la donnée n\'est pas dans la liste Clients ci-dessus, dis "je n\'ai pas cette info" au lieu d\'inventer.',
-            '- Si c\'est une correction ("non", "utilise la première personne", "c\'était un test"): tiens-en compte et reformule sans répéter ta version précédente.'
-          ].join('\n') : [
-            'Today: ' + todayHuman + ' (' + today + ')',
-            'Clients (' + clientCount + '): ' + clientLine,
-            '', historyBlock, '',
-            'Message from ' + ownerName + ': "' + text + '"', '',
-            'Instructions:',
-            '- If this is a WA message request: reply with REPLY: [full message signed ' + ownerName + '] and ACTION: {"type":"send_wa","clientId":"id_or_name","msg":"..."}',
-            '- If this is a question: reply directly, max 2-3 sentences. If the data is not in the Clients list above, say "I don\'t have that info" instead of making it up.',
-            '- If this is a correction ("no", "use the first person", "that was a test"): take it into account and rephrase without repeating your previous answer.'
+            '',
+            historyBlock,
+            '',
+            ownerName + ': "' + text + '"'
           ].join('\n');
         }
 
@@ -26126,15 +26079,10 @@ window.addEventListener('DOMContentLoaded', function() {
               var cfg = getCfg();
               var ownerName = cfg.owner || 'Jérémie';
               var villaName = cfg.villa || 'Villa DarJ';
-              var systemPrompt = [
-                'You are ARIA, the central nervous system for ' + ownerName + ' (owner of ' + villaName + ' Marrakech).',
-                'Your role: take a situation and propose 2-3 concrete, ready-to-execute actions.',
-                'Staff: Said (butler), Faiza (chef), Bouchra (housekeeping). Owner signs as ' + ownerName + '.',
-                '',
-                'CRITICAL OUTPUT FORMAT: Return ONLY a valid JSON array, no preamble, no markdown fences.',
-                'Format: [{"label":"short label max 5 words","kind":"whatsapp|email|sms|internal_note|copy","target":"staff|guest|owner","content":"ready-to-send text"}]',
-                'Rules: 2-3 actions max, "content" full ready-to-send (in French), use guest/staff names from context.'
-              ].join('\n');
+              var fr = lang === 'fr';
+              var systemPrompt = (fr
+                ? 'Tu es ARIA pour ' + villaName + '. Staff : Said, Faiza, Bouchra.\nPropose 2-3 actions prêtes à l\'emploi. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"message complet signé ' + ownerName + '"}]'
+                : 'You are ARIA for ' + villaName + '. Staff: Said, Faiza, Bouchra.\nPropose 2-3 ready-to-use actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"full message signed ' + ownerName + '"}]');
               var clientList = _getClients();
               var clientCtx = 'Active clients (' + clientList.length + '): ' + buildClientLines(fullPrompt, 5);
               var userCtx = 'Today: ' + _today() + '\n' + clientCtx + '\n\nSituation:\n' + fullPrompt;
