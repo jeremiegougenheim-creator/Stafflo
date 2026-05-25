@@ -16470,13 +16470,16 @@ function getProviderKey(cfg, provider) {
 }
 
 async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxTokens) {
+  var ac = new AbortController();
+  var timer = setTimeout(function(){ ac.abort(); }, 10000);
+  try {
   // OpenAI-compatible providers
   const OAI = ['deepseek', 'perplexity', 'openai', 'mistral', 'groq'];
   if (OAI.includes(provider)) {
     const urlMap = { 'deepseek': 'https://api.deepseek.com/chat/completions', 'perplexity': 'https://api.perplexity.ai/chat/completions', 'openai': 'https://api.openai.com/v1/chat/completions', 'mistral': 'https://api.mistral.ai/v1/chat/completions', 'groq': 'https://api.groq.com/openai/v1/chat/completions' };
     const modelMap = { 'deepseek': 'deepseek-chat', 'perplexity': 'sonar', 'openai': 'gpt-4o-mini', 'mistral': 'mistral-small-latest', 'groq': 'llama-3.3-70b-versatile' };
     const r = await fetch(urlMap[provider], {
-      method: 'POST',
+      method: 'POST', signal: ac.signal,
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey},
       body: JSON.stringify({
         model: modelMap[provider],
@@ -16497,7 +16500,7 @@ async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxT
     const r = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey,
       {
-        method: 'POST',
+        method: 'POST', signal: ac.signal,
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           contents: [{parts: [{text: systemPrompt + '\n\n' + userContent}]}],
@@ -16513,7 +16516,7 @@ async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxT
   // Anthropic Claude
   if (provider === 'anthropic') {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
+      method: 'POST', signal: ac.signal,
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
@@ -16533,6 +16536,7 @@ async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxT
   }
 
   throw new Error('Unknown provider: ' + provider);
+  } finally { clearTimeout(timer); }
 }
 
 // Store brief card actions and data for tap handlers
@@ -22427,14 +22431,19 @@ window.addEventListener('DOMContentLoaded', function() {
         var sessionKey = (typeof getSessionKeyFromUrl==='function' ? getSessionKeyFromUrl() : '') || (typeof getCfg==='function' ? (getCfg().publicSessionKey||'') : '');
         var clientMode = (typeof getCfg==='function' ? (getCfg().clientMode||'public') : 'public');
         var headers = (typeof proxyHeaders==='function') ? proxyHeaders() : { 'Content-Type':'application/json' };
-        var pr = await fetch(STAFFLO_PROXY, {
-          method:'POST', headers: headers,
-          body: JSON.stringify({
-            task: task, system: systemPrompt||'', user: userContent,
-            max_tokens: maxTokens||1000,
-            session_key: sessionKey, client_mode: clientMode
-          })
-        });
+        var proxyAC = new AbortController();
+        var proxyTimer = setTimeout(function(){ proxyAC.abort(); }, 8000);
+        var pr;
+        try {
+          pr = await fetch(STAFFLO_PROXY, {
+            method:'POST', headers: headers, signal: proxyAC.signal,
+            body: JSON.stringify({
+              task: task, system: systemPrompt||'', user: userContent,
+              max_tokens: maxTokens||1000,
+              session_key: sessionKey, client_mode: clientMode
+            })
+          });
+        } finally { clearTimeout(proxyTimer); }
         if (pr.status === 429){
           if (typeof toast==='function') toast(fr() ? '⏳ Limite atteinte — réessayez dans une heure' : '⏳ Rate limit — try again in an hour');
           throw new Error('rate_limit');
@@ -25992,32 +26001,8 @@ window.addEventListener('DOMContentLoaded', function() {
     var _origCall = window.callBestAI;
     window._aiProxyDebug = { last400Body: null, last400Task: null };
     window.callBestAI = async function(task, sys, user, maxTokens) {
-      var URL = 'https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/ai-proxy';
-      try {
-        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
-        var sk = (typeof getSessionKeyFromUrl === 'function' ? getSessionKeyFromUrl() : '') || cfg.publicSessionKey || '';
-        var r = await fetch(URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ task: task, system: sys || '', user: user, max_tokens: maxTokens || 1000, session_key: sk, client_mode: cfg.clientMode || 'public' })
-        });
-        if (r.ok) {
-          var d = await r.json();
-          if (d && d.text) return d.text;
-          console.warn('[ai-proxy] 200 but no text field:', d);
-        } else if (r.status === 429) {
-          if (typeof toast === 'function') toast(lang==='fr'?'⏳ Limite atteinte — réessayez':'⏳ Rate limit — retry');
-          throw new Error('rate_limit');
-        } else {
-          var body = '';
-          try { body = await r.text(); } catch(e) {}
-          window._aiProxyDebug = { last400Body: body, last400Task: task, last400Status: r.status };
-          console.error('[ai-proxy] HTTP ' + r.status + ' task=' + task + ' →', body.slice(0, 800));
-        }
-      } catch(e) {
-        if (e.message === 'rate_limit') throw e;
-        console.warn('[ai-proxy] error → fallback:', e.message);
-      }
+      // Delegate directly — no duplicate proxy call. The underlying override
+      // already tries proxy first, then client-side cascade.
       return await _origCall.call(this, task, sys, user, maxTokens);
     };
     console.log('[stafflo-patch] ✓ callBestAI proxy errors visible');
@@ -27120,6 +27105,8 @@ window.addEventListener('DOMContentLoaded', function() {
     var _origLoadInbox = window.loadInboxEmails;
     window.loadInboxEmails = async function() {
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      var els = Array.from(document.querySelectorAll('#inboxList, #inboxListLegacy'));
+      var setHtml = function(h){ els.forEach(function(e){ e.innerHTML = h; }); };
 
       try {
         // Auto-sync Gmail (silent) — happens regardless of DOM state so the
@@ -27139,11 +27126,7 @@ window.addEventListener('DOMContentLoaded', function() {
         // Always populate the cache, regardless of DOM.
         var rows = await fetchInboxEmails();
 
-        // Only now check the DOM. Cache is fresh for populateInboxRow /
-        // refreshInboxRow / chat-bubble consumers even if #inboxList is absent.
-        var els = Array.from(document.querySelectorAll('#inboxList, #inboxListLegacy'));
         if (!els.length) return;
-        var setHtml = function(h){ els.forEach(function(e){ e.innerHTML = h; }); };
 
         if (!rows || !rows.length) {
           setHtml('<div style="color:var(--muted);font-size:12px;padding:24px 12px;text-align:center;line-height:1.6">' +
@@ -27485,13 +27468,23 @@ window.addEventListener('DOMContentLoaded', function() {
           } catch(e) {}
         }
         if (!parsed) {
+          console.warn('[stafflo-v6] handleInboxEmailFull parse failed, raw:', (raw||'').slice(0,500));
           var msgsErr = document.getElementById('chatMessages');
           if (msgsErr) {
-            var errCard = document.createElement('div');
-            errCard.className = 'stafflo-error-card';
-            errCard.dataset.staffloEmail = '1';
-            errCard.textContent = (fr ? 'Email reçu mais format AI inattendu.' : 'Email received but AI returned unexpected format.');
-            msgsErr.appendChild(errCard);
+            var fbCard = document.createElement('div');
+            fbCard.className = 'stafflo-email-card';
+            fbCard.dataset.staffloEmail = '1';
+            fbCard.style.borderLeftColor = 'var(--gold)';
+            var subj = cleanRow.subject || (fr?'(sans objet)':'(no subject)');
+            var sender = (cleanRow.from_name || cleanRow.from_email || '?').split('<')[0].trim();
+            var bodyPreview = (cleanRow.body||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,400);
+            fbCard.innerHTML = '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-bottom:6px">⚠ '+(fr?'Analyse AI indisponible':'AI analysis unavailable')+'</div>' +
+              '<div style="font-weight:600;margin-bottom:4px">'+sender+'</div>' +
+              '<div style="font-size:12px;font-weight:600;margin-bottom:6px">'+subj+'</div>' +
+              '<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px">'+bodyPreview+(bodyPreview.length>=400?'…':'')+'</div>' +
+              '<button onclick="this.disabled=true;this.textContent=\''+(fr?'Réessai…':'Retrying…')+'\';handleInboxEmailFull(window._lastEmailRow,{})" style="background:var(--gold);color:var(--green3);border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🔄 '+(fr?'Réessayer':'Retry')+'</button>';
+            msgsErr.appendChild(fbCard);
+            window._lastEmailRow = cleanRow;
           }
           return;
         }
