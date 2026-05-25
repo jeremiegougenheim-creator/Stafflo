@@ -22204,7 +22204,13 @@ window.addEventListener('DOMContentLoaded', function() {
   async function extractFromAnyText(cleaned, sourceHint){
     var today = new Date().toISOString().slice(0,10);
     var sys = buildUniversalExtractPrompt(today, sourceHint);
-    var raw = await window.callBestAI('extract', sys, cleaned, 700);
+    var raw;
+    try {
+      raw = await window.callBestAI('extract', sys, cleaned, 700);
+    } catch(e){
+      console.warn('[stafflo] extract AI call failed:', e.message);
+      return { _extractFailed: true };
+    }
     var g = {};
     try {
       var m = (raw||'').replace(/```json\n?/gi,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
@@ -22212,6 +22218,7 @@ window.addEventListener('DOMContentLoaded', function() {
     } catch(e){
       console.warn('[stafflo] extract parse failed:', e);
     }
+    if (!g.name && !raw) g._extractFailed = true;
     // Cleanup name
     if (g.name) g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
     return g;
@@ -22244,6 +22251,11 @@ window.addEventListener('DOMContentLoaded', function() {
         cleanedForLLM = cleanEmailBoilerplate(cleanedForLLM);
       }
       var g = await extractFromAnyText(cleanedForLLM, classification.source);
+
+      if (g._extractFailed){
+        if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--gold)">⚠ ' + (fr()?'Extraction IA indisponible — vous pouvez remplir manuellement':'AI extraction unavailable — you can fill in manually') + '</span>';
+        return true;
+      }
 
       // Pas de nom → pas de fiche, juste un résumé
       if (!g.name){
@@ -22438,9 +22450,12 @@ window.addEventListener('DOMContentLoaded', function() {
             return pText;
           }
           recordAiCall(task, actualProvider, false, Date.now()-t0, false);
-          console.warn('[stafflo-ai] proxy '+actualProvider+' invalid output for '+task+' ('+validation.reason+'), trying client fallback');
+          console.warn('[stafflo-ai] proxy '+actualProvider+' invalid output for '+task+' ('+validation.reason+'), raw:', (pText||'').slice(0,300));
         } else {
+          var errBody = '';
+          try { errBody = await pr.text(); } catch(e){}
           recordAiCall(task, 'proxy', false, Date.now()-t0, false);
+          console.warn('[stafflo-ai] proxy HTTP '+pr.status+' for '+task+':', errBody.slice(0,300));
         }
       } catch(e){
         if (e.message === 'rate_limit') throw e;
@@ -27126,14 +27141,15 @@ window.addEventListener('DOMContentLoaded', function() {
 
         // Only now check the DOM. Cache is fresh for populateInboxRow /
         // refreshInboxRow / chat-bubble consumers even if #inboxList is absent.
-        var el = document.getElementById('inboxList');
-        if (!el) return;
+        var els = Array.from(document.querySelectorAll('#inboxList, #inboxListLegacy'));
+        if (!els.length) return;
+        var setHtml = function(h){ els.forEach(function(e){ e.innerHTML = h; }); };
 
         if (!rows || !rows.length) {
-          el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:24px 12px;text-align:center;line-height:1.6">' +
+          setHtml('<div style="color:var(--muted);font-size:12px;padding:24px 12px;text-align:center;line-height:1.6">' +
             (fr ? '📭 Aucun email reçu pour le moment.' : '📭 No emails yet.') +
             '<br><span style="opacity:.7">' + (fr ? 'Configurez le transfert depuis Gmail / Outlook' : 'Set up forwarding from Gmail / Outlook') + '</span>' +
-            '</div>';
+            '</div>');
           return;
         }
 
@@ -27159,37 +27175,39 @@ window.addEventListener('DOMContentLoaded', function() {
               '</div>';
         }).join('');
 
-        el.innerHTML = html;
+        setHtml(html);
 
-        el.querySelectorAll('.cmp-inbox-row').forEach(function(rowEl) {
-          rowEl.addEventListener('click', function() {
-            var id = rowEl.getAttribute('data-email-id');
-            var row = window._inboxEmails && window._inboxEmails[id];
-            if (!row) return;
-            if (!row.read_at) {
-              row.read_at = new Date().toISOString();
-              rowEl.classList.remove('cmp-new');
-              var dot = rowEl.querySelector('.cmp-unread-dot');
-              if (dot) dot.style.opacity = '0';
-              try {
-                var key2 = (typeof getCfg === 'function' ? getCfg().sbKey : '') || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
-                var auth2 = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token)
-                  ? _stafflo_session.access_token : key2;
-                fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + id, {
-                  method: 'PATCH',
-                  headers: {
-                    apikey: key2, Authorization: 'Bearer ' + auth2,
-                    'Content-Type': 'application/json', Prefer: 'return=minimal'
-                  },
-                  body: JSON.stringify({ read_at: row.read_at })
-                });
-              } catch(e) {}
-            }
-            if (typeof window.openInboxEmail === 'function') window.openInboxEmail(row);
+        els.forEach(function(el){
+          el.querySelectorAll('.cmp-inbox-row').forEach(function(rowEl) {
+            rowEl.addEventListener('click', function() {
+              var id = rowEl.getAttribute('data-email-id');
+              var row = window._inboxEmails && window._inboxEmails[id];
+              if (!row) return;
+              if (!row.read_at) {
+                row.read_at = new Date().toISOString();
+                rowEl.classList.remove('cmp-new');
+                var dot = rowEl.querySelector('.cmp-unread-dot');
+                if (dot) dot.style.opacity = '0';
+                try {
+                  var key2 = (typeof getCfg === 'function' ? getCfg().sbKey : '') || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
+                  var auth2 = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token)
+                    ? _stafflo_session.access_token : key2;
+                  fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + id, {
+                    method: 'PATCH',
+                    headers: {
+                      apikey: key2, Authorization: 'Bearer ' + auth2,
+                      'Content-Type': 'application/json', Prefer: 'return=minimal'
+                    },
+                    body: JSON.stringify({ read_at: row.read_at })
+                  });
+                } catch(e) {}
+              }
+              if (typeof window.openInboxEmail === 'function') window.openInboxEmail(row);
+            });
           });
         });
       } catch(e) {
-        el.innerHTML = '<div style="color:var(--red);font-size:12px;padding:12px">⚠ ' + (e.message||'error') + '</div>';
+        setHtml('<div style="color:var(--red);font-size:12px;padding:12px">⚠ ' + (e.message||'error') + '</div>');
         console.error('[stafflo-bridge] loadInboxEmails error:', e);
       }
     };
