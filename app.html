@@ -27262,6 +27262,10 @@ window.addEventListener('DOMContentLoaded', function() {
       var memo = (typeof getCfg === 'function' ? (getCfg().ariaMemory || '') : '').trim();
       if (memo) memBlock = '\n\n=== INFOS RÉFÉRENCE ===\n' + memo.slice(0, 2500) + '\n=== FIN ===\n';
     } catch(e){}
+    var cleanBody = (row.body || '');
+    if (typeof htmlToText === 'function') cleanBody = htmlToText(cleanBody);
+    if (typeof cleanEmailBoilerplate === 'function') cleanBody = cleanEmailBoilerplate(cleanBody);
+    cleanBody = cleanBody.replace(/\[?https?:\/\/[^\s\]\)]{40,}\]?/g, '').replace(/%\w+%/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 2500);
     return [
       'Tu analyses un email reçu pour ' + villa + ' à Marrakech (propriétaire: ' + owner + ').',
       memBlock,
@@ -27269,7 +27273,7 @@ window.addEventListener('DOMContentLoaded', function() {
       'De: ' + (row.from_email || ''),
       'Sujet: ' + (row.subject || ''),
       'Contenu:',
-      (row.body || '').slice(0, 2500),
+      cleanBody,
       '',
       '=== TÂCHE ===',
       'Retourne UNIQUEMENT un JSON valide :',
@@ -27335,7 +27339,17 @@ window.addEventListener('DOMContentLoaded', function() {
             var fromShort = (cleanRow.from_email || '').split('<').pop().replace(/>/g,'').trim();
             var senderName = (cleanRow.from_email || '').split('<')[0].trim().replace(/^"|"$/g, '') || fromShort.split('@')[0];
             var sentDate = _fmtSentDate(cleanRow, fr);
-            var bodyText = (cleanRow.body || '').trim();
+            var bodyRaw = (cleanRow.body || '').trim();
+            var bodyText = bodyRaw;
+            if (typeof htmlToText === 'function') bodyText = htmlToText(bodyText);
+            if (typeof cleanEmailBoilerplate === 'function') bodyText = cleanEmailBoilerplate(bodyText);
+            bodyText = bodyText.replace(/\[?https?:\/\/[^\s\]\)]{40,}\]?/g, '');
+            bodyText = bodyText.replace(/%\w+%/g, '');
+            bodyText = bodyText.replace(/You can also respond by replying directly to this email\.?\s*/gi, '');
+            bodyText = bodyText.replace(/Get the app\.?\s*The fastest[\s\S]*?Airbnb\.?\s*/gi, '');
+            bodyText = bodyText.replace(/Review\s+(?:\[.*?\]\s*)?Reply\s+(?:\[.*?\]\s*)?/gi, '');
+            bodyText = bodyText.replace(/\n{3,}/g, '\n\n').replace(/\s{3,}/g, ' ').trim();
+            cleanRow.body = bodyText;
             var subjectShort = (cleanRow.subject || (fr?'(sans sujet)':'(no subject)'));
             var subjectTrunc = subjectShort.length > 50 ? subjectShort.slice(0, 50) + '…' : subjectShort;
 
@@ -27408,7 +27422,7 @@ window.addEventListener('DOMContentLoaded', function() {
         cleanRow.body    = fixMojibake(row.body || '');
 
         var prompt = buildEmailAnalysisPromptV6(cleanRow, owner, villa, fr);
-        var raw = await callBestAI('reason', '', prompt, 1500);
+        var raw = await callBestAI('extract', '', prompt, 1500);
 
         var typing = document.getElementById('chatTyping');
         if (typing) typing.style.display = 'none';
