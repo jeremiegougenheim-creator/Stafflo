@@ -3351,25 +3351,6 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
   </div>
 </div>
 
-<!-- Compact Calendar + Inbox 50/50 (retractable, auto-mirror) -->
-<div class="row row-50">
-  <div class="v2-card cardCalendarMiniMirror" data-collapsed="1">
-    <div class="v2-card-hd">
-      <div class="v2-card-title" style="min-width:0;flex-shrink:1;overflow:hidden"><i class="ti ti-calendar"></i> <span data-fr="Calendrier" data-en="Calendar" style="white-space:nowrap">Calendrier</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase;white-space:nowrap"></span></div>
-    </div>
-  </div>
-  <div class="v2-card cardInboxMiniMirror" data-collapsed="1">
-    <div class="v2-card-hd">
-      <div class="v2-card-title"><i class="ti ti-inbox"></i> <span data-fr="Inbox" data-en="Inbox">Inbox</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Toutes communications" data-en="All communications">Toutes communications</span></div>
-    </div>
-    <div class="v2-card-body" style="padding:0;display:none">
-      <div class="miniInboxMirror">
-        <div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic" data-fr="Chargement…" data-en="Loading…">Chargement…</div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Row 2: Current guest 50% + Upcoming arrivals 50% -->
 <div class="row row-50">
   <div class="v2-card">
@@ -3576,25 +3557,6 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
       <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('checklist')" data-fr="✓ Checklist staff" data-en="✓ Staff checklist">✓ Checklist staff</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('email')" data-fr="✉ Rédiger un email" data-en="✉ Draft email">✉ Rédiger un email</button>
-    </div>
-  </div>
-</div>
-
-<!-- Compact Calendar + Inbox 50/50 (retractable) -->
-<div class="row row-50">
-  <div class="v2-card cardCalendarMiniMirror" data-collapsed="1">
-    <div class="v2-card-hd">
-      <div class="v2-card-title" style="min-width:0;flex-shrink:1;overflow:hidden"><i class="ti ti-calendar"></i> <span data-fr="Calendrier" data-en="Calendar" style="white-space:nowrap">Calendrier</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase;white-space:nowrap"></span></div>
-    </div>
-  </div>
-  <div class="v2-card cardInboxMiniMirror" data-collapsed="1">
-    <div class="v2-card-hd">
-      <div class="v2-card-title"><i class="ti ti-inbox"></i> <span data-fr="Inbox" data-en="Inbox">Inbox</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Toutes communications" data-en="All communications">Toutes communications</span></div>
-    </div>
-    <div class="v2-card-body" style="padding:0;display:none">
-      <div class="miniInboxMirror">
-        <div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic" data-fr="Chargement…" data-en="Loading…">Chargement…</div>
-      </div>
     </div>
   </div>
 </div>
@@ -21227,6 +21189,7 @@ window.addEventListener('DOMContentLoaded', function() {
       if (m) unreadCount = +m[1];
     }
     if (!unreadCount) return;
+    var displayCount = unreadCount > 50 ? '50+' : String(unreadCount);
     // Insère un bandeau cliquable juste sous le header
     var hd = modal.querySelector('.aria-modal-hd');
     if (!hd) return;
@@ -21234,7 +21197,7 @@ window.addEventListener('DOMContentLoaded', function() {
     banner.className = 'aria-inbox-banner';
     banner.style.cssText = 'background:linear-gradient(to right, rgba(229,62,62,.12), rgba(229,62,62,.04));border-bottom:1px solid rgba(229,62,62,.2);padding:8px 14px;font-size:12px;color:#C0392B;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:DM Sans,sans-serif';
     banner.innerHTML =
-      '<span><strong>📬 '+unreadCount+'</strong> '+(f?(unreadCount>1?'emails non lus':'email non lu'):(unreadCount>1?'unread emails':'unread email'))+'</span>' +
+      '<span><strong>📬 '+displayCount+'</strong> '+(f?(unreadCount>1?'emails non lus':'email non lu'):(unreadCount>1?'unread emails':'unread email'))+'</span>' +
       '<span style="font-size:11px;font-weight:600">'+(f?'Voir Inbox →':'Open Inbox →')+'</span>';
     banner.onclick = function(){
       if (typeof closeAriaModal==='function') closeAriaModal();
@@ -22395,15 +22358,31 @@ window.addEventListener('DOMContentLoaded', function() {
   var VALIDATORS = {
     extract: function(text){
       if (!text || text.length < 10) return { ok:false, reason:'too_short' };
-      // Doit contenir un JSON parsable avec name (même vide accepté, mais structure OK)
       var clean = text.replace(/```json\n?/gi,'').replace(/```/g,'').trim();
+      // Try extracting JSON substring first
       var m = clean.match(/\{[\s\S]*\}/);
-      if (!m) return { ok:false, reason:'no_json' };
+      var candidate = m ? m[0] : clean;
       try {
-        var obj = JSON.parse(m[0]);
-        if (typeof obj !== 'object') return { ok:false, reason:'not_object' };
+        var obj = JSON.parse(candidate);
+        if (typeof obj !== 'object' || obj === null) return { ok:false, reason:'not_object' };
+        // Handle {"result": {...}} wrapper
+        if (obj.result && typeof obj.result === 'object' && !obj.name) obj = obj.result;
         return { ok:true };
-      } catch(e){ return { ok:false, reason:'json_parse_fail' }; }
+      } catch(e){
+        // Greedy match may grab too much — try tighter extraction
+        if (m) {
+          try {
+            var inner = clean.slice(clean.indexOf('{'));
+            var depth = 0, end = 0;
+            for (var ci = 0; ci < inner.length; ci++) {
+              if (inner[ci] === '{') depth++;
+              else if (inner[ci] === '}') { depth--; if (depth === 0) { end = ci + 1; break; } }
+            }
+            if (end > 0) { JSON.parse(inner.slice(0, end)); return { ok:true }; }
+          } catch(e2){}
+        }
+        return { ok:false, reason:'json_parse_fail' };
+      }
     },
     write_generic: function(text){
       if (!text || text.length < 30) return { ok:false, reason:'too_short' };
@@ -22455,7 +22434,9 @@ window.addEventListener('DOMContentLoaded', function() {
           var actualProvider = pd.provider_id || 'proxy';
           var validation = validateAiOutput(task, pText);
           if (validation.ok && pText){
-            recordAiCall(task, actualProvider, true, Date.now()-t0, true);
+            var proxyMs = Date.now()-t0;
+            recordAiCall(task, actualProvider, true, proxyMs, true);
+            console.log('[ai-timing] '+task+' proxy('+actualProvider+') '+proxyMs+'ms ✓');
             return pText;
           }
           recordAiCall(task, actualProvider, false, Date.now()-t0, false);
@@ -22488,9 +22469,7 @@ window.addEventListener('DOMContentLoaded', function() {
         var ms = Date.now() - t1;
         recordAiCall(task, pid, true, ms, v.ok);
         if (v.ok){
-          if (i > 0){
-            console.info('[stafflo-ai] '+task+' served by client tier '+(i+1)+' ('+pid+') after '+i+' fail(s)');
-          }
+          console.log('[ai-timing] '+task+' client tier'+(i+1)+'('+pid+') '+ms+'ms ✓'+(i>0?' after '+i+' fail(s)':''));
           return r;
         }
         errors.push({provider:pid, reason:v.reason});
@@ -26327,30 +26306,6 @@ window.addEventListener('DOMContentLoaded', function() {
   setInterval(refreshInboxCounter, 4000);
   setTimeout(refreshInboxCounter, 1500);
 
-  /* ── Mini Calendar + Mini Inbox content updaters (across all tabs) ── */
-  function refreshMiniInbox() {
-    try {
-      var fr = (typeof lang !== 'undefined' && lang === 'fr');
-      var rows = (window._inboxEmails && Object.values(window._inboxEmails)) || [];
-      rows = rows.sort(function(a,b){return new Date(b.received_at||0)-new Date(a.received_at||0);}).slice(0,4);
-      var html = '';
-      if (rows.length) {
-        html = rows.map(function(r){
-          var sender = ((r.from_name || r.from_email || '?').split('<')[0].trim()).slice(0,18);
-          var subj = (r.subject||'(no subject)').slice(0,40);
-          var isNew = !r.read_at;
-          return '<div style="padding:8px 18px;border-bottom:1px solid rgba(0,0,0,.04);font-size:11px;display:flex;align-items:center;gap:8px;cursor:pointer;font-family:var(--sans)" onclick="event.stopPropagation();goTab(\'today\')"><span style="width:6px;height:6px;border-radius:50%;background:'+(isNew?'var(--gold)':'transparent')+';flex-shrink:0"></span><span style="font-weight:'+(isNew?'600':'500')+';color:var(--ink);min-width:70px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+sender+'</span><span style="flex:1;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+subj+'</span></div>';
-        }).join('');
-      } else {
-        html = '<div style="padding:14px 18px;font-size:12px;color:var(--muted);font-style:italic">'+(fr?'Aucun message':'No messages')+'</div>';
-      }
-      var els = document.querySelectorAll('.miniInboxMirror');
-      els.forEach(function(el){ el.innerHTML = html; });
-    } catch(e){}
-  }
-  setTimeout(refreshMiniInbox, 1500);
-  setInterval(refreshMiniInbox, 6000);
-
   /* ── All v2-card headers: click = collapse/expand + show preview ── */
   function pill(txt, color, bg){
     return '<span style="display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600;color:'+color+';background:'+bg+';white-space:nowrap;font-family:var(--sans);letter-spacing:.2px">'+txt+'</span>';
@@ -26362,7 +26317,7 @@ window.addEventListener('DOMContentLoaded', function() {
       // Calendar (any: today + mirrors). The expanded card shows the full
       // ribbon/month grid; the collapsed preview is a one-line week summary
       // so the two states actually convey different info.
-      if (cardId === 'cardCalendarMini' || (card.classList && card.classList.contains('cardCalendarMiniMirror'))) {
+      if (cardId === 'cardCalendarMini') {
         var today = new Date(); today.setHours(0,0,0,0);
         var weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7); weekEnd.setHours(0,0,0,0);
         var firmFn = function(c){ return typeof isFirmBooking !== 'function' || isFirmBooking(c); };
@@ -26380,7 +26335,7 @@ window.addEventListener('DOMContentLoaded', function() {
         return parts.join(' ') + suffix;
       }
       // Inbox
-      if (cardId === 'cardInboxMini' || (card.classList && card.classList.contains('cardInboxMiniMirror')) || cardId === 'inboxCardToday') {
+      if (cardId === 'cardInboxMini' || cardId === 'inboxCardToday') {
         var rows = (window._inboxEmails && Object.values(window._inboxEmails)) || [];
         var unread = rows.filter(function(r){return !r.read_at;}).length;
         if (!rows.length) return pill(fr?'Vide':'Empty', '#7a8a7a', 'rgba(120,140,120,.12)');
@@ -26439,7 +26394,7 @@ window.addEventListener('DOMContentLoaded', function() {
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
       var clients = (typeof window.clients !== 'undefined') ? window.clients : [];
       var titleSpan = card.querySelector('.v2-card-title span');
-      if (cardId === 'cardCalendarMini' || (card.classList && card.classList.contains('cardCalendarMiniMirror'))) {
+      if (cardId === 'cardCalendarMini') {
         var todayD = new Date(); todayD.setHours(0,0,0,0);
         // Build occupancy map inline (don't depend on closure-scoped buildOccupancyMap)
         var occ = {};
@@ -26509,7 +26464,7 @@ window.addEventListener('DOMContentLoaded', function() {
         return html;
       }
       // Inbox: list 3 last with timestamp + source
-      if (cardId === 'cardInboxMini' || (card.classList && card.classList.contains('cardInboxMiniMirror')) || cardId === 'inboxCardToday') {
+      if (cardId === 'cardInboxMini' || cardId === 'inboxCardToday') {
         var rows = (window._inboxEmails && Object.values(window._inboxEmails)) || [];
         rows = rows.sort(function(a,b){return new Date(b.received_at||0)-new Date(a.received_at||0);}).slice(0,3);
         if (!rows.length) return '<div style="padding:14px 18px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Aucun message':'No messages')+'</div>';
@@ -26757,7 +26712,6 @@ window.addEventListener('DOMContentLoaded', function() {
       }
       function applyAndPersist(collapsed){ applyState(collapsed); persistState(collapsed); }
       hd.addEventListener('click', function(e){
-        if (card.classList.contains('cardCalendarMiniMirror')) { if (typeof goTab === 'function') goTab('today'); return; }
         if (e.target.closest('.v2-icon-btn:not(._hdChev),.v2-card-more,button:not(._hdChev),input,a')) return;
         applyAndPersist(body.style.display !== 'none');
       });
