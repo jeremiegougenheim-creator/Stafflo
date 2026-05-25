@@ -25087,7 +25087,13 @@ window.addEventListener('DOMContentLoaded', function() {
     var leads = clients.filter(function(c){
       return c && (c.bookingStatus === 'inquiry' || c.bookingStatus === 'lead');
     });
-    if (countEl) countEl.textContent = leads.length ? String(leads.length) : '';
+    var hasStale = leads.some(function(c){
+      var created = c.createdAt || c.created_at;
+      if (!created) return false;
+      return (Date.now() - new Date(created).getTime()) > 7 * 86400000;
+    });
+    if (countEl) countEl.innerHTML = (leads.length ? String(leads.length) : '') +
+      (hasStale ? ' <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);animation:pulse 2s infinite;vertical-align:middle;margin-left:4px" title="'+(fr?'Lead(s) à relancer':'Stale lead(s)')+'"></span>' : '');
 
     if (!leads.length) {
       body.innerHTML = '<div style="text-align:center;padding:18px 8px;color:var(--muted)">' +
@@ -26466,9 +26472,18 @@ window.addEventListener('DOMContentLoaded', function() {
               + '</div>';
         return html;
       }
-      // Inbox: list 3 last with timestamp + source
+      // Inbox: list 3 last with timestamp + source (filtered for dashboard)
       if (cardId === 'cardInboxMini' || cardId === 'inboxCardToday') {
         var rows = (window._inboxEmails && Object.values(window._inboxEmails)) || [];
+        rows = rows.filter(function(e){
+          var from = (e.from_email||'').toLowerCase();
+          var subj = (e.subject||'').toLowerCase();
+          if (from.indexOf('accounts.google.com')!==-1 || from.indexOf('no-reply@google')!==-1) return false;
+          if (subj.indexOf('security alert')!==-1 || subj.indexOf('alerte de s')!==-1) return false;
+          if (subj.indexOf('payout')!==-1 || subj.indexOf('versement')!==-1) return false;
+          if (subj.indexOf('we sent a payout')!==-1) return false;
+          return true;
+        });
         rows = rows.sort(function(a,b){return new Date(b.received_at||0)-new Date(a.received_at||0);}).slice(0,3);
         if (!rows.length) return '<div style="padding:14px 18px;font-size:11px;color:var(--muted);font-style:italic">'+(fr?'Aucun message':'No messages')+'</div>';
         function timeAgo(d){
@@ -26552,11 +26567,14 @@ window.addEventListener('DOMContentLoaded', function() {
         // opened body: UPCOMING/PIPELINE → guests tab + crmFilter,
         // NEXT → openDetail on nextArr.
         var _nextIdP = nextArr ? (nextArr.id || '') : '';
-        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">';
+        var netRev = 0;
+        upc.forEach(function(c){ if(c.price){ var comm = c.commission||0; netRev += Math.round(c.price * (1 - comm/100)); } });
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;text-align:center">';
         html += '<div style="padding:6px;cursor:pointer" onclick="event.stopPropagation();crmFilter=\'upcoming\';if(typeof goTab===\'function\')goTab(\'clients\')"><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--gold);line-height:1">'+upc.length+'</div><div style="font-size:9px;letter-spacing:1.2px;color:var(--muted);margin-top:3px;font-family:var(--sans)">'+(fr?'À VENIR':'UPCOMING')+'</div></div>';
-        html += '<div style="padding:6px;border-left:1px solid var(--border);border-right:1px solid var(--border);cursor:pointer" onclick="event.stopPropagation();crmFilter=\'inquiry\';if(typeof goTab===\'function\')goTab(\'clients\')"><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);line-height:1">'+leads.length+'</div><div style="font-size:9px;letter-spacing:1.2px;color:var(--muted);margin-top:3px;font-family:var(--sans)">'+(fr?'PIPELINE':'PIPELINE')+'</div></div>';
+        html += '<div style="padding:6px;border-left:1px solid var(--border);cursor:pointer" onclick="event.stopPropagation();crmFilter=\'inquiry\';if(typeof goTab===\'function\')goTab(\'clients\')"><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);line-height:1">'+leads.length+'</div><div style="font-size:9px;letter-spacing:1.2px;color:var(--muted);margin-top:3px;font-family:var(--sans)">'+(fr?'PIPELINE':'PIPELINE')+'</div></div>';
         var nextDD = nextArr ? Math.round((new Date(nextArr.arrival).setHours(0,0,0,0)-todayV)/86400000) : null;
-        html += '<div style="padding:6px;cursor:pointer" data-next-id="'+_nextIdP+'" onclick="event.stopPropagation();var id=this.dataset.nextId;if(id&&typeof openDetail===\'function\')openDetail(id)"><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);line-height:1">'+(nextDD!==null?'J+'+nextDD:'—')+'</div><div style="font-size:9px;letter-spacing:1.2px;color:var(--muted);margin-top:3px;font-family:var(--sans)">'+(fr?'PROCHAINE':'NEXT')+'</div></div>';
+        html += '<div style="padding:6px;border-left:1px solid var(--border);cursor:pointer" data-next-id="'+_nextIdP+'" onclick="event.stopPropagation();var id=this.dataset.nextId;if(id&&typeof openDetail===\'function\')openDetail(id)"><div style="font-family:Fraunces,serif;font-size:22px;font-weight:500;color:var(--ink);line-height:1">'+(nextDD!==null?'J+'+nextDD:'—')+'</div><div style="font-size:9px;letter-spacing:1.2px;color:var(--muted);margin-top:3px;font-family:var(--sans)">'+(fr?'PROCHAINE':'NEXT')+'</div></div>';
+        html += '<div style="padding:6px;border-left:1px solid var(--border)"><div style="font-family:Fraunces,serif;font-size:18px;font-weight:500;color:#3B6D11;line-height:1">'+(netRev?netRev.toLocaleString('fr-FR')+'€':'—')+'</div><div style="font-size:9px;letter-spacing:1.2px;color:var(--muted);margin-top:3px;font-family:var(--sans)">'+(fr?'NET':'NET')+'</div></div>';
         html += '</div>';
         if (nextArr && !inHouse) {
           html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)"><strong style="color:var(--ink);font-weight:600">'+(nextArr.name||'?').split(' ')[0]+'</strong> '+(fr?'arrive':'arrives')+' '+new Date(nextArr.arrival).getDate()+'/'+(new Date(nextArr.arrival).getMonth()+1)+'</div>';
@@ -26738,7 +26756,12 @@ window.addEventListener('DOMContentLoaded', function() {
       }
       else if (card.dataset.collapsed === '1') applyState(true);
       else if (cardId === 'heroActionBoardToday') {
-        applyState(false); // To-do always open by default
+        var hasInHouseOps = (typeof window.clients !== 'undefined') && window.clients.some(function(c){
+          if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return false;
+          if(!c.arrival||!c.departure) return false;
+          var t=Date.now(); return new Date(c.arrival).getTime()<=t && new Date(c.departure).getTime()>=t;
+        });
+        applyState(!hasInHouseOps);
       }
       else if (bodyId === 'heroGuestsCurrentBody' || bodyId === 'heroGuestsUpcomingBody') {
         // Current guest: open if someone in-stay, collapse otherwise
