@@ -13062,6 +13062,15 @@ async function syncGmailDirect(opts) {
         // Truncate to 10KB max
         if (bodyText.length > 10000) bodyText = bodyText.slice(0, 10000);
 
+        // Skip system emails that aren't guest-related
+        var _fromLow = (fromEmail || '').toLowerCase();
+        var _subjLow = (subject || '').toLowerCase();
+        if (_fromLow.indexOf('accounts.google.com') !== -1 || _fromLow.indexOf('no-reply@google') !== -1 ||
+            _subjLow.indexOf('security alert') !== -1 || _subjLow.indexOf('alerte de s') !== -1 ||
+            _subjLow.indexOf('payout') !== -1 || _subjLow.indexOf('versement') !== -1) {
+          continue;
+        }
+
         // 4) Insert into email_inbox
         var row = {
           owner_id: ownerId,
@@ -13082,16 +13091,6 @@ async function syncGmailDirect(opts) {
         });
         if (insRes.ok) {
           inserted++;
-          // Fire-and-forget extraction. Don't await — don't block sync.
-          try {
-            var insertedRows = await insRes.json();
-            var newRow = Array.isArray(insertedRows) ? insertedRows[0] : insertedRows;
-            if (newRow && newRow.id) {
-              extractAndPersistEmail(newRow).catch(function(e){
-                console.warn('extract bg error:', e);
-              });
-            }
-          } catch(e) { /* row id parse failed — extraction skipped, not fatal */ }
         }
       } catch(e) {
         console.warn('Gmail msg fetch error:', e);
@@ -13441,6 +13440,15 @@ async function forcePullAllEmails(btn) {
         var bodyText = body.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
         if (bodyText.length > 10000) bodyText = bodyText.slice(0, 10000);
 
+        var _fromLow2 = (fromEmail || '').toLowerCase();
+        var _subjLow2 = (subject || '').toLowerCase();
+        if (_fromLow2.indexOf('accounts.google.com') !== -1 || _fromLow2.indexOf('no-reply@google') !== -1 ||
+            _subjLow2.indexOf('security alert') !== -1 || _subjLow2.indexOf('alerte de s') !== -1 ||
+            _subjLow2.indexOf('payout') !== -1 || _subjLow2.indexOf('versement') !== -1) {
+          log('  ⊘ skipped system email: ' + (subject||'').slice(0,50));
+          continue;
+        }
+
         var row = {
           gmail_id: toFetch[i],
           from_name: fromName.slice(0, 200),
@@ -13460,12 +13468,6 @@ async function forcePullAllEmails(btn) {
         if (insRes.ok) {
           inserted++;
           log('  ✓ ' + (subject || '(no subject)').slice(0, 50) + ' — ' + fromEmail.slice(0, 30));
-          // Fire extraction in bg
-          try {
-            var insertedRows = await insRes.json();
-            var newRow = Array.isArray(insertedRows) ? insertedRows[0] : insertedRows;
-            if (newRow && newRow.id) extractAndPersistEmail(newRow).catch(function(){});
-          } catch(e){}
         } else {
           failed++;
           var errBody = await insRes.text().catch(function(){return '';});
@@ -27457,6 +27459,11 @@ window.addEventListener('DOMContentLoaded', function() {
   if (typeof window.handleInboxEmailFull === 'function') {
     window.handleInboxEmailFull = async function(row, ex) {
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      if (window._extractInProgress) {
+        if (typeof toast === 'function') toast(fr ? '⏳ Analyse en cours...' : '⏳ Analysis running...');
+        return;
+      }
+      window._extractInProgress = true;
       try {
         var cfg = (typeof getCfg === 'function') ? getCfg() : {};
         var owner = cfg.owner || 'Jérémie';
@@ -27831,6 +27838,8 @@ window.addEventListener('DOMContentLoaded', function() {
           errCard.textContent = '⚠ ' + (err.message || (lang==='fr'?'Erreur':'Error'));
           msgsErr.appendChild(errCard);
         }
+      } finally {
+        window._extractInProgress = false;
       }
     };
     console.log('[stafflo-v6] ✓ handleInboxEmailFull v6 — clean card hierarchy + working LEAD button');
