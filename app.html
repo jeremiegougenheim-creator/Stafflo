@@ -12683,6 +12683,17 @@ async function connectEmailProvider(kind) {
         toast(fr ? '✅ Gmail connecté : ' + prof.email : '✅ Gmail connected: ' + prof.email);
         var m = document.getElementById('emailConnectModal'); if (m) m.remove();
         showEmailConnectModal();
+        setTimeout(function(){
+          if (typeof syncGmailDirect === 'function') {
+            syncGmailDirect({ silent: false }).then(function(result) {
+              if (result && result.new_emails > 0) {
+                toast(fr ? '📬 ' + result.new_emails + (result.new_emails>1?' nouveaux emails':' nouvel email') : '📬 ' + result.new_emails + ' new email' + (result.new_emails>1?'s':''));
+                if (typeof loadInboxCount === 'function') loadInboxCount();
+                if (typeof loadInboxEmails === 'function') loadInboxEmails();
+              }
+            }).catch(function(){});
+          }
+        }, 500);
       } catch(e) {
         console.error('OAuth code exchange error:', e);
         toast(fr?'❌ Erreur OAuth':'❌ OAuth error');
@@ -27089,10 +27100,19 @@ window.addEventListener('DOMContentLoaded', function() {
       var setHtml = function(h){ els.forEach(function(e){ e.innerHTML = h; }); };
 
       try {
+        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+        var conn = cfg.email_connection || {};
+        if (conn.last_error === 'token_expired' && els.length) {
+          setHtml('<div style="text-align:center;padding:20px">' +
+            '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">' +
+            (fr ? '⚠ Token Gmail expiré' : '⚠ Gmail token expired') + '</div>' +
+            '<button onclick="if(typeof showEmailConnectModal===\'function\')showEmailConnectModal()" style="background:var(--gold);color:var(--green3);border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">' +
+            (fr ? '🔄 Reconnecter' : '🔄 Reconnect') + '</button></div>');
+          return;
+        }
         // Auto-sync Gmail (silent) — happens regardless of DOM state so the
         // Supabase email_inbox table is fresh for ALL consumers, not just
         // the dashboard card.
-        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
         if (cfg.email_connection && cfg.email_connection.provider === 'Google' && cfg.email_connection.access_token && typeof syncGmailDirect === 'function') {
           try {
             var syncResult = await syncGmailDirect({ silent: true });
