@@ -21233,6 +21233,16 @@ window.addEventListener('DOMContentLoaded', function() {
   // Quand l'user clique "📖 Analyser" sur un email Inbox → on push le body dans Aria
   // qui déclenche le pipeline complet (extraction + auto-save + actions)
   // Helper : nettoie HTML d'un email Inbox brut → texte propre
+  window.mergeNotes = function(existing, newNotes) {
+    if (!newNotes) return existing || '';
+    if (!existing) return newNotes;
+    var parts = newNotes.split(/[·\n]/).map(function(s){ return s.trim(); }).filter(Boolean);
+    var low = existing.toLowerCase();
+    var toAdd = parts.filter(function(p){ return p.length > 3 && !low.includes(p.toLowerCase().slice(0, 20)); });
+    if (!toAdd.length) return existing;
+    return existing + ' · ' + toAdd.join(' · ');
+  };
+
   function htmlToText(html){
     if (!html) return '';
     var t = html;
@@ -25562,7 +25572,7 @@ window.addEventListener('DOMContentLoaded', function() {
                   arrival: g.arrival || existing.arrival,
                   departure: g.departure || existing.departure,
                   guests: g.guests || existing.guests,
-                  notes: ((existing.notes||'') + (g.notes?' · '+g.notes:'')).trim()
+                  notes: (typeof mergeNotes === 'function' ? mergeNotes(existing.notes, g.notes) : ((existing.notes||'') + (g.notes?' · '+g.notes:'')).trim())
                 });
                 if (typeof pushToSupabase === 'function') pushToSupabase(merged);
                 var idx = clientList.findIndex(function(x){return x.id===existing.id;});
@@ -27616,7 +27626,7 @@ window.addEventListener('DOMContentLoaded', function() {
                   arrival: g.arrival || existing.arrival,
                   departure: g.departure || existing.departure,
                   guests: g.guests || existing.guests,
-                  notes: ((existing.notes||'') + (g.notes?' · '+g.notes:'')).trim()
+                  notes: (typeof mergeNotes === 'function' ? mergeNotes(existing.notes, g.notes) : ((existing.notes||'') + (g.notes?' · '+g.notes:'')).trim())
                 });
                 if (typeof pushToSupabase === 'function') pushToSupabase(merged);
                 var idx = clientList.findIndex(function(x){return x.id===existing.id;});
@@ -27734,8 +27744,21 @@ window.addEventListener('DOMContentLoaded', function() {
         var msgsEl = document.getElementById('chatMessages');
         if (msgsEl) msgsEl.appendChild(card);
 
-        // ── Reply options as separate accordion ──
+        // ── Inject template-based OPT 1 before AI replies ──
         var responses = Array.isArray(parsed.responses) ? parsed.responses.filter(function(r){ return r && r.text; }) : [];
+        var srcLow = (g.source || cleanRow.from_email || '').toLowerCase();
+        var isDirect = srcLow.indexOf('direct') !== -1 || srcLow.indexOf('whatsapp') !== -1 || srcLow.indexOf('sms') !== -1;
+        var isAirbnb = srcLow.indexOf('airbnb') !== -1;
+        var ownerName = (typeof getCfg === 'function' ? getCfg().owner : '') || 'Jérémie';
+        var tmplText = '';
+        if (isDirect) {
+          tmplText = 'Hello ' + (g.name||'there').split(' ')[0] + ', thank you for reaching out — we would be delighted to welcome you to Villa DarJ!\n\nThe villa is my family home in the heart of the Palmeraie, with private pool, full air conditioning, and a dedicated team on-site: Said (your majordome), Faiza (private chef), and Bouchra (housekeeping).\n\nA quick summary of your stay:\n• Check-in: ' + (g.arrival||'TBC') + '\n• Check-out: ' + (g.departure||'TBC') + '\n• Duration: ' + (nights||'?') + ' nights\n• Guests: ' + (g.guests||'?') + '\n• Rate: ' + (g.price ? g.price+'€' : 'TBC') + '\n\nBefore we confirm, could you please let me know:\n1. Group composition — how many couples and singles? (for room assignment)\n2. Any dietary needs or allergies for the chef?\n3. Would you like airport transfer arranged? (~200 MAD one way)\n\nOur food service:\n• Brunch: 300 MAD for the group\n• Lunch: 300 MAD/person + groceries\n• Dinner: 400 MAD/person + groceries\n\nHouse rules:\n• Family home — please respect the spirit of the place\n• Music welcome, reasonable noise after midnight\n• No smoking inside · Registered guests only\n\nPayment: 50% deposit to confirm, 50% on arrival.\n\nLooking forward to hosting you!\n' + ownerName;
+        } else if (isAirbnb) {
+          tmplText = 'Hello ' + (g.name||'there').split(' ')[0] + ', thank you so much for your message — we would be delighted to welcome your group to Villa DarJ.\n\nThe villa is my family home and we will make sure everything is prepared as comfortably as possible.\n\nFor your information it can be very warm in summer in Marrakech (38-40°C), but the villa has AC in every room and the pool is perfect for cooling off.\n\nJust one quick question before we confirm: could you please let us know the group composition — how many couples and how many singles?\n\nFood service:\n• Brunch: 300 MAD for the group\n• Lunch: 300 MAD/person + groceries\n• Dinner: 400 MAD/person + groceries\n\nHouse rules:\n• Family home — please respect the spirit of the place\n• Music welcome, reasonable noise after midnight\n• No smoking inside · Registered guests only\n• Under Moroccan law, unmarried Muslim couples cannot share a room\n\nOnce you confirm the room composition and agree to the house rules, I will send the official booking confirmation right away.\n\nThank you,\n' + ownerName;
+        }
+        if (tmplText) {
+          responses.unshift({ label: isDirect ? 'Template Direct' : 'Template Airbnb', tone: 'professional', text: tmplText });
+        }
         if (responses.length) {
           var optsCard = document.createElement('div');
           optsCard.className = 'stafflo-replies-card';
