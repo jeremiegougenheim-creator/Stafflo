@@ -3160,8 +3160,8 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
     <!-- Welcome message -->
     <div class="chat-bubble system" id="chatWelcome">
       <strong>ARIA</strong> · <span id="chatWelcomeTime"></span><br>
-      Exemples : <em>"relance Celia"</em> · <em>"qui arrive demain ?"</em> · <em>"brief staff"</em><br>
-      Ou collez un email Airbnb directement ↓
+      <span data-fr='Exemples : &lt;em&gt;"relance Celia"&lt;/em&gt; · &lt;em&gt;"qui arrive demain ?"&lt;/em&gt; · &lt;em&gt;"brief staff"&lt;/em&gt;' data-en='Examples: &lt;em&gt;"follow up Celia"&lt;/em&gt; · &lt;em&gt;"who arrives tomorrow?"&lt;/em&gt; · &lt;em&gt;"staff brief"&lt;/em&gt;'>Exemples : <em>"relance Celia"</em> · <em>"qui arrive demain ?"</em> · <em>"brief staff"</em></span><br>
+      <span data-fr="Ou collez un email Airbnb directement ↓" data-en="Or paste an Airbnb email directly ↓">Ou collez un email Airbnb directement ↓</span>
     </div>
   </div>
 
@@ -6888,7 +6888,7 @@ async function analyze() {
 
     // Run pass 2 and update UI when done
     callBestAI('brief', '', p2Prompt, 1400).then(raw2 => {
-      if (!raw2) { if (msgBody) msgBody.innerHTML = '<div style="padding:8px;font-size:12px;color:var(--muted)">Messages non disponibles — réessayez</div>'; return; }
+      if (!raw2) { if (msgBody) msgBody.innerHTML = '<div style="padding:8px;font-size:12px;color:var(--muted)">'+(fr?'Messages non disponibles — réessayez':'Messages unavailable — try again')+'</div>'; return; }
       try {
         const clean2 = raw2.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
         const m2 = clean2.match(/\{[\s\S]*\}/);
@@ -6900,7 +6900,7 @@ async function analyze() {
         clearProgressiveStatus();
       } catch(e) {
         console.warn('Pass 2 parse error:', e);
-        if (msgBody) msgBody.innerHTML = '<div style="padding:8px;font-size:12px;color:var(--muted)">Messages non disponibles</div>';
+        if (msgBody) msgBody.innerHTML = '<div style="padding:8px;font-size:12px;color:var(--muted)">'+(fr?'Messages non disponibles':'Messages unavailable')+'</div>';
       }
     }).catch(e => {
       console.warn('Pass 2 failed:', e);
@@ -8678,7 +8678,7 @@ function openDetail(id) {
     // Display non-meals context — EDITABLE
     if (nonMeals.length || zone) {
       var hdr = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
-      hdr += '<span style="font-size:9px;letter-spacing:2px;color:var(--muted)">INFOS CLIENT (✏️ double-clic pour modifier)</span>';
+      hdr += '<span style="font-size:9px;letter-spacing:2px;color:var(--muted)">'+(lang==='fr'?'INFOS CLIENT (✏️ double-clic pour modifier)':'CLIENT INFO (✏️ double-click to edit)')+'</span>';
       hdr += '<button onclick="showContextHistory(\''+cl.id+'\')" style="background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;color:var(--muted);font-family:DM Sans,sans-serif">📜 Historique</button>';
       hdr += '</div>';
       zone.innerHTML = nonMeals.length ? hdr + formatContextForDisplay(nonMeals, cl.id, true) : hdr + '<div style="font-size:11px;color:var(--muted);font-style:italic">Aucune info structurée. Tape "infos ' + (cl.name||'').split(' ')[0] + ' : ..." dans le chat.</div>';
@@ -10996,7 +10996,7 @@ async function handleInboxEmailFull(row, ex) {
   if (g.name) {
     var saveBtn = document.createElement('button');
     saveBtn.className = 'chat-action-btn save';
-    saveBtn.textContent = existing ? '🔄 Mettre à jour ' + existing.name.split(' ')[0] : '💾 Sauvegarder';
+    saveBtn.textContent = existing ? ('🔄 '+(lang==='fr'?'Mettre à jour ':'Update ')+existing.name.split(' ')[0]) : ('💾 '+(lang==='fr'?'Sauvegarder':'Save'));
     saveBtn.onclick = function() {
       if (existing) {
         // Merge with existing
@@ -11010,11 +11010,11 @@ async function handleInboxEmailFull(row, ex) {
         var idx = clients.findIndex(function(x){return x.id===existing.id;});
         if(idx>=0){clients[idx]=merged;}
         saveLocal(); renderAll();
-        this.textContent = '✅ Mis à jour';
+        this.textContent = '✅ '+(lang==='fr'?'Mis à jour':'Updated');
         this.disabled = true;
       } else {
         saveFromResult(g);
-        this.textContent = '✅ Sauvegardé';
+        this.textContent = '✅ '+(lang==='fr'?'Sauvegardé':'Saved');
         this.disabled = true;
       }
       // Save context items
@@ -11521,7 +11521,7 @@ function showClientContextPanel(clientId) {
   
   // Show in chat
   goTab('today');
-  addChatBubble('system', '📋 Chargement des infos de ' + cl.name + '...');
+  addChatBubble('system', '📋 '+(lang==='fr'?'Chargement des infos de ':'Loading info for ') + cl.name + '...');
   
   loadClientContext(clientId).then(function(rows) {
     var msgs = document.getElementById('chatMessages');
@@ -11534,7 +11534,7 @@ function showClientContextPanel(clientId) {
     if (rows.length) {
       html += formatContextForDisplay(rows);
     } else {
-      html += '<div style="font-size:12px;color:var(--muted);font-style:italic">Aucune info structurée encore — posez une question sur ce client dans le chat.</div>';
+      html += '<div style="font-size:12px;color:var(--muted);font-style:italic">'+(lang==='fr'?'Aucune info structurée encore — posez une question sur ce client dans le chat.':'No structured info yet — ask a question about this client in the chat.')+'</div>';
     }
     
     // Quick actions
@@ -11664,7 +11664,7 @@ function showClientChatHistory(clientId, clientName) {
       return;
     }
     
-    var html = '<div style="font-size:12px;font-weight:600;color:var(--ink);margin-bottom:8px">💬 Historique avec <strong>' + clientName + '</strong> (' + rows.length + ' messages)</div>';
+    var html = '<div style="font-size:12px;font-weight:600;color:var(--ink);margin-bottom:8px">💬 '+(lang==='fr'?'Historique avec':'History with')+' <strong>' + clientName + '</strong> (' + rows.length + ' messages)</div>';
     html += '<div style="display:flex;flex-direction:column;gap:4px;max-height:300px;overflow-y:auto">';
     rows.forEach(function(row) {
       var d = new Date(row.created_at);
@@ -11679,7 +11679,7 @@ function showClientChatHistory(clientId, clientName) {
     });
     html += '</div>';
     html += '<div style="display:flex;gap:6px;margin-top:8px">';
-    html += '<button onclick="deleteChatHistory(\''+clientId+'\').then(()=>{ addChatBubble(\'system\',\'🗑 Historique effacé\'); })" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 10px;font-size:10px;cursor:pointer;font-family:DM Sans,sans-serif">🗑 Effacer</button>';
+    html += '<button onclick="deleteChatHistory(\''+clientId+'\').then(()=>{ addChatBubble(\'system\',lang===\'fr\'?\'🗑 Historique effacé\':\'🗑 History cleared\'); })" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:6px;padding:4px 10px;font-size:10px;cursor:pointer;font-family:DM Sans,sans-serif">'+(lang==='fr'?'🗑 Effacer':'🗑 Delete')+'</button>';
     html += '</div>';
     
     var bubble = document.createElement('div');
@@ -15232,12 +15232,12 @@ async function loadWeather() {
     // Expose for collapsed-card peek summaries
     window._weatherData = { temp: temp, condition: desc, icon: icon, min: tempMin, max: tempMax, humidity: humidity, wind: wind };
 
-    let impact = 'Conditions normales';
+    let impact = fr?'Conditions normales':'Normal conditions';
     let impactColor = 'var(--green)';
-    if (temp > 38) { impact = 'Canicule — piscine essentielle · +15% prix recommandé'; impactColor = '#A32D2D'; }
-    else if (temp > 30) { impact = 'Très chaud — piscine très demandée · +8% prix'; impactColor = '#854F0B'; }
-    else if (temp >= 18 && temp <= 28) { impact = 'Météo idéale pour Marrakech · Prix optimal'; impactColor = '#3B6D11'; }
-    else if (temp < 12) { impact = 'Frais · Cheminée appréciée · Impact neutre sur prix'; impactColor = '#185FA5'; }
+    if (temp > 38) { impact = fr?'Canicule — piscine essentielle · +15% prix recommandé':'Heatwave — pool essential · +15% price recommended'; impactColor = '#A32D2D'; }
+    else if (temp > 30) { impact = fr?'Très chaud — piscine très demandée · +8% prix':'Very hot — pool in high demand · +8% price'; impactColor = '#854F0B'; }
+    else if (temp >= 18 && temp <= 28) { impact = fr?'Météo idéale pour Marrakech · Prix optimal':'Ideal Marrakech weather · Optimal pricing'; impactColor = '#3B6D11'; }
+    else if (temp < 12) { impact = fr?'Frais · Cheminée appréciée · Impact neutre':'Cool · Fireplace appreciated · Neutral price impact'; impactColor = '#185FA5'; }
 
     document.getElementById('factorWeather').textContent = temp + '°C · ' + desc;
 
@@ -15245,7 +15245,7 @@ async function loadWeather() {
     const strip = document.getElementById('weatherStripContent');
     if (strip) {
       const icon2 = getWeatherIcon(cur.weather[0].main);
-      const impactShort = temp > 38 ? '🔥 Canicule — piscine essentielle' : temp > 30 ? '☀️ Très chaud — piscine très demandée' : temp >= 18 ? '✅ Météo idéale' : '🔥 Frais — cheminée appréciée';
+      const impactShort = temp > 38 ? (fr?'🔥 Canicule — piscine essentielle':'🔥 Heatwave — pool essential') : temp > 30 ? (fr?'☀️ Très chaud — piscine demandée':'☀️ Very hot — pool in demand') : temp >= 18 ? (fr?'✅ Météo idéale':'✅ Ideal weather') : (fr?'🔥 Frais — cheminée appréciée':'🔥 Cool — fireplace appreciated');
       strip.innerHTML = `<span style="font-size:18px">${icon2}</span><strong style="font-size:15px">${temp}°C</strong><span style="color:var(--text3)">${desc}</span><span style="color:rgba(44,31,20,.25)">·</span><span style="font-size:11px;color:${temp>38?'#A32D2D':temp>=18?'#3B6D11':'#185FA5'}">${impactShort}</span>`;
     }
 
@@ -15275,8 +15275,8 @@ async function loadWeather() {
     const today = new Date(Date.now() + 3600000).toISOString().slice(0,10);
     const days = Object.keys(dayMap).sort().slice(0,5);
 
-    const dayNames = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
-    const monthNames = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+    const dayNames = fr?['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const monthNames = fr?['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     const forecastCards = days.map((dateKey, i) => {
       const entry = dayMap[dateKey];
@@ -15284,7 +15284,7 @@ async function loadWeather() {
       const d = new Date(dateKey + 'T12:00:00');
       const isToday = dateKey === today;
       const isTomorrow = i === 1;
-      const label = isToday ? "Aujourd'hui" : isTomorrow ? 'Demain' : dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + monthNames[d.getMonth()];
+      const label = isToday ? (fr?"Aujourd'hui":'Today') : isTomorrow ? (fr?'Demain':'Tomorrow') : dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + monthNames[d.getMonth()];
       const ftemp = Math.round(f.main.temp);
       const fmin = Math.round(entry.min);
       const fmax = Math.round(entry.max);
@@ -15324,11 +15324,11 @@ async function loadWeather() {
         <div style="font-size:28px">🌤</div>
         <div>
           <div style="font-size:22px;color:var(--text)">24°C</div>
-          <div style="font-size:12px;color:var(--text3)">Données offline — Marrakech</div>
+          <div style="font-size:12px;color:var(--text3)">${fr?'Données offline — Marrakech':'Offline data — Marrakech'}</div>
         </div>
       </div>
-      <div style="padding:8px 10px;border-radius:6px;font-size:12px;color:#3B6D11;background:#EAF3DE;border-left:3px solid #3B6D11">Météo normale pour la saison</div>`;
-    document.getElementById('factorWeather').textContent = '24°C · Ensoleillé';
+      <div style="padding:8px 10px;border-radius:6px;font-size:12px;color:#3B6D11;background:#EAF3DE;border-left:3px solid #3B6D11">${fr?'Météo normale pour la saison':'Normal weather for the season'}</div>`;
+    document.getElementById('factorWeather').textContent = fr?'24°C · Ensoleillé':'24°C · Sunny';
   }
 }
 
@@ -26832,7 +26832,7 @@ window.addEventListener('DOMContentLoaded', function() {
           if (d.toDateString() === now.toDateString()) {
             dateStr = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
           } else if ((now - d) / 86400000 < 7) {
-            dateStr = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()];
+            dateStr = (fr?['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'])[d.getDay()];
           } else {
             dateStr = (d.getDate()) + '/' + (d.getMonth()+1);
           }
