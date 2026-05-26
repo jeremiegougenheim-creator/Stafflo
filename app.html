@@ -20412,6 +20412,41 @@ window.addEventListener('DOMContentLoaded', function() {
     toast(fr()?'↩ Restauré':'↩ Restored');
   };
 
+  window.inboxArchive = async function(emailId){
+    var row = window._inboxEmails && window._inboxEmails[emailId]; if (!row) return;
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var key = cfg.sbKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
+    var auth = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
+    try {
+      await fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + emailId, {
+        method: 'PATCH',
+        headers: { apikey: key, Authorization: 'Bearer ' + auth, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ archived_at: new Date().toISOString() })
+      });
+      row.archived_at = new Date().toISOString();
+    } catch(e){ toast('⚠ '+(fr()?'échec':'failed')); return; }
+    if (typeof window.refreshAllInboxRows==='function') window.refreshAllInboxRows();
+    toast(fr()?'✓ Archivé':'✓ Archived');
+  };
+
+  window.inboxFlag = async function(emailId){
+    var row = window._inboxEmails && window._inboxEmails[emailId]; if (!row) return;
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var key = cfg.sbKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
+    var auth = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
+    var next = !row.flagged;
+    try {
+      await fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + emailId, {
+        method: 'PATCH',
+        headers: { apikey: key, Authorization: 'Bearer ' + auth, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ flagged: next })
+      });
+      row.flagged = next;
+    } catch(e){ toast('⚠ '+(fr()?'échec':'failed')); return; }
+    if (typeof window.refreshAllInboxRows==='function') window.refreshAllInboxRows();
+    toast(next ? (fr()?'⭐ Suivi activé':'⭐ Flagged') : (fr()?'Suivi retiré':'Unflagged'));
+  };
+
   window.inboxSetFilter = function(mode){
     window._inboxFilter = mode;
     if (typeof window.refreshAllInboxRows==='function') window.refreshAllInboxRows();
@@ -20424,8 +20459,10 @@ window.addEventListener('DOMContentLoaded', function() {
       return '<button onclick="inboxSetFilter(\''+id+'\')" style="background:'+(active?'var(--green)':'var(--paper)')+';color:'+(active?'#fff':'var(--ink)')+';border:1px solid '+(active?'var(--green)':'var(--border)')+';border-radius:14px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif;font-weight:'+(active?'600':'500')+';transition:all .15s">'+label+'</button>';
     };
     return '<div style="display:flex;gap:6px;padding:6px 2px 10px;flex-wrap:wrap">'+
-      p('box', '📬 '+(fr()?'Boîte':'Box'), f==='box') +
+      p('box', '📬 '+(fr()?'Inbox':'Inbox'), f==='box') +
       p('unread', '● '+(fr()?'Non lus':'Unread'), f==='unread') +
+      p('flagged', '⭐ '+(fr()?'Suivi':'Flagged'), f==='flagged') +
+      p('archived', '📦 '+(fr()?'Archivés':'Archived'), f==='archived') +
       p('trash', '🗑 '+(fr()?'Corbeille':'Trash'), f==='trash') +
       '</div>';
   }
@@ -20440,11 +20477,15 @@ window.addEventListener('DOMContentLoaded', function() {
     var isTrash = row.status === 'trash';
     var isRead = row.status !== 'new';
     var extraBtns = '';
+    var isFlagged = row.flagged;
+    var isArchived = !!row.archived_at;
     if (isTrash){
       extraBtns = '<button class="ic-link-btn" onclick="event.stopPropagation();inboxRestore(\''+row.id+'\')" title="'+(fr()?'Restaurer':'Restore')+'" style="background:var(--gold-light);border-color:var(--gold)">↩</button>';
     } else {
       extraBtns =
+        '<button class="ic-link-btn" onclick="event.stopPropagation();inboxFlag(\''+row.id+'\')" title="'+(fr()?'Suivi':'Flag')+'" style="'+(isFlagged?'color:var(--gold)':'opacity:.5')+'">'+(isFlagged?'⭐':'☆')+'</button>'+
         '<button class="ic-link-btn" onclick="event.stopPropagation();inboxToggleRead(\''+row.id+'\')" title="'+(isRead?(fr()?'Marquer non lu':'Mark unread'):(fr()?'Marquer lu':'Mark read'))+'">'+(isRead?'✓':'●')+'</button>'+
+        '<button class="ic-link-btn" onclick="event.stopPropagation();inboxArchive(\''+row.id+'\')" title="'+(fr()?'Archiver':'Archive')+'">📦</button>'+
         '<button class="ic-link-btn" onclick="event.stopPropagation();inboxTrash(\''+row.id+'\')" title="'+(fr()?'Corbeille':'Trash')+'">🗑</button>';
     }
     // Insère avant la dernière </div></div> (.ic-actions puis .inbox-card)
@@ -20487,8 +20528,10 @@ window.addEventListener('DOMContentLoaded', function() {
       var f = window._inboxFilter || 'box';
       var filtered = emails.filter(function(e){
         if (f === 'trash') return e.status === 'trash';
-        if (f === 'unread') return e.status === 'new';
-        return e.status !== 'trash'; // box
+        if (f === 'unread') return e.status === 'new' && !e.archived_at;
+        if (f === 'flagged') return e.flagged && e.status !== 'trash';
+        if (f === 'archived') return e.archived_at && e.status !== 'trash';
+        return e.status !== 'trash' && !e.archived_at; // inbox
       });
       filtered.sort(function(a,b){ return new Date(b.received_at||0) - new Date(a.received_at||0); });
 
@@ -25895,7 +25938,7 @@ window.addEventListener('DOMContentLoaded', function() {
       c.style.color = unread > 0 ? '#C0392B' : 'var(--gold)';
     } catch(e){}
   }
-  setInterval(refreshInboxCounter, 4000);
+  setInterval(refreshInboxCounter, 30000);
   setTimeout(refreshInboxCounter, 1500);
 
   /* ── All v2-card headers: click = collapse/expand + show preview ── */
@@ -26545,9 +26588,24 @@ window.addEventListener('DOMContentLoaded', function() {
     });
   }
   setTimeout(bindHmCardClicks, 1000);
-  setInterval(bindHmCardClicks, 4000);
+  setInterval(bindHmCardClicks, 30000);
   setTimeout(bindHeaderClicks, 800);
-  setInterval(bindHeaderClicks, 4000);
+  setInterval(bindHeaderClicks, 30000);
+
+  /* ── Inbox fetch dedup — don't re-fetch within 15s ── */
+  (function(){
+    var _lastFetch = 0, _lastPromise = null;
+    var _origLoad = window.loadInboxEmails;
+    if (_origLoad) {
+      window.loadInboxEmails = function(force){
+        var now = Date.now();
+        if (!force && _lastPromise && (now - _lastFetch) < 15000) return _lastPromise;
+        _lastFetch = now;
+        _lastPromise = _origLoad.apply(this, arguments);
+        return _lastPromise;
+      };
+    }
+  })();
 
   /* ── Generic confirm popup ── */
   window.staffloConfirm = function(opts) {
