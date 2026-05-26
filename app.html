@@ -13090,7 +13090,7 @@ async function syncGmailDirect(opts) {
 
         var insRes = await fetch(SB_URL + '/rest/v1/email_inbox', {
           method: 'POST',
-          headers: Object.assign({}, authHeaders(), { Prefer: 'return=representation' }),
+          headers: Object.assign({}, authHeaders(), { Prefer: 'return=representation,resolution=ignore-duplicates', 'on-conflict': 'gmail_id' }),
           body: JSON.stringify(row)
         });
         if (insRes.ok) {
@@ -13466,7 +13466,7 @@ async function forcePullAllEmails(btn) {
 
         var insRes = await fetch(SB_URL + '/rest/v1/email_inbox', {
           method: 'POST',
-          headers: { 'Content-Type':'application/json', apikey: sbKey, Authorization:'Bearer '+sbKey, Prefer:'return=representation' },
+          headers: { 'Content-Type':'application/json', apikey: sbKey, Authorization:'Bearer '+sbKey, Prefer:'return=representation,resolution=ignore-duplicates', 'on-conflict':'gmail_id' },
           body: JSON.stringify(row)
         });
         if (insRes.ok) {
@@ -20590,6 +20590,7 @@ window.addEventListener('DOMContentLoaded', function() {
     ['inboxRowToday','inboxRowGuests','inboxRowVilla'].forEach(function(id){
       if (document.getElementById(id)) try { window.populateInboxRow(id); } catch(e){}
     });
+    if (typeof window.loadInboxEmails === 'function') try { window.loadInboxEmails(true); } catch(e){}
   };
 
   // ──────────────── ARIA — SMART CRM MERGE ────────────────
@@ -26810,7 +26811,8 @@ window.addEventListener('DOMContentLoaded', function() {
 
         els.forEach(function(el){
           el.querySelectorAll('.cmp-inbox-row').forEach(function(rowEl) {
-            rowEl.addEventListener('click', function() {
+            rowEl.addEventListener('click', function(e) {
+              if (e.target.closest('button')) return;
               var id = rowEl.getAttribute('data-email-id');
               var row = window._inboxEmails && window._inboxEmails[id];
               if (!row) return;
