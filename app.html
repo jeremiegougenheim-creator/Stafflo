@@ -1265,6 +1265,9 @@ nav .nav-btn.on {
 @media(max-width:768px){ .cmp-actions { opacity:1 !important; } }
 .ic-act-btn { width:24px;height:24px;border:none;background:none;cursor:pointer;border-radius:4px;font-size:13px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);transition:color .15s,background .15s;padding:0; }
 .ic-act-btn:hover { background:var(--gold-light);color:var(--gold); }
+.inbox-filter-tab { padding:4px 12px;border-radius:20px;border:1px solid rgba(0,0,0,.1);background:transparent;font-size:11px;cursor:pointer;color:var(--muted);transition:all .15s;white-space:nowrap;font-family:var(--sans);font-weight:500; }
+.inbox-filter-tab.active { background:var(--green3);color:#fff;border-color:transparent; }
+.inbox-filter-tab:hover:not(.active) { background:rgba(0,0,0,.04); }
 .cmp-unread-dot {
   display: inline-block;
   width: 6px; height: 6px;
@@ -22880,15 +22883,15 @@ window.addEventListener('DOMContentLoaded', function() {
   <div style="background:var(--card);border-radius:20px;width:100%;max-width:640px;max-height:85vh;overflow-y:auto;padding-bottom:20px;box-shadow:0 24px 64px rgba(0,0,0,.4)">
     <div style="background:var(--green3);padding:14px 20px;border-radius:20px 20px 0 0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1">
       <div>
-        <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">INBOX</div>
-        <div style="font-family:'Fraunces',serif;font-size:17px;color:#fff;font-weight:300">Emails Airbnb reçus</div>
+        <div style="font-family:'Fraunces',serif;font-size:17px;color:#fff;font-weight:300">Inbox</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button onclick="closeInbox()" style="background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.6);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
       </div>
     </div>
 
-
+    <!-- Filter tabs -->
+    <div id="inboxModalTabs" style="display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid rgba(0,0,0,.08);flex-wrap:wrap;position:sticky;top:52px;z-index:1;background:var(--card)"></div>
 
     <!-- Email list -->
     <div style="padding:0 16px">
@@ -26788,7 +26791,41 @@ window.addEventListener('DOMContentLoaded', function() {
           return;
         }
 
-        var html = rows.map(function(row){
+        // Filter for modal tabs
+        window._inboxModalFilter = window._inboxModalFilter || 'inbox';
+        var mf = window._inboxModalFilter;
+        var filtered = rows.filter(function(r){
+          if (mf === 'trash') return r.status === 'trash';
+          if (mf === 'unread') return !r.read_at && r.status !== 'trash' && !r.archived_at;
+          if (mf === 'flagged') return r.flagged && r.status !== 'trash';
+          if (mf === 'archived') return r.archived_at && r.status !== 'trash';
+          return r.status !== 'trash' && !r.archived_at;
+        });
+
+        // Render filter tabs
+        var tabsEl = document.getElementById('inboxModalTabs');
+        if (tabsEl) {
+          var counts = { inbox:0, unread:0, flagged:0, archived:0, trash:0 };
+          rows.forEach(function(r){
+            if (r.status === 'trash') { counts.trash++; return; }
+            if (r.archived_at) { counts.archived++; } else { counts.inbox++; }
+            if (!r.read_at && r.status !== 'trash' && !r.archived_at) counts.unread++;
+            if (r.flagged && r.status !== 'trash') counts.flagged++;
+          });
+          var tabs = [
+            {k:'inbox',lbl:'📬 Inbox',c:counts.inbox},
+            {k:'unread',lbl:'● '+(fr?'Non lus':'Unread'),c:counts.unread},
+            {k:'flagged',lbl:'⭐ '+(fr?'Suivi':'Flagged'),c:counts.flagged},
+            {k:'archived',lbl:'✓ '+(fr?'Traités':'Done'),c:counts.archived},
+            {k:'trash',lbl:'🗑',c:counts.trash}
+          ];
+          tabsEl.innerHTML = tabs.map(function(t){
+            return '<button class="inbox-filter-tab'+(mf===t.k?' active':'')+'" onclick="window._inboxModalFilter=\''+t.k+'\';if(typeof loadInboxEmails===\'function\')loadInboxEmails(true)">'+t.lbl+(t.c?' <span style=\"opacity:.6\">('+t.c+')</span>':'')+'</button>';
+          }).join('');
+        }
+
+        // Render rows — modal gets filtered, dashboard gets inbox-only
+        function _renderRow(row, isTrashView){
           var sender = (row.from_name || row.from_email || '?').split('<')[0].trim().slice(0, 28);
           var subject = (row.subject || '(no subject)').slice(0, 80);
           var d = new Date(row.received_at || row.created_at);
@@ -26803,12 +26840,14 @@ window.addEventListener('DOMContentLoaded', function() {
           }
           var isNew = !row.read_at;
           var isFlagged = row.flagged;
-          var actionBtns =
-            '<span class="cmp-actions">' +
-              '<button class="ic-act-btn" onclick="event.stopPropagation();inboxFlag(\''+row.id+'\')" title="'+(fr?'Suivi':'Flag')+'" style="'+(isFlagged?'color:var(--gold)':'')+'">'+(isFlagged?'⭐':'☆')+'</button>' +
-              '<button class="ic-act-btn" onclick="event.stopPropagation();inboxArchive(\''+row.id+'\')" title="'+(fr?'Archiver':'Archive')+'">✓</button>' +
-              '<button class="ic-act-btn" onclick="event.stopPropagation();inboxTrash(\''+row.id+'\')" title="'+(fr?'Corbeille':'Trash')+'">🗑</button>' +
-            '</span>';
+          var actionBtns = isTrashView
+            ? '<span class="cmp-actions"><button class="ic-act-btn" onclick="event.stopPropagation();inboxRestore(\''+row.id+'\')" title="'+(fr?'Restaurer':'Restore')+'">↩</button></span>'
+            : '<span class="cmp-actions">' +
+                '<button class="ic-act-btn" onclick="event.stopPropagation();inboxFlag(\''+row.id+'\')" title="'+(fr?'Suivi':'Flag')+'" style="'+(isFlagged?'color:var(--gold)':'')+'">'+(isFlagged?'⭐':'☆')+'</button>' +
+                '<button class="ic-act-btn" onclick="event.stopPropagation();inboxToggleRead(\''+row.id+'\')" title="'+(fr?'Lu/Non lu':'Read/Unread')+'">'+(isNew?'✓':'●')+'</button>' +
+                '<button class="ic-act-btn" onclick="event.stopPropagation();inboxArchive(\''+row.id+'\')" title="'+(fr?'Traité':'Done')+'">📦</button>' +
+                '<button class="ic-act-btn" onclick="event.stopPropagation();inboxTrash(\''+row.id+'\')" title="'+(fr?'Corbeille':'Trash')+'">🗑</button>' +
+              '</span>';
           return '<div class="cmp-inbox-row' + (isNew ? ' cmp-new' : '') + '" data-email-id="' + row.id + '">' +
               (isNew ? '<span class="cmp-unread-dot"></span>' : '<span class="cmp-unread-dot" style="opacity:0"></span>') +
               (isFlagged ? '<span style="font-size:10px;flex-shrink:0">⭐</span>' : '') +
@@ -26817,9 +26856,21 @@ window.addEventListener('DOMContentLoaded', function() {
               '<span class="cmp-date">' + dateStr + '</span>' +
               actionBtns +
               '</div>';
-        }).join('');
+        }
 
-        setHtml(html);
+        var isTrashView = mf === 'trash';
+        var modalHtml = filtered.length
+          ? filtered.map(function(r){ return _renderRow(r, isTrashView); }).join('')
+          : '<div style="text-align:center;padding:24px;color:var(--muted)"><div style="font-size:24px;margin-bottom:6px;opacity:.5">📭</div><div style="font-size:13px">'+(mf==='trash'?(fr?'Corbeille vide':'Trash empty'):mf==='unread'?(fr?'Aucun non lu':'No unread'):(fr?'Aucun email':'No emails'))+'</div></div>';
+
+        // Dashboard: always inbox filter (no trash, no archived)
+        var dashRows = rows.filter(function(r){ return r.status !== 'trash' && !r.archived_at; });
+        var dashHtml = dashRows.map(function(r){ return _renderRow(r, false); }).join('');
+
+        var legacyEl = document.getElementById('inboxListLegacy');
+        var dashEl = document.getElementById('inboxList');
+        if (legacyEl) legacyEl.innerHTML = modalHtml;
+        if (dashEl) dashEl.innerHTML = dashHtml;
 
         els.forEach(function(el){
           el.querySelectorAll('.cmp-inbox-row').forEach(function(rowEl) {
