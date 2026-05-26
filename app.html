@@ -1247,19 +1247,24 @@ nav .nav-btn.on {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   font-family: var(--sans);
   font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
-  transition: background .12s;
+  transition: background .15s, opacity .3s, max-height .3s;
   color: var(--muted);
   user-select: none;
 }
 .cmp-inbox-row:last-child { border-bottom: none; }
-.cmp-inbox-row:hover { background: rgba(201,150,58,.06); }
+.cmp-inbox-row:hover { background: rgba(201,150,58,.05); }
 .cmp-inbox-row.cmp-new { color: var(--ink); font-weight: 500; }
+.cmp-actions { display:flex; gap:2px; opacity:0; transition:opacity .15s; flex-shrink:0; }
+.cmp-inbox-row:hover .cmp-actions { opacity:1; }
+@media(max-width:768px){ .cmp-actions { opacity:1 !important; } }
+.ic-act-btn { width:24px;height:24px;border:none;background:none;cursor:pointer;border-radius:4px;font-size:13px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);transition:color .15s,background .15s;padding:0; }
+.ic-act-btn:hover { background:var(--gold-light);color:var(--gold); }
 .cmp-unread-dot {
   display: inline-block;
   width: 6px; height: 6px;
@@ -20397,11 +20402,18 @@ window.addEventListener('DOMContentLoaded', function() {
     if (!ok){ row.status = prev; if (typeof window.refreshAllInboxRows==='function') window.refreshAllInboxRows(); toast('⚠ '+(fr()?'Échec réseau':'Network error')); }
   };
 
+  function _animateRemove(emailId){
+    document.querySelectorAll('[data-email-id="'+emailId+'"]').forEach(function(el){
+      el.style.transition='opacity .3s,max-height .3s,margin .3s,padding .3s';
+      el.style.opacity='0'; el.style.maxHeight='0'; el.style.margin='0'; el.style.padding='0'; el.style.overflow='hidden';
+      setTimeout(function(){ el.remove(); },350);
+    });
+  }
   window.inboxTrash = async function(emailId){
     var row = window._inboxEmails && window._inboxEmails[emailId]; if (!row) return;
     var prev = row.status;
     row.status = 'trash';
-    if (typeof window.refreshAllInboxRows==='function') window.refreshAllInboxRows();
+    _animateRemove(emailId);
     if (typeof loadInboxCount==='function') loadInboxCount();
     toast(fr()?'🗑 Corbeille':'🗑 Moved to trash');
     var ok = await inboxPatchStatus(emailId, 'trash');
@@ -20423,7 +20435,7 @@ window.addEventListener('DOMContentLoaded', function() {
     var row = window._inboxEmails && window._inboxEmails[emailId]; if (!row) return;
     var prevArchived = row.archived_at;
     row.archived_at = new Date().toISOString();
-    if (typeof window.refreshAllInboxRows==='function') window.refreshAllInboxRows();
+    _animateRemove(emailId);
     toast(fr()?'✓ Archivé':'✓ Archived');
     try {
       var cfg = (typeof getCfg === 'function') ? getCfg() : {};
@@ -26792,10 +26804,10 @@ window.addEventListener('DOMContentLoaded', function() {
           var isNew = !row.read_at;
           var isFlagged = row.flagged;
           var actionBtns =
-            '<span class="cmp-actions" style="display:flex;gap:1px;flex-shrink:0">' +
-              '<button onclick="event.stopPropagation();inboxFlag(\''+row.id+'\')" style="background:none;border:none;font-size:11px;cursor:pointer;padding:2px 3px;'+(isFlagged?'opacity:1':'opacity:.35')+'" title="'+(fr?'Suivi':'Flag')+'">'+(isFlagged?'⭐':'☆')+'</button>' +
-              '<button onclick="event.stopPropagation();inboxArchive(\''+row.id+'\')" style="background:none;border:none;font-size:11px;cursor:pointer;padding:2px 3px;opacity:.35" title="'+(fr?'Archiver':'Archive')+'">📦</button>' +
-              '<button onclick="event.stopPropagation();inboxTrash(\''+row.id+'\')" style="background:none;border:none;font-size:11px;cursor:pointer;padding:2px 3px;opacity:.35" title="'+(fr?'Corbeille':'Trash')+'">🗑</button>' +
+            '<span class="cmp-actions">' +
+              '<button class="ic-act-btn" onclick="event.stopPropagation();inboxFlag(\''+row.id+'\')" title="'+(fr?'Suivi':'Flag')+'" style="'+(isFlagged?'color:var(--gold)':'')+'">'+(isFlagged?'⭐':'☆')+'</button>' +
+              '<button class="ic-act-btn" onclick="event.stopPropagation();inboxArchive(\''+row.id+'\')" title="'+(fr?'Archiver':'Archive')+'">✓</button>' +
+              '<button class="ic-act-btn" onclick="event.stopPropagation();inboxTrash(\''+row.id+'\')" title="'+(fr?'Corbeille':'Trash')+'">🗑</button>' +
             '</span>';
           return '<div class="cmp-inbox-row' + (isNew ? ' cmp-new' : '') + '" data-email-id="' + row.id + '">' +
               (isNew ? '<span class="cmp-unread-dot"></span>' : '<span class="cmp-unread-dot" style="opacity:0"></span>') +
