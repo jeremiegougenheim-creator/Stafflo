@@ -21229,12 +21229,6 @@ window.addEventListener('DOMContentLoaded', function() {
   }
 
   // Override le pipeline email Airbnb pour utiliser le nouveau prompt + isWorthSaving
-  // NOTE : ce pipeline a été remplacé par le pipeline universel plus bas dans ce fichier.
-  // On le désactive ici pour éviter le double-traitement. Le code reste pour référence.
-  var _origSendAriaModal2 = window.sendAriaModal;
-  window.sendAriaModal = function(){
-    return _origSendAriaModal2 ? _origSendAriaModal2.apply(this, arguments) : null;
-  };
   // ──────────────── Fix 3 : header Aria — bandeau "X emails non lus → Inbox" ────────────────
   // S'affiche quand on ouvre Aria s'il y a des emails non lus
   function injectAriaInboxBanner(){
@@ -21521,22 +21515,6 @@ window.addEventListener('DOMContentLoaded', function() {
     var isFamily = hasInfant || hasChild || /\b(famille|family|wife|femme|husband|mari)\b/i.test(t);
     return { hasInfant:hasInfant, hasChild:hasChild, isFamily:isFamily };
   }
-
-  // ──────────────── Multi-AI router (ajoute des routes write_guest, write_staff) ────────────────
-  // Wrap callBestAI pour ajouter les nouvelles routes en mappant vers les routes existantes du proxy
-  var _origCallBestAI = window.callBestAI;
-  window.callBestAI = async function(task, systemPrompt, userContent, maxTokens){
-    // Mapping vers les routes proxy existantes (extract/brief/write_fr/reason)
-    var routeMap = {
-      'write_guest_fr': 'write_fr',     // Mistral small (excellente FR) → fallbacks
-      'write_guest_en': 'brief',        // Groq 70b (bon EN) → fallbacks
-      'write_staff':    'extract',      // Court, factuel → Groq fast
-      'cleanup':        'extract'
-    };
-    var resolvedTask = routeMap[task] || task;
-    if (_origCallBestAI) return _origCallBestAI(resolvedTask, systemPrompt, userContent, maxTokens);
-    throw new Error('callBestAI not available');
-  };
 
   // ──────────────── Auto-save guest avec UNDO ────────────────
   async function autoSaveGuest(g, sourceText){
@@ -22070,12 +22048,6 @@ window.addEventListener('DOMContentLoaded', function() {
   // NOTE : cet override est désormais un simple pass-through.
   // Le vrai pipeline email Airbnb est dans Phase A.1 (plus haut dans ce fichier),
   // qui utilise le nouveau prompt few-shot + isWorthSaving + stripParasitePrompt.
-  // On laisse cet override pour ne rien casser, mais il ne fait plus rien.
-  var _origSendAriaModal = window.sendAriaModal;
-  window.sendAriaModal = function(){
-    return _origSendAriaModal ? _origSendAriaModal.apply(this, arguments) : null;
-  };
-
   // Helper detectLang utilisé par generateContextualActions
   if (typeof window.detectLang !== 'function') window.detectLang = detectGuestLang;
 
@@ -25633,18 +25605,6 @@ window.addEventListener('DOMContentLoaded', function() {
     console.log('[stafflo-patch] ✓ handleChatQuestion grounded — departure + status in CRM context');
   }
 
-  /* ── #2 ai-proxy 400 diagnostics ── */
-  if (typeof window.callBestAI === 'function') {
-    var _origCall = window.callBestAI;
-    window._aiProxyDebug = { last400Body: null, last400Task: null };
-    window.callBestAI = async function(task, sys, user, maxTokens) {
-      // Delegate directly — no duplicate proxy call. The underlying override
-      // already tries proxy first, then client-side cascade.
-      return await _origCall.call(this, task, sys, user, maxTokens);
-    };
-    console.log('[stafflo-patch] ✓ callBestAI proxy errors visible');
-  }
-
   /* ── #4 Brief→ARIA UX clean ── */
   function _isOrchestratorPrompt(text) {
     return /^__orchestrator:true\b/m.test(text || '');
@@ -26615,21 +26575,6 @@ window.addEventListener('DOMContentLoaded', function() {
   setTimeout(bindHeaderClicks, 800);
   setInterval(bindHeaderClicks, 30000);
 
-  /* ── Inbox fetch dedup — don't re-fetch within 15s ── */
-  (function(){
-    var _lastFetch = 0, _lastPromise = null;
-    var _origLoad = window.loadInboxEmails;
-    if (_origLoad) {
-      window.loadInboxEmails = function(force){
-        var now = Date.now();
-        if (!force && _lastPromise && (now - _lastFetch) < 15000) return _lastPromise;
-        _lastFetch = now;
-        _lastPromise = _origLoad.apply(this, arguments);
-        return _lastPromise;
-      };
-    }
-  })();
-
   /* ── Generic confirm popup ── */
   window.staffloConfirm = function(opts) {
     return new Promise(function(resolve){
@@ -26747,7 +26692,10 @@ window.addEventListener('DOMContentLoaded', function() {
     }
 
     var _origLoadInbox = window.loadInboxEmails;
-    window.loadInboxEmails = async function() {
+    var _lastInboxFetch = 0;
+    window.loadInboxEmails = async function(force) {
+      if (!force && (Date.now() - _lastInboxFetch) < 15000) return;
+      _lastInboxFetch = Date.now();
       var fr = (typeof lang !== 'undefined' && lang === 'fr');
       var els = Array.from(document.querySelectorAll('#inboxList, #inboxListLegacy'));
       var setHtml = function(h){ els.forEach(function(e){ e.innerHTML = h; }); };
