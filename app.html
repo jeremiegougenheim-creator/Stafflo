@@ -6879,10 +6879,11 @@ async function analyze() {
       `Guest: ${gName}${g.nat?' '+g.nat:''}, ${g.guests||'?'} guests, ${arrFmt}–${depFmt}, ${g.nights||'?'} nights.`,
       g.notes ? `Notes: ${g.notes}` : '',
       isInquiry && g.question ? `Guest question: "${g.question}"` : '',
+      isInquiry ? ((cfg.ariaMemory||'').trim() ? `\nVILLA REFERENCE (use these facts in the airbnb reply):\n${(cfg.ariaMemory||'').trim().slice(0,1500)}` : '') : '',
       '',
       `Write all 7 messages in ${guestLang}. Each must be complete, warm, and ready to send. Return ONLY valid JSON:`,
       isInquiry
-        ? `{"messages":{"airbnb":"direct reply to guest question. Pool heated 28°C year-round. Invite to book. Sign ${ownerName}.","welcome":"pre-approval: highlight villa for their group size. Excite them.","driver":"airport transfer info.","staff":"internal note: guest profile + their question + what to prepare.","passport":"polite ID request, required by law.","checkout":"template for after stay, review request.","hostReview":"empty for inquiry"}}`
+        ? `{"messages":{"airbnb":"Complete reply to guest's inquiry. Answer EVERY question they asked with specific facts (distances in km+minutes, prices in MAD, exact amenities). Structure by topic. Add weather for their dates + transport options. Warm, personal tone ('my family home'). 15-30 lines. Sign ${ownerName}.","welcome":"pre-approval: highlight villa for their group size. Excite them.","driver":"airport transfer info.","staff":"internal note: guest profile + their question + what to prepare.","passport":"polite ID request, required by law.","checkout":"template for after stay, review request.","hostReview":"empty for inquiry"}}`
         : `{"messages":{"airbnb":"booking confirmation reply, excited + welcoming, sign ${ownerName}.","welcome":"WhatsApp welcome: arrival ${arrFmt}, check-in 14h, checkout 12h, wifi, pool 28°C, chef ${staffFirst} available. Personal details from notes.","driver":"driver brief: ${gName}, ${g.guests||'?'} pax, arrival ${arrFmt}, villa GPS ${gpsInfo}.","staff":"staff prep brief: ${gName} arrival ${arrFmt}, ${g.nights||'?'}n, ${g.guests||'?'} guests. Notes: ${g.notes||'none'}. Checklist: rooms, pool, welcome gifts, chef menu.","passport":"polite passport copy request before arrival.","checkout":"post-stay thank you message to ${gName} (1st person from owner): warm 2-3 sentences thanking them, hoping they enjoyed villa+staff, kind invitation to leave Airbnb/Booking review (mention it helps the villa). Sign ${ownerName}. Ready to copy-send.","hostReview":"PUBLIC review YOU (host) leave for ${gName} on Airbnb/Booking — 2-3 sentences, warm + specific. Mention they were respectful guests, communication smooth, would host again. Use guest details from notes if available. Direct, no greeting/signature, just the review text itself."}}`,
     ].filter(Boolean).join('\n');
 
@@ -21794,11 +21795,42 @@ window.addEventListener('DOMContentLoaded', function() {
         user = 'Guest: '+firstName+'\nDates: '+dates+'\nVilla: '+villa;
         break;
       case 'reply_inquiry':
+        var mem = (ctx.ariaMemory || '').trim();
+        var villaFacts = mem ? '\n=== VILLA REFERENCE ===\n'+mem.slice(0,2000)+'\n=== END ===' : '';
+        var staffNames = ctx.staff || 'Said (butler), Faiza (chef), Bouchra (housekeeping)';
+        var gps = ctx.gps || '';
         system = lng === 'fr'
-          ? 'Tu réponds à une demande de réservation de manière chaleureuse et professionnelle. Confirme la disponibilité, donne envie. 4-6 lignes. Signe "'+owner+'".'
-          : 'Reply to a booking inquiry warmly and professionally. Confirm availability, make them want it. 4-6 lines. Sign "'+owner+'".';
-        user = 'Guest: '+firstName+' ('+g.name+')\nDates demandées: '+dates+'\nVilla: '+villa+'\n'
-             + (g.notes ? 'Notes: '+g.notes : '');
+          ? 'Tu réponds à une demande de réservation pour '+villa+'. Propriétaire: '+owner+'. Staff: '+staffNames+'.'
+            +'\n\nRÈGLES:'
+            +'\n- Lis ATTENTIVEMENT les questions du guest. Réponds à CHAQUE question avec des faits précis (distances en km + minutes, prix en MAD, équipements exacts).'
+            +'\n- Structure par thème avec des sous-titres clairs (Localisation, Confort, Restauration, etc.).'
+            +'\n- Après avoir répondu aux questions, ajoute 1-2 infos proactives utiles (météo pour leurs dates, transport aéroport).'
+            +'\n- Ton: chaleureux, personnel ("ma maison familiale"), expert, jamais commercial.'
+            +'\n- Longueur: 15-30 lignes. Dense en infos utiles, pas de remplissage.'
+            +'\n- Commence par un accueil chaleureux (remercie, mentionne leur voyage). Demande si c\'est une occasion spéciale.'
+            +'\n- Termine par une invitation chaleureuse à réserver. Signe "'+owner+'".'
+            +'\n- Utilise "je" (pas "nous") sauf quand tu parles du staff collectivement.'
+            +'\n- N\'invente JAMAIS de fait. Utilise uniquement les infos ci-dessous.'
+            +villaFacts
+          : 'You reply to a booking inquiry for '+villa+'. Owner: '+owner+'. Staff: '+staffNames+'.'
+            +'\n\nRULES:'
+            +'\n- Read the guest\'s questions carefully. Answer EVERY question with specific facts (distances in km + minutes, prices in MAD, exact amenities).'
+            +'\n- Structure by topic with clear headings (Location, Comfort, Dining, etc.).'
+            +'\n- After answering their questions, add 1-2 proactive sections they\'ll appreciate (weather for their dates, airport transport).'
+            +'\n- Tone: warm, personal ("my family home"), knowledgeable, never salesy.'
+            +'\n- Length: 15-30 lines. Dense with useful info, no padding.'
+            +'\n- Start with a warm greeting (thank them, acknowledge their trip). Ask if it\'s a special occasion.'
+            +'\n- End with a warm invitation to book. Sign "'+owner+'".'
+            +'\n- Use "I" (not "we") except when referring to staff collectively.'
+            +'\n- NEVER invent facts. Use only the reference info below.'
+            +villaFacts;
+        user = 'Guest: '+firstName+' ('+g.name+')\n'
+             + (lng==='fr'?'Dates demandées: ':'Requested dates: ')+dates+'\n'
+             + 'Villa: '+villa+'\n'
+             + (g.guests ? (lng==='fr'?'Voyageurs: ':'Guests: ')+g.guests+'\n' : '')
+             + (g.notes ? (lng==='fr'?'Questions / notes du guest: ':'Guest questions / notes: ')+g.notes+'\n' : '')
+             + (gps ? 'GPS: '+gps+'\n' : '')
+             + '\n'+(lng==='fr'?'Rédige la réponse complète à cette demande.':'Write the complete reply to this inquiry.');
         break;
       case 'staff_brief':
         system = lng === 'fr'
