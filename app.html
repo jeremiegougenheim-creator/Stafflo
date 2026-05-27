@@ -4253,7 +4253,7 @@ function upgradeToPro(ev){if(ev)ev.preventDefault();try{if(window.posthog)postho
 <div class="why-modal" id="whyModal" onclick="if(event.target===this)closeWhyModal()">
   <div class="why-box">
     <button class="why-close-x" onclick="closeWhyModal()" aria-label="Fermer">✕</button>
-    <h3 id="whyTitle">Pourquoi cette alerte ?</h3>
+    <h3 id="whyTitle" data-fr="Pourquoi cette alerte ?" data-en="Why this alert?">Pourquoi cette alerte ?</h3>
     <div class="why-sources" id="whySources"></div>
   </div>
 </div>
@@ -6403,7 +6403,7 @@ async function pullSettingsFromSupabase() {
     var code = params.get('code');
     if (code && window.opener && !window.opener.closed) {
       try { window.opener.postMessage({ type: 'stafflo_oauth_code', code: code, state: params.get('state') }, location.origin); } catch(e){}
-      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:DM Sans,sans-serif"><h2>✅ Connecté</h2><p>Cette fenêtre va se fermer...</p></div>';
+      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:DM Sans,sans-serif"><h2>✅ '+(typeof lang!=='undefined'&&lang==='fr'?'Connecté':'Connected')+'</h2><p>'+(typeof lang!=='undefined'&&lang==='fr'?'Cette fenêtre va se fermer...':'This window will close...')+'</p></div>';
       setTimeout(function(){ window.close(); }, 800);
       return;
     }
@@ -6413,7 +6413,7 @@ async function pullSettingsFromSupabase() {
     var token = hp.get('access_token');
     if (token && window.opener && !window.opener.closed) {
       try { window.opener.postMessage({ type: 'stafflo_oauth_token', access_token: token, expires_in: hp.get('expires_in'), state: hp.get('state') }, location.origin); } catch(e){}
-      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:DM Sans,sans-serif"><h2>✅ Connecté</h2><p>Cette fenêtre va se fermer...</p></div>';
+      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:DM Sans,sans-serif"><h2>✅ '+(typeof lang!=='undefined'&&lang==='fr'?'Connecté':'Connected')+'</h2><p>'+(typeof lang!=='undefined'&&lang==='fr'?'Cette fenêtre va se fermer...':'This window will close...')+'</p></div>';
       setTimeout(function(){ window.close(); }, 800);
     }
   } catch(e){}
@@ -8681,7 +8681,7 @@ function openDetail(id) {
       hdr += '<span style="font-size:9px;letter-spacing:2px;color:var(--muted)">'+(lang==='fr'?'INFOS CLIENT (✏️ double-clic pour modifier)':'CLIENT INFO (✏️ double-click to edit)')+'</span>';
       hdr += '<button onclick="showContextHistory(\''+cl.id+'\')" style="background:none;border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;color:var(--muted);font-family:DM Sans,sans-serif">📜 Historique</button>';
       hdr += '</div>';
-      zone.innerHTML = nonMeals.length ? hdr + formatContextForDisplay(nonMeals, cl.id, true) : hdr + '<div style="font-size:11px;color:var(--muted);font-style:italic">Aucune info structurée. Tape "infos ' + (cl.name||'').split(' ')[0] + ' : ..." dans le chat.</div>';
+      zone.innerHTML = nonMeals.length ? hdr + formatContextForDisplay(nonMeals, cl.id, true) : hdr + '<div style="font-size:11px;color:var(--muted);font-style:italic">'+(lang==='fr'?'Aucune info structurée. Tape "infos '+((cl.name||'').split(' ')[0])+' : ..." dans le chat.':'No structured info. Type "infos '+((cl.name||'').split(' ')[0])+': ..." in the chat.')+'</div>';
     }
 
     // Display meals as editable plan
@@ -10054,7 +10054,7 @@ async function handleMealRecap(parts, chefName) {
     var jsonMatch = (extractedRaw || '').match(/\{[\s\S]*\}/);
     if (jsonMatch) extracted = JSON.parse(jsonMatch[0]);
   } catch(e) {
-    addChatBubble('ai', '⚠ Extraction repas a échoué: ' + (e.message || 'erreur'), [
+    addChatBubble('ai', '⚠ '+(lang==='fr'?'Extraction repas a échoué: ':'Meal extraction failed: ') + (e.message || (lang==='fr'?'erreur':'error')), [
       { label: '👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' }
     ]);
     return;
@@ -15361,10 +15361,10 @@ function renderFlights() {
     : marrakechDate.toLocaleDateString('fr', {weekday:'long', day:'numeric', month:'long'});
   const marrakechTime = marrakechDate.toLocaleTimeString('fr', {hour:'2-digit', minute:'2-digit'});
 
-  document.getElementById('factorFlights').textContent = data.length + ' routes ' + (isArr ? 'arr.' : 'dép.') + ' RAK';
+  document.getElementById('factorFlights').textContent = data.length + ' routes ' + (isArr ? (fr?'arr.':'arr.') : (fr?'dép.':'dep.')) + ' RAK';
 
   if (!data.length) {
-    document.getElementById('flightsContent').innerHTML = `<div style="padding:20px;text-align:center;font-size:12px;color:var(--text3)">Aucun vol trouvé pour "${search}"<br><span style="font-size:11px">Essayez: Paris, CDG, London, LHR, AT504...</span></div>`;
+    document.getElementById('flightsContent').innerHTML = `<div style="padding:20px;text-align:center;font-size:12px;color:var(--text3)">${fr?'Aucun vol trouvé pour':'No flights found for'} "${search}"<br><span style="font-size:11px">${fr?'Essayez: Paris, CDG, London, LHR, AT504...':'Try: Paris, CDG, London, LHR, AT504...'}</span></div>`;
     return;
   }
 
@@ -15422,16 +15422,16 @@ function showDay(day) {
 async function fetchLiveFlights() {
   const count = getReqCount();
   if (count >= 100) {
-    alert('Quota mensuel atteint (100 requêtes). Recharge le 1er du mois prochain.');
+    alert(fr?'Quota mensuel atteint (100 requêtes). Recharge le 1er du mois prochain.':'Monthly quota reached (100 requests). Resets on the 1st of next month.');
     return;
   }
 
-  const confirm = window.confirm(`Utiliser 1 requête API AviationStack ?\n\nUtilisées ce mois : ${count}/100\nRestantes : ${100-count}`);
+  const confirm = window.confirm(fr?`Utiliser 1 requête API AviationStack ?\n\nUtilisées ce mois : ${count}/100\nRestantes : ${100-count}`:`Use 1 AviationStack API request?\n\nUsed this month: ${count}/100\nRemaining: ${100-count}`);
   if (!confirm) return;
 
   const status = document.getElementById('liveFlightStatus');
   status.style.display = 'block';
-  status.textContent = 'Chargement données live AviationStack...';
+  status.textContent = fr?'Chargement données live AviationStack...':'Loading live AviationStack data...';
   status.style.background = '#FAEEDA';
   status.style.color = '#854F0B';
 
@@ -15445,16 +15445,16 @@ async function fetchLiveFlights() {
     const data = await r.json();
     incrementReqCount();
 
-    if (!data.data || !data.data.length) throw new Error('Pas de données');
+    if (!data.data || !data.data.length) throw new Error(fr?'Pas de données':'No data');
 
     const flights = data.data;
     status.style.background = '#EAF3DE';
     status.style.color = '#3B6D11';
-    status.textContent = `✓ ${flights.length} vols live chargés · Requêtes utilisées : ${getReqCount()}/100`;
+    status.textContent = fr?`✓ ${flights.length} vols live chargés · Requêtes : ${getReqCount()}/100`:`✓ ${flights.length} live flights loaded · Requests: ${getReqCount()}/100`;
 
     document.getElementById('flightsContent').innerHTML = `
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px">
-        ${flights.length} vols ${isArr?'arrivées':'départs'} RAK — données temps réel
+        ${flights.length} ${fr?'vols':'flights'} ${isArr?(fr?'arrivées':'arrivals'):(fr?'départs':'departures')} RAK — ${fr?'données temps réel':'real-time data'}
       </div>
       ${flights.map(f => {
         const code = isArr ? (f.departure?.iata||'?') : (f.arrival?.iata||'?');
@@ -15481,7 +15481,7 @@ async function fetchLiveFlights() {
     incrementReqCount();
     status.style.background = '#FCEBEB';
     status.style.color = '#A32D2D';
-    status.textContent = 'Erreur API — vérifiez votre clé ou votre quota. Horaires habituels affichés.';
+    status.textContent = fr?'Erreur API — vérifiez votre clé ou votre quota. Horaires habituels affichés.':'API error — check your key or quota. Default schedules shown.';
     renderFlights();
   }
 }
@@ -17454,7 +17454,7 @@ function owRenderStaff() {
   var box = document.getElementById('owStaffList');
   if (!box) return;
   if (!_ow.staff.length) {
-    box.innerHTML = '<div style="font-size:12px;color:var(--faint);font-style:italic;padding:10px 0;text-align:center">Aucun staff ajouté pour le moment</div>';
+    box.innerHTML = '<div style="font-size:12px;color:var(--faint);font-style:italic;padding:10px 0;text-align:center">'+(lang==='fr'?'Aucun staff ajouté pour le moment':'No staff added yet')+'</div>';
     return;
   }
   var html = '';
@@ -18789,7 +18789,7 @@ function sendAriaModal() {
     if (attach) {
       var fileLine = document.createElement('div');
       fileLine.style.cssText = 'font-size:11px;opacity:.85;margin-bottom:4px;display:flex;align-items:center;gap:6px';
-      fileLine.innerHTML = '<span>📎</span><span>' + (attach.filename || 'fichier') + '</span>';
+      fileLine.innerHTML = '<span>📎</span><span>' + (attach.filename || (fr()?'fichier':'file')) + '</span>';
       u.appendChild(fileLine);
     }
     if (displayText) {
@@ -18817,14 +18817,14 @@ function sendAriaModal() {
     if (body) {
       typing = document.createElement('div');
       typing.className = 'aria-modal-bubble aria';
-      typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--muted)">📎 Lecture du fichier…</span>';
+      typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--muted)">📎 '+(fr()?'Lecture du fichier…':'Reading file…')+'</span>';
       body.appendChild(typing);
       body.scrollTop = body.scrollHeight;
     }
 
     var endpoint = (typeof STAFFLO_PROXY !== 'undefined' && STAFFLO_PROXY) ? STAFFLO_PROXY : null;
     if (!endpoint) {
-      if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">Proxy non configuré.</span>';
+      if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">'+(fr()?'Proxy non configuré.':'Proxy not configured.')+'</span>';
       return;
     }
     fetch(endpoint, {
@@ -18848,7 +18848,7 @@ function sendAriaModal() {
       // Persist to Supabase
       try {
         if (typeof saveChatMessage === 'function') {
-          saveChatMessage('user', '[📎 ' + (attach.filename||'fichier') + '] ' + (text||''), null, null);
+          saveChatMessage('user', '[📎 ' + (attach.filename||(fr()?'fichier':'file')) + '] ' + (text||''), null, null);
           saveChatMessage('assistant', reply, null, null);
         }
       } catch(e){}
@@ -18922,7 +18922,7 @@ function handleAriaFile(file) {
     var sb = document.getElementById('ariaModalSendBtn');
     if (sb) sb.disabled = false;
   };
-  reader.onerror = function() { alert('Erreur lecture fichier'); };
+  reader.onerror = function() { alert(lang==='fr'?'Erreur lecture fichier':'Error reading file'); };
   reader.readAsDataURL(file);
 }
 function clearAriaAttachment() {
@@ -29718,7 +29718,7 @@ window.addEventListener('DOMContentLoaded', function() {
         if (typeof window.addChatBubble === 'function') {
           var typing = document.getElementById('chatTyping');
           if (typing) typing.style.display = 'none';
-          window.addChatBubble('ai', resp || 'Erreur template.', [{ label:'👍 OK', cls:'yes', fn:'dismissChatAction(this)' }]);
+          window.addChatBubble('ai', resp || (lang==='fr'?'Erreur template.':'Template error.'), [{ label:'👍 OK', cls:'yes', fn:'dismissChatAction(this)' }]);
         }
         return;
       }
