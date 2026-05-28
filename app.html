@@ -18787,6 +18787,172 @@ function stopAriaChatMirror() {
   }
 }
 
+// ════════════════════════════════════════════
+// ARIA EXECUTABLE ACTIONS — run app functions directly from text/voice before
+// falling through to the LLM. Patterns are start-anchored and tight so normal
+// questions ("quel prix pour 5 nuits en juillet") still reach the LLM.
+// ════════════════════════════════════════════
+function _ariaNorm(s) {
+  return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+function _ariaFindClient(name) {
+  var q = _ariaNorm(name).replace(/[?.!,]+$/, '').trim();
+  if (!q || typeof clients === 'undefined' || !Array.isArray(clients)) return null;
+  var pool = clients.filter(function(c) { return c && c.name && !c.deleted_at; });
+  var exact = pool.find(function(c) { return _ariaNorm(c.name) === q; });
+  if (exact) return exact;
+  return pool.find(function(c) {
+    var n = _ariaNorm(c.name);
+    if (n.indexOf(q) !== -1) return true;
+    return n.split(/\s+/).some(function(tok) { return tok && (tok === q || tok.indexOf(q) === 0); });
+  }) || null;
+}
+
+function _ariaAddAriaBubble(msg) {
+  var body = document.getElementById('ariaModalMessages');
+  if (!body) return;
+  var d = document.createElement('div');
+  d.className = 'aria-modal-bubble aria';
+  var strong = document.createElement('strong'); strong.textContent = 'ARIA';
+  d.appendChild(strong);
+  d.appendChild(document.createTextNode(' · '));
+  var span = document.createElement('span'); span.textContent = msg;
+  d.appendChild(span);
+  body.appendChild(d);
+  body.scrollTop = body.scrollHeight;
+}
+
+function _ariaGoTab(tab) { try { goTab(tab); } catch(e) {} }
+function _ariaCloseSoon() { setTimeout(function() { try { closeAriaModal(); } catch(e) {} }, 800); }
+function _ariaSetCrmFilter(f) {
+  _ariaGoTab('clients');
+  var b = document.querySelector('.cf-btn[data-f="' + f + '"]');
+  if (b) { try { setFilter(f, b); } catch(e) {} }
+}
+function _ariaQuick(kind) { try { (window.ariaQuickAction || ariaQuickAction)(kind); } catch(e) {} }
+function _ariaNotFound(name, fr) {
+  return { fn: null, msg: '❌ ' + (fr ? 'Client « ' + name + ' » introuvable' : 'Client "' + name + '" not found') };
+}
+
+function ariaDetectAction(text) {
+  if (!text) return null;
+  var raw = text.trim();
+  if (!raw || raw.length > 200) return null;          // skip empties + long pastes
+  if (/^__orchestrator/.test(raw)) return null;
+  var t = _ariaNorm(raw);
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var prep = "(?:la |le |les |l'|the |de |du |des |of |d'|d )?";
+  var m;
+
+  // ── 1. NAVIGATION ──
+  if (/^(?:ouvre|va (?:sur|a)|go to|open|montre|affiche)\s+(?:today|dashboard|tableau|accueil)\b/.test(t))
+    return { fn: function() { _ariaGoTab('today'); _ariaCloseSoon(); }, msg: fr ? '📋 Onglet Today ouvert' : '📋 Today tab opened' };
+  if (/^(?:ouvre|va (?:sur|a)|go to|open|montre|affiche)\s+(?:guests?|clients?|invites?)\b/.test(t))
+    return { fn: function() { _ariaGoTab('clients'); _ariaCloseSoon(); }, msg: fr ? '👥 Onglet Clients ouvert' : '👥 Guests tab opened' };
+  if (/^(?:ouvre|va (?:sur|a)|go to|open|montre|affiche)\s+(?:villa|maison|home)\b/.test(t))
+    return { fn: function() { _ariaGoTab('home'); _ariaCloseSoon(); }, msg: fr ? '🏡 Onglet Villa ouvert' : '🏡 Villa tab opened' };
+  if (/^(?:ouvre|open|go to|va (?:sur|a))\s+(?:settings?|reglages?|parametres?|preferences?)\b/.test(t))
+    return { fn: function() { try { openSettings(); } catch(e) {} }, msg: fr ? '⚙️ Réglages ouverts' : '⚙️ Settings opened' };
+  if (/^(?:ouvre|open|montre|affiche)\s+(?:inbox|emails?|mails?|boite)\b/.test(t))
+    return { fn: function() { _ariaGoTab('today'); setTimeout(function() { var el = document.getElementById('inboxList'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 250); _ariaCloseSoon(); }, msg: fr ? '📥 Inbox' : '📥 Inbox' };
+
+  // ── 2. CLIENT ACTIONS — explicit verbs (name follows verb + prepositions) ──
+  if ((m = t.match(new RegExp('^(?:supprime|supprimer|efface|delete|remove)\\s+(?:fiche |client |guest )?' + prep + '(.+)$')))) {
+    var cd = _ariaFindClient(m[1]);
+    if (cd) return { fn: function() { try { deleteClient(cd.id); } catch(e) {} }, msg: '🗑 ' + (fr ? cd.name + ' supprimé — utilisez le toast pour annuler' : cd.name + ' deleted — use the toast to undo') };
+    return _ariaNotFound(m[1].trim(), fr);
+  }
+  if ((m = t.match(new RegExp('^(?:modifie|modifier|edite|editer|edit)\\s+(?:fiche |client )?' + prep + '(.+)$')))) {
+    var ce = _ariaFindClient(m[1]);
+    if (ce) return { fn: function() { try { openForm(ce.id); } catch(e) {} }, msg: '✏️ ' + (fr ? 'Modification de ' + ce.name : 'Editing ' + ce.name) };
+    return _ariaNotFound(m[1].trim(), fr);
+  }
+  if ((m = t.match(new RegExp('^(?:whatsapp|wa|message|msg|texte|envoie(?:r)? un (?:message|msg|whatsapp|sms) a)\\s+' + prep + '(.+)$')))) {
+    var cw = _ariaFindClient(m[1]);
+    if (cw) {
+      var ph = (cw.phone || '').replace(/[^0-9]/g, '');
+      if (!ph) return { fn: null, msg: '❌ ' + (fr ? 'Pas de numéro pour ' + cw.name : 'No phone for ' + cw.name) };
+      return { fn: function() { window.open('https://wa.me/' + ph, '_blank'); }, msg: '💬 ' + (fr ? 'WhatsApp ouvert · ' + cw.name : 'WhatsApp opened · ' + cw.name) };
+    }
+    return _ariaNotFound(m[1].trim(), fr);
+  }
+  if ((m = t.match(new RegExp('^(?:email|emaile|mail|maile|ecris un (?:email|mail) a)\\s+' + prep + '(.+)$')))) {
+    var cm2 = _ariaFindClient(m[1]);
+    if (cm2) {
+      if (!cm2.email) return { fn: null, msg: '❌ ' + (fr ? "Pas d'email pour " + cm2.name : 'No email for ' + cm2.name) };
+      return { fn: function() { window.open('mailto:' + cm2.email, '_blank'); }, msg: '✉️ ' + (fr ? 'Email ouvert · ' + cm2.name : 'Email opened · ' + cm2.name) };
+    }
+    return _ariaNotFound(m[1].trim(), fr);
+  }
+  if ((m = t.match(new RegExp('^(?:appelle|appeler|telephone|call|phone)\\s+' + prep + '(.+)$')))) {
+    var cc = _ariaFindClient(m[1]);
+    if (cc) {
+      var ph2 = (cc.phone || '').replace(/[^0-9+]/g, '');
+      if (!ph2) return { fn: null, msg: '❌ ' + (fr ? 'Pas de numéro pour ' + cc.name : 'No phone for ' + cc.name) };
+      return { fn: function() { window.open('tel:' + ph2, '_blank'); }, msg: '📞 ' + (fr ? 'Appel · ' + cc.name : 'Calling · ' + cc.name) };
+    }
+    return _ariaNotFound(m[1].trim(), fr);
+  }
+  if (/^(?:ajoute|ajouter|nouveau|nouvelle|new|add)\s+(?:un |une |a )?(?:client|guest|sejour|stay|reservation|booking)\b/.test(t))
+    return { fn: function() { try { openForm(); } catch(e) {} }, msg: fr ? '➕ Nouveau client' : '➕ New guest' };
+
+  // ── 3. FILTERS & SEARCH ──
+  if (/^(?:cherche|recherche|trouve|search|find)\s+.+/.test(t)) {
+    var sm = raw.replace(/^(?:cherche|recherche|trouve|search|find)\s+/i, '').trim();
+    return { fn: function() { _ariaGoTab('clients'); var el = document.getElementById('crmSearch'); if (el) { el.value = sm; try { renderClients(); } catch(e) {} } }, msg: '🔍 ' + (fr ? 'Recherche : ' + sm : 'Searching: ' + sm) };
+  }
+  if (/^(?:montre |affiche |show )?(?:les )?(?:demandes|leads|inquir)/.test(t))
+    return { fn: function() { _ariaSetCrmFilter('inquiry'); }, msg: fr ? '💬 Demandes actives' : '💬 Active inquiries' };
+  if (/^(?:qui est |montre |show )?(?:les )?(?:en house|en cours|in.?house|current|sur place)\b/.test(t))
+    return { fn: function() { _ariaSetCrmFilter('current'); }, msg: fr ? '🏠 Clients en cours' : '🏠 Current guests' };
+  if (/^(?:prochaines? arrivees?|montre (?:les )?arrivees|show upcoming|upcoming|a venir)\b/.test(t))
+    return { fn: function() { _ariaSetCrmFilter('upcoming'); }, msg: fr ? '📅 Prochaines arrivées' : '📅 Upcoming arrivals' };
+  if (/^(?:montre tous|tous les clients|show all|reset (?:le )?filtre?|tout afficher)\b/.test(t))
+    return { fn: function() { _ariaSetCrmFilter('all'); }, msg: fr ? '👥 Tous les clients' : '👥 All guests' };
+
+  // ── 4. PRICING & VILLA ──
+  if (/^(?:prix ce soir|prix maintenant|prix du jour|tonight'?s price)\b/.test(t))
+    return { fn: function() { _ariaGoTab('home'); _ariaCloseSoon(); }, msg: fr ? '💰 Prix du jour (onglet Villa)' : "💰 Tonight's price (Villa tab)" };
+  if (/^(?:copie(?:r)? le prix|copy (?:the )?price)\b/.test(t))
+    return { fn: function() { try { copyPrice(); } catch(e) {} }, msg: fr ? '📋 Prix copié' : '📋 Price copied' };
+  if (/^(?:rafraichis|rafraichir|refresh|actualise|reload)\s+(?:le )?brief\b/.test(t))
+    return { fn: function() { try { loadMorningBrief(true); } catch(e) {} }, msg: fr ? '🔄 Brief actualisé' : '🔄 Brief refreshed' };
+  if (/^(?:synchronise(?:r)?|sync|synchro)\b/.test(t))
+    return { fn: function() { try { syncNow(); } catch(e) {} }, msg: fr ? '🔄 Synchronisation…' : '🔄 Syncing…' };
+
+  // ── 5. SYSTEM ──
+  if (/^(?:change (?:la )?langue|switch language|passe en (?:anglais|francais)|toggle lang)\b/.test(t))
+    return { fn: function() { try { toggleLang(); } catch(e) {} }, msg: fr ? '🌐 Langue changée' : '🌐 Language switched' };
+  if (/^(?:exporte(?:r)?|export|telecharge(?:r)? (?:les )?donnees)\b/.test(t))
+    return { fn: function() { try { exportData(); } catch(e) {} }, msg: fr ? '📤 Export lancé' : '📤 Export started' };
+  if (/^(?:ouvre (?:la )?memoire|aria memory|memoire aria|edit memory)\b/.test(t))
+    return { fn: function() { try { (window.openAriaMemoryEditor || function() {})(); } catch(e) {} }, msg: fr ? '🧠 Mémoire ARIA' : '🧠 ARIA memory' };
+
+  // ── 6. QUICK ACTIONS — bare phrase only (anchored to end) ──
+  if (/^(?:brief staff|checklist staff|staff brief|staff checklist)\s*[?.!]*$/.test(t))
+    return { fn: function() { _ariaQuick('checklist'); }, msg: fr ? '📋 Checklist staff' : '📋 Staff checklist' };
+  if (/^(?:redige (?:un )?email|draft (?:an )?email|nouvel email|new email|compose email)\s*[?.!]*$/.test(t))
+    return { fn: function() { _ariaQuick('email'); }, msg: fr ? "✉️ Rédaction d'email" : '✉️ Draft email' };
+  if (/^(?:analyse (?:ce |un )?message|analyze (?:this |a )?message)\s*[?.!]*$/.test(t))
+    return { fn: function() { _ariaQuick('analyze'); }, msg: fr ? '🔍 Analyse de message' : '🔍 Analyze message' };
+  if (/^(?:suggere (?:un )?prix|suggest (?:a )?price|propose (?:un )?prix)\s*[?.!]*$/.test(t))
+    return { fn: function() { _ariaQuick('price'); }, msg: fr ? '💰 Suggestion de prix' : '💰 Suggest price' };
+
+  // ── 7. GENERIC CLIENT OPEN — last, so filters/nav win first ──
+  if ((m = t.match(new RegExp('^(?:ouvre|open|montre|affiche|show|details?|detail|fiche|profil|profile)\\s+' + prep + '(?:fiche|profil|profile|details?|detail|info)?\\s*' + prep + '(.+)$')))) {
+    var name = m[1].trim();
+    if (/^(?:today|dashboard|tableau|guests?|clients?|invites?|villa|maison|home|settings?|reglages?|parametres?|inbox|emails?|mails?|tous|all|demandes?|leads?|arrivees?|upcoming|current)\b/.test(_ariaNorm(name))) return null;
+    var co = _ariaFindClient(name);
+    if (co) return { fn: function() { try { openDetail(co.id); } catch(e) {} }, msg: '📋 ' + (fr ? 'Fiche de ' + co.name + ' ouverte' : co.name + "'s profile opened") };
+    // No client found: only claim "not found" when intent is explicit (fiche/profil/détails); otherwise let the LLM answer.
+    if (/\b(?:fiche|profil|profile|details?|detail)\b/.test(t)) return _ariaNotFound(name, fr);
+    return null;
+  }
+
+  return null; // no action → fall through to the LLM
+}
+
 function sendAriaModal() {
   if (window._ariaAlreadySent) { window._ariaAlreadySent = false; return; }
   var input = document.getElementById('ariaModalInput');
@@ -18818,6 +18984,18 @@ function sendAriaModal() {
   }
   input.value = '';
   onAriaModalInput(input);
+
+  // ── Executable action? Run it directly and skip the LLM. ──
+  if (!attach) {
+    try {
+      var _ariaAct = ariaDetectAction(displayText);
+      if (_ariaAct) {
+        if (_ariaAct.fn) { try { _ariaAct.fn(); } catch(e) { console.warn('[ARIA action] exec failed', e); } }
+        _ariaAddAriaBubble(_ariaAct.msg);
+        return;
+      }
+    } catch(e) { console.warn('[ARIA action] detect failed', e); }
+  }
 
   // ── Path A: attachment present → call proxy directly with vision route ──
   if (attach) {
