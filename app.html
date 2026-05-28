@@ -24974,6 +24974,7 @@ window.addEventListener('DOMContentLoaded', function() {
         onpaste="setTimeout(function(){onAriaModalInput(document.getElementById('ariaModalInput'))},0)"
         onkeydown="ariaModalKeyDown(event)"
         autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true"></textarea>
+      <button class="aria-mic-btn" onclick="event.stopPropagation();toggleAriaMic(this)" aria-label="Voice input" data-fr-label="Entrée vocale" data-en-label="Voice input"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <button class="aria-send-btn" id="ariaModalSendBtn" onclick="sendAriaModal()" disabled>↑</button>
     </div>
   </div>
@@ -30366,11 +30367,12 @@ window.addEventListener('DOMContentLoaded', function() {
 
 var _ariaVoiceRecog = null;
 
-// Resolve the search input next to a mic button — works for both the v2
-// (.aria-hero-input-row) and gated v3 (.v3-hero-prompt-row) layouts.
+// Resolve the input next to a mic button — works for the v2 hero
+// (.aria-hero-input-row), gated v3 hero (.v3-hero-prompt-row), and the
+// ARIA modal input bar (.aria-modal-input-area).
 function _ariaVoiceInput(btn) {
-  var row = btn.closest('.aria-hero-input-row, .v3-hero-prompt-row');
-  return row ? row.querySelector('.aria-hero-input, .v3-hero-input') : null;
+  var row = btn.closest('.aria-hero-input-row, .v3-hero-prompt-row, .aria-modal-input-area');
+  return row ? row.querySelector('.aria-hero-input, .v3-hero-input, .aria-modal-textarea') : null;
 }
 
 function toggleAriaMic(btn) {
@@ -30423,7 +30425,15 @@ function toggleAriaMic(btn) {
     var text = (finalTranscript || input.value || '').trim();
     if (text && hadResult) {
       input.value = text;
-      setTimeout(function() { sendAriaSearchToModal(input); }, 300);
+      setTimeout(function() {
+        if (input.id === 'ariaModalInput') {
+          // Already inside the ARIA modal — send the follow-up in place.
+          if (typeof onAriaModalInput === 'function') onAriaModalInput(input);
+          if (typeof sendAriaModal === 'function') sendAriaModal();
+        } else {
+          sendAriaSearchToModal(input);
+        }
+      }, 300);
     }
   };
 
