@@ -30346,26 +30346,27 @@ window.addEventListener('DOMContentLoaded', function() {
 </script>
 <script>
 // ════════════════════════════════════════════
-// ARIA VOICE INPUT — Phase 1
-// Web Speech API: tap mic → listen → fill input → auto-send
+// ARIA VOICE INPUT — MediaRecorder + Groq Whisper (via Supabase /transcribe)
+// Tap mic → record → tap again (or 20s cap) → transcribe → fill input → auto-send.
+// No Web Speech / Google dependency: works in Chrome, Safari (incl. PWA), Firefox —
+// anywhere getUserMedia + MediaRecorder exist.
 // ════════════════════════════════════════════
+var STAFFLO_TRANSCRIBE_URL = (typeof SB_URL !== 'undefined' ? SB_URL : 'https://rcjhgilpmojohmrqzokx.supabase.co') + '/functions/v1/transcribe';
+
 (function initAriaVoice() {
-  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
+  var supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  if (!supported) {
     document.querySelectorAll('.aria-mic-btn').forEach(function(b) { b.classList.add('unsupported'); });
-    console.log('[ARIA Voice] SpeechRecognition not supported');
+    console.log('[ARIA Voice] MediaRecorder/getUserMedia unsupported — mic hidden');
     return;
   }
-  // Safari PWA standalone mode has no Web Speech support
-  if (window.navigator.standalone === true) {
-    document.querySelectorAll('.aria-mic-btn').forEach(function(b) { b.classList.add('unsupported'); });
-    console.log('[ARIA Voice] Safari PWA mode — voice disabled');
-    return;
-  }
-  console.log('[ARIA Voice] Ready');
+  console.log('[ARIA Voice] Ready (MediaRecorder + Groq Whisper)');
 })();
 
-var _ariaVoiceRecog = null;
+// Pointer to the single active recording context (null when idle).
+var _av = null;
+
+function _ariaFr() { return (typeof lang !== 'undefined' && lang === 'fr'); }
 
 // Resolve the input next to a mic button — works for the v2 hero
 // (.aria-hero-input-row), gated v3 hero (.v3-hero-prompt-row), and the
@@ -30375,105 +30376,120 @@ function _ariaVoiceInput(btn) {
   return row ? row.querySelector('.aria-hero-input, .v3-hero-input, .aria-modal-textarea') : null;
 }
 
-function toggleAriaMic(btn) {
-  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) return;
+function _ariaRestorePlaceholder(input) {
+  if (input && input.dataset.origPlaceholder !== undefined) {
+    input.placeholder = input.dataset.origPlaceholder;
+    delete input.dataset.origPlaceholder;
+  }
+}
 
-  if (btn.classList.contains('listening')) { stopAriaMic(btn); return; }
-  document.querySelectorAll('.aria-mic-btn.listening').forEach(function(b) { stopAriaMic(b); });
+function _ariaReleaseStream(ctx) {
+  if (ctx && ctx.stream) {
+    try { ctx.stream.getTracks().forEach(function(t) { t.stop(); }); } catch(e) {}
+    ctx.stream = null;
+  }
+}
+
+// Stop the active recording. cancel=true discards it; cancel=false transcribes it.
+function _ariaFinishRecording(cancel) {
+  var ctx = _av;
+  if (!ctx || !ctx.rec) return;
+  ctx.cancelled = !!cancel;
+  if (ctx.cap) { clearTimeout(ctx.cap); ctx.cap = null; }
+  if (ctx.rec.state === 'recording') { try { ctx.rec.stop(); } catch(e) {} }
+}
+
+function toggleAriaMic(btn) {
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder)) return;
+  // Tap an already-recording mic → stop and transcribe.
+  if (btn.classList.contains('listening')) { _ariaFinishRecording(false); return; }
+  // A different mic is mid-recording → discard it first.
+  if (_av && _av.rec) _ariaFinishRecording(true);
 
   var input = _ariaVoiceInput(btn);
   if (!input) return;
 
-  var recognition = new SpeechRecognition();
-  recognition.lang = (typeof lang !== 'undefined' && lang === 'en') ? 'en-US' : 'fr-FR';
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  recognition.maxAlternatives = 1;
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+    var rec;
+    try { rec = new MediaRecorder(stream); }
+    catch (e) { try { stream.getTracks().forEach(function(t) { t.stop(); }); } catch(_) {} return; }
 
-  var finalTranscript = '';
-  var hadResult = false;
+    var chunks = [];
+    var ctx = { rec: rec, stream: stream, btn: btn, input: input, cancelled: false, cap: null };
+    _av = ctx;
 
-  recognition.onstart = function() {
+    rec.ondataavailable = function(e) { if (e.data && e.data.size) chunks.push(e.data); };
+
+    rec.onerror = function() {
+      _ariaReleaseStream(ctx);
+      if (_av === ctx) _av = null;
+      btn.classList.remove('listening');
+      _ariaRestorePlaceholder(input);
+    };
+
+    rec.onstop = function() {
+      _ariaReleaseStream(ctx);
+      if (_av === ctx) _av = null;
+      btn.classList.remove('listening');
+      if (ctx.cancelled) { _ariaRestorePlaceholder(input); return; }
+      var blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+      if (!blob.size) { _ariaRestorePlaceholder(input); return; }
+      input.placeholder = _ariaFr() ? '⏳ Transcription…' : '⏳ Transcribing…';
+      _ariaTranscribe(blob, function(text, err) {
+        _ariaRestorePlaceholder(input);
+        var fr = _ariaFr();
+        if (err) { if (typeof toast === 'function') toast(fr ? '🎤 Transcription échouée — réessayez' : '🎤 Transcription failed — try again'); return; }
+        if (!text) { if (typeof toast === 'function') toast(fr ? '🎤 Aucune voix détectée — réessayez' : '🎤 No speech detected — try again'); return; }
+        input.value = text;
+        setTimeout(function() { _ariaVoiceAutoSend(input); }, 150);
+      });
+    };
+
     btn.classList.add('listening');
     input.dataset.origPlaceholder = input.placeholder;
-    var fr = (typeof lang !== 'undefined' && lang === 'fr');
-    input.placeholder = fr ? '🎤 Parlez maintenant…' : '🎤 Listening…';
-    input.value = '';
-    input.focus();
-  };
+    input.placeholder = _ariaFr() ? '🎤 Parlez… (tapez pour arrêter)' : '🎤 Listening… (tap to stop)';
 
-  recognition.onresult = function(event) {
-    hadResult = true;
-    var interim = '';
-    finalTranscript = '';
-    for (var i = event.resultIndex; i < event.results.length; i++) {
-      var transcript = event.results[i][0].transcript;
-      if (event.results[i].isFinal) { finalTranscript += transcript; }
-      else { interim += transcript; }
-    }
-    input.value = finalTranscript || interim;
-  };
-
-  recognition.onend = function() {
+    rec.start();
+    ctx.cap = setTimeout(function() { if (rec.state === 'recording') { try { rec.stop(); } catch(e) {} } }, 20000);
+  }).catch(function(err) {
     btn.classList.remove('listening');
-    if (input.dataset.origPlaceholder) {
-      input.placeholder = input.dataset.origPlaceholder;
-      delete input.dataset.origPlaceholder;
+    var fr = _ariaFr();
+    var denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+    if (typeof toast === 'function') {
+      toast(denied ? (fr ? '🎤 Accès micro refusé — vérifiez les permissions' : '🎤 Mic access denied — check permissions')
+                   : (fr ? '🎤 Micro indisponible' : '🎤 Mic unavailable'));
     }
-    _ariaVoiceRecog = null;
-    var text = (finalTranscript || input.value || '').trim();
-    if (text && hadResult) {
-      input.value = text;
-      setTimeout(function() {
-        if (input.id === 'ariaModalInput') {
-          // Already inside the ARIA modal — send the follow-up in place.
-          if (typeof onAriaModalInput === 'function') onAriaModalInput(input);
-          if (typeof sendAriaModal === 'function') sendAriaModal();
-        } else {
-          sendAriaSearchToModal(input);
-        }
-      }, 300);
-    }
-  };
-
-  recognition.onerror = function(event) {
-    btn.classList.remove('listening');
-    if (input.dataset.origPlaceholder) {
-      input.placeholder = input.dataset.origPlaceholder;
-      delete input.dataset.origPlaceholder;
-    }
-    _ariaVoiceRecog = null;
-    var fr = (typeof lang !== 'undefined' && lang === 'fr');
-    if (event.error === 'not-allowed') {
-      if (typeof toast === 'function') toast(fr ? '🎤 Accès micro refusé — vérifiez les permissions du navigateur' : '🎤 Mic access denied — check browser permissions');
-    } else if (event.error === 'no-speech') {
-      if (typeof toast === 'function') toast(fr ? '🎤 Aucune voix détectée — réessayez' : '🎤 No speech detected — try again');
-    } else if (event.error === 'network') {
-      if (typeof toast === 'function') toast(fr ? '🎤 Erreur réseau — connexion requise pour la voix' : '🎤 Network error — voice requires internet');
-    }
-    console.warn('[ARIA Voice] Error:', event.error);
-  };
-
-  // 30s safety timeout
-  var safetyTimer = setTimeout(function() {
-    if (_ariaVoiceRecog) { try { _ariaVoiceRecog.stop(); } catch(e) {} }
-  }, 30000);
-  recognition.addEventListener('end', function() { clearTimeout(safetyTimer); });
-
-  _ariaVoiceRecog = recognition;
-  try { recognition.start(); }
-  catch(e) { btn.classList.remove('listening'); console.warn('[ARIA Voice] Start failed:', e); }
+    console.warn('[ARIA Voice] getUserMedia failed:', err);
+  });
 }
 
-function stopAriaMic(btn) {
-  btn.classList.remove('listening');
-  if (_ariaVoiceRecog) { try { _ariaVoiceRecog.abort(); } catch(e) {} _ariaVoiceRecog = null; }
-  var input = _ariaVoiceInput(btn);
-  if (input && input.dataset.origPlaceholder) {
-    input.placeholder = input.dataset.origPlaceholder;
-    delete input.dataset.origPlaceholder;
+function _ariaVoiceAutoSend(input) {
+  var text = (input.value || '').trim();
+  if (!text) return;
+  if (input.id === 'ariaModalInput') {
+    // Already inside the ARIA modal — send the follow-up in place.
+    if (typeof onAriaModalInput === 'function') onAriaModalInput(input);
+    if (typeof sendAriaModal === 'function') sendAriaModal();
+  } else {
+    if (typeof sendAriaSearchToModal === 'function') sendAriaSearchToModal(input);
   }
+}
+
+function _ariaTranscribe(blob, cb) {
+  var ext = blob.type.indexOf('mp4') !== -1 ? 'mp4' : (blob.type.indexOf('ogg') !== -1 ? 'ogg' : 'webm');
+  var fd = new FormData();
+  fd.append('file', blob, 'audio.' + ext);
+  fd.append('language', _ariaFr() ? 'fr' : 'en');
+  fetch(STAFFLO_TRANSCRIBE_URL, { method: 'POST', body: fd })
+    .then(function(r) { return r.json().then(function(j) { if (!r.ok) throw new Error(j.error || ('http ' + r.status)); return j; }); })
+    .then(function(d) { cb((d.text || '').trim(), null); })
+    .catch(function(e) { console.warn('[ARIA Voice] transcribe error:', e); cb('', e); });
+}
+
+// Cancel any active recording (kept for back-compat; HTML calls toggleAriaMic).
+function stopAriaMic(btn) {
+  _ariaFinishRecording(true);
+  if (btn) btn.classList.remove('listening');
 }
 </script>
 </body>
