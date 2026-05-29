@@ -4639,6 +4639,30 @@ function loadSessionLocal() {
   } catch(e){ return null; }
 }
 
+// When a DIFFERENT account signs in/up on this browser, clear the previous
+// user's cached data (stafflo_* / darj_* localStorage) so they never inherit
+// it. localStorage is the runtime source of truth, so without this a shared
+// device shows the prior owner's villa + clients. Keeps the new session + uid.
+function staffloWipeIfUserChanged(newUid) {
+  if (!newUid) return;
+  var lastUid = null;
+  try { lastUid = localStorage.getItem('stafflo_last_uid'); } catch(e){}
+  if (lastUid === newUid) return; // same account → keep cache
+  var removed = false;
+  try {
+    Object.keys(localStorage).forEach(function(k){
+      if ((k.indexOf('stafflo') === 0 || k.indexOf('darj_') === 0)
+          && k !== 'stafflo_session' && k !== 'stafflo_last_uid') {
+        localStorage.removeItem(k); removed = true;
+      }
+    });
+    localStorage.setItem('stafflo_last_uid', newUid);
+  } catch(e){}
+  // If a previous user's cache was present, reload so in-memory state resets and
+  // the new user loads only their own (RLS-scoped) Supabase rows.
+  if (removed) { try { location.reload(); } catch(e){} }
+}
+
 async function authSignIn(email, password) {
   var sb = (typeof SB_URL !== 'undefined') ? SB_URL : (getCfg().sbUrl);
   var anon = (typeof SB_ANON !== 'undefined') ? SB_ANON : (getCfg().sbKey);
@@ -4654,6 +4678,7 @@ async function authSignIn(email, password) {
   STAFFLO_AUTH.user = data.user;
   STAFFLO_AUTH.mode = 'authed';
   saveSessionLocal(data);
+  staffloWipeIfUserChanged(data.user && data.user.id);
   return data;
 }
 
@@ -4674,6 +4699,7 @@ async function authSignUp(email, password, meta) {
     STAFFLO_AUTH.user = data.user;
     STAFFLO_AUTH.mode = 'authed';
     saveSessionLocal(data);
+    staffloWipeIfUserChanged(data.user && data.user.id);
   }
   return data;
 }
@@ -6807,7 +6833,7 @@ async function analyze() {
   const guestLang  = hasArabic ? 'Arabic' : hasFrench ? 'French' : hasSpanish ? 'Spanish' : 'English';
 
   // ── Villa context ─────────────────────────────────────────────
-  const villaName  = cfg.villa  || 'Villa DarJ Marrakech';
+  const villaName  = cfg.villa  || 'Villa';
   const ownerName  = cfg.owner  || 'Jérémie';
   const cityName   = cfg.city   || 'Marrakech';
   const staffNames = cfg.staff  || 'Said (butler), Faiza (chef), Bouchra (housekeeping)';
