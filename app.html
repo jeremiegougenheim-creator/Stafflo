@@ -9979,6 +9979,14 @@ function buildClientsContextRich(maxItems) {
   var lines = [];
   lines.push('CRM Villa — date: ' + fmtDateHuman(todayISO) + ' (' + todayISO + ') · ' + confirmedOnly.length + ' confirmed · ' + leadsOnly.length + ' pipeline');
 
+  // Explicit today events so ARIA never has to derive who arrives/departs today.
+  var arrToday = confirmedOnly.filter(function(c){ return (c.arrival||'') === todayISO; });
+  var depToday = confirmedOnly.filter(function(c){ return (c.departure||'') === todayISO; });
+  lines.push((fr?'AUJOURD\'HUI — arrivées: ':'TODAY — arrivals: ')
+    + (arrToday.length ? arrToday.map(function(c){ return c.name||'?'; }).join(', ') : (fr?'aucune':'none'))
+    + (fr?' · départs: ':' · departures: ')
+    + (depToday.length ? depToday.map(function(c){ return c.name||'?'; }).join(', ') : (fr?'aucun':'none')));
+
   lines.push('');
   lines.push('=== CONFIRMED BOOKINGS ===');
   if (inHouse.length) {
@@ -10288,12 +10296,15 @@ async function handleChatQuestion(text) {
 
   var userCtx;
   if (isOrchestrator) {
-    var firmActive = clients.filter(function(cl){ return isFirmBooking(cl); });
+    // Use the same rich CRM context as the chat path so the orchestrator (briefs,
+    // action generation) sees in-house guests + today's arrivals/departures —
+    // not just a 5-name list. This is what made ARIA miss "checkout today".
+    var richCtxOrch = (typeof buildClientsContextRich === 'function')
+      ? buildClientsContextRich(8)
+      : (fr ? 'Clients confirmés' : 'Confirmed') + ': ' + clients.filter(function(cl){ return isFirmBooking(cl); }).slice(0,5).map(function(cl){ return cl.name + (cl.arrival?' arr:'+cl.arrival:''); }).join(' · ');
     userCtx = [
       (fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman,
-      (fr ? 'Clients confirmés' : 'Confirmed') + ': ' + firmActive.slice(0,5).map(function(cl) {
-        return cl.name + (cl.arrival?' arr:'+cl.arrival:'') + (cl.guests?' '+cl.guests+(fr?' pers':' guests'):'');
-      }).join(' · '),
+      richCtxOrch,
       '',
       'Situation: ' + text,
       '',
