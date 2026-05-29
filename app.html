@@ -18869,6 +18869,23 @@ function ariaDetectAction(text) {
     return { fn: function() { _ariaGoTab('today'); setTimeout(function() { var el = document.getElementById('inboxList'); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 250); _ariaCloseSoon(); }, msg: fr ? '📥 Inbox' : '📥 Inbox' };
 
   // ── 2. CLIENT ACTIONS — explicit verbs (name follows verb + prepositions) ──
+  // Set a guest price (checked first so "modifie le prix de X a N" beats the edit verb):
+  // "prix Emma 5000" · "set price for Emma to 5000" · "fixe le prix de Emma a 5000".
+  var priceMatch = t.match(/^(?:set |met(?:s|tre)? |change |update |modifie |fixe )?(?:le |the )?(?:prix|price)\s+(?:de |for |pour |du |of )?(.+?)\s+(?:a |to |= |: )?(\d{2,})\s*(?:€|euros?|eur)?$/);
+  if (priceMatch) {
+    var pName = priceMatch[1].trim();
+    var newPrice = parseInt(priceMatch[2], 10);
+    var cpp = _ariaFindClient(pName);
+    if (cpp && newPrice > 0) {
+      return { fn: function() {
+        cpp.price = newPrice;
+        try { if (typeof saveLocal === 'function') saveLocal(); } catch(e) {}
+        try { if (typeof pushToSupabase === 'function') pushToSupabase(cpp); } catch(e) {}
+        try { if (typeof renderAll === 'function') renderAll(); } catch(e) {}
+      }, msg: '💰 ' + (fr ? 'Prix de ' + cpp.name + ' → ' + newPrice + ' €' : cpp.name + ' price → ' + newPrice + ' €') };
+    }
+    if (!cpp) return _ariaNotFound(pName, fr);
+  }
   if ((m = t.match(new RegExp('^(?:supprime|supprimer|efface|delete|remove)\\s+(?:fiche |client |guest )?' + prep + '(.+)$')))) {
     var cd = _ariaFindClient(m[1]);
     if (cd) return { fn: function() { try { deleteClient(cd.id); } catch(e) {} }, msg: '🗑 ' + (fr ? cd.name + ' supprimé — utilisez le toast pour annuler' : cd.name + ' deleted — use the toast to undo') };
