@@ -6834,10 +6834,15 @@ async function analyze() {
 
   // ── Villa context ─────────────────────────────────────────────
   const villaName  = cfg.villa  || 'Villa';
-  const ownerName  = cfg.owner  || 'Jérémie';
-  const cityName   = cfg.city   || 'Marrakech';
-  const staffNames = cfg.staff  || 'Said (butler), Faiza (chef), Bouchra (housekeeping)';
+  const ownerName  = cfg.owner  || 'the owner';
+  const cityName   = cfg.city   || '';
+  const staffNames = cfg.staff  || '';
   const staffFirst = staffNames.split('\n')[0].replace(/\(.*?\)/g,'').trim();
+  // Empty-cfg safe fragments — omit the clause entirely rather than print a blank.
+  const cityComma   = cityName ? `, ${cityName}` : '';
+  const cityParen   = cityName ? ` (${cityName})` : '';
+  const staffClause = staffNames ? ` Staff: ${staffNames}.` : '';
+  const chefBit     = staffFirst ? `, chef ${staffFirst} available` : '';
   const gpsInfo    = cfg.gps    || 'to be confirmed';
 
   const inHouse    = clients.find(cl => isFirmBooking(cl) && cl.arrival <= today && cl.departure >= today);
@@ -6849,7 +6854,7 @@ async function analyze() {
   const p1System = buildExtractSystemPrompt(today);
 
   const p1Prompt = [
-    `Villa: ${villaName}, ${cityName}. Owner: ${ownerName}.`,
+    `Villa: ${villaName}${cityComma}. Owner: ${ownerName}.`,
     inHouse ? `In house: ${inHouse.name} until ${inHouse.departure}.` : '',
     clientCtx,
     '',
@@ -6914,7 +6919,7 @@ async function analyze() {
       .toLocaleDateString(guestLang === 'French' ? 'fr-FR' : 'en-GB', {day:'numeric',month:'long'}) : '?';
 
     const p2Prompt = [
-      `You generate guest messages for ${villaName} (${cityName}). Owner: ${ownerName}. Staff: ${staffNames}. GPS: ${gpsInfo}.`,
+      `You generate guest messages for ${villaName}${cityParen}. Owner: ${ownerName}.${staffClause} GPS: ${gpsInfo}.`,
       `Guest: ${gName}${g.nat?' '+g.nat:''}, ${g.guests||'?'} guests, ${arrFmt}–${depFmt}, ${g.nights||'?'} nights.`,
       g.notes ? `Notes: ${g.notes}` : '',
       isInquiry && g.question ? `Guest question: "${g.question}"` : '',
@@ -6923,7 +6928,7 @@ async function analyze() {
       `Write all 7 messages in ${guestLang}. Each must be complete, warm, and ready to send. Return ONLY valid JSON:`,
       isInquiry
         ? `{"messages":{"airbnb":"Complete reply to guest's inquiry. Answer EVERY question they asked with specific facts (distances in km+minutes, prices in MAD, exact amenities). Structure by topic. Add weather for their dates + transport options. Warm, personal tone ('my family home'). 15-30 lines. Sign ${ownerName}.","welcome":"pre-approval: highlight villa for their group size. Excite them.","driver":"airport transfer info.","staff":"internal note: guest profile + their question + what to prepare.","passport":"polite ID request, required by law.","checkout":"template for after stay, review request.","hostReview":"empty for inquiry"}}`
-        : `{"messages":{"airbnb":"booking confirmation reply, excited + welcoming, sign ${ownerName}.","welcome":"WhatsApp welcome: arrival ${arrFmt}, check-in 14h, checkout 12h, wifi, pool 28°C, chef ${staffFirst} available. Personal details from notes.","driver":"driver brief: ${gName}, ${g.guests||'?'} pax, arrival ${arrFmt}, villa GPS ${gpsInfo}.","staff":"staff prep brief: ${gName} arrival ${arrFmt}, ${g.nights||'?'}n, ${g.guests||'?'} guests. Notes: ${g.notes||'none'}. Checklist: rooms, pool, welcome gifts, chef menu.","passport":"polite passport copy request before arrival.","checkout":"post-stay thank you message to ${gName} (1st person from owner): warm 2-3 sentences thanking them, hoping they enjoyed villa+staff, kind invitation to leave Airbnb/Booking review (mention it helps the villa). Sign ${ownerName}. Ready to copy-send.","hostReview":"PUBLIC review YOU (host) leave for ${gName} on Airbnb/Booking — 2-3 sentences, warm + specific. Mention they were respectful guests, communication smooth, would host again. Use guest details from notes if available. Direct, no greeting/signature, just the review text itself."}}`,
+        : `{"messages":{"airbnb":"booking confirmation reply, excited + welcoming, sign ${ownerName}.","welcome":"WhatsApp welcome: arrival ${arrFmt}, check-in 14h, checkout 12h, wifi, pool 28°C${chefBit}. Personal details from notes.","driver":"driver brief: ${gName}, ${g.guests||'?'} pax, arrival ${arrFmt}, villa GPS ${gpsInfo}.","staff":"staff prep brief: ${gName} arrival ${arrFmt}, ${g.nights||'?'}n, ${g.guests||'?'} guests. Notes: ${g.notes||'none'}. Checklist: rooms, pool, welcome gifts, chef menu.","passport":"polite passport copy request before arrival.","checkout":"post-stay thank you message to ${gName} (1st person from owner): warm 2-3 sentences thanking them, hoping they enjoyed villa+staff, kind invitation to leave Airbnb/Booking review (mention it helps the villa). Sign ${ownerName}. Ready to copy-send.","hostReview":"PUBLIC review YOU (host) leave for ${gName} on Airbnb/Booking — 2-3 sentences, warm + specific. Mention they were respectful guests, communication smooth, would host again. Use guest details from notes if available. Direct, no greeting/signature, just the review text itself."}}`,
     ].filter(Boolean).join('\n');
 
     // Run pass 2 and update UI when done
