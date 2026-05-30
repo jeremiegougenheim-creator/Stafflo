@@ -3015,12 +3015,14 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
         netMonth += price * (1 - comm / 100) * (overlap / total);
       });
     }
-    return {
+    var out = {
       daysInMonth: daysInMonth,
       bookedNights: bookedNights,
       occupancy: daysInMonth > 0 ? Math.round(100 * bookedNights / daysInMonth) : 0,
       netMonth: Math.round(netMonth)
     };
+    try { console.debug('[VillaSnap] month=', new Date(monthStart).toISOString().slice(0,7), out); } catch(e){}
+    return out;
   }
   function _fmtThousands(n){ return (n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
   function updateTodaySnap() {
@@ -24498,7 +24500,9 @@ window.addEventListener('DOMContentLoaded', function() {
     firmList.forEach(function(c){
       var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
       var commPct = +c.commission || 0;
-      var net = (+c.price || 0) * (1 - commPct/100) * nights;
+      // c.price is the TOTAL stay price (matches netAmt at the header). Do NOT
+      // multiply by nights — that inflated v5 NET TOTAL by ~avg-nights-per-stay.
+      var net = (+c.price || 0) * (1 - commPct/100);
       totalNet += net;
       totalNights += nights;
       var src = c.source || (fr()?'Direct':'Direct');
