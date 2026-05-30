@@ -2963,6 +2963,141 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 <!-- Stay Status Card — visible only when guest is in-house -->
 <div id="stayStatusCard" class="row row-100" style="display:none"></div>
 
+<!-- Villa Snap — at-a-glance stats strip (price tonight · occupancy · net month · pipeline) -->
+<div class="row row-100">
+  <div class="v2-card" id="cardTodaySnap" style="padding:14px 18px">
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;align-items:end">
+      <div>
+        <div id="tsPrice" style="font-family:'Fraunces','Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--gold);line-height:1.02">—€</div>
+        <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Prix ce soir" data-en="Tonight's price">Prix ce soir</div>
+      </div>
+      <div>
+        <div id="tsOccupancy" style="font-family:'Fraunces','Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--green-dark,#0F2318);line-height:1.02">—</div>
+        <div id="tsOccupancyLbl" style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Occupation · ce mois" data-en="Occupancy · this month">Occupation · ce mois</div>
+      </div>
+      <div>
+        <div id="tsNet" style="font-family:'Fraunces','Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--green-dark,#0F2318);line-height:1.02">—€</div>
+        <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Net ce mois" data-en="Net this month">Net ce mois</div>
+      </div>
+      <div>
+        <div id="tsPipeline" style="font-family:'Fraunces','Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--green-dark,#0F2318);line-height:1.02">—</div>
+        <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Pipeline" data-en="Pipeline">Pipeline</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+// Villa Snap — populate the 4 stat cells from existing app sources.
+(function(){
+  function _tsMonthStats() {
+    var now = new Date();
+    var y = now.getFullYear(), m = now.getMonth();
+    var monthStart = new Date(y, m, 1).getTime();
+    var monthEnd = new Date(y, m + 1, 1).getTime();
+    var daysInMonth = Math.round((monthEnd - monthStart) / 86400000);
+    var bookedNights = 0, netMonth = 0;
+    if (typeof clients !== 'undefined' && Array.isArray(clients)) {
+      clients.forEach(function(c){
+        if (!c || c.deleted_at) return;
+        if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
+        if (!c.arrival || !c.departure) return;
+        var arr = new Date(c.arrival + 'T12:00:00').getTime();
+        var dep = new Date(c.departure + 'T12:00:00').getTime();
+        if (isNaN(arr) || isNaN(dep)) return;
+        var ovStart = Math.max(arr, monthStart);
+        var ovEnd   = Math.min(dep, monthEnd);
+        if (ovEnd <= ovStart) return;
+        var overlap = Math.round((ovEnd - ovStart) / 86400000);
+        bookedNights += overlap;
+        var total = Math.max(1, Math.round((dep - arr) / 86400000));
+        var price = Number(c.price) || 0;
+        var comm  = Number(c.commission) || 0;
+        netMonth += price * (1 - comm / 100) * (overlap / total);
+      });
+    }
+    return {
+      daysInMonth: daysInMonth,
+      bookedNights: bookedNights,
+      occupancy: daysInMonth > 0 ? Math.round(100 * bookedNights / daysInMonth) : 0,
+      netMonth: Math.round(netMonth)
+    };
+  }
+  function _fmtThousands(n){ return (n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+  function updateTodaySnap() {
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    var price = '—€', occ = '—', net = '—€', pipeline = '—';
+    try {
+      if (typeof getPrice === 'function') {
+        var pd = getPrice();
+        if (pd && pd.pricePN) price = _fmtThousands(pd.pricePN) + '€';
+      }
+    } catch(e){}
+    try {
+      var s = _tsMonthStats();
+      // If no firm-booking data this month, fall back to booked-nights with an honest label.
+      if (s.bookedNights > 0 || s.daysInMonth > 0) {
+        occ = s.occupancy + '%';
+        var occLbl = document.getElementById('tsOccupancyLbl');
+        if (occLbl) occLbl.textContent = fr ? 'Occupation · ce mois' : 'Occupancy · this month';
+      }
+      net = _fmtThousands(s.netMonth) + '€';
+    } catch(e){}
+    try {
+      if (typeof clients !== 'undefined' && Array.isArray(clients)) {
+        pipeline = clients.filter(function(c){ return c && !c.deleted_at && c.bookingStatus === 'inquiry'; }).length;
+      }
+    } catch(e){}
+    var setText = function(id, v){ var el = document.getElementById(id); if (el) el.textContent = v; };
+    setText('tsPrice', price);
+    setText('tsOccupancy', occ);
+    setText('tsNet', net);
+    setText('tsPipeline', pipeline);
+  }
+  window.updateTodaySnap = updateTodaySnap;
+  // Refresh when existing data-render functions run, without modifying them.
+  ['renderClients','loadMorningBrief','renderTodayQV','loadHomeData','syncNow'].forEach(function(fn){
+    if (typeof window[fn] === 'function') {
+      var orig = window[fn];
+      window[fn] = function(){ var r = orig.apply(this, arguments); try { updateTodaySnap(); } catch(e){} return r; };
+    }
+  });
+  // Initial paint + light safety poll.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(updateTodaySnap, 400); });
+  } else {
+    setTimeout(updateTodaySnap, 400);
+  }
+  setInterval(updateTodaySnap, 30000);
+})();
+</script>
+<script>
+// Today v2 row reorder — move Calendar + Inbox row (and the collapsible Inbox
+// detail row) to the BOTTOM (reference position) so the Brief is the first
+// content card after the hero + Villa Snap. HTML stays in place; this is a
+// one-time DOM move executed on boot.
+(function(){
+  function run(){
+    try {
+      var cal = document.getElementById('cardCalendarMini');
+      var inboxDetail = document.getElementById('inboxDetailRow');
+      var leadsCard = document.getElementById('cardLeadsPipeline');
+      if (!cal || !leadsCard) return;
+      var calRow = cal.closest('.row');
+      var leadsRow = leadsCard.closest('.row');
+      if (!calRow || !leadsRow || !leadsRow.parentNode) return;
+      var parent = leadsRow.parentNode;
+      if (calRow.parentNode === parent) parent.insertBefore(calRow, leadsRow);
+      if (inboxDetail && inboxDetail.parentNode === parent) parent.insertBefore(inboxDetail, leadsRow);
+    } catch(e){}
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(run, 50); });
+  } else {
+    setTimeout(run, 50);
+  }
+})();
+</script>
+
 <!-- Compact Calendar + Inbox (50/50, retractable) -->
 <div class="row row-50">
   <div class="v2-card" id="cardCalendarMini" data-collapsed="1">
