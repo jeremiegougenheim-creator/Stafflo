@@ -1,6 +1,20 @@
-// Stafflo Service Worker — v58 (mobile-first single layout)
-const CACHE = 'stafflo-v58';
-const CORE = ['./app.html'];
+// Stafflo Service Worker — v59 (self-hosted fonts)
+const CACHE = 'stafflo-v59';
+const CORE = [
+  './app.html',
+  './fonts/tabler-icons.css',
+  './fonts/tabler-icons.woff2',
+  './fonts/CormorantGaramond-400-600.woff2',
+  './fonts/CormorantGaramond-400-600-ext.woff2',
+  './fonts/DMSans-400-600.woff2',
+  './fonts/DMSans-400-600-ext.woff2',
+  './fonts/Fraunces-300-700.woff2',
+  './fonts/Fraunces-300-700-ext.woff2',
+  './fonts/Fraunces-400i.woff2',
+  './fonts/Fraunces-400i-ext.woff2',
+  './fonts/Inter-400-700.woff2',
+  './fonts/Inter-400-700-ext.woff2',
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(
