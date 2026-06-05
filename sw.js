@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v61 (phone-frame body bg !important)
-const CACHE = 'stafflo-v61';
+// Stafflo Service Worker — v62 (release F12 to the browser)
+const CACHE = 'stafflo-v62';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
