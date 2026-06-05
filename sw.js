@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v57 (ARIA brief null-guard)
-const CACHE = 'stafflo-v57';
+// Stafflo Service Worker — v58 (mobile-first single layout)
+const CACHE = 'stafflo-v58';
 const CORE = ['./app.html'];
 
 self.addEventListener('install', e => {
