@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v62 (release F12 to the browser)
-const CACHE = 'stafflo-v62';
+// Stafflo Service Worker — v63 (tabler woff2 path + body bg specificity)
+const CACHE = 'stafflo-v63';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
