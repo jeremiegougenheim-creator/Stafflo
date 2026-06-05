@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v59 (self-hosted fonts)
-const CACHE = 'stafflo-v59';
+// Stafflo Service Worker — v60 (phone-frame shell + 390px single layout)
+const CACHE = 'stafflo-v60';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
