@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v63 (tabler woff2 path + body bg specificity)
-const CACHE = 'stafflo-v63';
+// Stafflo Service Worker — v64 (2x2 ARIA chips + tsNet em-dash fallback)
+const CACHE = 'stafflo-v64';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
