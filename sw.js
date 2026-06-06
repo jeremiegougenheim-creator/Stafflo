@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v64 (2x2 ARIA chips + tsNet em-dash fallback)
-const CACHE = 'stafflo-v64';
+// Stafflo Service Worker — v65 (ARIA chips fill grid cell cleanly)
+const CACHE = 'stafflo-v65';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
