@@ -2046,10 +2046,12 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
     position:relative;background:var(--cream,#FAF6EE);flex-shrink:0
   }
   #staffloShell main{max-width:100% !important}
-  /* Anchor position:fixed FAB to the shell on desktop (position:absolute
+  /* Anchor position:fixed children to the shell on desktop (position:absolute
      inside position:relative parent) — avoids transform on the shell,
      which would break sticky on the header. */
   #staffloShell .aria-fab{position:absolute !important;right:20px;bottom:20px}
+  /* Guest detail panel slides over the shell, not the viewport */
+  #staffloShell #guestDetailV5{position:absolute !important;inset:0;z-index:10002}
 }
 /* ?frame=0 → disable the phone frame on desktop */
 body.no-frame{padding:0 !important;background:var(--cream,#FAF6EE) !important;display:block !important}
@@ -24801,9 +24803,16 @@ window.addEventListener('DOMContentLoaded', function() {
     if (grid) {
       var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
       var net = c.price ? Math.round(c.price * (1 - (c.commission||0)/100) * nights) : 0;
+      var locale = FR ? 'fr-FR' : 'en-GB';
+      var fmtDate = function(iso){
+        if (!iso) return '—';
+        var d = new Date(iso + 'T12:00:00');
+        if (isNaN(d)) return iso;
+        return d.toLocaleDateString(locale, { weekday:'short', day:'numeric', month:'long', year:'numeric' });
+      };
       grid.innerHTML = [
-        ['ARRIVAL',    c.arrival || '—'],
-        ['DEPARTURE',  c.departure || '—'],
+        [FR?'ARRIVÉE':'ARRIVAL',    fmtDate(c.arrival)],
+        [FR?'DÉPART':'DEPARTURE',   fmtDate(c.departure)],
         [FR?'INVITÉS':'GUESTS',     c.guests || '—'],
         ['NET',        net ? (net + '€') : '—']
       ].map(function(row){

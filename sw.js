@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v68 (drop island + anchor FAB via absolute)
-const CACHE = 'stafflo-v68';
+// Stafflo Service Worker — v69 (detail panel inside shell + locale dates)
+const CACHE = 'stafflo-v69';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
