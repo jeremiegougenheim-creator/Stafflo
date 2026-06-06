@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v66 (Guests tab single-column inside 390px shell)
-const CACHE = 'stafflo-v66';
+// Stafflo Service Worker — v67 (trap position:fixed children inside phone shell)
+const CACHE = 'stafflo-v67';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
