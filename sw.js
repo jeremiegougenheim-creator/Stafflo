@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v65 (ARIA chips fill grid cell cleanly)
-const CACHE = 'stafflo-v65';
+// Stafflo Service Worker — v66 (Guests tab single-column inside 390px shell)
+const CACHE = 'stafflo-v66';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
