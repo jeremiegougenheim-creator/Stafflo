@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v67 (trap position:fixed children inside phone shell)
-const CACHE = 'stafflo-v67';
+// Stafflo Service Worker — v68 (drop island + anchor FAB via absolute)
+const CACHE = 'stafflo-v68';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
