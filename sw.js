@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v75 (revert hdrMid + header overflow + snap-grid + detail panel)
-const CACHE = 'stafflo-v75';
+// Stafflo Service Worker — v76 (v3 sub-header band: city + villa + date)
+const CACHE = 'stafflo-v76';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
