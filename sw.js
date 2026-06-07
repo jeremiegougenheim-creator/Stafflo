@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v72 (Calendar as a dedicated tab)
-const CACHE = 'stafflo-v72';
+// Stafflo Service Worker — v73 (v3 class additions: snap-stats + tonight-price)
+const CACHE = 'stafflo-v73';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
