@@ -2052,6 +2052,9 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
      inside position:relative parent) — avoids transform on the shell,
      which would break sticky on the header. */
   #staffloShell .aria-fab{position:absolute !important;right:20px;bottom:20px}
+  /* v77 nav already has a raised ARIA orb — hide the legacy floating bubble
+     so it doesn't overlap the Calendar nav item. CSS hide per CLAUDE.md §2. */
+  #staffloShell #ariaFab{display:none !important}
   /* Guest detail panel slides over the shell, not the viewport.
      Use body-prefixed selector for higher specificity + width/height auto
      so inset:0 actually resolves to the 390px shell bounds. */
@@ -6175,6 +6178,10 @@ window.staffloCal = staffloCal;
   }
   window.renderCalendarTab = function(){
     init();
+    var n = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients.length : -1;
+    var hostStrip = document.getElementById('calTabStrip');
+    var hostUp = document.getElementById('calTabUpcoming');
+    console.debug('[CalTab] render — clients:', n, '| #calTabStrip:', !!hostStrip, '| #calTabUpcoming:', !!hostUp);
     var occ = buildOcc();
     render14Strip(occ);
     renderMonth(occ);
@@ -6183,6 +6190,23 @@ window.staffloCal = staffloCal;
   window.calTabPrev = function(){ init(); var m = s.month - 1, y = s.year; if (m < 0){ m = 11; y--; } s.month = m; s.year = y; renderMonth(buildOcc()); };
   window.calTabNext = function(){ init(); var m = s.month + 1, y = s.year; if (m > 11){ m = 0; y++; } s.month = m; s.year = y; renderMonth(buildOcc()); };
   window.calTabToday = function(){ var n = new Date(); s.year = n.getFullYear(); s.month = n.getMonth(); var occ = buildOcc(); renderMonth(occ); render14Strip(occ); renderUpcoming(); };
+
+  /* Auto-rerender the Calendar tab when clients hydrate (mirrors the staffloCal
+     hook below). Without this, if goTab('calendar') fires before clients[] is
+     loaded, the upcoming list locks in as "Aucune arrivée prévue". */
+  if (typeof window !== 'undefined') {
+    var _origRC = window.renderClients;
+    if (typeof _origRC === 'function') {
+      window.renderClients = function(){
+        var r = _origRC.apply(this, arguments);
+        try {
+          var tab = document.getElementById('tab-calendar');
+          if (tab && tab.style.display !== 'none') window.renderCalendarTab();
+        } catch(e){ console.warn('[CalTab] rerender on renderClients failed:', e); }
+        return r;
+      };
+    }
+  }
 })();
 
 // Auto-render on tab change to home/today

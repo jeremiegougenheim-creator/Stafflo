@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v77 (mobile-first single column inside 390px shell)
-const CACHE = 'stafflo-v77';
+// Stafflo Service Worker — v78 (hide legacy ariaFab + Calendar tab auto-rerender)
+const CACHE = 'stafflo-v78';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
