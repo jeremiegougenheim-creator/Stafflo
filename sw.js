@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v76 (v3 sub-header band: city + villa + date)
-const CACHE = 'stafflo-v76';
+// Stafflo Service Worker — v77 (mobile-first single column inside 390px shell)
+const CACHE = 'stafflo-v77';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
