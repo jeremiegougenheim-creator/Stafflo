@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v69 (detail panel inside shell + locale dates)
-const CACHE = 'stafflo-v69';
+// Stafflo Service Worker — v70 (design v3 — pruned CSS + 5-tab bottom nav)
+const CACHE = 'stafflo-v70';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
