@@ -48,7 +48,9 @@ header:not([class]){background:var(--green3);padding:0 20px;height:var(--hdr-h);
 .logo{font-family:'Fraunces',serif;font-size:22px;font-weight:300;color:#fff;letter-spacing:.3px;text-decoration:none;display:inline-flex;align-items:center;gap:10px}
 .logo em{color:var(--gold);font-style:italic;font-weight:400}
 .logo-ai{background:var(--gold);color:var(--green3);font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:1px;font-family:'DM Sans',sans-serif}
-.header-right{display:flex;align-items:center;gap:10px}
+.header-right{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden;flex-shrink:1;max-width:100%}
+.header-right>*{flex-shrink:0}
+#hdrAvatar{flex-shrink:0}
 .sync-dot{width:8px;height:8px;border-radius:50%;background:#555;cursor:pointer;transition:background .3s;flex-shrink:0}
 .sync-dot.ok{background:#52b788;box-shadow:0 0 6px rgba(82,183,136,.5)}
 .sync-dot.busy{background:var(--gold);animation:pulse 1s infinite}
@@ -2050,8 +2052,10 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
      inside position:relative parent) — avoids transform on the shell,
      which would break sticky on the header. */
   #staffloShell .aria-fab{position:absolute !important;right:20px;bottom:20px}
-  /* Guest detail panel slides over the shell, not the viewport */
-  #staffloShell #guestDetailV5{position:absolute !important;inset:0;z-index:10002}
+  /* Guest detail panel slides over the shell, not the viewport.
+     Use body-prefixed selector for higher specificity + width/height auto
+     so inset:0 actually resolves to the 390px shell bounds. */
+  body #staffloShell #guestDetailV5{position:absolute !important;inset:0 !important;width:auto !important;height:auto !important;max-width:100% !important;z-index:10002}
 }
 /* ?frame=0 → disable the phone frame on desktop */
 body.no-frame{padding:0 !important;background:var(--cream,#FAF6EE) !important;display:block !important}
@@ -2438,10 +2442,6 @@ window.addEventListener('keydown', function(e){
       <path d="M21 14.5c-.6-1.5-2.4-2.3-4.4-2.1-2 .2-3.4 1.3-3.4 2.7 0 1.3 1.4 1.9 3.1 2.3l1.6.4c1.9.4 3.4 1.1 3.4 2.6 0 1.6-1.8 2.7-3.9 2.7s-3.9-.9-4.4-2.4" stroke="#C9963A" stroke-width="1.4" stroke-linecap="round" fill="none"/>
     </svg>
     Staff<em>lo</em></a>
-  <div class="header-mid" id="hdrMid" style="min-width:0;flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 10px;overflow:hidden">
-    <div class="header-eyebrow" id="hdrEyebrow"></div>
-    <div class="header-villa" id="hdrVilla"></div>
-  </div>
   <div class="header-right">
   <div id="sessionBadge" style="font-size:10px;opacity:.75;margin-right:8px"></div>
     <div class="sync-dot" id="syncDot" onclick="syncNow()" title="Supabase sync"></div>
@@ -2510,24 +2510,6 @@ window.addEventListener('keydown', function(e){
     });
   }, { threshold: 0, rootMargin: '-50px 0px 0px 0px' });
   io.observe(sentinel);
-})();
-/* Populate header eyebrow (city) + villa name from cfg — class targets
-   live in the v3 stylesheet (.header-eyebrow / .header-villa). */
-(function(){
-  function setHdr(){
-    try {
-      var c = (typeof getCfg === 'function') ? getCfg() : {};
-      var eyebrow = ((c.city || '') + '').trim().toUpperCase() || 'MARRAKECH';
-      var villa = ((c.villa || '') + '').trim() || 'Villa';
-      var eEl = document.getElementById('hdrEyebrow');
-      var vEl = document.getElementById('hdrVilla');
-      if (eEl) eEl.textContent = eyebrow;
-      if (vEl) vEl.textContent = villa;
-    } catch(e){}
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setHdr);
-  else setTimeout(setHdr, 0);
-  setTimeout(setHdr, 1500); // re-pull once cfg is hydrated
 })();
 </script>
 
@@ -3152,7 +3134,7 @@ window.addEventListener('keydown', function(e){
 <!-- Villa Snap — at-a-glance stats strip (price tonight · occupancy · net month · pipeline) -->
 <div class="row row-100">
   <div class="v2-card snap-stats" id="cardTodaySnap" style="padding:14px 18px">
-    <div class="snap-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;align-items:end">
+    <div class="snap-grid" style="align-items:end">
       <div class="snap-cell gold">
         <div id="tsPrice" class="snap-val gold" style="font-family:'Fraunces','Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--gold);line-height:1.02">—€</div>
         <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Prix ce soir" data-en="Tonight's price">Prix ce soir</div>

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v74 (header eyebrow+villa + market-alert banner)
-const CACHE = 'stafflo-v74';
+// Stafflo Service Worker — v75 (revert hdrMid + header overflow + snap-grid + detail panel)
+const CACHE = 'stafflo-v75';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
