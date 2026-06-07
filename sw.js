@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v73 (v3 class additions: snap-stats + tonight-price)
-const CACHE = 'stafflo-v73';
+// Stafflo Service Worker — v74 (header eyebrow+villa + market-alert banner)
+const CACHE = 'stafflo-v74';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

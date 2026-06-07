@@ -2438,6 +2438,10 @@ window.addEventListener('keydown', function(e){
       <path d="M21 14.5c-.6-1.5-2.4-2.3-4.4-2.1-2 .2-3.4 1.3-3.4 2.7 0 1.3 1.4 1.9 3.1 2.3l1.6.4c1.9.4 3.4 1.1 3.4 2.6 0 1.6-1.8 2.7-3.9 2.7s-3.9-.9-4.4-2.4" stroke="#C9963A" stroke-width="1.4" stroke-linecap="round" fill="none"/>
     </svg>
     Staff<em>lo</em></a>
+  <div class="header-mid" id="hdrMid" style="min-width:0;flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 10px;overflow:hidden">
+    <div class="header-eyebrow" id="hdrEyebrow"></div>
+    <div class="header-villa" id="hdrVilla"></div>
+  </div>
   <div class="header-right">
   <div id="sessionBadge" style="font-size:10px;opacity:.75;margin-right:8px"></div>
     <div class="sync-dot" id="syncDot" onclick="syncNow()" title="Supabase sync"></div>
@@ -2506,6 +2510,24 @@ window.addEventListener('keydown', function(e){
     });
   }, { threshold: 0, rootMargin: '-50px 0px 0px 0px' });
   io.observe(sentinel);
+})();
+/* Populate header eyebrow (city) + villa name from cfg — class targets
+   live in the v3 stylesheet (.header-eyebrow / .header-villa). */
+(function(){
+  function setHdr(){
+    try {
+      var c = (typeof getCfg === 'function') ? getCfg() : {};
+      var eyebrow = ((c.city || '') + '').trim().toUpperCase() || 'MARRAKECH';
+      var villa = ((c.villa || '') + '').trim() || 'Villa';
+      var eEl = document.getElementById('hdrEyebrow');
+      var vEl = document.getElementById('hdrVilla');
+      if (eEl) eEl.textContent = eyebrow;
+      if (vEl) vEl.textContent = villa;
+    } catch(e){}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setHdr);
+  else setTimeout(setHdr, 0);
+  setTimeout(setHdr, 1500); // re-pull once cfg is hydrated
 })();
 </script>
 
@@ -20905,10 +20927,20 @@ function v2RenderHero() {
         return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:500;'+toneCss[c.tone]+'">'+c.icon+' '+c.txt+'</span>';
       }).join('');
 
+      // Below-market banner — appears only when villa price is meaningfully under the comp avg.
+      var alertHtml = '';
+      if (compAvg !== null && compDelta !== null && compDelta < -50) {
+        alertHtml = '<div class="market-alert" id="marketAlertBanner">⚠ ' +
+          (fr2 ? ('Sous le marché de ' + Math.abs(compDelta) + '€ — opportunité de hausse')
+                : ('Below market by ' + Math.abs(compDelta) + '€ — raise opportunity')) +
+          '</div>';
+      }
+
       villaTonight.textContent = priceTxt;
       villaTonightBody.innerHTML =
         '<div class="tonight-price" style="font-family:\'Fraunces\',serif;font-size:32px;color:var(--gold);font-weight:500;line-height:1" id="heroVillaTonightPrice">'+priceTxt+'</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'+chipsHtml+'</div>' +
+        alertHtml +
         bandHtml +
         whyBtn +
         detailsWrapHtml +
