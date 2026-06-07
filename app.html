@@ -2488,7 +2488,7 @@ window.addEventListener('keydown', function(e){
     <i class="ti ti-home"></i>
     <span>Villa</span>
   </button>
-  <button class="nav-item" id="nb-calendar" type="button" onclick="(function(){if(typeof goTab==='function')goTab('home');setTimeout(function(){var el=document.getElementById('card50VillaSnap')||document.querySelector('[data-cal-day]');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},250);})()" aria-label="Calendar">
+  <button class="nav-item nav-btn" id="nb-calendar" type="button" aria-label="Calendar">
     <i class="ti ti-calendar"></i>
     <span data-fr="Calendar" data-en="Calendar">Calendar</span>
   </button>
@@ -4094,6 +4094,37 @@ window.addEventListener('keydown', function(e){
   </div><!-- /villaScenarioRow -->
 
 </div><!-- /home -->
+
+
+<!-- ═══ CALENDAR TAB (v3) — 14-day strip + month grid + upcoming list ═══ -->
+<div class="tab" id="tab-calendar" style="display:none">
+  <div class="v2-card" style="margin-bottom:14px;background:var(--green3);color:#fff">
+    <div class="v2-card-hd">
+      <div class="v2-card-title" style="color:#fff"><i class="ti ti-calendar"></i> <span data-fr="14 prochains jours" data-en="Next 14 days">14 prochains jours</span></div>
+    </div>
+    <div class="v2-card-body" id="calTabStrip" style="padding:10px 14px 14px"></div>
+  </div>
+
+  <div class="v2-card" style="margin-bottom:14px">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-calendar-month"></i> <span id="calTabMonthLbl">—</span></div>
+      <div class="v2-card-actions" style="display:flex;gap:4px">
+        <button class="v2-icon-btn" onclick="event.stopPropagation();calTabPrev()" title="Précédent" data-title-fr="Précédent" data-title-en="Previous">‹</button>
+        <button class="v2-icon-btn" onclick="event.stopPropagation();calTabToday()" title="Aujourd'hui" data-title-fr="Aujourd'hui" data-title-en="Today">●</button>
+        <button class="v2-icon-btn" onclick="event.stopPropagation();calTabNext()" title="Suivant" data-title-fr="Suivant" data-title-en="Next">›</button>
+      </div>
+    </div>
+    <div class="v2-card-body" id="calTabGrid" style="padding:8px 4px 8px"></div>
+  </div>
+
+  <div class="v2-card">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-arrow-right"></i> <span data-fr="Prochaines arrivées" data-en="Upcoming arrivals">Prochaines arrivées</span></div>
+    </div>
+    <div class="v2-card-body" id="calTabUpcoming"></div>
+  </div>
+</div>
+<!-- /calendar -->
 
 
 <!-- ═══ SETTINGS MODAL ══════════════════════════════════════ -->
@@ -5970,6 +6001,122 @@ var staffloCal = (function(){
   return { setMonth: setMonth, prev: prev, next: next, today: today, render: render, tap: tap, askAria: askAria, toggleView: toggleView, getView: function(){ init(); return state.view; } };
 })();
 window.staffloCal = staffloCal;
+
+/* ═══ Calendar tab renderer — independent from staffloCal (writes to #calTabStrip/Grid/Upcoming) ═══ */
+(function(){
+  var s = { year: null, month: null };
+  function init(){ if (s.year === null) { var n = new Date(); s.year = n.getFullYear(); s.month = n.getMonth(); } }
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function toKey(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+  function isFirm(c){ return (typeof isFirmBooking === 'function') ? isFirmBooking(c) : true; }
+  function fr(){ return (typeof lang !== 'undefined' && lang === 'fr'); }
+  function locale(){ return fr() ? 'fr-FR' : 'en-GB'; }
+  function buildOcc(){
+    var map = {};
+    var list = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+    list.forEach(function(c){
+      if (c.deleted_at || !isFirm(c) || !c.arrival || !c.departure) return;
+      var a = new Date(c.arrival); a.setHours(0,0,0,0);
+      var d = new Date(c.departure); d.setHours(0,0,0,0);
+      for (var t = a.getTime(); t <= d.getTime(); t += 86400000){
+        var dt = new Date(t); var key = toKey(dt);
+        var type = (t === a.getTime()) ? 'arr' : (t === d.getTime()) ? 'dep' : 'stay';
+        if (!map[key] || (map[key].type === 'stay' && type !== 'stay')) map[key] = { type: type, guest: c };
+      }
+    });
+    return map;
+  }
+  function escAttr(s){ return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function escTxt(s){ return String(s||'').replace(/[<>&]/g, function(c){ return c==='<'?'&lt;':c==='>'?'&gt;':'&amp;'; }); }
+  function render14Strip(occ){
+    var host = document.getElementById('calTabStrip'); if (!host) return;
+    var today = new Date(); today.setHours(0,0,0,0);
+    var loc = locale();
+    var parts = ['<div class="cal-strip">'];
+    for (var i = 0; i < 14; i++){
+      var d = new Date(today); d.setDate(today.getDate()+i);
+      var key = toKey(d);
+      var info = occ[key];
+      var cls = 'cal-day';
+      if (i === 0) cls += ' today';
+      else if (info) cls += ' booked';
+      var dow = d.toLocaleDateString(loc, { weekday:'short' }).replace('.','').toUpperCase();
+      var num = d.getDate();
+      var ttl = info && info.guest ? escAttr(info.guest.name||'') : '';
+      parts.push('<button class="' + cls + '" data-cal-day="' + key + '" onclick="if(window.staffloCal&&staffloCal.tap)staffloCal.tap(\'' + key + '\')" title="' + ttl + '" style="border:none;cursor:pointer;font-family:inherit"><div style="font-size:9px;letter-spacing:1px;opacity:.75">' + dow + '</div><div style="font-size:16px;font-weight:600;margin-top:2px">' + num + '</div></button>');
+    }
+    parts.push('</div>');
+    host.innerHTML = parts.join('');
+  }
+  function renderMonth(occ){
+    var grid = document.getElementById('calTabGrid'); var lbl = document.getElementById('calTabMonthLbl');
+    if (!grid) return;
+    var months = fr() ? ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'] : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var dayNames = fr() ? ['L','M','M','J','V','S','D'] : ['M','T','W','T','F','S','S'];
+    if (lbl) lbl.textContent = months[s.month] + ' ' + s.year;
+    var first = new Date(s.year, s.month, 1);
+    var last = new Date(s.year, s.month + 1, 0);
+    var startDow = (first.getDay() + 6) % 7;
+    var daysInMonth = last.getDate();
+    var todayKey = toKey(new Date());
+    var parts = ['<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;text-align:center;padding:0 4px 4px">'];
+    dayNames.forEach(function(dn){ parts.push('<div>' + dn + '</div>'); });
+    parts.push('</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:0 4px 4px">');
+    for (var i = 0; i < startDow; i++) parts.push('<div></div>');
+    for (var d = 1; d <= daysInMonth; d++){
+      var dateObj = new Date(s.year, s.month, d);
+      var key = toKey(dateObj);
+      var info = occ[key];
+      var cls = 'cal-grid-d';
+      if (info && info.type === 'arr') cls += ' arr';
+      else if (info && info.type === 'dep') cls += ' dep';
+      else if (info && info.type === 'stay') cls += ' stay';
+      var isToday = (key === todayKey);
+      var ttl = info && info.guest ? escAttr(info.guest.name||'') : '';
+      var extra = isToday ? 'box-shadow:inset 0 0 0 2px var(--gold);' : '';
+      parts.push('<button class="' + cls + '" data-cal-day="' + key + '" onclick="if(window.staffloCal&&staffloCal.tap)staffloCal.tap(\'' + key + '\')" title="' + ttl + '" style="border:1px solid var(--border);border-radius:6px;padding:6px 0;min-height:30px;font-size:11px;font-weight:' + (isToday?'700':'500') + ';cursor:pointer;font-family:inherit;background:#fff;color:var(--ink);' + extra + '">' + d + '</button>');
+    }
+    parts.push('</div>');
+    grid.innerHTML = parts.join('');
+  }
+  function renderUpcoming(){
+    var host = document.getElementById('calTabUpcoming'); if (!host) return;
+    var today = new Date(); today.setHours(0,0,0,0);
+    var todayMs = today.getTime();
+    var loc = locale();
+    var list = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+    var upcoming = list.filter(function(c){
+      if (c.deleted_at || !isFirm(c) || !c.arrival) return false;
+      var a = new Date(c.arrival); a.setHours(0,0,0,0);
+      return a.getTime() >= todayMs;
+    }).sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); }).slice(0,7);
+    if (!upcoming.length){
+      host.innerHTML = '<div style="padding:14px;color:var(--muted);font-style:italic;font-size:12.5px">' + (fr()?'Aucune arrivée prévue':'No upcoming arrivals') + '</div>';
+      return;
+    }
+    host.innerHTML = upcoming.map(function(c){
+      var a = new Date(c.arrival); a.setHours(0,0,0,0);
+      var days = Math.round((a.getTime() - todayMs)/86400000);
+      var label = days === 0 ? (fr()?"Aujourd'hui":'Today') : days === 1 ? (fr()?'Demain':'Tomorrow') : 'J+'+days;
+      var dateStr = a.toLocaleDateString(loc, { weekday:'short', day:'numeric', month:'long' });
+      var openCall = "if(typeof openDetail==='function')openDetail('" + escAttr(c.id) + "')";
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="' + openCall + '">' +
+        '<div style="min-width:0;flex:1"><div style="font-weight:600;color:var(--ink);font-size:13px">' + escTxt(c.name||'?') + '</div><div style="font-size:11px;color:var(--muted);margin-top:2px">' + dateStr + '</div></div>' +
+        '<div style="font-size:10px;color:var(--gold);font-weight:700;letter-spacing:.5px;white-space:nowrap;flex-shrink:0;margin-left:10px">' + label + '</div>' +
+      '</div>';
+    }).join('');
+  }
+  window.renderCalendarTab = function(){
+    init();
+    var occ = buildOcc();
+    render14Strip(occ);
+    renderMonth(occ);
+    renderUpcoming();
+  };
+  window.calTabPrev = function(){ init(); var m = s.month - 1, y = s.year; if (m < 0){ m = 11; y--; } s.month = m; s.year = y; renderMonth(buildOcc()); };
+  window.calTabNext = function(){ init(); var m = s.month + 1, y = s.year; if (m > 11){ m = 0; y++; } s.month = m; s.year = y; renderMonth(buildOcc()); };
+  window.calTabToday = function(){ var n = new Date(); s.year = n.getFullYear(); s.month = n.getMonth(); var occ = buildOcc(); renderMonth(occ); render14Strip(occ); renderUpcoming(); };
+})();
 
 // Auto-render on tab change to home/today
 (function(){
@@ -9542,7 +9689,7 @@ function _ariaStartRotation() {
 // TABS
 // ════════════════════════════════════════════
 function goTab(t) {
-  ['today','clients','home'].forEach(id => {
+  ['today','clients','home','calendar'].forEach(id => {
     const tab = document.getElementById('tab-'+id);
     const btn = document.getElementById('nb-'+id);
     if (tab) {
@@ -9554,6 +9701,7 @@ function goTab(t) {
 
   if (t === 'clients') { try { renderClients(); } catch(e) { console.error('renderClients error:', e); } }
   if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); } catch(e) { console.error('loadHomeData error:', e); } }
+  if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
   if (t === 'today') {
     renderTodayQV();
     // Auto-load inbox into the inline dashboard card (#inboxList)
@@ -14396,6 +14544,8 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('nb-today').addEventListener('click', function(){ goTab('today'); });
   document.getElementById('nb-clients').addEventListener('click', function(){ goTab('clients'); });
   document.getElementById('nb-home').addEventListener('click', function(){ goTab('home'); });
+  var _nbCal = document.getElementById('nb-calendar');
+  if (_nbCal) _nbCal.addEventListener('click', function(){ goTab('calendar'); });
   var _gear = document.querySelector('.hdr-btn[data-title-en="Settings"]');
   if (_gear) _gear.addEventListener('click', openSettings);
   // Add user badge

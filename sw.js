@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v71 (Guests default À venir + avatar opens Settings)
-const CACHE = 'stafflo-v71';
+// Stafflo Service Worker — v72 (Calendar as a dedicated tab)
+const CACHE = 'stafflo-v72';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
