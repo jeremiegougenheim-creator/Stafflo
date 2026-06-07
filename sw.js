@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v70 (design v3 — pruned CSS + 5-tab bottom nav)
-const CACHE = 'stafflo-v70';
+// Stafflo Service Worker — v71 (Guests default À venir + avatar opens Settings)
+const CACHE = 'stafflo-v71';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
