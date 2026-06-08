@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v83 (legacy header cleanup — hide duplicates)
-const CACHE = 'stafflo-v83';
+// Stafflo Service Worker — v84 (Today dedup — 4 core blocks only)
+const CACHE = 'stafflo-v84';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
