@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v94 (Guests list: 6 default + Voir tous les N button)
-const CACHE = 'stafflo-v94';
+// Stafflo Service Worker — v95 (nav order + sessionBadge kill + compact stats strip)
+const CACHE = 'stafflo-v95';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
