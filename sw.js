@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v79 (operation_profile flag — foundation only)
-const CACHE = 'stafflo-v79';
+// Stafflo Service Worker — v80 (mask heavy components when profile is solo)
+const CACHE = 'stafflo-v80';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
