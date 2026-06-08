@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v80 (mask heavy components when profile is solo)
-const CACHE = 'stafflo-v80';
+// Stafflo Service Worker — v81 (solo vocabulary — Logement / Prévenir le ménage)
+const CACHE = 'stafflo-v81';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
