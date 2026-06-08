@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v90 (compact ARIA hero — hide title + smaller avatar + slim chips)
-const CACHE = 'stafflo-v90';
+// Stafflo Service Worker — v91 (restore vertical scroll inside the desktop phone-frame)
+const CACHE = 'stafflo-v91';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
