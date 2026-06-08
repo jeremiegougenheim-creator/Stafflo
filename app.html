@@ -2253,7 +2253,8 @@ body.no-frame #v3SubHdr{display:none}
 #staffloShell #cardCalendarMini,
 /* Leads à relancer → Guests */
 #staffloShell #cardLeadsPipeline,
-/* Setup Stafflo → follow-up: re-surface as a dismissible one-liner */
+/* Setup Stafflo legacy checklist — deprecated since v88 (replaced by
+   #setupOneLiner). DOM kept hidden per CLAUDE.md §2. */
 #staffloShell #setupChecklist { display: none !important; }
 
 /* ═══ v86 — Villa tab ruthless dedup ═══════════════════════════════════
@@ -3442,6 +3443,137 @@ window.renderTodayStatsStrip = function(){
     document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ try { renderTodayStatsStrip(); } catch(e){} }, 300); });
   } else {
     setTimeout(function(){ try { renderTodayStatsStrip(); } catch(e){} }, 300);
+  }
+})();
+</script>
+
+<!-- v88 — Setup Stafflo one-liner: expand-on-tap, dismissible, auto-hides at 4/4 -->
+<div class="row row-100" id="setupOneLiner" style="display:none">
+  <div id="setupOneLinerCard" style="background:#FBF3DC;border:1px solid rgba(201,150,58,.3);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer">
+    <span style="font-size:14px">🚀</span>
+    <div style="flex:1;font-size:12.5px;color:var(--ink)">
+      <span data-fr="Configurer Stafflo" data-en="Set up Stafflo">Configurer Stafflo</span>
+      <span id="setupOneLinerProgress" style="color:var(--gold);font-weight:600;margin-left:6px">0/4</span>
+    </div>
+    <span id="setupOneLinerCaret" style="color:var(--muted);font-size:11px">▸</span>
+    <button id="setupOneLinerDismiss" type="button" aria-label="Dismiss" title="Dismiss" data-title-fr="Ignorer" data-title-en="Dismiss" style="background:none;border:none;color:var(--muted);font-size:16px;padding:2px 6px;cursor:pointer;line-height:1">×</button>
+  </div>
+  <div id="setupOneLinerItems" style="display:none;margin-top:6px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 14px;font-size:12.5px"></div>
+</div>
+<script>
+/* v88 — Setup one-liner: 4 detection signals (audited live, no fakes). */
+window.computeSetupStatus = function(){
+  var c = {};
+  try { c = (typeof getCfg === 'function') ? getCfg() : {}; } catch(e){}
+  var isSolo = false;
+  try { isSolo = (typeof opProfile === 'function') && opProfile() === 'solo'; } catch(e){}
+  var hasGmail = !!(c.email_connection && c.email_connection.provider);
+  var hasIcal  = Array.isArray(c.icalFeeds) && c.icalFeeds.length > 0;
+  var hasStaff = (Array.isArray(c.staffMembers) && c.staffMembers.length > 0)
+              || (typeof c.staff === 'string' && c.staff.trim().length > 0);
+  var hasCleaner = !!(c.cleanerName && (''+c.cleanerName).trim());
+  var items = [
+    { id:'villa', fr:'Nommer la villa',             en:'Name your villa',
+      ok: !!(c.villa && (''+c.villa).trim()),
+      anchor:'cfgVilla' },
+    { id:'cal',   fr:'Synchroniser un calendrier',  en:'Sync a calendar',
+      ok: hasIcal || hasGmail,
+      action:'openIcalSettings' },
+    { id:'email', fr:"Connecter l'email",           en:'Connect email',
+      ok: hasGmail,
+      anchor:'settingsEmailStatus' },
+    { id:'staff', fr: isSolo ? 'Ajouter le ménage' : 'Ajouter votre équipe',
+                  en: isSolo ? 'Add cleaner'        : 'Add your team',
+      ok: isSolo ? hasCleaner : hasStaff,
+      anchor: isSolo ? 'cfgCleanerName' : 'cfgStaff' }
+  ];
+  var done = items.filter(function(i){ return i.ok; }).length;
+  return { items: items, done: done, total: items.length };
+};
+
+window.renderSetupOneLiner = function(){
+  try {
+    var host = document.getElementById('setupOneLiner');
+    if (!host) return;
+    if (localStorage.getItem('stafflo_setup_dismissed_v1') === '1') { host.style.display = 'none'; return; }
+    var s = computeSetupStatus();
+    if (s.done >= s.total) { host.style.display = 'none'; return; } // auto-hide at 100%
+    host.style.display = '';
+    var prog = document.getElementById('setupOneLinerProgress');
+    if (prog) prog.textContent = s.done + '/' + s.total;
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    var box = document.getElementById('setupOneLinerItems');
+    if (!box) return;
+    box.innerHTML = s.items.map(function(i){
+      var label = fr ? i.fr : i.en;
+      var check = i.ok ? '✓' : '☐';
+      var color = i.ok ? '#1d4d3a' : 'var(--muted)';
+      var clickable = i.ok ? '' : 'cursor:pointer';
+      var underline = i.ok ? '' : 'text-decoration:underline;text-decoration-color:rgba(201,150,58,.4);text-underline-offset:3px';
+      var dataAttrs = 'data-anchor="' + (i.anchor || '') + '" data-action="' + (i.action || '') + '" data-ok="' + (i.ok ? '1' : '0') + '"';
+      return '<div ' + dataAttrs + ' style="padding:6px 0;color:' + color + ';' + clickable + ';' + underline + '"><span style="display:inline-block;width:18px">' + check + '</span> ' + label + '</div>';
+    }).join('');
+    box.querySelectorAll('[data-anchor],[data-action]').forEach(function(el){
+      el.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        if (el.getAttribute('data-ok') === '1') return; // completed items inert
+        var action = el.getAttribute('data-action');
+        var anchor = el.getAttribute('data-anchor');
+        if (action === 'openIcalSettings' && typeof openIcalSettings === 'function') {
+          try { openIcalSettings(); } catch(e){}
+          return;
+        }
+        if (typeof openSettings === 'function') { try { openSettings(); } catch(e){} }
+        if (anchor) {
+          setTimeout(function(){
+            var t = document.getElementById(anchor);
+            if (t && t.scrollIntoView) t.scrollIntoView({behavior:'smooth', block:'center'});
+            if (t && t.focus) try { t.focus(); } catch(e){}
+          }, 250);
+        }
+      });
+    });
+  } catch(e){ console.warn('[setup1L]', e); }
+};
+
+(function(){
+  function wire(){
+    var card = document.getElementById('setupOneLinerCard');
+    var items = document.getElementById('setupOneLinerItems');
+    var caret = document.getElementById('setupOneLinerCaret');
+    var dismiss = document.getElementById('setupOneLinerDismiss');
+    if (card && items && !card._wired) {
+      card._wired = true;
+      card.addEventListener('click', function(e){
+        if (dismiss && (e.target === dismiss || dismiss.contains(e.target))) return;
+        var open = items.style.display !== 'none';
+        items.style.display = open ? 'none' : '';
+        if (caret) caret.textContent = open ? '▸' : '▾';
+      });
+    }
+    if (dismiss && !dismiss._wired) {
+      dismiss._wired = true;
+      dismiss.addEventListener('click', function(e){
+        e.stopPropagation();
+        try { localStorage.setItem('stafflo_setup_dismissed_v1', '1'); } catch(_){}
+        var host = document.getElementById('setupOneLiner');
+        if (host) host.style.display = 'none';
+      });
+    }
+  }
+  // Mirror v85 auto-rerender pattern.
+  var _origRC = window.renderClients;
+  if (typeof _origRC === 'function') {
+    window.renderClients = function(){
+      var r = _origRC.apply(this, arguments);
+      try { renderSetupOneLiner(); } catch(e){}
+      return r;
+    };
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ wire(); try { renderSetupOneLiner(); } catch(e){} }, 400); });
+  } else {
+    setTimeout(function(){ wire(); try { renderSetupOneLiner(); } catch(e){} }, 400);
   }
 })();
 </script>
