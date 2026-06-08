@@ -2224,6 +2224,9 @@ body.profile-solo .v4-card-market,
 body.profile-solo .v4-card-scenarios {
   display: none !important;
 }
+/* v82 — turnover card is hidden by default and revealed only under solo */
+#soloTurnoverCard { display: none; }
+body.profile-solo #soloTurnoverCard { display: block; }
 </style>
 </head>
 <body>
@@ -2530,8 +2533,96 @@ window.setProfileClass = function(){
     b.classList.add('profile-' + p);
     // Re-apply translations so [data-fr-solo]/[data-en-solo] kick in or revert.
     try { if (typeof applyLang === 'function') applyLang(); } catch(e){}
+    // Render the solo turnover card on profile change (idempotent).
+    try { if (typeof renderSoloTurnoverCard === 'function') renderSoloTurnoverCard(); } catch(e){}
   } catch(e){}
 };
+
+/* v82 — Solo turnover card: derive next departure, fill cleaner contact + WhatsApp deep-link. */
+window.nextTurnover = function(){
+  var list = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+  var today = new Date(); today.setHours(0,0,0,0);
+  var todayMs = today.getTime();
+  var deps = list.filter(function(c){
+    if (!c || c.deleted_at) return false;
+    if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return false;
+    if (!c.departure) return false;
+    var d = new Date(c.departure); d.setHours(0,0,0,0);
+    return d.getTime() >= todayMs;
+  }).sort(function(a,b){ return new Date(a.departure) - new Date(b.departure); });
+  return deps.length ? deps[0] : null;
+};
+window.renderSoloTurnoverCard = function(){
+  var card = document.getElementById('soloTurnoverCard');
+  if (!card) return;
+  var body = document.getElementById('soloTurnoverBody');
+  if (!body) return;
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  function _esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  var cfg = {};
+  try { cfg = (typeof getCfg === 'function') ? getCfg() : {}; } catch(e){}
+  var name = (cfg.cleanerName || '').trim();
+  var phone = (cfg.cleanerPhone || '').trim();
+  var phoneE = phone.replace(/[^\d]/g, '');
+  if (!name) {
+    body.innerHTML = '<div style="padding:14px 16px 16px;color:var(--muted);font-size:12.5px;line-height:1.55">' +
+      (fr
+        ? 'Ajoutez votre contact ménage dans les <a href="javascript:void(0)" onclick="document.getElementById(\'settingsPanel\').classList.add(\'open\')" style="color:var(--gold);font-weight:600;text-decoration:none;border-bottom:1px solid rgba(201,150,58,.4)">réglages</a>.'
+        : 'Add your cleaner contact in <a href="javascript:void(0)" onclick="document.getElementById(\'settingsPanel\').classList.add(\'open\')" style="color:var(--gold);font-weight:600;text-decoration:none;border-bottom:1px solid rgba(201,150,58,.4)">settings</a>.') +
+    '</div>';
+    return;
+  }
+  var next = window.nextTurnover();
+  var dateStr = fr ? 'aucun séjour prévu' : 'no upcoming stay';
+  var dateForMsg = '';
+  if (next) {
+    var d = new Date(next.departure); d.setHours(0,0,0,0);
+    var locale = fr ? 'fr-FR' : 'en-GB';
+    dateStr = d.toLocaleDateString(locale, { weekday:'long', day:'numeric', month:'long' });
+    dateForMsg = dateStr;
+  }
+  var initial = (name.charAt(0) || '?').toUpperCase();
+  var msg = next
+    ? (fr ? ('Bonjour ' + name + ', ménage à prévoir le ' + dateForMsg + ' après le départ des guests. Merci 🙏')
+          : ('Hi ' + name + ', cleaning needed on ' + dateForMsg + ' after guest checkout. Thanks 🙏'))
+    : (fr ? ('Bonjour ' + name + ', juste pour rester en contact. 🙏')
+          : ('Hi ' + name + ', just keeping in touch. 🙏'));
+  var waUrl = phoneE ? ('https://wa.me/' + phoneE + '?text=' + encodeURIComponent(msg)) : '';
+  body.innerHTML =
+    '<div style="display:flex;align-items:center;gap:14px;padding:14px 16px 8px">' +
+      '<div style="width:48px;height:48px;border-radius:50%;background:var(--gold);color:var(--green-dark);display:inline-flex;align-items:center;justify-content:center;font-family:Inter,sans-serif;font-weight:700;font-size:20px;flex-shrink:0">' + _esc(initial) + '</div>' +
+      '<div style="min-width:0;flex:1">' +
+        '<div style="font-family:Georgia,serif;font-size:17px;font-weight:600;color:var(--ink);line-height:1.1">' + _esc(name) + '</div>' +
+        '<div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;font-weight:600;margin-top:4px">' + (fr ? 'Ménage · entre les séjours' : 'Cleaning · between stays') + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div style="padding:0 16px 12px;font-size:12px;color:var(--muted)">' +
+      (fr ? 'Prochain ménage : ' : 'Next turnover: ') +
+      '<strong style="color:var(--ink);font-weight:600">' + _esc(dateStr) + '</strong>' +
+    '</div>' +
+    (phoneE
+      ? '<a href="' + waUrl + '" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:6px;margin:0 14px 14px;padding:10px;background:#25D366;color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;font-family:Inter,sans-serif"><i class="ti ti-brand-whatsapp" style="font-size:15px"></i> ' + (fr ? 'Envoyer message WhatsApp' : 'Send WhatsApp message') + '</a>'
+      : '<div style="padding:0 16px 14px;font-size:11px;color:var(--muted);font-style:italic">' + (fr ? 'Ajoutez un numéro pour activer le bouton WhatsApp.' : 'Add a phone to enable the WhatsApp button.') + '</div>');
+};
+/* Auto-rerender the turnover card when clients hydrate (same hook pattern
+   as the Calendar tab in v78 and staffloCal). Only does work when the card
+   element exists in DOM. */
+(function(){
+  if (typeof window === 'undefined') return;
+  var _origRC = window.renderClients;
+  if (typeof _origRC === 'function') {
+    window.renderClients = function(){
+      var r = _origRC.apply(this, arguments);
+      try { if (typeof renderSoloTurnoverCard === 'function') renderSoloTurnoverCard(); } catch(e){}
+      return r;
+    };
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ try { renderSoloTurnoverCard(); } catch(e){} }, 300); });
+  } else {
+    setTimeout(function(){ try { renderSoloTurnoverCard(); } catch(e){} }, 300);
+  }
+})();
 (function(){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.setProfileClass);
   else setTimeout(window.setProfileClass, 0);
@@ -3461,6 +3552,13 @@ window.setProfileClass = function(){
       </div>
     </div>
   </div>
+  <!-- v82 — Solo profile turnover card (visible only when body.profile-solo) -->
+  <div class="v2-card" id="soloTurnoverCard" style="padding:0">
+    <div class="v2-card-hd" style="padding-bottom:0">
+      <div class="v2-card-title"><i class="ti ti-spray"></i> <span data-fr="Le ménage" data-en="Cleaning">Le ménage</span></div>
+    </div>
+    <div id="soloTurnoverBody"></div>
+  </div>
   <div class="v2-card" id="heroActionBoardToday">
     <div class="v2-card-hd">
       <div class="v2-card-title"><i class="ti ti-bolt"></i> <span data-fr="Aria suggère" data-en="Aria suggests">Aria suggère</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Ops du jour" data-en="Today's ops">Ops du jour</span></div>
@@ -4262,6 +4360,9 @@ window.setProfileClass = function(){
     <div class="field"><label data-fr="Votre prénom" data-en="Your first name">Votre prénom</label><input id="cfgOwner" placeholder="Jérémie"></div>
     <div class="field"><label data-fr="Ville" data-en="City">Ville</label><input id="cfgCity" placeholder="Marrakech"></div>
     <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
+    <!-- Cleaner contact (v82) — used by the Solo profile turnover card -->
+    <div class="field"><label data-fr="Nom du ménage" data-en="Cleaner name">Nom du ménage</label><input id="cfgCleanerName" placeholder="Bouchra"></div>
+    <div class="field"><label data-fr="Téléphone (WhatsApp)" data-en="Phone (WhatsApp)">Téléphone (WhatsApp)</label><input id="cfgCleanerPhone" placeholder="+212 6..." inputmode="tel"></div>
     <div class="field" style="margin-top:-6px">
       <button type="button" onclick="if(typeof showOnboardingWizard==='function')showOnboardingWizard();" style="font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="📱 Configurer staff + WhatsApp" data-en="📱 Set up staff + WhatsApp">📱 Configurer staff + WhatsApp</button>
       <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.4" data-fr="Numéros WhatsApp par membre (utilisés pour les briefs)" data-en="WhatsApp per member (used for staff briefs)">Numéros WhatsApp par membre (utilisés pour les briefs)</div>
@@ -9516,6 +9617,8 @@ function loadSettingsUI() {
   set('cfgDoorCode',     cfg.doorCode);
   set('cfgWifiPassword', cfg.wifiPassword);
   set('cfgOperationProfile', cfg.operation_profile || 'full');
+  set('cfgCleanerName',      cfg.cleanerName);
+  set('cfgCleanerPhone',     cfg.cleanerPhone);
   set('cfgGoogleClientId', cfg.googleClientId || '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com');
   set('cfgSbUrl', cfg.sbUrl);   set('cfgSbKey', cfg.sbKey);
   // ARIA Memory + char counter
@@ -9564,6 +9667,8 @@ async function saveSettings() {
     address: (document.getElementById('cfgAddress')?.value || '').trim(),
     doorCode: (document.getElementById('cfgDoorCode')?.value || '').trim(),
     operation_profile: (document.getElementById('cfgOperationProfile')?.value || 'full'),
+    cleanerName:  (document.getElementById('cfgCleanerName')?.value  || '').trim(),
+    cleanerPhone: (document.getElementById('cfgCleanerPhone')?.value || '').trim(),
     wifiPassword: (document.getElementById('cfgWifiPassword')?.value || '').trim(),
     googleClientId: (document.getElementById('cfgGoogleClientId')?.value || '').trim(),
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),

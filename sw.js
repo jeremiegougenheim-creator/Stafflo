@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v81 (solo vocabulary — Logement / Prévenir le ménage)
-const CACHE = 'stafflo-v81';
+// Stafflo Service Worker — v82 (solo turnover card — cleaner + WhatsApp deep-link)
+const CACHE = 'stafflo-v82';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
