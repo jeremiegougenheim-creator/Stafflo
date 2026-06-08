@@ -2042,26 +2042,42 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 #staffloShell{width:100%;min-height:100vh;background:var(--cream,#FAF6EE)}
 @media(min-width:600px){
   html body{background:#EAE5DA !important;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;padding:32px 0 64px}
+  /* v93 — Shell is a flex column that clips. Scroll lives on <main>, nav
+     is a natural flex item at bottom. Supersedes v91 (shell overflow) and
+     v92 (sticky nav). */
   #staffloShell{
     width:390px;height:844px;max-height:844px;border-radius:48px;
-    overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+    overflow:hidden;
+    display:flex;flex-direction:column;
     box-shadow:0 0 0 10px #1C1C1E, 0 0 0 12px #3A3A3C, 0 50px 100px rgba(0,0,0,.35);
     position:relative;background:var(--cream,#FAF6EE);flex-shrink:0
   }
-  /* v92 — bot-nav stays pinned to the visible viewport bottom regardless
-     of scroll position. position:absolute on the v3 base rule (line 2129)
-     anchored to the shell padding box, which in some browsers tracked the
-     scrolled content instead of the visible bottom edge. position:sticky
-     uses the shell as scroll context and reliably glues to its bottom.
-     Mobile (<600px) untouched — base position:absolute still applies. */
-  #staffloShell .bot-nav {
-    position: sticky !important;
-    bottom: 0 !important;
-    z-index: 50 !important;
+  #staffloShell main{
+    flex:1 !important;
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
+    -webkit-overflow-scrolling:touch !important;
+    min-height:0 !important;       /* critical: lets flex child shrink so overflow takes effect */
+    max-width:100% !important;
   }
-  /* #sessionBadge: already hidden by the header cleanup rule at line 2069
-     (#staffloShell header #sessionBadge{display:none !important}). No-op. */
-  #staffloShell main{max-width:100% !important}
+  #staffloShell .bot-nav {
+    flex-shrink:0 !important;
+    position:relative !important;  /* override base position:absolute + v92 sticky */
+    bottom:auto !important;
+    z-index:50 !important;
+  }
+  /* ARIA modal — same pattern as #guestDetailV5 (v69). Without this, the
+     backdrop's position:fixed escapes the shell on desktop frame. */
+  body #staffloShell #ariaModal,
+  body #staffloShell .aria-modal-bg {
+    position:absolute !important;
+    inset:0 !important;
+    width:auto !important;
+    height:auto !important;
+    max-width:100% !important;
+    z-index:10003 !important;
+  }
+  /* #sessionBadge: already hidden by the header cleanup rule below. */
   /* Anchor position:fixed children to the shell on desktop (position:absolute
      inside position:relative parent) — avoids transform on the shell,
      which would break sticky on the header. */
