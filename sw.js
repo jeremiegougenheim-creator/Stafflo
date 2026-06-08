@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v86 (Villa dedup — keep only #villaV3)
-const CACHE = 'stafflo-v86';
+// Stafflo Service Worker — v87 (aria_first_v1 default ON — no empty Villa for new users)
+const CACHE = 'stafflo-v87';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
