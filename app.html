@@ -2753,23 +2753,24 @@ window.renderSoloTurnoverCard = function(){
 
 <script>
 /* ═══ Today v3 — render + toggle + flag wiring ════════════════════════
-   Strangler fig: when stafflo_aria_first_v1 === '1', show #todayV3 and
+   Strangler fig: when stafflo_aria_first_v1 !== '0' (v87: default ON), show #todayV3 and
    hide every other child of #tab-today. When OFF, no-op — v2 dashboard
    stays exactly as it was. Wraps (does NOT modify) loadHomeData and
    renderAll so the v3 cards refresh on the same triggers as v2. */
 (function(){
   function flagOn(){
     try { return typeof isAriaFirstV1Enabled === 'function' && isAriaFirstV1Enabled(); }
-    catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') === '1'; } catch(_) { return false; } }
+    catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') !== '0'; } catch(_) { return true; } }
   }
 
-  /* ── Toggle button: flip flag and reload (simplest state path) ── */
+  /* ── Toggle button: flip flag and reload (simplest state path).
+        v87: writes explicit '0' / '1' so the new "default ON unless '0'"
+        read semantics behave symmetrically across toggles. */
   window.toggleTodayV3 = function(){
     var k = 'stafflo_aria_first_v1';
     try {
-      var cur = localStorage.getItem(k) === '1';
-      if (cur) localStorage.removeItem(k);
-      else     localStorage.setItem(k, '1');
+      var cur = localStorage.getItem(k) !== '0';
+      localStorage.setItem(k, cur ? '0' : '1');
     } catch(e){}
     location.reload();
   };
@@ -6838,14 +6839,20 @@ function guessGuestCurrency(client) {
 }
 
 // ─── AriaFirst v1 — strangler fig gate (CLAUDE.md §2) ───────────────────
-// Activation: ?aria_first=1 in URL OR localStorage.stafflo_aria_first_v1 === '1'.
-// Default OFF. When ON, paints the new orb hero and hides legacy #tab-today siblings.
-// When OFF, this entire block is a no-op — the legacy dashboard is untouched.
+// Activation: ?aria_first=1 in URL OR localStorage.stafflo_aria_first_v1 !== '0'.
+// v87: DEFAULT ON (was: default off). Only explicit '0' disables it. Required
+// because v86 hides every Villa direct child except #villaV3 — without the
+// flag on, new accounts saw an empty Villa.
+// ?aria_first=0 in URL forces OFF for one-tab debugging.
 function isAriaFirstV1Enabled() {
   try {
-    if (location && location.search && new URLSearchParams(location.search).get('aria_first') === '1') return true;
+    if (location && location.search) {
+      var qs = new URLSearchParams(location.search).get('aria_first');
+      if (qs === '1') return true;
+      if (qs === '0') return false;
+    }
   } catch(e){}
-  try { return localStorage.getItem('stafflo_aria_first_v1') === '1'; } catch(e) { return false; }
+  try { return localStorage.getItem('stafflo_aria_first_v1') !== '0'; } catch(e) { return true; }
 }
 window.isAriaFirstV1Enabled = isAriaFirstV1Enabled;
 
@@ -24692,7 +24699,7 @@ window.addEventListener('DOMContentLoaded', function() {
   function safeCfg(){ try { return (typeof getCfg === 'function') ? getCfg() : (JSON.parse(localStorage.getItem('stafflo_cfg')||'{}')); } catch(e){ return {}; } }
   function flagOn(){
     try { return typeof isAriaFirstV1Enabled === 'function' && isAriaFirstV1Enabled(); }
-    catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') === '1'; } catch(_) { return false; } }
+    catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') !== '0'; } catch(_) { return true; } }
   }
   function fmtPrice(n){ try { return Math.round(n).toLocaleString(fr()?'fr-FR':'en-US') + '€'; } catch(e){ return n + '€'; } }
   function escapeHtml(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -25126,7 +25133,7 @@ window.addEventListener('DOMContentLoaded', function() {
   function fr(){ return typeof lang !== 'undefined' && lang === 'fr'; }
   function flagOn(){
     try { return typeof isAriaFirstV1Enabled === 'function' && isAriaFirstV1Enabled(); }
-    catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') === '1'; } catch(_) { return false; } }
+    catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') !== '0'; } catch(_) { return true; } }
   }
   function safeCfg(){ try { return (typeof getCfg === 'function') ? getCfg() : (JSON.parse(localStorage.getItem('stafflo_cfg')||'{}')); } catch(e){ return {}; } }
   function firm(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : !!c; }
