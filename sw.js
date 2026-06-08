@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v88 (Setup Stafflo dismissible one-liner)
-const CACHE = 'stafflo-v88';
+// Stafflo Service Worker — v89 (Guests dedup — keep only #guestsV5 + #guestDetailV5)
+const CACHE = 'stafflo-v89';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
