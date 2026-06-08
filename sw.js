@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v78 (hide legacy ariaFab + Calendar tab auto-rerender)
-const CACHE = 'stafflo-v78';
+// Stafflo Service Worker — v79 (operation_profile flag — foundation only)
+const CACHE = 'stafflo-v79';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

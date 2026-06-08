@@ -4246,6 +4246,20 @@ window.addEventListener('keydown', function(e){
     <div class="field"><label data-fr="Mot de passe WiFi" data-en="WiFi password">Mot de passe WiFi</label><input id="cfgWifiPassword" placeholder="VillaWiFi2025"></div>
   </div>
 
+  <!-- Operation profile (v79 foundation — flag only, no UI gated yet) -->
+  <div class="settings-section">
+    <div class="settings-title" data-fr="PROFIL D'OPÉRATION" data-en="OPERATION PROFILE">PROFIL D'OPÉRATION</div>
+    <div class="field">
+      <label data-fr="Mode de gestion" data-en="Management mode">Mode de gestion</label>
+      <select id="cfgOperationProfile" onchange="(function(el){try{var c=getCfg();c.operation_profile=el.value;setCfg(c);}catch(e){console.warn('[opProfile save]',e);}})(this)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;font-family:inherit;font-size:13px;color:var(--ink)">
+        <option value="solo" data-fr="Solo — propriétaire seul" data-en="Solo — owner alone">Solo — propriétaire seul</option>
+        <option value="light" data-fr="Léger — ménage occasionnel" data-en="Light — occasional housekeeping">Léger — ménage occasionnel</option>
+        <option value="full" data-fr="Maison — staff complet" data-en="Full — full staff">Maison — staff complet</option>
+      </select>
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.4" data-fr="Détermine quelles cartes (brief staff, scénarios, etc.) s'affichent. Aucun effet UI tant que l'option n'est pas branchée." data-en="Determines which cards (staff brief, scenarios, etc.) appear. No UI effect until wired.">Détermine quelles cartes (brief staff, scénarios, etc.) s'affichent. Aucun effet UI tant que l'option n'est pas branchée.</div>
+    </div>
+  </div>
+
   <!-- Meal pricing — populated by renderMealPricingSettings() -->
   <div class="settings-section" id="settingsMealPricing">
     <div class="settings-title" data-fr="TARIFS REPAS" data-en="MEAL PRICING">TARIFS REPAS</div>
@@ -6250,11 +6264,18 @@ function getCfg() {
     if (!gcid || gcid === 'COLLE_TON_CLIENT_ID_ICI') {
       cfg.googleClientId = '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com';
     }
+    // Operation profile — 'full' (Maison) | 'light' (Léger) | 'solo' (Solo).
+    // Default 'full' = current behavior. No UI is gated on this yet.
+    cfg.operation_profile = cfg.operation_profile || 'full';
     return cfg;
   } catch(e) {
-    return { sbUrl: SB_URL, supabaseUrl: SB_URL, sbKey: SB_ANON, supabaseKey: SB_ANON, supabaseAnonKey: SB_ANON };
+    return { sbUrl: SB_URL, supabaseUrl: SB_URL, sbKey: SB_ANON, supabaseKey: SB_ANON, supabaseAnonKey: SB_ANON, operation_profile: 'full' };
   }
 }
+
+/* Helper exposed for later UI gating. Don't read window.opProfile() inside
+   render hot paths — it calls getCfg() (JSON.parse). Cache the value. */
+window.opProfile = function(){ try { return getCfg().operation_profile || 'full'; } catch(e){ return 'full'; } };
 
 function getSessionKeyFromUrl() {
   try { return new URL(location.href).searchParams.get('session') || ''; }
@@ -9467,6 +9488,7 @@ function loadSettingsUI() {
   set('cfgAddress',      cfg.address);
   set('cfgDoorCode',     cfg.doorCode);
   set('cfgWifiPassword', cfg.wifiPassword);
+  set('cfgOperationProfile', cfg.operation_profile || 'full');
   set('cfgGoogleClientId', cfg.googleClientId || '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com');
   set('cfgSbUrl', cfg.sbUrl);   set('cfgSbKey', cfg.sbKey);
   // ARIA Memory + char counter
@@ -9514,6 +9536,7 @@ async function saveSettings() {
     gps: document.getElementById('cfgGps').value.trim(),
     address: (document.getElementById('cfgAddress')?.value || '').trim(),
     doorCode: (document.getElementById('cfgDoorCode')?.value || '').trim(),
+    operation_profile: (document.getElementById('cfgOperationProfile')?.value || 'full'),
     wifiPassword: (document.getElementById('cfgWifiPassword')?.value || '').trim(),
     googleClientId: (document.getElementById('cfgGoogleClientId')?.value || '').trim(),
     sbUrl: document.getElementById('cfgSbUrl').value.trim().replace(/\/$/, ''),
