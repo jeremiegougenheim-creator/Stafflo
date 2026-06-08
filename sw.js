@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v91 (restore vertical scroll inside the desktop phone-frame)
-const CACHE = 'stafflo-v91';
+// Stafflo Service Worker — v92 (sticky bot-nav)
+const CACHE = 'stafflo-v92';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
