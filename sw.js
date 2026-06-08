@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v89 (Guests dedup — keep only #guestsV5 + #guestDetailV5)
-const CACHE = 'stafflo-v89';
+// Stafflo Service Worker — v90 (compact ARIA hero — hide title + smaller avatar + slim chips)
+const CACHE = 'stafflo-v90';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
