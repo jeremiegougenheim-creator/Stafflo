@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v85 (hoist dedup out of @media + stats strip)
-const CACHE = 'stafflo-v85';
+// Stafflo Service Worker — v86 (Villa dedup — keep only #villaV3)
+const CACHE = 'stafflo-v86';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
