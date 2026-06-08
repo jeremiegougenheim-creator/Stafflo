@@ -2216,6 +2216,14 @@ body.no-frame #v3SubHdr{display:none}
   justify-content:center !important;gap:8px !important;box-shadow:0 4px 12px -2px rgba(201,150,58,.4) !important;
 }
 /* ═══════════ FIN DU BLOC v3 ═══════════ */
+
+/* ── Solo profile masking — hides staff-heavy + pricing-heavy components.
+   Light & Full profiles have NO rule here → zero change from default. ── */
+body.profile-solo #heroActionBoardToday,
+body.profile-solo .v4-card-market,
+body.profile-solo .v4-card-scenarios {
+  display: none !important;
+}
 </style>
 </head>
 <body>
@@ -2510,6 +2518,23 @@ window.addEventListener('keydown', function(e){
   <div id="hdrDate" style="font-size:11px;color:rgba(255,255,255,.55);font-family:'Inter',sans-serif;letter-spacing:.3px;white-space:nowrap;flex-shrink:0"></div>
 </div>
 <script>
+/* Set body.profile-* class from the operation_profile flag (v79). Re-runs at
+   +1.5s like the sub-header band so it catches cfg hydration. v80 CSS keys
+   off this. */
+window.setProfileClass = function(){
+  try {
+    var p = (typeof opProfile === 'function') ? opProfile() : 'full';
+    if (p !== 'solo' && p !== 'light' && p !== 'full') p = 'full';
+    var b = document.body;
+    b.classList.remove('profile-solo','profile-light','profile-full');
+    b.classList.add('profile-' + p);
+  } catch(e){}
+};
+(function(){
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.setProfileClass);
+  else setTimeout(window.setProfileClass, 0);
+  setTimeout(window.setProfileClass, 1500);
+})();
 /* Populate v3 sub-header band from cfg + today's date. */
 (function(){
   function setHdr(){
@@ -4251,7 +4276,7 @@ window.addEventListener('keydown', function(e){
     <div class="settings-title" data-fr="PROFIL D'OPÉRATION" data-en="OPERATION PROFILE">PROFIL D'OPÉRATION</div>
     <div class="field">
       <label data-fr="Mode de gestion" data-en="Management mode">Mode de gestion</label>
-      <select id="cfgOperationProfile" onchange="(function(el){try{var c=getCfg();c.operation_profile=el.value;setCfg(c);}catch(e){console.warn('[opProfile save]',e);}})(this)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;font-family:inherit;font-size:13px;color:var(--ink)">
+      <select id="cfgOperationProfile" onchange="(function(el){try{var c=getCfg();c.operation_profile=el.value;setCfg(c);if(typeof setProfileClass==='function')setProfileClass();}catch(e){console.warn('[opProfile save]',e);}})(this)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;font-family:inherit;font-size:13px;color:var(--ink)">
         <option value="solo" data-fr="Solo — propriétaire seul" data-en="Solo — owner alone">Solo — propriétaire seul</option>
         <option value="light" data-fr="Léger — ménage occasionnel" data-en="Light — occasional housekeeping">Léger — ménage occasionnel</option>
         <option value="full" data-fr="Maison — staff complet" data-en="Full — full staff">Maison — staff complet</option>
