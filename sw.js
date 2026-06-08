@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v82 (solo turnover card — cleaner + WhatsApp deep-link)
-const CACHE = 'stafflo-v82';
+// Stafflo Service Worker — v83 (legacy header cleanup — hide duplicates)
+const CACHE = 'stafflo-v83';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
