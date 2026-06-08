@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v84 (Today dedup — 4 core blocks only)
-const CACHE = 'stafflo-v84';
+// Stafflo Service Worker — v85 (hoist dedup out of @media + stats strip)
+const CACHE = 'stafflo-v85';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -2062,37 +2062,6 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
   #staffloShell header .hstat,
   #staffloShell header .hdr-btn:not(#hdrAvatar),
   #staffloShell header .v3-mode-btn { display: none !important; }
-
-  /* ═══ v84 — Today tab ruthless dedup ═══════════════════════════════
-     Keep only 4 blocks visible (scroll order):
-       1. #ariaHeroToday          ARIA prompt + chips
-       2. (stats strip TBD)       user wants net · upcoming · pipeline · new
-                                  current #cardTodaySnap is Price/Occ — hidden
-       3. #card50MorningBrief     "Brief Aria" — what matters today
-       4. #stayStatusCard         current stay + checklist
-     Everything below is hidden; DOM intact (CLAUDE.md §2). Each line
-     names the canonical home for that card's content. */
-  /* Gated v3 / af1 strangler-fig layouts → not the canonical Today */
-  #staffloShell #ariaFirstHero,
-  #staffloShell #todayV3,
-  /* Inbox / messages → ARIA modal */
-  #staffloShell #cardInboxMini,
-  #staffloShell #inboxDetailRow,
-  #staffloShell #inboxCardToday,
-  /* Aria détecte (heatwave/below-market) → duplicates morning brief */
-  #staffloShell #heroAlertsToday,
-  /* Snap stats 2×2 (Prix/Occupation/Net/Pipeline) → Villa */
-  #staffloShell #cardTodaySnap,
-  /* Villa & Pipeline mini → Guests + Villa */
-  #staffloShell #card50VillaSnap,
-  /* Aria suggère / Ops du jour duplicate checklist → stayStatusCard owns it */
-  #staffloShell #heroActionBoardToday,
-  /* Calendar mini → Calendar tab */
-  #staffloShell #cardCalendarMini,
-  /* Leads à relancer → Guests */
-  #staffloShell #cardLeadsPipeline,
-  /* Setup Stafflo → follow-up: re-surface as one-liner */
-  #staffloShell #setupChecklist { display: none !important; }
   /* Guest detail panel slides over the shell, not the viewport.
      Use body-prefixed selector for higher specificity + width/height auto
      so inset:0 actually resolves to the 390px shell bounds. */
@@ -2254,6 +2223,37 @@ body.no-frame #v3SubHdr{display:none}
   justify-content:center !important;gap:8px !important;box-shadow:0 4px 12px -2px rgba(201,150,58,.4) !important;
 }
 /* ═══════════ FIN DU BLOC v3 ═══════════ */
+
+/* ═══ v84 — Today tab ruthless dedup (v85: hoisted out of @media so real-mobile
+       also gets the dedup, not just the desktop phone-frame).
+   Keep only 4 blocks visible inside the shell, in scroll order:
+     1. #ariaHeroToday          ARIA prompt + chips
+     2. #todayStatsStrip        net · upcoming · pipeline · new (v85)
+     3. #card50MorningBrief     "Brief Aria" — what matters today
+     4. #stayStatusCard         current stay + checklist
+   Everything below is hidden; DOM intact (CLAUDE.md §2). Each line names
+   the canonical home for that card's content. ═════════════════════════ */
+/* Gated v3 / af1 strangler-fig layouts → not the canonical Today */
+#staffloShell #ariaFirstHero,
+#staffloShell #todayV3,
+/* Inbox / messages → ARIA modal */
+#staffloShell #cardInboxMini,
+#staffloShell #inboxDetailRow,
+#staffloShell #inboxCardToday,
+/* Aria détecte (heatwave/below-market) → duplicates morning brief */
+#staffloShell #heroAlertsToday,
+/* Snap stats 2×2 (Prix/Occupation/Net/Pipeline) → replaced by #todayStatsStrip */
+#staffloShell #cardTodaySnap,
+/* Villa & Pipeline mini → Guests + Villa */
+#staffloShell #card50VillaSnap,
+/* Aria suggère / Ops du jour duplicate checklist → stayStatusCard owns it */
+#staffloShell #heroActionBoardToday,
+/* Calendar mini → Calendar tab */
+#staffloShell #cardCalendarMini,
+/* Leads à relancer → Guests */
+#staffloShell #cardLeadsPipeline,
+/* Setup Stafflo → follow-up: re-surface as a dismissible one-liner */
+#staffloShell #setupChecklist { display: none !important; }
 
 /* ── Solo profile masking — hides staff-heavy + pricing-heavy components.
    Light & Full profiles have NO rule here → zero change from default. ── */
@@ -3349,6 +3349,85 @@ window.renderSoloTurnoverCard = function(){
     </div>
   </div>
 </div>
+
+<!-- v85 — Today stats strip (slot 2: net · upcoming · pipeline · new). Slim single row. -->
+<div class="row row-100" id="todayStatsStripRow">
+  <div class="v2-card" id="todayStatsStrip" style="padding:12px 14px">
+    <div style="display:flex;gap:10px;align-items:baseline;justify-content:space-between">
+      <div style="text-align:center;flex:1;min-width:0">
+        <div id="tssNet"      class="tss-val" style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--gold);line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+        <div class="tss-lbl" style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:4px">NET</div>
+      </div>
+      <div style="text-align:center;flex:1;min-width:0">
+        <div id="tssUpcoming" class="tss-val" style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--ink);line-height:1">—</div>
+        <div class="tss-lbl" style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:4px" data-fr="À venir" data-en="Upcoming">À venir</div>
+      </div>
+      <div style="text-align:center;flex:1;min-width:0">
+        <div id="tssPipeline" class="tss-val" style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--ink);line-height:1">—</div>
+        <div class="tss-lbl" style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:4px">Pipeline</div>
+      </div>
+      <div style="text-align:center;flex:1;min-width:0">
+        <div id="tssNew"      class="tss-val" style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--ink);line-height:1">—</div>
+        <div class="tss-lbl" style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:4px" data-fr="Nouveau" data-en="New">Nouveau</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+/* v85 — Today stats strip renderer. Reads clients[] directly; mirrors the
+   v82 cleaner-card / v78 Calendar-tab pattern for auto-rerender on hydrate. */
+window.renderTodayStatsStrip = function(){
+  var list = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+  var today = new Date(); today.setHours(0,0,0,0);
+  var todayMs = today.getTime();
+  var sevenAgoMs = todayMs - 7 * 86400000;
+  var net = 0, upcoming = 0, pipeline = 0, fresh = 0;
+  list.forEach(function(c){
+    if (!c || c.deleted_at) return;
+    var firm = (typeof isFirmBooking === 'function') ? isFirmBooking(c) : true;
+    if (firm) {
+      var pct = +c.commission || 0;
+      net += (+c.price || 0) * (1 - pct/100);
+      if (c.arrival) {
+        var a = new Date(c.arrival); a.setHours(0,0,0,0);
+        if (a.getTime() >= todayMs) upcoming++;
+      }
+    } else {
+      var bs = c.bookingStatus;
+      if (bs === 'inquiry' || bs === 'lead' || bs === 'quoted') pipeline++;
+    }
+    // "Nouveau" = added within the last 7 days. Falls back gracefully if
+    // created_at is missing (Supabase timestamp).
+    var ca = c.created_at || c.createdAt;
+    if (ca) {
+      var t = new Date(ca).getTime();
+      if (!isNaN(t) && t >= sevenAgoMs) fresh++;
+    }
+  });
+  function setText(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; }
+  function fmt(n) { return (n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+  setText('tssNet',      fmt(Math.round(net)) + '€');
+  setText('tssUpcoming', String(upcoming));
+  setText('tssPipeline', String(pipeline));
+  setText('tssNew',      String(fresh));
+};
+(function(){
+  if (typeof window === 'undefined') return;
+  var _origRC = window.renderClients;
+  if (typeof _origRC === 'function') {
+    window.renderClients = function(){
+      var r = _origRC.apply(this, arguments);
+      try { renderTodayStatsStrip(); } catch(e){}
+      return r;
+    };
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ try { renderTodayStatsStrip(); } catch(e){} }, 300); });
+  } else {
+    setTimeout(function(){ try { renderTodayStatsStrip(); } catch(e){} }, 300);
+  }
+})();
+</script>
 
 <!-- Stay Status Card — visible only when guest is in-house -->
 <div id="stayStatusCard" class="row row-100" style="display:none"></div>
