@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v93 (flex-column shell scroll architecture + ARIA modal in frame)
-const CACHE = 'stafflo-v93';
+// Stafflo Service Worker — v94 (Guests list: 6 default + Voir tous les N button)
+const CACHE = 'stafflo-v94';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

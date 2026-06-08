@@ -25493,7 +25493,12 @@ window.addEventListener('DOMContentLoaded', function() {
       grid.innerHTML = '<div class="v5-empty">' + (FR?'Aucun guest correspondant.':'No matching guests.') + '</div>';
       return;
     }
-    grid.innerHTML = list.map(function(c){
+    /* v94 — show 6 by default, "See all N →" button reveals the rest. */
+    var LIMIT = 6;
+    var total = list.length;
+    var showAll = (window._v5ShowAll === true);
+    var visible = showAll ? list : list.slice(0, LIMIT);
+    var cardsHtml = visible.map(function(c){
       var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
       var rev = c.price ? Math.round(c.price * (1 - (c.commission||0)/100) * nights) : 0;
       var flag = flagEmoji(c);
@@ -25519,13 +25524,28 @@ window.addEventListener('DOMContentLoaded', function() {
                '</div>' +
              '</div>';
     }).join('');
+    var showAllBtn = '';
+    if (!showAll && total > LIMIT) {
+      showAllBtn = '<button type="button" id="v5ShowAll" ' +
+        'style="width:100%;padding:12px;margin-top:8px;background:none;border:1px solid var(--hairline,rgba(15,35,24,.08));border-radius:10px;font-size:13px;color:var(--gold);font-weight:600;cursor:pointer;font-family:inherit">' +
+        (FR ? 'Voir tous les ' : 'See all ') + total + (FR ? ' guests →' : ' guests →') +
+      '</button>';
+    }
+    grid.innerHTML = cardsHtml + showAllBtn;
 
     grid.querySelectorAll('[data-guest-id]').forEach(function(el){
       el.addEventListener('click', function(){
         openGuestDetailV5(el.getAttribute('data-guest-id'));
       });
     });
+    var more = document.getElementById('v5ShowAll');
+    if (more) more.addEventListener('click', function(){
+      window._v5ShowAll = true;
+      renderGrid();
+    });
   }
+  /* Expose so other surfaces can re-render after data changes. */
+  window.renderV5Grid = renderGrid;
 
   /* ── Open detail ── stub here; full renderer lands in C3 ── */
   window.openGuestDetailV5 = function(id){
