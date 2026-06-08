@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v87 (aria_first_v1 default ON — no empty Villa for new users)
-const CACHE = 'stafflo-v87';
+// Stafflo Service Worker — v88 (Setup Stafflo dismissible one-liner)
+const CACHE = 'stafflo-v88';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
