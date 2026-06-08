@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v92 (sticky bot-nav)
-const CACHE = 'stafflo-v92';
+// Stafflo Service Worker — v93 (flex-column shell scroll architecture + ARIA modal in frame)
+const CACHE = 'stafflo-v93';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
