@@ -3227,6 +3227,13 @@ window.renderSoloTurnoverCard = function(){
   /* ── Master render ── */
   window.renderTodayV3All = function(){
     if (!flagOn()) return;
+    // DEMO-ONLY house-ops card — same predicate as renderTodayQV (isDemo, pure demo).
+    // Reuses renderDemoMonthCard(); cleared outside demo so nothing leaks in prod.
+    try {
+      var dm = document.getElementById('v3DemoMonth');
+      if (dm) dm.innerHTML = (typeof isDemo === 'function' && isDemo() && typeof renderDemoMonthCard === 'function')
+        ? renderDemoMonthCard() : '';
+    } catch(e){ console.warn('[v3 demo month]', e); }
     try { renderV3Hero(); }         catch(e){ console.warn('[v3 hero]', e); }
     try { renderV3VillaStats(); }   catch(e){ console.warn('[v3 stats]', e); }
     try { renderV3InboxChip(); }    catch(e){ console.warn('[v3 inbox]', e); }
@@ -3332,6 +3339,10 @@ window.renderSoloTurnoverCard = function(){
       <button class="v3-chip" data-chip="checklist" data-fr="✓ Checklist staff"   data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
     </div>
   </div>
+
+  <!-- DEMO-ONLY: "Ce mois · votre maison" house-ops card — filled by renderTodayV3All
+       (gated isDemo()). Empty/cleared outside demo. Top of brief, just under hero. -->
+  <div id="v3DemoMonth"></div>
 
   <!-- STATS ROW: Villa & Pipeline + Inbox chip — thin line under hero -->
   <div class="v3-stats-row">
@@ -16883,11 +16894,10 @@ function renderTodayQV() {
   let html = '';
 
   // ── DEMO-ONLY: "Ce mois · votre maison" house-ops card (gated, invisible in prod) ──
-  // Covers both demo entry paths: pure demo mode (isDemo, mode==='demo') AND the
-  // authed-account demo overlay (isDemoMode, localStorage flag) so the card shows
-  // when ?demo=1 runs over a real session. Outside demo, renderTodayQV is unchanged.
-  if ((typeof isDemo === 'function' && isDemo()) ||
-      (typeof isDemoMode === 'function' && isDemoMode())) {
+  // Pure demo only (isDemo, mode==='demo') — never over a real authed account, so no
+  // fictional Villa Lumière data leaks onto real villa data. Same predicate as the
+  // #todayV3 (ARIA-first) injection. Outside demo, renderTodayQV is unchanged.
+  if (typeof isDemo === 'function' && isDemo()) {
     html += renderDemoMonthCard();
   }
 
