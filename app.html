@@ -13650,17 +13650,15 @@ async function _pkceChallenge() {
 async function _tryRefreshGmailToken() {
   var cfg = getCfg();
   var conn = cfg.email_connection || {};
-  var clientId = (cfg.googleClientId || cfg.google_client_id || '').trim();
-  if (!conn.refresh_token || !clientId) return null;
+  if (!conn.refresh_token) return null;
   try {
-    var r = await fetch('https://oauth2.googleapis.com/token', {
+    // Refresh via Edge Function — Google web clients require client_secret on the
+    // refresh_token grant; calling Google directly 401s (invalid_client). The EF
+    // (gmail-token-exchange v9) already handles the isRefresh branch.
+    var r = await fetch(SB_URL + '/functions/v1/gmail-token-exchange', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        refresh_token: conn.refresh_token,
-        grant_type: 'refresh_token'
-      }).toString()
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: conn.refresh_token })
     });
     if (!r.ok) return null;
     var data = await r.json();
