@@ -6097,26 +6097,31 @@ function buildDemoInbox() {
 // it never persists. Read at render time by renderDemoMonthCard() — volatile,
 // zero localStorage/Supabase write. Demo-only, gated by isDemo() at the callsite.
 function buildDemoExpenses() {
+  // icon = ICON_MAP emoji key (or tabler name) resolved by iconFor() at render.
   var rows = [
-    { id:'exp_emile',    name:'Émile',              role_fr:'majordome',   role_en:'butler',      amount:2800, paid:false, paidNote_fr:'',     paidNote_en:'' },
-    { id:'exp_camille',  name:'Camille',            role_fr:'chef',        role_en:'chef',        amount:1900, paid:true,  paidNote_fr:'le 3', paidNote_en:'on 3rd' },
-    { id:'exp_mathilde', name:'Mathilde',           role_fr:'gouvernante', role_en:'housekeeper', amount:1600, paid:false, paidNote_fr:'',     paidNote_en:'' },
-    { id:'exp_pisc',     name:'Pisciniste',         role_fr:'',            role_en:'',            amount:180,  paid:true,  paidNote_fr:'',     paidNote_en:'' },
-    { id:'exp_jard',     name:'Jardinier',          role_fr:'',            role_en:'',            amount:320,  paid:false, paidNote_fr:'',     paidNote_en:'' },
-    { id:'exp_portail',  name:'Réparation portail', role_fr:'',            role_en:'Gate repair', amount:240,  paid:true,  paidNote_fr:'',     paidNote_en:'' }
+    { id:'exp_emile',    icon:'👤',   role_fr:'majordome',   role_en:'butler',       person:'Émile',    amount:2800, paid:false, paidNote_fr:'',     paidNote_en:'' },
+    { id:'exp_camille',  icon:'🍽',   role_fr:'chef',        role_en:'chef',         person:'Camille',  amount:1900, paid:true,  paidNote_fr:'le 3', paidNote_en:'on the 3rd' },
+    { id:'exp_mathilde', icon:'🧹',   role_fr:'gouvernante', role_en:'housekeeper',  person:'Mathilde', amount:1600, paid:false, paidNote_fr:'',     paidNote_en:'' },
+    { id:'exp_pisc',     icon:'🏊',   role_fr:'pisciniste',  role_en:'pool service', person:'—',        amount:180,  paid:true,  paidNote_fr:'',     paidNote_en:'' },
+    { id:'exp_jard',     icon:'🌱',   role_fr:'jardinier',   role_en:'gardener',     person:'—',        amount:320,  paid:false, paidNote_fr:'',     paidNote_en:'' },
+    { id:'exp_portail',  icon:'tool', role_fr:'réparation',  role_en:'repair',       person:'Portail',  amount:240,  paid:true,  paidNote_fr:'',     paidNote_en:'' }
   ];
   rows.forEach(function(r){ r._demo = true; r.__demo = true; });
   return rows;
 }
 
-// Demo-only "Ce mois · votre maison" card. Reuses existing card style
-// (var(--card)/--shadow/--border/--ink/--muted, gold #C9963A accent on "à régler").
-// Returns an HTML string; callsite (renderTodayQV) gates it behind isDemo().
+// Demo-only "Ce mois · votre maison" card — Stafflo brand charter (cream surface,
+// Fraunces dark-green header on CONTROL not totals, iconFor() tiles, gold/green
+// status pills, secondary money footer, compact green Aria band). Reuses existing
+// brand tokens + iconFor(); invents no new style system. Suivi + rappel only,
+// JAMAIS de paiement. Returns HTML; callsite (renderTodayQV) gates it behind isDemo().
 function renderDemoMonthCard() {
   var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
   var rows = (typeof buildDemoExpenses === 'function') ? buildDemoExpenses() : [];
   if (!rows.length) return '';
+  var ico = (typeof iconFor === 'function') ? iconFor : function(){ return ''; };
   function fmt(n){ return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' €'; }
+  var GOLD = '#C9963A', GREEN_MID = '#1d4d3a', GREEN_DARK = '#0F2318';
   var total = 0, paidSum = 0;
   rows.forEach(function(r){ total += r.amount; if (r.paid) paidSum += r.amount; });
   var dueSum = total - paidSum;
@@ -6124,39 +6129,40 @@ function renderDemoMonthCard() {
 
   var rowsHtml = rows.map(function(r){
     var role = fr ? r.role_fr : r.role_en;
-    var label = role ? (r.name + ' <span style="color:var(--muted)">(' + role + ')</span>') : r.name;
-    var statusTxt, statusColor;
+    var person = (r.person && r.person !== '—') ? r.person : '—';
+    // Icon tile — tinted gold for "à régler", soft green for "payé".
+    var tileBg = r.paid ? 'rgba(29,77,58,.10)' : 'rgba(201,150,58,.13)';
+    var tileFg = r.paid ? GREEN_MID : GOLD;
+    var tile = '<span style="flex-shrink:0;width:34px;height:34px;border-radius:10px;background:' + tileBg + ';color:' + tileFg + ';display:inline-flex;align-items:center;justify-content:center;font-size:16px">' + ico(r.icon) + '</span>';
+    // Status pill.
+    var pillTxt, pillBg, pillFg;
     if (r.paid) {
       var note = fr ? r.paidNote_fr : r.paidNote_en;
-      statusTxt = note ? ((fr ? 'payée ' : 'paid ') + note) : (fr ? 'payé' : 'paid');
-      statusColor = 'var(--muted)';
+      pillTxt = note ? ((fr ? 'payée ' : 'paid ') + note) : (fr ? 'payé' : 'paid');
+      pillBg = 'rgba(29,77,58,.09)'; pillFg = GREEN_MID;
     } else {
-      statusTxt = fr ? 'à régler' : 'to settle';
-      statusColor = 'var(--gold)';
+      pillTxt = fr ? 'à régler' : 'to settle';
+      pillBg = 'rgba(201,150,58,.15)'; pillFg = GOLD;
     }
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">' +
-        '<div style="font-size:13px;color:var(--ink)">' + label + '</div>' +
-        '<div style="display:flex;align-items:center;gap:12px">' +
-          '<div style="font-size:13px;font-weight:600;color:var(--ink)">' + fmt(r.amount) + '</div>' +
-          '<div style="font-size:11px;font-weight:600;color:' + statusColor + ';min-width:62px;text-align:right">' + statusTxt + '</div>' +
+    var pill = '<span style="flex-shrink:0;font-size:10.5px;font-weight:600;letter-spacing:.2px;color:' + pillFg + ';background:' + pillBg + ';border-radius:999px;padding:3px 9px;white-space:nowrap">' + pillTxt + '</span>';
+    return '<div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border)">' +
+        tile +
+        '<div style="flex:1;min-width:0;font-family:Inter,sans-serif;font-size:13.5px;color:var(--ink)">' +
+          role + ' <span style="color:var(--muted)">· ' + person + '</span>' +
         '</div>' +
+        '<div style="font-family:Inter,sans-serif;font-size:13.5px;font-weight:600;color:' + GREEN_DARK + '">' + fmt(r.amount) + '</div>' +
+        pill +
       '</div>';
   }).join('');
 
+  // Money footer — SECONDARY (proof, not hero): muted inline, gold only on "reste".
   var synth =
-    '<div style="margin-top:12px;display:flex;flex-direction:column;gap:5px">' +
-      '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">' +
-        '<span>' + (fr ? 'Total ce mois' : 'Total this month') + '</span>' +
-        '<span style="color:var(--ink);font-weight:600">' + fmt(total) + '</span>' +
-      '</div>' +
-      '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">' +
-        '<span>' + (fr ? 'Déjà payé' : 'Already paid') + '</span>' +
-        '<span style="color:var(--ink);font-weight:600">' + fmt(paidSum) + '</span>' +
-      '</div>' +
-      '<div style="display:flex;justify-content:space-between;font-size:13px">' +
-        '<span style="color:var(--ink);font-weight:600">' + (fr ? 'Reste à régler' : 'Left to settle') + '</span>' +
-        '<span style="color:var(--gold);font-weight:700">' + fmt(dueSum) + '</span>' +
-      '</div>' +
+    '<div style="margin-top:11px;font-family:Inter,sans-serif;font-size:11.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline">' +
+      '<span>' + (fr ? 'Total' : 'Total') + ' <b style="color:var(--ink);font-weight:600">' + fmt(total) + '</b></span>' +
+      '<span style="color:var(--border)">·</span>' +
+      '<span>' + (fr ? 'Déjà payé' : 'Paid') + ' <b style="color:var(--ink);font-weight:600">' + fmt(paidSum) + '</b></span>' +
+      '<span style="color:var(--border)">·</span>' +
+      '<span>' + (fr ? 'Reste à régler' : 'Left to settle') + ' <b style="color:' + GOLD + ';font-weight:700">' + fmt(dueSum) + '</b></span>' +
     '</div>';
 
   var ariaTxt = fr
@@ -6164,20 +6170,26 @@ function renderDemoMonthCard() {
     : 'Aria: ' + dueCount + ' payments to confirm this month. Shall I prepare the reminders?';
   var prefill  = fr ? 'Montre-moi le détail des paiements du mois' : 'Show me the payments for this month';
   var laterMsg = fr ? 'Rappels reportés — Aria vous relancera plus tard' : 'Reminders postponed — Aria will follow up later';
+  // Compact Aria band — echoes the app's green hero: soft green field, "A" badge,
+  // dark-green text. Not a second big hero.
   var aria =
-    '<div style="margin-top:12px;padding:12px;background:var(--gold-light);border-radius:10px">' +
-      '<div style="font-size:12px;color:var(--ink);line-height:1.5;margin-bottom:10px">' +
-        '<i class="ti ti-sparkles" style="color:var(--gold)"></i> ' + ariaTxt +
+    '<div style="margin-top:13px;padding:11px 12px;background:rgba(29,77,58,.07);border:1px solid rgba(29,77,58,.12);border-radius:12px">' +
+      '<div style="display:flex;align-items:flex-start;gap:9px;margin-bottom:9px">' +
+        '<span style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:' + GREEN_DARK + ';color:#FAF6EE;display:inline-flex;align-items:center;justify-content:center;font-family:\'Fraunces\',serif;font-size:13px;font-weight:600">A</span>' +
+        '<div style="font-family:Inter,sans-serif;font-size:12.5px;line-height:1.45;color:' + GREEN_DARK + '">' + ariaTxt + '</div>' +
       '</div>' +
-      '<div style="display:flex;gap:8px">' +
-        '<button onclick="openAriaModal(\'' + prefill + '\')" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">' + (fr ? 'Voir le détail' : 'View detail') + '</button>' +
-        '<button onclick="toast(\'' + laterMsg + '\')" style="flex:1;background:var(--paper);color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">' + (fr ? 'Plus tard' : 'Later') + '</button>' +
+      '<div style="display:flex;gap:8px;padding-left:33px">' +
+        '<button onclick="openAriaModal(\'' + prefill + '\')" style="background:' + GREEN_MID + ';color:#FAF6EE;border:none;border-radius:8px;padding:8px 14px;font-family:Inter,sans-serif;font-size:12px;font-weight:600;cursor:pointer">' + (fr ? 'Voir le détail' : 'View detail') + '</button>' +
+        '<button onclick="toast(\'' + laterMsg + '\')" style="background:transparent;color:' + GREEN_MID + ';border:1px solid rgba(29,77,58,.25);border-radius:8px;padding:8px 14px;font-family:Inter,sans-serif;font-size:12px;font-weight:600;cursor:pointer">' + (fr ? 'Plus tard' : 'Later') + '</button>' +
       '</div>' +
     '</div>';
 
-  return '<div style="background:var(--card);border-radius:16px;padding:18px;box-shadow:var(--shadow);margin-bottom:12px">' +
-      '<div style="font-family:\'Fraunces\',serif;font-size:18px;font-weight:300;color:var(--ink);margin-bottom:12px">' +
+  return '<div style="background:#FAF6EE;border:1px solid var(--border);border-radius:16px;padding:18px;box-shadow:var(--shadow);margin-bottom:12px">' +
+      '<div style="font-family:\'Fraunces\',serif;font-size:19px;font-weight:400;color:' + GREEN_DARK + ';line-height:1.2">' +
         (fr ? 'Ce mois · votre maison' : 'This month · your home') +
+      '</div>' +
+      '<div style="font-family:Inter,sans-serif;font-size:12.5px;color:' + GREEN_MID + ';margin:3px 0 13px">' +
+        (fr ? 'Tout est suivi. Rien ne vous échappe.' : 'Everything tracked. Nothing slips by.') +
       '</div>' +
       rowsHtml + synth + aria +
     '</div>';
