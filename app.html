@@ -3290,6 +3290,11 @@ window.renderSoloTurnoverCard = function(){
 
 <main>
 
+<!-- === Residence v1 (strangler fig — gated by stafflo_residence_v1, DEFAULT OFF).
+     Step 1: empty skeleton host. Stays display:none unless isResidenceV1() is ON;
+     filled by renderResidenceV1(). Flag OFF → invisible, zero impact. === -->
+<div id="residenceV3" style="display:none"></div>
+
 <!-- ═══ TODAY ═════════════════════════════════════════════ -->
 <div class="tab on" id="tab-today">
 
@@ -7165,6 +7170,64 @@ function isAriaFirstV1Enabled() {
   try { return localStorage.getItem('stafflo_aria_first_v1') !== '0'; } catch(e) { return true; }
 }
 window.isAriaFirstV1Enabled = isAriaFirstV1Enabled;
+
+// ─── Residence v1 — strangler fig gate (step 1: skeleton only) ──────────
+// Flag: localStorage.stafflo_residence_v1 === '1' (DEFAULT OFF). URL override:
+// ?residence=1 / ?residence=0. Pure additive — touches NO existing renderer
+// (renderTodayV3All / renderTodayQV / applyV3Mode untouched). Flag OFF →
+// renderResidenceV1 is a no-op and #residenceV3 stays hidden+empty, so the app is
+// byte-for-byte unchanged. Whole body + callsite wrapped in try/catch so the new
+// screen can never trip the global error overlay.
+function isResidenceV1() {
+  try {
+    if (location && location.search) {
+      var qs = new URLSearchParams(location.search).get('residence');
+      if (qs === '1') return true;
+      if (qs === '0') return false;
+    }
+  } catch(e){}
+  try { return localStorage.getItem('stafflo_residence_v1') === '1'; } catch(e) { return false; }
+}
+window.isResidenceV1 = isResidenceV1;
+
+function renderResidenceV1() {
+  try {
+    var host = document.getElementById('residenceV3');
+    if (!host) return;
+    if (!isResidenceV1()) { host.style.cssText = 'display:none'; host.innerHTML = ''; return; }
+    var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+    var ico = (typeof iconFor === 'function') ? iconFor : function(){ return ''; };
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var villa = (cfg && cfg.villa) ? cfg.villa : 'Villa DarJ';
+    var GOLD = '#C9963A', GREEN_MID = '#1d4d3a', GREEN_DARK = '#0F2318', CREAM = '#FAF6EE';
+    host.innerHTML =
+      '<div style="max-width:560px;margin:0 auto;padding:22px 18px 40px">' +
+        '<div style="display:flex;align-items:center;gap:11px;margin-bottom:16px">' +
+          '<span style="flex-shrink:0;width:38px;height:38px;border-radius:11px;background:rgba(29,77,58,.10);color:' + GREEN_MID + ';display:inline-flex;align-items:center;justify-content:center;font-size:18px">' + ico('🏡') + '</span>' +
+          '<div style="min-width:0">' +
+            '<div style="font-family:\'Fraunces\',serif;font-size:20px;font-weight:400;color:' + GREEN_DARK + ';line-height:1.15">' + villa + '</div>' +
+            '<div style="font-family:Inter,sans-serif;font-size:12.5px;color:' + GREEN_MID + '">' + (fr ? 'Vue résidence' : 'Residence view') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:inline-flex;padding:3px;background:rgba(29,77,58,.07);border:1px solid var(--border);border-radius:999px;margin-bottom:20px">' +
+          '<span style="padding:7px 16px;border-radius:999px;background:' + GREEN_MID + ';color:' + CREAM + ';font-family:Inter,sans-serif;font-size:12.5px;font-weight:600">' + (fr ? 'Résidence' : 'Residence') + '</span>' +
+          '<button onclick="var h=document.getElementById(\'residenceV3\');if(h){h.style.cssText=\'display:none\';h.innerHTML=\'\';}" style="padding:7px 16px;border-radius:999px;background:transparent;border:none;color:' + GREEN_MID + ';font-family:Inter,sans-serif;font-size:12.5px;font-weight:600;cursor:pointer">' + (fr ? 'Location' : 'Rental') + '</button>' +
+        '</div>' +
+        '<div style="padding:26px 18px;background:var(--card,#fff);border:1px dashed ' + GOLD + ';border-radius:14px;text-align:center;font-family:Inter,sans-serif;font-size:13px;color:var(--muted,#8A8070)">' + (fr ? 'Contenu résidence — étape 2' : 'Residence content — step 2') + '</div>' +
+      '</div>';
+    host.style.cssText = 'display:block;position:fixed;inset:0;z-index:50;background:' + CREAM + ';overflow-y:auto;-webkit-overflow-scrolling:touch';
+  } catch(e){ try { console.warn('[renderResidenceV1]', e); } catch(_){} }
+}
+window.renderResidenceV1 = renderResidenceV1;
+
+// Independent boot trigger — does NOT touch existing renderers. No-op when flag OFF.
+try {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ try { renderResidenceV1(); } catch(e){} });
+  } else {
+    try { renderResidenceV1(); } catch(e){}
+  }
+} catch(e){}
 
 function renderAriaFirstTodayV1() {
   var hero = document.getElementById('ariaFirstHero');
