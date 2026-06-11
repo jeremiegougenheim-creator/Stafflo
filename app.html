@@ -6092,6 +6092,97 @@ function buildDemoInbox() {
   ];
 }
 
+// Demo house-operations expenses — staff & récurrents (suivi + rappel only,
+// JAMAIS de paiement). Static persona Villa Lumière. Each row flagged _demo so
+// it never persists. Read at render time by renderDemoMonthCard() — volatile,
+// zero localStorage/Supabase write. Demo-only, gated by isDemo() at the callsite.
+function buildDemoExpenses() {
+  var rows = [
+    { id:'exp_emile',    name:'Émile',              role_fr:'majordome',   role_en:'butler',      amount:2800, paid:false, paidNote_fr:'',     paidNote_en:'' },
+    { id:'exp_camille',  name:'Camille',            role_fr:'chef',        role_en:'chef',        amount:1900, paid:true,  paidNote_fr:'le 3', paidNote_en:'on 3rd' },
+    { id:'exp_mathilde', name:'Mathilde',           role_fr:'gouvernante', role_en:'housekeeper', amount:1600, paid:false, paidNote_fr:'',     paidNote_en:'' },
+    { id:'exp_pisc',     name:'Pisciniste',         role_fr:'',            role_en:'',            amount:180,  paid:true,  paidNote_fr:'',     paidNote_en:'' },
+    { id:'exp_jard',     name:'Jardinier',          role_fr:'',            role_en:'',            amount:320,  paid:false, paidNote_fr:'',     paidNote_en:'' },
+    { id:'exp_portail',  name:'Réparation portail', role_fr:'',            role_en:'Gate repair', amount:240,  paid:true,  paidNote_fr:'',     paidNote_en:'' }
+  ];
+  rows.forEach(function(r){ r._demo = true; r.__demo = true; });
+  return rows;
+}
+
+// Demo-only "Ce mois · votre maison" card. Reuses existing card style
+// (var(--card)/--shadow/--border/--ink/--muted, gold #C9963A accent on "à régler").
+// Returns an HTML string; callsite (renderTodayQV) gates it behind isDemo().
+function renderDemoMonthCard() {
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  var rows = (typeof buildDemoExpenses === 'function') ? buildDemoExpenses() : [];
+  if (!rows.length) return '';
+  function fmt(n){ return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' €'; }
+  var total = 0, paidSum = 0;
+  rows.forEach(function(r){ total += r.amount; if (r.paid) paidSum += r.amount; });
+  var dueSum = total - paidSum;
+  var dueCount = rows.filter(function(r){ return !r.paid; }).length;
+
+  var rowsHtml = rows.map(function(r){
+    var role = fr ? r.role_fr : r.role_en;
+    var label = role ? (r.name + ' <span style="color:var(--muted)">(' + role + ')</span>') : r.name;
+    var statusTxt, statusColor;
+    if (r.paid) {
+      var note = fr ? r.paidNote_fr : r.paidNote_en;
+      statusTxt = note ? ((fr ? 'payée ' : 'paid ') + note) : (fr ? 'payé' : 'paid');
+      statusColor = 'var(--muted)';
+    } else {
+      statusTxt = fr ? 'à régler' : 'to settle';
+      statusColor = 'var(--gold)';
+    }
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="font-size:13px;color:var(--ink)">' + label + '</div>' +
+        '<div style="display:flex;align-items:center;gap:12px">' +
+          '<div style="font-size:13px;font-weight:600;color:var(--ink)">' + fmt(r.amount) + '</div>' +
+          '<div style="font-size:11px;font-weight:600;color:' + statusColor + ';min-width:62px;text-align:right">' + statusTxt + '</div>' +
+        '</div>' +
+      '</div>';
+  }).join('');
+
+  var synth =
+    '<div style="margin-top:12px;display:flex;flex-direction:column;gap:5px">' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">' +
+        '<span>' + (fr ? 'Total ce mois' : 'Total this month') + '</span>' +
+        '<span style="color:var(--ink);font-weight:600">' + fmt(total) + '</span>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">' +
+        '<span>' + (fr ? 'Déjà payé' : 'Already paid') + '</span>' +
+        '<span style="color:var(--ink);font-weight:600">' + fmt(paidSum) + '</span>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:13px">' +
+        '<span style="color:var(--ink);font-weight:600">' + (fr ? 'Reste à régler' : 'Left to settle') + '</span>' +
+        '<span style="color:var(--gold);font-weight:700">' + fmt(dueSum) + '</span>' +
+      '</div>' +
+    '</div>';
+
+  var ariaTxt = fr
+    ? 'Aria : ' + dueCount + ' paiements à valider ce mois. Je prépare les rappels ?'
+    : 'Aria: ' + dueCount + ' payments to confirm this month. Shall I prepare the reminders?';
+  var prefill  = fr ? 'Montre-moi le détail des paiements du mois' : 'Show me the payments for this month';
+  var laterMsg = fr ? 'Rappels reportés — Aria vous relancera plus tard' : 'Reminders postponed — Aria will follow up later';
+  var aria =
+    '<div style="margin-top:12px;padding:12px;background:var(--gold-light);border-radius:10px">' +
+      '<div style="font-size:12px;color:var(--ink);line-height:1.5;margin-bottom:10px">' +
+        '<i class="ti ti-sparkles" style="color:var(--gold)"></i> ' + ariaTxt +
+      '</div>' +
+      '<div style="display:flex;gap:8px">' +
+        '<button onclick="openAriaModal(\'' + prefill + '\')" style="flex:1;background:var(--green);color:#fff;border:none;border-radius:8px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">' + (fr ? 'Voir le détail' : 'View detail') + '</button>' +
+        '<button onclick="toast(\'' + laterMsg + '\')" style="flex:1;background:var(--paper);color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">' + (fr ? 'Plus tard' : 'Later') + '</button>' +
+      '</div>' +
+    '</div>';
+
+  return '<div style="background:var(--card);border-radius:16px;padding:18px;box-shadow:var(--shadow);margin-bottom:12px">' +
+      '<div style="font-family:\'Fraunces\',serif;font-size:18px;font-weight:300;color:var(--ink);margin-bottom:12px">' +
+        (fr ? 'Ce mois · votre maison' : 'This month · your home') +
+      '</div>' +
+      rowsHtml + synth + aria +
+    '</div>';
+}
+
 window.__DEMO_CLIENTS = buildDemoClients();
 window.__DEMO_INBOX   = buildDemoInbox();
 
@@ -16778,6 +16869,12 @@ function renderTodayQV() {
   const checkinToday = clients.filter(c => _firm(c) && c.arrival === today);
 
   let html = '';
+
+  // ── DEMO-ONLY: "Ce mois · votre maison" house-ops card (gated, invisible in prod) ──
+  // Strictly behind isDemo() — outside demo, renderTodayQV is unchanged.
+  if (typeof isDemo === 'function' && isDemo()) {
+    html += renderDemoMonthCard();
+  }
 
   // ── IN-HOUSE CARD ──
   if (inHouse) {
