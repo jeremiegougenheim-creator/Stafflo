@@ -26461,6 +26461,173 @@ window.addEventListener('DOMContentLoaded', function() {
 })();
 </script>
 
+<!-- ══ END-OF-STAY BILLING v1 — couche de calcul gatée (flag stafflo_billing_v1, DÉFAUT OFF) ══
+     Remplit les slots du template Supabase end_of_stay_billing (active=false tant que non testé).
+     Logique GROUPE (jamais par personne) — N'UTILISE PAS handleMealRecap. Tout en try/catch :
+     ne doit jamais déclencher l'error boundary global. Inerte tant que rien ne l'appelle. -->
+<script>
+(function(){
+  try {
+    // Prix GROUPE fixes (MAD) — jamais par personne. Petit-déj inclus (0).
+    var PRICES = { diner:400, dejeuner:300, brunch:300, forfait_courses:300 };
+    var PREFIX_SYM = { GBP:'£', EUR:'€', USD:'$', CAD:'C$' };
+    var LABELS = {
+      fr: {
+        dinners:'Dîners', lunches:'Déjeuners', brunches:'Brunchs', forfait:'Forfait courses',
+        grocery:'Courses (facture)', transport:'Transport', extra:'Extra', advance:'Avance',
+        none:'(aucune)',
+        owed:'Solde à régler : {x}', credit:'Je vous dois {x}', settled:'Tout est réglé, merci !',
+        miss_fx:'taux de change MAD→devise', miss_grocery:'montant facture courses',
+        miss_transport:'montant transport', miss_extra:'montant extra', miss_payment:'montant avance reçue'
+      },
+      en: {
+        dinners:'Dinners', lunches:'Lunches', brunches:'Brunches', forfait:'Shopping logistics',
+        grocery:'Groceries (receipt)', transport:'Transport', extra:'Extra', advance:'Advance',
+        none:'(none)',
+        owed:'Balance due: {x}', credit:'I owe you {x}', settled:'All settled, thank you!',
+        miss_fx:'MAD→currency exchange rate', miss_grocery:'grocery receipt amount',
+        miss_transport:'transport amount', miss_extra:'extra amount', miss_payment:'received advance amount'
+      }
+    };
+
+    function isNum(v){ return typeof v === 'number' && isFinite(v); }
+    function group(n){
+      var s = String(Math.abs(Math.round(n)));
+      s = s.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+      return (n < 0 ? '-' : '') + s;
+    }
+    // "3 200 MAD (~£257)" — MAD + devise guest côte à côte, devise arrondie à l'unité.
+    function fmtMoney(mad, fx, cur, lang){
+      var madInt = Math.round(mad || 0);
+      var madStr = group(madInt) + ' MAD';
+      cur = (cur || 'EUR').toUpperCase();
+      if (cur === 'MAD') return madStr;
+      if (!(isNum(fx) && fx > 0)) return madStr;  // fx manquant → signalé en missing, jamais inventé
+      var dev = Math.round(madInt * fx);
+      var pre = PREFIX_SYM[cur];
+      var devStr = pre ? (pre + group(dev)) : (group(dev) + ' ' + cur);
+      return madStr + ' (~' + devStr + ')';
+    }
+
+    function compute(input){
+      input = input || {};
+      var lang = (input.lang === 'en') ? 'en' : 'fr';
+      var cur  = (input.currency || 'EUR').toUpperCase();
+      var fx   = input.fx_rate;
+      var L = LABELS[lang];
+      var missing = [];
+      function money(mad){ return fmtMoney(mad, fx, cur, lang); }
+
+      // taux requis dès que la devise n'est pas MAD
+      if (cur !== 'MAD' && !(isNum(fx) && fx > 0)) missing.push(L.miss_fx);
+
+      // ── coûts ──
+      var costLines = [];
+      var c = input.costs || {};
+      function mealLine(count, unit, label){
+        var n = isNum(count) ? count : 0;
+        if (n <= 0) return;
+        costLines.push({ label: label + ' (' + n + ' × ' + unit + ')', mad: n * unit });
+      }
+      mealLine(c.dinners,           PRICES.diner,           L.dinners);
+      mealLine(c.lunches,           PRICES.dejeuner,        L.lunches);
+      mealLine(c.brunches,          PRICES.brunch,          L.brunches);
+      mealLine(c.shopping_sessions, PRICES.forfait_courses, L.forfait);
+
+      function pushLines(arr, fallbackLabel, missLabel){
+        (arr || []).forEach(function(it){
+          if (it && it.passe_par_owner === false) return;  // direct prestataire→guest = exclu
+          var lbl = (it && it.label) ? it.label : fallbackLabel;
+          if (!it || !isNum(it.montant_MAD)) { missing.push(missLabel + (it && it.label ? ' (' + it.label + ')' : '')); return; }
+          costLines.push({ label: lbl, mad: it.montant_MAD });
+        });
+      }
+      pushLines(c.grocery_invoices, L.grocery,   L.miss_grocery);   // factures courses réelles
+      pushLines(c.transport,        L.transport, L.miss_transport); // transport via owner
+      pushLines(c.extras,           L.extra,     L.miss_extra);
+
+      // ── reçu (avances faites par le guest à l'owner) ──
+      var payLines = [];
+      (input.payments_received || []).forEach(function(p){
+        if (p && p.passe_par_owner === false) return;
+        var lbl = (p && p.label) ? p.label : L.advance;
+        if (p && p.date) lbl += ' (' + p.date + ')';
+        if (!p || !isNum(p.montant_MAD)) { missing.push(L.miss_payment + (p && p.label ? ' (' + p.label + ')' : '')); return; }
+        payLines.push({ label: lbl, mad: p.montant_MAD });
+      });
+
+      function sum(arr){ return arr.reduce(function(a, l){ return a + l.mad; }, 0); }
+      var totalReceived = sum(payLines);
+      var totalCosts    = sum(costLines);
+      var balance       = totalReceived - totalCosts;  // + crédit guest / − guest doit
+
+      var slots = {};
+      slots.payments_block = payLines.length  ? payLines.map(function(l){ return l.label + ' : ' + money(l.mad); }).join('\n')  : L.none;
+      slots.costs_block    = costLines.length ? costLines.map(function(l){ return l.label + ' : ' + money(l.mad); }).join('\n') : L.none;
+      slots.total_received = money(totalReceived);
+      slots.total_costs    = money(totalCosts);
+
+      if (balance < 0)      slots.balance_line = L.owed.split('{x}').join(money(-balance));
+      else if (balance > 0) slots.balance_line = L.credit.split('{x}').join(money(balance));
+      else                  slots.balance_line = L.settled;
+
+      // Wise SEULEMENT si solde dû (balance négatif) ; sinon slot vidé.
+      slots.WISE_DETAILS = (balance < 0) ? (input.wise_details || '') : '';
+
+      var stay = input.stay || {};
+      slots.guest_first_name = stay.guest_first_name || '';
+      slots.stay_dates       = stay.stay_dates || '';
+      slots.group_size       = (stay.group_size != null) ? String(stay.group_size) : '';
+      slots.owner_name       = stay.owner_name || '';
+
+      return {
+        ok: missing.length === 0,
+        missing: missing,
+        slots: slots,
+        totals: { received: totalReceived, costs: totalCosts, balance: balance, currency: cur, fx_rate: fx }
+      };
+    }
+
+    // Remplit un body de template (string) avec les slots. Vide WISE → nettoie les lignes blanches.
+    function render(body, slots){
+      var out = String(body || '');
+      slots = slots || {};
+      Object.keys(slots).forEach(function(k){
+        out = out.split('{' + k + '}').join(slots[k] == null ? '' : String(slots[k]));
+      });
+      return out.replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    // Orchestration : calcule puis rend. Données manquantes → ok:false + liste (ARIA DEMANDE, n'envoie pas).
+    function buildMessage(input, body){
+      var r = compute(input);
+      if (!r.ok) return { ok:false, missing:r.missing, slots:r.slots, totals:r.totals };
+      return { ok:true, missing:[], message:render(body, r.slots), slots:r.slots, totals:r.totals };
+    }
+
+    function isBillingV1(){
+      try {
+        if (typeof location !== 'undefined' && location.search){
+          var qs = new URLSearchParams(location.search).get('billing');
+          if (qs === '1') return true;
+          if (qs === '0') return false;
+        }
+      } catch(e){}
+      try { return localStorage.getItem('stafflo_billing_v1') === '1'; } catch(e){ return false; }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.STAFFLO_BILLING = {
+        PRICES: PRICES, LABELS: LABELS,
+        fmtMoney: fmtMoney, compute: compute, render: render, buildMessage: buildMessage,
+        isEnabled: isBillingV1
+      };
+      window.isBillingV1 = isBillingV1;
+    }
+  } catch(e){ try { console.warn('[billing-v1]', e); } catch(_){} }
+})();
+</script>
+
 <!-- ══ ARIA CENTERED MODAL ═════════════════════════════════ -->
 <div class="aria-modal-bg" id="ariaModal" onclick="if(event.target===this)closeAriaModal()">
   <div class="aria-modal" role="dialog" aria-label="ARIA AI Assistant">
