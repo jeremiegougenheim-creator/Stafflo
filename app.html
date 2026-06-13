@@ -11123,6 +11123,18 @@ async function chatSend() {
   scrollChat();
 
   try {
+    // ── End-of-stay billing hook (GATÉ stafflo_billing_v1, DÉFAUT OFF) ──
+    // Flag OFF → STAFFLO_BILLING.isEnabled() est false → ce bloc est sauté et le classifieur
+    // ci-dessous s'exécute À L'IDENTIQUE. Le code billing n'est même pas atteint. handleBillingTurn
+    // renvoie true seulement s'il a consommé le tour (confirmation d'intent ou collecte active) ;
+    // sur tout throw on retombe silencieusement sur le flux ARIA normal.
+    if (typeof window !== 'undefined' && window.STAFFLO_BILLING && typeof window.STAFFLO_BILLING.isEnabled === 'function'
+        && window.STAFFLO_BILLING.isEnabled() && typeof window.handleBillingTurn === 'function') {
+      var _billingConsumed = false;
+      try { _billingConsumed = await window.handleBillingTurn(text, typing); } catch(_eBill) { _billingConsumed = false; }
+      if (_billingConsumed) return;
+    }
+
     // Detect intent
     var cmd = detectCommandIntent(text);
 
@@ -26625,6 +26637,195 @@ window.addEventListener('DOMContentLoaded', function() {
       window.isBillingV1 = isBillingV1;
     }
   } catch(e){ try { console.warn('[billing-v1]', e); } catch(_){} }
+})();
+</script>
+
+<!-- ══ END-OF-STAY BILLING v1 — câblage orchestrateur (gaté stafflo_billing_v1, DÉFAUT OFF) ══
+     Relie window.STAFFLO_BILLING au chat ARIA via une machine à états en mémoire (PAS de table).
+     N'est appelé QUE depuis le hook gaté de chatSend(). Inerte tant que rien ne l'appelle.
+     Tout en try/catch : ne doit jamais déclencher l'error boundary global. -->
+<script>
+(function(){
+  try {
+    var STATE = null; // état de collecte éphémère — vit le temps de la conversation, jamais persisté
+
+    function fr(){ try { return (typeof lang !== 'undefined') ? lang === 'fr' : true; } catch(e){ return true; } }
+    function Q(frq, enq){ return fr() ? frq : enq; }
+    function say(msg){ try { if (typeof addChatBubble === 'function') addChatBubble('ai', msg, []); } catch(e){} }
+
+    // ── Détection d'intent billing — prudente (seuil conservateur, on confirme toujours) ──
+    function detectBillingIntent(text){
+      var t = (text || '').toLowerCase();
+      var hit = /\bd[ée]compte\b|\bfacture\b|note de\s+\w+|fin de s[ée]jour|end[-\s]?of[-\s]?stay|\bbill\b|\binvoice\b|combien\s+(me\s+)?doit|combien\s+(je\s+)?dois|settle\s*up/.test(t);
+      if (!hit) return { match:false, guess:null };
+      var guess = null;
+      var m = (text || '').match(/(?:note de|d[ée]compte de|facture de|de|pour|of|for)\s+([A-ZÉÈÀ][\wÀ-ÿ'’-]+)/);
+      if (m) guess = m[1];
+      try { if (typeof findGuestInInstruction === 'function'){ var c = findGuestInInstruction(text); if (c && c.name) guess = c.name.trim().split(/\s+/)[0]; } } catch(e){}
+      return { match:true, guess:guess };
+    }
+
+    function parseInt0(s){ var m = String(s).match(/-?\d+/); return m ? parseInt(m[0],10) : null; }
+    function parseFloatN(s){ var m = String(s).replace(',','.').match(/-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : null; }
+    function parseAmounts(s){
+      var t = String(s).toLowerCase().trim();
+      if (/^(0|aucun|aucune|non|no|none|rien|n[ée]ant)$/.test(t)) return [];
+      var nums = (t.match(/\d[\d  ]*([.,]\d+)?/g) || []).map(function(x){ return parseFloat(x.replace(/[\s  ]/g,'').replace(',','.')); }).filter(function(n){ return isFinite(n); });
+      return nums;
+    }
+    function isCancel(s){ return /^(annuler|annule|stop|cancel|abandon|laisse tomber|laisse|oublie)\b/i.test(String(s).trim()); }
+    function isYes(s){ return /^(oui|ouais|yes|y|ok|okay|d'accord|daccord|vas[- ]?y|go|carr[ée]ment)\b/i.test(String(s).trim()); }
+    function isNo(s){ return /^(non|no|nan|nope)\b/i.test(String(s).trim()); }
+
+    function countApply(key){
+      return function(s, a){
+        var n = parseInt0(a);
+        if (n == null || n < 0) return { ok:false, err:Q('Donne un nombre (0 si aucun).','Give a number (0 if none).') };
+        s.input.costs[key] = n; return { ok:true };
+      };
+    }
+    function amountsToLines(arr, labelFr, labelEn, ownerFlag){
+      return arr.map(function(n, i){
+        var line = { label: (fr()?labelFr:labelEn) + ' ' + (i+1), montant_MAD: n };
+        if (ownerFlag) line.passe_par_owner = true;
+        return line;
+      });
+    }
+
+    // Ordre des questions (une à la fois). fx sauté si devise = MAD.
+    var STEPS = [
+      { key:'guest_first_name', ask:function(s){ return Q('Quel est le prénom du guest ?','What is the guest\'s first name?'); },
+        apply:function(s,a){ var v=(a||'').trim().split(/\s+/)[0]; if(!v) return {ok:false}; s.input.stay.guest_first_name=v; return {ok:true}; } },
+      { key:'stay_dates', ask:function(s){ return Q('Quelles sont les dates du séjour ? (ex. 6–13 juin)','What are the stay dates? (e.g. 6–13 June)'); },
+        apply:function(s,a){ var v=(a||'').trim(); if(!v) return {ok:false}; s.input.stay.stay_dates=v; return {ok:true}; } },
+      { key:'group_size', ask:function(s){ return Q('Combien de personnes dans le groupe ?','How many people in the group?'); },
+        apply:function(s,a){ var n=parseInt0(a); if(n==null||n<=0) return {ok:false, err:Q('Donne un nombre, ex. 8.','Give a number, e.g. 8.')}; s.input.stay.group_size=n; return {ok:true}; } },
+      { key:'currency', ask:function(s){ return Q('Quelle devise pour le guest ? (ex. GBP, EUR, USD, MAD)','Guest currency? (e.g. GBP, EUR, USD, MAD)'); },
+        apply:function(s,a){ var t=(a||'').toUpperCase(); var cur='EUR';
+          if(/GBP|£|LIVRE|POUND|STERLING/.test(t)) cur='GBP';
+          else if(/EUR|€|EURO/.test(t)) cur='EUR';
+          else if(/USD|\$|DOLLAR/.test(t)) cur='USD';
+          else if(/MAD|DIRHAM|\bDH\b/.test(t)) cur='MAD';
+          else if(/CHF|FRANC/.test(t)) cur='CHF';
+          else if(/CAD/.test(t)) cur='CAD';
+          else { var m=t.match(/[A-Z]{3}/); if(m) cur=m[0]; }
+          s.input.currency=cur; return {ok:true}; } },
+      { key:'fx_rate', skipIf:function(s){ return s.input.currency==='MAD'; },
+        ask:function(s){ return Q('Taux du jour : 1 MAD = ? '+s.input.currency+' (ex. 0.08)','Today\'s rate: 1 MAD = ? '+s.input.currency+' (e.g. 0.08)'); },
+        apply:function(s,a){ var n=parseFloatN(a); if(n==null||n<=0) return {ok:false, err:Q('Donne un taux, ex. 0.08.','Give a rate, e.g. 0.08.')}; s.input.fx_rate=n; return {ok:true}; } },
+      { key:'dinners',           ask:function(s){ return Q('Combien de dîners (400 MAD/groupe) ?','How many dinners (400 MAD/group)?'); },                   apply:countApply('dinners') },
+      { key:'lunches',           ask:function(s){ return Q('Combien de déjeuners (300 MAD/groupe) ?','How many lunches (300 MAD/group)?'); },                apply:countApply('lunches') },
+      { key:'brunches',          ask:function(s){ return Q('Combien de brunchs (300 MAD/groupe) ?','How many brunches (300 MAD/group)?'); },                 apply:countApply('brunches') },
+      { key:'shopping_sessions', ask:function(s){ return Q('Combien de sessions de courses (forfait 300 MAD/session) ?','How many shopping sessions (300 MAD/session)?'); }, apply:countApply('shopping_sessions') },
+      { key:'grocery', ask:function(s){ return Q('Montants des factures de courses en MAD, séparés par des virgules (0 si aucune) ?','Grocery receipt amounts in MAD, comma-separated (0 if none)?'); },
+        apply:function(s,a){ s.input.costs.grocery_invoices = amountsToLines(parseAmounts(a), 'Courses', 'Groceries', false); return {ok:true}; } },
+      { key:'transport', ask:function(s){ return Q('Montants transport passés par toi en MAD, séparés par des virgules (0 si aucun) ?','Transport amounts paid through you in MAD, comma-separated (0 if none)?'); },
+        apply:function(s,a){ s.input.costs.transport = amountsToLines(parseAmounts(a), 'Transport', 'Transport', true); return {ok:true}; } },
+      { key:'payments', ask:function(s){ return Q('Avances déjà reçues du guest en MAD, séparées par des virgules (0 si aucune) ?','Advances already received from the guest in MAD, comma-separated (0 if none)?'); },
+        apply:function(s,a){ s.input.payments_received = amountsToLines(parseAmounts(a), 'Avance', 'Advance', false); return {ok:true}; } }
+    ];
+
+    function nextStep(s){
+      for (var i=0;i<STEPS.length;i++){
+        var st = STEPS[i];
+        if (st.skipIf && st.skipIf(s)) continue;
+        if (!s.done[st.key]) return st;
+      }
+      return null;
+    }
+
+    // Lecture du body du template Supabase (active=false — JAMAIS activé ici). Seam de test : window.__billingTestBody.
+    async function fetchBillingBody(lng){
+      try {
+        if (typeof window !== 'undefined' && window.__billingTestBody) return window.__billingTestBody;
+        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+        if (!cfg.sbUrl || !cfg.sbKey || typeof sbHdrs !== 'function') return null;
+        var url = cfg.sbUrl + '/rest/v1/templates?key=eq.end_of_stay_billing&lang=eq.' + encodeURIComponent(lng) + '&select=body&limit=1';
+        var res = await fetch(url, { headers: sbHdrs(cfg.sbKey) });
+        if (!res.ok) return null;
+        var rows = await res.json();
+        return (rows && rows[0] && rows[0].body) ? rows[0].body : null;
+      } catch(e){ return null; }
+    }
+
+    async function finalize(s){
+      try {
+        var B = (typeof window !== 'undefined') ? window.STAFFLO_BILLING : null;
+        if (!B) { STATE=null; return; }
+        var body = await fetchBillingBody(s.input.lang);
+        if (!body) { say(Q('Je n\'arrive pas à charger le modèle de décompte. On réessaie plus tard ?','I can\'t load the summary template. Try again later?')); STATE=null; return; }
+        // {WISE_DETAILS} injecté ICI depuis la config locale (jamais en dur, jamais en base) ; le module
+        // ne l'insère QUE si solde dû.
+        var wise = '';
+        try {
+          var cfg=(typeof getCfg==='function')?getCfg():{};
+          wise = cfg.wiseDetails || cfg.wise_details || '';
+          if (!s.input.stay.owner_name) s.input.stay.owner_name = cfg.owner || 'Jérémie';
+        } catch(e){ if (!s.input.stay.owner_name) s.input.stay.owner_name = 'Jérémie'; }
+        s.input.wise_details = wise;
+        var r = B.buildMessage(s.input, body);
+        if (!r.ok) { say(Q('Il me manque encore : ','Still missing: ') + (r.missing||[]).join(', ')); STATE=null; return; }
+        say(r.message);
+        STATE = null;
+      } catch(e){ try{console.warn('[billing-finalize]',e);}catch(_){} STATE=null; }
+    }
+
+    async function askNext(s){
+      var step = nextStep(s);
+      if (!step) { await finalize(s); return; }
+      say(step.ask(s));
+    }
+
+    // Retourne true si le tour est consommé par le billing ; false → laisser le flux ARIA normal.
+    async function handleBillingTurn(text, typing){
+      try {
+        if (STATE) {
+          if (typing) { try { typing.style.display='none'; } catch(e){} }
+          if (isCancel(text)) { STATE=null; say(Q('D\'accord, j\'annule le décompte.','Okay, cancelling the summary.')); return true; }
+
+          if (STATE.phase === 'confirm') {
+            if (isYes(text)) { STATE.phase='collect'; if (STATE.input.stay.guest_first_name) STATE.done.guest_first_name=true; await askNext(STATE); return true; }
+            if (isNo(text))  { STATE=null; say(Q('Ok, j\'oublie le décompte.','Okay, dropping the summary.')); return true; }
+            var g = STATE.input.stay.guest_first_name;
+            say(Q('Je prépare le décompte de fin de séjour'+(g?(' de '+g):'')+' ? (oui / non)','Shall I prepare the end-of-stay summary'+(g?(' for '+g):'')+'? (yes / no)'));
+            return true;
+          }
+
+          // phase collect : la réponse alimente l'étape courante
+          var cur = nextStep(STATE);
+          if (cur) {
+            var res = cur.apply(STATE, text);
+            if (!res || !res.ok) { say((res && res.err) || Q('Désolé, je n\'ai pas compris — peux-tu reformuler ?','Sorry, I didn\'t catch that — could you rephrase?')); return true; }
+            STATE.done[cur.key] = true;
+          }
+          await askNext(STATE);
+          return true;
+        }
+
+        // pas d'état actif → détecter l'intent (prudent, on confirme avant de collecter)
+        var det = detectBillingIntent(text);
+        if (!det.match) return false;
+        STATE = { phase:'confirm', done:{}, input:{ lang: fr()?'fr':'en', currency:null, fx_rate:null, stay:{}, costs:{}, payments_received:[] } };
+        if (det.guess) STATE.input.stay.guest_first_name = det.guess;
+        if (typing) { try { typing.style.display='none'; } catch(e){} }
+        say(Q('Tu veux que je prépare le décompte de fin de séjour'+(det.guess?(' de '+det.guess):'')+' ? (oui / non)','Want me to prepare the end-of-stay summary'+(det.guess?(' for '+det.guess):'')+'? (yes / no)'));
+        return true;
+
+      } catch(e){
+        try { console.warn('[billing-turn]', e); } catch(_){}
+        // blindage : si on était en collecte, consommer proprement ; sinon laisser le flux normal
+        if (STATE) { STATE=null; say(Q('Décompte annulé (erreur interne). On peut réessayer.','Summary cancelled (internal error). We can retry.')); return true; }
+        return false;
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.handleBillingTurn = handleBillingTurn;
+      // seams de dev/test uniquement (inertes en prod)
+      window.__billingPeek  = function(){ return STATE; };
+      window.__billingReset = function(){ STATE = null; };
+    }
+  } catch(e){ try { console.warn('[billing-wire]', e); } catch(_){} }
 })();
 </script>
 
