@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v99 (handler error : erreurs extension/cross-origin n'affichent plus l'overlay fatal — Safari)
-const CACHE = 'stafflo-v99';
+// Stafflo Service Worker — v100 (Today blanc fenêtre étroite+courte <600px : main scrollable + min-height corps Today, gaté <600px)
+const CACHE = 'stafflo-v100';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
