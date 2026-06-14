@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v96 (résilience réseau : overlay fatal supprimé pour rejets transitoires)
-const CACHE = 'stafflo-v96';
+// Stafflo Service Worker — v97 (autosave réglages : token _stafflo_session pour push + pull villa_settings)
+const CACHE = 'stafflo-v97';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

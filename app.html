@@ -7643,17 +7643,10 @@ async function _pushFieldToSupabase(sbCol, value) {
   try {
     var cfg = getCfg();
     if (!cfg.sbUrl || !cfg.sbKey) return false;
-    // Need auth token to satisfy RLS (villa_settings.owner_id = auth.uid())
-    var token = (typeof getAccessToken === 'function') ? getAccessToken()
-              : (typeof currentUserToken === 'function') ? currentUserToken()
-              : null;
-    if (!token) {
-      // Try sb-auth from localStorage (Supabase JS lib stores it there if used)
-      try {
-        var raw = localStorage.getItem('sb-' + (cfg.sbUrl.match(/https:\/\/([^.]+)/)||[])[1] + '-auth-token');
-        if (raw) { var parsed = JSON.parse(raw); token = parsed && parsed.access_token; }
-      } catch(_){}
-    }
+    // Need auth token to satisfy RLS (villa_settings.owner_id = auth.uid()).
+    // Source unique de vérité : _stafflo_session.access_token (comme les ~15 autres appels REST).
+    var token = (typeof _stafflo_session !== 'undefined' && _stafflo_session
+              && _stafflo_session.access_token) ? _stafflo_session.access_token : null;
     if (!token) return false; // not logged in — skip cloud save silently
     var villaKey = cfg.villaKey || cfg.villa_key || 'villadarj';
     var body = {}; body[sbCol] = value;
@@ -7748,11 +7741,9 @@ async function pullSettingsFromSupabase() {
   try {
     var cfg = getCfg();
     if (!cfg.sbUrl || !cfg.sbKey) return false;
-    var token = null;
-    try {
-      var raw = localStorage.getItem('sb-' + (cfg.sbUrl.match(/https:\/\/([^.]+)/)||[])[1] + '-auth-token');
-      if (raw) { var parsed = JSON.parse(raw); token = parsed && parsed.access_token; }
-    } catch(_){}
+    // Source unique de vérité : _stafflo_session.access_token (comme les ~15 autres appels REST).
+    var token = (typeof _stafflo_session !== 'undefined' && _stafflo_session
+              && _stafflo_session.access_token) ? _stafflo_session.access_token : null;
     if (!token) return false;
     var villaKey = cfg.villaKey || cfg.villa_key || 'villadarj';
     var r = await fetch(cfg.sbUrl + '/rest/v1/villa_settings?villa_key=eq.' + encodeURIComponent(villaKey) + '&select=*', {
