@@ -26824,6 +26824,23 @@ window.addEventListener('DOMContentLoaded', function() {
       }
       return null;
     }
+    function stepByKey(k){ for (var i=0;i<STEPS.length;i++){ if (STEPS[i].key === k) return STEPS[i]; } return null; }
+
+    // ── #2 Garde-fou quantités absurdes (repas) ── confirmation douce, jamais de rejet dur.
+    var MEAL_LABELS = {
+      dinners:{fr:'dîners',en:'dinners'}, lunches:{fr:'déjeuners',en:'lunches'},
+      brunches:{fr:'brunchs',en:'brunches'}, shopping_sessions:{fr:'sessions de courses',en:'shopping runs'}
+    };
+    function nightsBetween(ci, co){
+      try { var a=Date.parse(ci+'T00:00:00Z'), b=Date.parse(co+'T00:00:00Z'); if(!isFinite(a)||!isFinite(b)) return 0; var n=Math.round((b-a)/86400000); return n>0?n:0; } catch(e){ return 0; }
+    }
+    function qtyThreshold(s){ return (isFinite(s._nights) && s._nights>0) ? (s._nights + 3) : 21; } // nuits + marge, sinon cap plat
+    function nightsText(s){ return (isFinite(s._nights) && s._nights>0) ? (s._nights + (fr()?' nuits':' nights')) : (fr()?'ce séjour':'this stay'); }
+    function qtyConfirmMsg(pq){
+      var lbl = MEAL_LABELS[pq.key] || {fr:'repas',en:'meals'};
+      return Q('Tu as saisi ' + pq.count + ' ' + lbl.fr + ' pour ' + pq.nightsText + ' — c\'est bien ça ? (oui / non)',
+               'You entered ' + pq.count + ' ' + lbl.en + ' for ' + pq.nightsText + ' — is that right? (yes / no)');
+    }
 
     // Lecture du body du template Supabase (active=false — JAMAIS activé ici). Seam de test : window.__billingTestBody.
     async function fetchBillingBody(lng){
@@ -26897,7 +26914,7 @@ window.addEventListener('DOMContentLoaded', function() {
         var st = s.input.stay;
         if (sej.guest_name) st.guest_first_name = String(sej.guest_name).trim().split(/\s+/)[0];
         s.done.guest_first_name = true;
-        if (sej.checkin_date && sej.checkout_date){ st.stay_dates = formatDateRange(sej.checkin_date, sej.checkout_date); s.done.stay_dates = true; }
+        if (sej.checkin_date && sej.checkout_date){ st.stay_dates = formatDateRange(sej.checkin_date, sej.checkout_date); s.done.stay_dates = true; var nN = nightsBetween(sej.checkin_date, sej.checkout_date); if (nN>0) s._nights = nN; }
         var grp = (parseInt(sej.nb_adults,10)||0) + (parseInt(sej.nb_children,10)||0);
         if (grp > 0){ st.group_size = grp; s.done.group_size = true; }
         if (sej.devise){
@@ -26993,11 +27010,28 @@ window.addEventListener('DOMContentLoaded', function() {
             return true;
           }
 
+          // #2 : confirmation d'une quantité repas suspecte en attente → on reste DANS la machine à états
+          if (STATE.pendingQty) {
+            var pq = STATE.pendingQty;
+            if (isYes(text)) { STATE.done[pq.key] = true; STATE.pendingQty = null; await askNext(STATE); return true; }
+            if (isNo(text))  { STATE.pendingQty = null; var stp = stepByKey(pq.key); if (stp) say(stp.ask(STATE)); return true; } // re-pose la même étape
+            say(qtyConfirmMsg(pq)); return true; // réponse ambiguë → on re-pose la confirmation
+          }
+
           // phase collect : la réponse alimente l'étape courante
           var cur = nextStep(STATE);
           if (cur) {
             var res = cur.apply(STATE, text);
             if (!res || !res.ok) { say((res && res.err) || Q('Désolé, je n\'ai pas compris — peux-tu reformuler ?','Sorry, I didn\'t catch that — could you rephrase?')); return true; }
+            // #2 : garde-fou quantités absurdes sur les repas → confirmation douce, sans marquer done ni avancer
+            if (MEAL_LABELS[cur.key]) {
+              var val = STATE.input.costs[cur.key];
+              if (isFinite(val) && val > qtyThreshold(STATE)) {
+                STATE.pendingQty = { key: cur.key, count: val, nightsText: nightsText(STATE) };
+                say(qtyConfirmMsg(STATE.pendingQty));
+                return true;
+              }
+            }
             STATE.done[cur.key] = true;
             // filet : si le guest n'était pas connu au déclenchement, pré-fill dès qu'on a son prénom
             if (cur.key === 'guest_first_name') await maybePrefill(STATE);
