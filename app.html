@@ -4706,6 +4706,7 @@ window.renderSetupOneLiner = function(){
     <div class="field"><label data-fr="Votre prénom" data-en="Your first name">Votre prénom</label><input id="cfgOwner" placeholder="Jérémie"></div>
     <div class="field"><label data-fr="Ville" data-en="City">Ville</label><input id="cfgCity" placeholder="Marrakech"></div>
     <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
+    <div class="field" id="cfgWiseDetailsField" style="display:none"><label data-fr="Coordonnées Wise / virement (affichées sur le décompte)" data-en="Wise / bank transfer details (shown on the bill)">Coordonnées Wise / virement (affichées sur le décompte)</label><textarea id="cfgWiseDetails" rows="3" placeholder="Bénéficiaire, IBAN / lien Wise… (laissez vide pour ne pas l'afficher sur le décompte)"></textarea></div>
     <!-- Cleaner contact (v82) — used by the Solo profile turnover card -->
     <div class="field"><label data-fr="Nom du ménage" data-en="Cleaner name">Nom du ménage</label><input id="cfgCleanerName" placeholder="Bouchra"></div>
     <div class="field"><label data-fr="Téléphone (WhatsApp)" data-en="Phone (WhatsApp)">Téléphone (WhatsApp)</label><input id="cfgCleanerPhone" placeholder="+212 6..." inputmode="tel"></div>
@@ -7438,6 +7439,8 @@ var SETTINGS_FIELD_MAP = {
   cfgGps:             { cfgKey:'gps',              sbCol:'gps' },
   cfgAriaMemory:      { cfgKey:'ariaMemory',       sbCol:'aria_memory',   maxLen: 3000 },
   cfgGoogleClientId:  { cfgKey:'googleClientId',   sbCol:'google_client_id' },
+  // Wise/virement = secret local uniquement (jamais en base) — lu par le billing pour {WISE_DETAILS}
+  cfgWiseDetails:     { cfgKey:'wiseDetails',       sbCol:null },
   // Supabase-meta fields stay localStorage-only (chicken-and-egg)
   cfgSbUrl:           { cfgKey:'sbUrl',            sbCol:null,            transform: _trimSlashes },
   cfgSbKey:           { cfgKey:'sbKey',            sbCol:null }
@@ -10173,6 +10176,12 @@ function loadSettingsUI() {
   set('cfgCleanerPhone',     cfg.cleanerPhone);
   set('cfgGoogleClientId', cfg.googleClientId || '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com');
   set('cfgSbUrl', cfg.sbUrl);   set('cfgSbKey', cfg.sbKey);
+  // Wise/virement : champ visible UNIQUEMENT si le billing est activé (flag OFF → Réglages identiques)
+  set('cfgWiseDetails', cfg.wiseDetails);
+  try {
+    var _wf = document.getElementById('cfgWiseDetailsField');
+    if (_wf) { var _on = !!(window.STAFFLO_BILLING && window.STAFFLO_BILLING.isEnabled && window.STAFFLO_BILLING.isEnabled()); _wf.style.display = _on ? '' : 'none'; }
+  } catch(e){}
   // ARIA Memory + char counter
   set('cfgAriaMemory', cfg.ariaMemory);
   updateAriaMemoryCount();
