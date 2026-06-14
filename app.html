@@ -7038,10 +7038,10 @@ function isBillingFormV1() {
 window.isBillingFormV1 = isBillingFormV1;
 
 var DEFAULT_SERVICE_CATALOG = [
-  { id:'diner',           name:'Dîner',           price:400, unit:'groupe' },
-  { id:'dejeuner',        name:'Déjeuner',        price:300, unit:'groupe' },
-  { id:'brunch',          name:'Brunch',          price:300, unit:'groupe' },
-  { id:'forfait_courses', name:'Forfait courses', price:300, unit:'forfait' }
+  { id:'diner',           name:'Dîner',           price:400, unit:'groupe',  included:false, enabled:true },
+  { id:'dejeuner',        name:'Déjeuner',        price:300, unit:'groupe',  included:false, enabled:true },
+  { id:'brunch',          name:'Brunch',          price:300, unit:'groupe',  included:false, enabled:true },
+  { id:'forfait_courses', name:'Forfait courses', price:300, unit:'forfait', included:false, enabled:true }
 ];
 var SERVICE_UNITS = [
   { v:'groupe',   fr:'par groupe',   en:'per group' },
@@ -7077,7 +7077,7 @@ function addServiceItemRow() {
   if (!name) return; name = name.trim(); if (!name) return;
   var id = 'svc_' + name.toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,30) + '_' + Date.now().toString(36);
   var arr = getServiceCatalog();
-  arr.push({ id:id, name:name, price:0, unit:'forfait' });
+  arr.push({ id:id, name:name, price:0, unit:'forfait', included:false, enabled:true });
   saveServiceCatalog(arr);
   renderServiceCatalogSettings();
 }
@@ -7094,6 +7094,14 @@ function renderServiceCatalogSettings() {
   items.forEach(function(it){
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)';
+
+    var enab = document.createElement('input');
+    enab.type = 'checkbox';
+    enab.checked = (it.enabled !== false); // coalescing rétro-compat : flag absent → activé
+    enab.style.cssText = 'width:16px;height:16px;cursor:pointer;flex-shrink:0';
+    enab.title = fr?'Activer dans l\'interface':'Show in UI';
+    enab.addEventListener('change', function(){ updateServiceItem(it.id, 'enabled', enab.checked); });
+    row.appendChild(enab);
 
     var nm = document.createElement('input');
     nm.type = 'text'; nm.value = it.name || ''; nm.placeholder = fr?'Prestation':'Service';
@@ -7119,6 +7127,16 @@ function renderServiceCatalogSettings() {
     });
     sel.addEventListener('change', function(){ updateServiceItem(it.id, 'unit', sel.value); });
     row.appendChild(sel);
+
+    var incLbl = document.createElement('label');
+    incLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);cursor:pointer;flex-shrink:0';
+    var inc = document.createElement('input');
+    inc.type = 'checkbox';
+    inc.checked = !!it.included; // coalescing rétro-compat : flag absent → non inclus
+    inc.addEventListener('change', function(){ updateServiceItem(it.id, 'included', inc.checked); });
+    incLbl.appendChild(inc);
+    incLbl.appendChild(document.createTextNode(' ' + (fr?'inclus':'included')));
+    row.appendChild(incLbl);
 
     var rm = document.createElement('button');
     rm.type = 'button'; rm.textContent = '×'; rm.title = fr?'Supprimer':'Remove';

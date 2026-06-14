@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v100 (Today blanc fenêtre étroite+courte <600px : main scrollable + min-height corps Today, gaté <600px)
-const CACHE = 'stafflo-v100';
+// Stafflo Service Worker — v101 (catalogue prestations : flags included + enabled par item, additif gaté, miroir meal_categories)
+const CACHE = 'stafflo-v101';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
