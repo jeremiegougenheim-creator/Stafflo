@@ -11873,7 +11873,18 @@ function addChatBubble(role, text, actions) {
 
 function scrollChat() {
   var msgs = document.getElementById('chatMessages');
-  if (msgs) msgs.scrollTop = msgs.scrollHeight;
+  if (!msgs) return;
+  msgs.scrollTop = msgs.scrollHeight;
+  // Re-scroll APRÈS le reflow : les bulles multi-lignes (ex. décompte rendu) ne sont pas
+  // encore mesurées au moment du scrollTop synchrone → on retombait court ("répond à l'aveugle").
+  try {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(function(){
+        try { msgs.scrollTop = msgs.scrollHeight; } catch(e){}
+        requestAnimationFrame(function(){ try { msgs.scrollTop = msgs.scrollHeight; } catch(e){} });
+      });
+    }
+  } catch(e){}
 }
 
 function clearChat() {
@@ -26792,10 +26803,11 @@ window.addEventListener('DOMContentLoaded', function() {
       { key:'fx_rate', skipIf:function(s){ return s.input.currency==='MAD' || s.input.fx_rate != null; },
         ask:function(s){ return Q('Je n\'ai pas le taux du jour pour '+s.input.currency+'. 1 '+s.input.currency+' = combien de MAD ? (ex. 1 GBP ≈ 12.7)','I don\'t have today\'s rate for '+s.input.currency+'. 1 '+s.input.currency+' = how many MAD? (e.g. 1 GBP ≈ 12.7)'); },
         apply:function(s,a){ var n=parseFloatN(a); if(n==null||n<=0) return {ok:false, err:Q('Donne le taux, ex. 12.7 (1 '+s.input.currency+' en MAD).','Give the rate, e.g. 12.7 (1 '+s.input.currency+' in MAD).')}; s._madPerUnit = n; s.input.fx_rate = 1 / n; return {ok:true}; } },
-      { key:'dinners',           ask:function(s){ return Q('Combien de dîners (400 MAD/groupe) ?','How many dinners (400 MAD/group)?'); },                   apply:countApply('dinners') },
-      { key:'lunches',           ask:function(s){ return Q('Combien de déjeuners (300 MAD/groupe) ?','How many lunches (300 MAD/group)?'); },                apply:countApply('lunches') },
-      { key:'brunches',          ask:function(s){ return Q('Combien de brunchs (300 MAD/groupe) ?','How many brunches (300 MAD/group)?'); },                 apply:countApply('brunches') },
-      { key:'shopping_sessions', ask:function(s){ return Q('Combien de sessions de courses (forfait 300 MAD/session) ?','How many shopping sessions (300 MAD/session)?'); }, apply:countApply('shopping_sessions') },
+      // #1 : on demande le NOMBRE, sans le prix dans la question (le prix invitait à taper « 400 »).
+      { key:'dinners',           ask:function(s){ return Q('Combien de dîners servis pendant le séjour ? (juste le nombre)','How many dinners served during the stay? (just the number)'); },     apply:countApply('dinners') },
+      { key:'lunches',           ask:function(s){ return Q('Combien de déjeuners ? (juste le nombre)','How many lunches? (just the number)'); },                apply:countApply('lunches') },
+      { key:'brunches',          ask:function(s){ return Q('Combien de brunchs ? (juste le nombre)','How many brunches? (just the number)'); },                 apply:countApply('brunches') },
+      { key:'shopping_sessions', ask:function(s){ return Q('Combien de sessions de courses ? (forfait logistique — juste le nombre de sessions)','How many shopping runs? (logistics — just the number of sessions)'); }, apply:countApply('shopping_sessions') },
       { key:'grocery', ask:function(s){ return Q('Montants des factures de courses en MAD, séparés par des virgules (0 si aucune) ?','Grocery receipt amounts in MAD, comma-separated (0 if none)?'); },
         apply:function(s,a){ s.input.costs.grocery_invoices = amountsToLines(parseAmounts(a), 'Courses', 'Groceries', false); return {ok:true}; } },
       { key:'transport', ask:function(s){ return Q('Montants transport passés par toi en MAD, séparés par des virgules (0 si aucun) ?','Transport amounts paid through you in MAD, comma-separated (0 if none)?'); },
