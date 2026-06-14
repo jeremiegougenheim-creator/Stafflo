@@ -26599,8 +26599,34 @@ window.addEventListener('DOMContentLoaded', function() {
            msg.indexOf('failed to fetch') !== -1 ||
            msg.indexOf('load failed') !== -1;
   }
+  // Erreur "étrangère" : provient d'une extension navigateur (inject.js, content-all…) ou
+  // d'un script cross-origin, PAS de notre app.html. Ces cas ne doivent JAMAIS déclencher
+  // l'overlay fatal — on log et on continue. On ne garde l'overlay que pour les erreurs dont
+  // le filename est notre propre document (même origine).
+  function isForeignError(e){
+    var f = String((e && e.filename) || '');
+    var fl = f.toLowerCase();
+    if (fl.indexOf('extension') !== -1 || fl.indexOf('inject.js') !== -1 ||
+        fl.indexOf('content-all') !== -1 || fl.indexOf('lockdown') !== -1 ||
+        fl.indexOf('safari-') !== -1) return true;
+    if (f) {
+      // Filename présent : c'est NOTRE code seulement s'il est sur notre origine.
+      try { if (location && location.origin && location.origin !== 'null' && f.indexOf(location.origin) !== 0) return true; } catch(_){}
+      return false;
+    }
+    // Pas de filename : "Script error." cross-origin opaque → étranger.
+    return String((e && e.message) || '').toLowerCase().indexOf('script error') !== -1;
+  }
   window.addEventListener('error', function(e){
     logError({ message: e.message || String(e.error||''), source: e.filename, line: e.lineno, col: e.colno, stack: e.error && e.error.stack });
+    if (isForeignError(e)) {
+      console.warn('[stafflo] erreur script étranger (extension/cross-origin, overlay supprimé) :', (e && (e.filename || e.message)) || e);
+      return; // erreur hors de notre code — pas d'écran fatal
+    }
+    if (isTransientNetworkError(e.error || e.message)) {
+      console.warn('[stafflo] erreur réseau transitoire synchrone (overlay supprimé) :', (e && e.message) || e);
+      return; // dégradé gracieux — pas d'écran fatal sur un hoquet réseau
+    }
     showErrorOverlay({ message: e.message });
   });
   window.addEventListener('unhandledrejection', function(e){

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v98 (badge V3 dev masqué en vue client — toggle conservé via console)
-const CACHE = 'stafflo-v98';
+// Stafflo Service Worker — v99 (handler error : erreurs extension/cross-origin n'affichent plus l'overlay fatal — Safari)
+const CACHE = 'stafflo-v99';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
