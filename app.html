@@ -4743,6 +4743,14 @@ window.renderSetupOneLiner = function(){
     <button type="button" onclick="addMealCategoryRow()" style="margin-top:8px;font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="+ Ajouter une catégorie" data-en="+ Add category">+ Ajouter une catégorie</button>
   </div>
 
+  <!-- Catalogue de prestations (SLICE 1) — gaté stafflo_billing_form_v1, caché par défaut (OFF = Réglages identiques) -->
+  <div class="settings-section" id="settingsServiceCatalog" style="display:none">
+    <div class="settings-title" data-fr="CATALOGUE DE PRESTATIONS" data-en="SERVICE CATALOGUE">CATALOGUE DE PRESTATIONS</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.4" data-fr="Prix de référence en MAD, partagés par le compte. Deviendra la source unique des tarifs du décompte." data-en="Reference prices in MAD, shared account-wide. Will become the single source of billing prices.">Prix de référence en MAD, partagés par le compte. Deviendra la source unique des tarifs du décompte.</div>
+    <div id="serviceCatalogList"></div>
+    <button type="button" onclick="addServiceItemRow()" style="margin-top:8px;font-size:11px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);cursor:pointer;font-family:inherit" data-fr="+ Ajouter une prestation" data-en="+ Add service">+ Ajouter une prestation</button>
+  </div>
+
   <!-- Exchange rates — populated by renderExchangeRatesSettings() -->
   <div class="settings-section" id="settingsExchangeRates">
     <div class="settings-title" data-fr="DEVISES / TAUX DE CHANGE" data-en="CURRENCIES / EXCHANGE RATES">DEVISES / TAUX DE CHANGE</div>
@@ -7002,6 +7010,117 @@ function addMealCategoryRow() {
   saveMealCategories(cats);
   renderMealPricingSettings();
 }
+
+// ─── CATALOGUE DE PRESTATIONS (SLICE 1) — gaté stafflo_billing_form_v1 ───────────
+// Source unique de prix au niveau COMPTE, localStorage-only pour commencer (cfg.serviceCatalog),
+// même mécanisme que cfg.meal_categories. Seed = prix actuellement EN DUR dans STAFFLO_BILLING
+// (diner 400 / dejeuner 300 / brunch 300 / forfait_courses 300) → ids alignés sur PRICES pour
+// faciliter le câblage T2. CE SLICE NE TOUCHE PAS le moteur billing : il continue ses prix en dur.
+function isBillingFormV1() {
+  try {
+    if (location && location.search) {
+      var qs = new URLSearchParams(location.search).get('billing_form');
+      if (qs === '1') return true;
+      if (qs === '0') return false;
+    }
+  } catch(e){}
+  try { return localStorage.getItem('stafflo_billing_form_v1') === '1'; } catch(e) { return false; }
+}
+window.isBillingFormV1 = isBillingFormV1;
+
+var DEFAULT_SERVICE_CATALOG = [
+  { id:'diner',           name:'Dîner',           price:400, unit:'groupe' },
+  { id:'dejeuner',        name:'Déjeuner',        price:300, unit:'groupe' },
+  { id:'brunch',          name:'Brunch',          price:300, unit:'groupe' },
+  { id:'forfait_courses', name:'Forfait courses', price:300, unit:'forfait' }
+];
+var SERVICE_UNITS = [
+  { v:'groupe',   fr:'par groupe',   en:'per group' },
+  { v:'forfait',  fr:'forfait',      en:'flat fee' },
+  { v:'trajet',   fr:'par trajet',   en:'per trip' },
+  { v:'personne', fr:'par personne', en:'per person' },
+  { v:'nuit',     fr:'par nuit',     en:'per night' }
+];
+function getServiceCatalog() {
+  try {
+    var cfg = getCfg();
+    var arr = cfg.serviceCatalog;
+    if (!Array.isArray(arr) || !arr.length) return JSON.parse(JSON.stringify(DEFAULT_SERVICE_CATALOG));
+    return arr;
+  } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_SERVICE_CATALOG)); }
+}
+function saveServiceCatalog(arr) {
+  try { var cfg = getCfg(); cfg.serviceCatalog = arr; setCfg(cfg); } catch(e){}
+}
+function updateServiceItem(id, field, value) {
+  var arr = getServiceCatalog();
+  for (var i = 0; i < arr.length; i++) { if (arr[i].id === id) { arr[i][field] = value; break; } }
+  saveServiceCatalog(arr);
+}
+function removeServiceItem(id) {
+  var arr = getServiceCatalog().filter(function(x){ return x.id !== id; });
+  saveServiceCatalog(arr);
+  renderServiceCatalogSettings();
+}
+function addServiceItemRow() {
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  var name = prompt(fr?'Nom de la prestation ?':'Service name?');
+  if (!name) return; name = name.trim(); if (!name) return;
+  var id = 'svc_' + name.toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,30) + '_' + Date.now().toString(36);
+  var arr = getServiceCatalog();
+  arr.push({ id:id, name:name, price:0, unit:'forfait' });
+  saveServiceCatalog(arr);
+  renderServiceCatalogSettings();
+}
+function renderServiceCatalogSettings() {
+  var section = document.getElementById('settingsServiceCatalog');
+  var host = document.getElementById('serviceCatalogList');
+  if (!host || !section) return;
+  // Gate : visible UNIQUEMENT si le flag est ON. OFF → section cachée + vidée → Réglages identiques.
+  if (!isBillingFormV1()) { section.style.display = 'none'; host.innerHTML = ''; return; }
+  section.style.display = '';
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  var items = getServiceCatalog();
+  host.innerHTML = '';
+  items.forEach(function(it){
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)';
+
+    var nm = document.createElement('input');
+    nm.type = 'text'; nm.value = it.name || ''; nm.placeholder = fr?'Prestation':'Service';
+    nm.style.cssText = 'flex:1;min-width:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:13px;font-family:inherit';
+    nm.addEventListener('change', function(){ updateServiceItem(it.id, 'name', (nm.value.trim() || it.name)); });
+    row.appendChild(nm);
+
+    var pr = document.createElement('input');
+    pr.type = 'number'; pr.value = (it.price != null) ? it.price : 0; pr.min = 0; pr.step = 1;
+    pr.style.cssText = 'width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:13px;font-family:inherit;text-align:right';
+    pr.addEventListener('change', function(){ var v = parseFloat(pr.value); updateServiceItem(it.id, 'price', isNaN(v) ? 0 : v); });
+    row.appendChild(pr);
+
+    var mad = document.createElement('span');
+    mad.textContent = 'MAD'; mad.style.cssText = 'font-size:12px;color:var(--muted);flex-shrink:0';
+    row.appendChild(mad);
+
+    var sel = document.createElement('select');
+    sel.style.cssText = 'padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#fff;font-size:12px;font-family:inherit;flex-shrink:0';
+    SERVICE_UNITS.forEach(function(u){
+      var o = document.createElement('option'); o.value = u.v; o.textContent = fr?u.fr:u.en;
+      if (u.v === it.unit) o.selected = true; sel.appendChild(o);
+    });
+    sel.addEventListener('change', function(){ updateServiceItem(it.id, 'unit', sel.value); });
+    row.appendChild(sel);
+
+    var rm = document.createElement('button');
+    rm.type = 'button'; rm.textContent = '×'; rm.title = fr?'Supprimer':'Remove';
+    rm.style.cssText = 'flex-shrink:0;width:24px;height:24px;padding:0;border:none;background:transparent;color:var(--muted);font-size:16px;cursor:pointer;border-radius:4px';
+    rm.addEventListener('click', function(){ if (confirm(fr?'Supprimer cette prestation ?':'Remove this service?')) removeServiceItem(it.id); });
+    row.appendChild(rm);
+
+    host.appendChild(row);
+  });
+}
+window.renderServiceCatalogSettings = renderServiceCatalogSettings;
 
 function renderExchangeRatesSettings() {
   var host = document.getElementById('exchangeRatesList');
@@ -10214,6 +10333,7 @@ function loadSettingsUI() {
   // Meal pricing + exchange rates (auto-save UI; rows persist via setCfg on change)
   try { renderMealPricingSettings(); } catch(e){}
   try { renderExchangeRatesSettings(); } catch(e){}
+  try { renderServiceCatalogSettings(); } catch(e){} // gaté stafflo_billing_form_v1 (caché si OFF)
 }
 
 async function saveSettings() {
