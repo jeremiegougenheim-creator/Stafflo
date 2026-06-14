@@ -26659,8 +26659,22 @@ window.addEventListener('DOMContentLoaded', function() {
       var hit = /\bd[ée]compte\b|\bfacture\b|note de\s+\w+|fin de s[ée]jour|end[-\s]?of[-\s]?stay|\bbill\b|\binvoice\b|combien\s+(me\s+)?doit|combien\s+(je\s+)?dois|settle\s*up/.test(t);
       if (!hit) return { match:false, guess:null };
       var guess = null;
-      var m = (text || '').match(/(?:note de|d[ée]compte de|facture de|de|pour|of|for)\s+([A-ZÉÈÀ][\wÀ-ÿ'’-]+)/);
-      if (m) guess = m[1];
+      var t2 = text || '';
+      // Nom juste après le mot-clé, connecteur "de/of/for/pour" optionnel : "décompte Emma", "facture de Sofia".
+      var kw = t2.match(/d[ée]compte|facture|\bnote\b|\bbill\b|\binvoice\b/i);
+      if (kw){
+        var after = t2.slice(kw.index + kw[0].length);
+        var gm = after.match(/^\s*(?:de\s+|d['’]\s*|of\s+|for\s+|pour\s+)?([A-ZÉÈÀ][\wÀ-ÿ'’-]+)/); // initiale majuscule (sensible à la casse)
+        if (gm) guess = gm[1];
+      }
+      // fallback : dernier "de/pour/of/for + NomMajuscule" dans la phrase ("…fin de séjour de Sofia")
+      if (!guess){
+        var re = /(?:de|d['’]|pour|of|for)\s+([A-ZÉÈÀ][\wÀ-ÿ'’-]+)/g, mm, lastName = null;
+        while ((mm = re.exec(t2))) lastName = mm[1];
+        if (lastName) guess = lastName;
+      }
+      if (!guess){ var dm = t2.match(/(?:doit|dois)\s+([A-ZÉÈÀ][\wÀ-ÿ'’-]+)/); if (dm) guess = dm[1]; } // "combien doit Marc"
+      // findGuestInInstruction (si clients[] chargé) = source la plus fiable, prioritaire.
       try { if (typeof findGuestInInstruction === 'function'){ var c = findGuestInInstruction(text); if (c && c.name) guess = c.name.trim().split(/\s+/)[0]; } } catch(e){}
       return { match:true, guess:guess };
     }
@@ -26813,6 +26827,116 @@ window.addEventListener('DOMContentLoaded', function() {
       } catch(e){ return null; }
     }
 
+    // ── SÉJOUR PRE-FILL ── lit la fiche séjour Supabase (table `sejours`) pour le guest détecté.
+    // NB : l'app n'a PAS de client supabase-js (window._supabase) ; on utilise le MÊME pattern fetch REST
+    // + sbHdrs que le reste du code (RLS owner_id = auth.uid()). Seam de test : window.__sejourTestRow.
+    async function fetchSejourForGuest(guestName){
+      try {
+        if (typeof window !== 'undefined' && typeof window.__sejourTestRow !== 'undefined') return window.__sejourTestRow;
+        if (!guestName) return null;
+        var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+        if (!cfg.sbUrl || !cfg.sbKey || typeof sbHdrs !== 'function') return null;
+        var url = cfg.sbUrl + '/rest/v1/sejours?select=*'
+          + '&guest_name=ilike.' + encodeURIComponent('%' + guestName + '%')
+          + '&status=in.(in_progress,completed)'
+          + '&order=checkout_date.desc&limit=1';
+        var res = await fetch(url, { headers: sbHdrs(cfg.sbKey) });
+        if (!res.ok) return null;
+        var rows = await res.json();
+        return (rows && rows[0]) ? rows[0] : null;
+      } catch(e){ try{console.warn('[billing] fetchSejourForGuest', e);}catch(_){} return null; }
+    }
+
+    function formatDateRange(ci, co){
+      try {
+        var MF = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+        var ME = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        var M = fr() ? MF : ME;
+        var a = String(ci).split('-'), b = String(co).split('-'); // YYYY-MM-DD
+        if (a.length < 3 || b.length < 3) return (ci||'') + ' – ' + (co||'');
+        var d1=+a[2], m1=+a[1], d2=+b[2], m2=+b[1];
+        if (m1 === m2) return fr() ? (d1 + '–' + d2 + ' ' + M[m1-1]) : (M[m1-1] + ' ' + d1 + '–' + d2);
+        return fr() ? (d1 + ' ' + M[m1-1] + ' – ' + d2 + ' ' + M[m2-1]) : (M[m1-1] + ' ' + d1 + ' – ' + M[m2-1] + ' ' + d2);
+      } catch(e){ return (ci||'') + ' – ' + (co||''); }
+    }
+
+    // Convertit les avances de la fiche (jsonb [{amount,currency,note}]) en lignes MAD, une fois le taux connu.
+    function resolvePendingAvances(s){
+      try {
+        if (!s || s.done.payments) return;
+        if (!s._sejourAvances || !s._sejourAvances.length) return;
+        if (s.input.currency !== 'MAD' && !isFinite(s._madPerUnit)) return; // taux pas encore connu → on attend
+        var lines = [];
+        for (var i=0;i<s._sejourAvances.length;i++){
+          var a = s._sejourAvances[i];
+          var cur = (a.currency || 'MAD').toUpperCase();
+          var mpu = (cur === 'MAD') ? 1 : ((cur === s.input.currency && isFinite(s._madPerUnit)) ? s._madPerUnit : rateMadPerUnit(cur));
+          if (mpu == null) return; // devise sans taux → laisser la saisie manuelle (ne marque pas done)
+          lines.push({ label: (fr()?'Avance ':'Advance ') + (i+1) + (cur!=='MAD' ? ' (' + (+a.amount||0) + ' ' + cur + ')' : ''), montant_MAD: Math.round((+a.amount||0) * mpu) });
+        }
+        s.input.payments_received = lines;
+        s.done.payments = true;
+      } catch(e){}
+    }
+
+    // Pré-remplit l'état de collecte depuis une fiche séjour, en marquant "done" les étapes couvertes.
+    function prefillFromSejour(s, sej){
+      try {
+        var st = s.input.stay;
+        if (sej.guest_name) st.guest_first_name = String(sej.guest_name).trim().split(/\s+/)[0];
+        s.done.guest_first_name = true;
+        if (sej.checkin_date && sej.checkout_date){ st.stay_dates = formatDateRange(sej.checkin_date, sej.checkout_date); s.done.stay_dates = true; }
+        var grp = (parseInt(sej.nb_adults,10)||0) + (parseInt(sej.nb_children,10)||0);
+        if (grp > 0){ st.group_size = grp; s.done.group_size = true; }
+        if (sej.devise){
+          var cur = String(sej.devise).toUpperCase();
+          s.input.currency = cur; s.done.currency = true;
+          if (cur === 'MAD'){ s._madPerUnit = 1; s.input.fx_rate = null; }
+          else { var mpu = rateMadPerUnit(cur); if (mpu != null){ s._madPerUnit = mpu; s.input.fx_rate = 1/mpu; } } // sinon étape fx (manuelle) posée
+        }
+        if (Array.isArray(sej.avances) && sej.avances.length){
+          s._sejourAvances = sej.avances.map(function(a){ return { amount:(+((a&&a.amount))||0), currency:((a&&a.currency)||'MAD'), note:((a&&a.note)||'') }; });
+          resolvePendingAvances(s);
+        }
+        s._prefill = { name: st.guest_first_name, dates: st.stay_dates, nbAdults:(parseInt(sej.nb_adults,10)||0), nbChildren:(parseInt(sej.nb_children,10)||0), avances:(s._sejourAvances||[]) };
+      } catch(e){ try{console.warn('[billing] prefillFromSejour', e);}catch(_){} }
+    }
+
+    function buildPrefillSummary(s){
+      var p = s._prefill; if (!p) return '';
+      var ad = p.nbAdults, ch = p.nbChildren;
+      var who = fr()
+        ? (ad + (ad>1?' adultes':' adulte') + (ch>0 ? (' · ' + ch + (ch>1?' enfants':' enfant')) : ''))
+        : (ad + (ad>1?' adults':' adult') + (ch>0 ? (' · ' + ch + (ch>1?' children':' child')) : ''));
+      var av = (p.avances||[]).map(function(a){ return (a.amount + ' ' + (a.currency||'MAD')); }).join(' + ');
+      var bits = [];
+      if (p.dates) bits.push(p.dates);
+      bits.push(who);
+      if (av) bits.push((fr()?'avances : ':'advances: ') + av);
+      return Q('J\'ai retrouvé la fiche de ' + (p.name||'') + ' : ' + bits.join(' · ') + '. Il me manque juste les repas et frais.',
+               'Found ' + (p.name||'') + '\'s stay record: ' + bits.join(' · ') + '. I just need the meals and costs.');
+    }
+
+    // Tente le pré-fill depuis la fiche séjour dès que le prénom du guest est connu (une seule fois).
+    async function maybePrefill(s){
+      if (!s || s._prefillTried) return;
+      var nm = s.input.stay.guest_first_name;
+      if (!nm) return;
+      s._prefillTried = true;
+      try {
+        var sej = await fetchSejourForGuest(nm);
+        if (sej) { prefillFromSejour(s, sej); var sum = buildPrefillSummary(s); if (sum) say(sum); }
+      } catch(e){ try{console.warn('[billing] maybePrefill', e);}catch(_){} }
+    }
+
+    // Lance la collecte après "oui" : pré-fill si le guest est déjà connu, puis pose la 1re question restante.
+    async function startCollection(s){
+      s.phase = 'collect';
+      if (s.input.stay.guest_first_name) s.done.guest_first_name = true;
+      await maybePrefill(s);
+      await askNext(s);
+    }
+
     async function finalize(s){
       try {
         var B = (typeof window !== 'undefined') ? window.STAFFLO_BILLING : null;
@@ -26836,6 +26960,7 @@ window.addEventListener('DOMContentLoaded', function() {
     }
 
     async function askNext(s){
+      resolvePendingAvances(s); // convertit les avances pré-remplies dès que le taux est connu
       var step = nextStep(s);
       if (!step) { await finalize(s); return; }
       say(step.ask(s));
@@ -26849,7 +26974,7 @@ window.addEventListener('DOMContentLoaded', function() {
           if (isCancel(text)) { STATE=null; say(Q('D\'accord, j\'annule le décompte.','Okay, cancelling the summary.')); return true; }
 
           if (STATE.phase === 'confirm') {
-            if (isYes(text)) { STATE.phase='collect'; if (STATE.input.stay.guest_first_name) STATE.done.guest_first_name=true; await askNext(STATE); return true; }
+            if (isYes(text)) { await startCollection(STATE); return true; } // pré-fill fiche séjour puis collecte
             if (isNo(text))  { STATE=null; say(Q('Ok, j\'oublie le décompte.','Okay, dropping the summary.')); return true; }
             var g = STATE.input.stay.guest_first_name;
             say(Q('Je prépare le décompte de fin de séjour'+(g?(' de '+g):'')+' ? (oui / non)','Shall I prepare the end-of-stay summary'+(g?(' for '+g):'')+'? (yes / no)'));
@@ -26862,6 +26987,8 @@ window.addEventListener('DOMContentLoaded', function() {
             var res = cur.apply(STATE, text);
             if (!res || !res.ok) { say((res && res.err) || Q('Désolé, je n\'ai pas compris — peux-tu reformuler ?','Sorry, I didn\'t catch that — could you rephrase?')); return true; }
             STATE.done[cur.key] = true;
+            // filet : si le guest n'était pas connu au déclenchement, pré-fill dès qu'on a son prénom
+            if (cur.key === 'guest_first_name') await maybePrefill(STATE);
           }
           await askNext(STATE);
           return true;
@@ -26886,6 +27013,8 @@ window.addEventListener('DOMContentLoaded', function() {
 
     if (typeof window !== 'undefined') {
       window.handleBillingTurn = handleBillingTurn;
+      window.fetchSejourForGuest = fetchSejourForGuest;
+      if (window.STAFFLO_BILLING) window.STAFFLO_BILLING.fetchSejourForGuest = fetchSejourForGuest;
       // seams de dev/test uniquement (inertes en prod)
       window.__billingPeek  = function(){ return STATE; };
       window.__billingReset = function(){ STATE = null; };
