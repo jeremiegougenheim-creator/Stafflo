@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v97 (autosave réglages : token _stafflo_session pour push + pull villa_settings)
-const CACHE = 'stafflo-v97';
+// Stafflo Service Worker — v98 (badge V3 dev masqué en vue client — toggle conservé via console)
+const CACHE = 'stafflo-v98';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
