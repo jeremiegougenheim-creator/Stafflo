@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v95 (nav order + sessionBadge kill + compact stats strip)
-const CACHE = 'stafflo-v95';
+// Stafflo Service Worker — v96 (résilience réseau : overlay fatal supprimé pour rejets transitoires)
+const CACHE = 'stafflo-v96';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -26593,6 +26593,21 @@ window.addEventListener('DOMContentLoaded', function() {
       '</div>';
     bd.classList.add('is-on');
   }
+  // Réseau transitoire (lent/instable) : un rejet timeout/abort/réseau NE DOIT JAMAIS
+  // déclencher l'overlay fatal. On log + on continue en mode dégradé. L'overlay reste
+  // réservé aux vraies erreurs de programmation (TypeError, ReferenceError…).
+  function isTransientNetworkError(reason){
+    if (!reason) return false;
+    var name = String(reason.name || '');
+    if (name === 'TimeoutError' || name === 'AbortError' || name === 'NetworkError') return true;
+    var msg = String(reason.message != null ? reason.message : reason).toLowerCase();
+    return msg.indexOf('signal timed out') !== -1 ||
+           msg.indexOf('timed out') !== -1 ||
+           msg.indexOf('aborted') !== -1 ||
+           msg.indexOf('networkerror') !== -1 ||
+           msg.indexOf('failed to fetch') !== -1 ||
+           msg.indexOf('load failed') !== -1;
+  }
   window.addEventListener('error', function(e){
     logError({ message: e.message || String(e.error||''), source: e.filename, line: e.lineno, col: e.colno, stack: e.error && e.error.stack });
     showErrorOverlay({ message: e.message });
@@ -26600,6 +26615,10 @@ window.addEventListener('DOMContentLoaded', function() {
   window.addEventListener('unhandledrejection', function(e){
     var r = e.reason || {};
     logError({ message: r.message || String(r), stack: r.stack });
+    if (isTransientNetworkError(r)) {
+      console.warn('[stafflo] rejet réseau transitoire (overlay supprimé, app continue) :', (r && (r.message || r.name)) || r);
+      return; // dégradé gracieux — pas d'écran fatal sur un hoquet réseau
+    }
     showErrorOverlay({ reason: r.message || String(r) });
   });
 
