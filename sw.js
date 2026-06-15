@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v101 (catalogue prestations : flags included + enabled par item, additif gaté, miroir meal_categories)
-const CACHE = 'stafflo-v101';
+// Stafflo Service Worker — v102 (catalogue prestations : flip display d'entrée selon le flag dans renderServiceCatalogSettings)
+const CACHE = 'stafflo-v102';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
