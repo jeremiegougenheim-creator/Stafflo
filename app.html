@@ -1233,7 +1233,7 @@ nav .nav-btn.on {
 
 /* ── SIGNAUX / ALERTS ─────────────────────────────────────── */
 .alert-hm {
-  padding: 12px 18px;
+  padding: 9px 12px;
   font-family: var(--sans);
   border-bottom: 1px solid rgba(0,0,0,.04);
   display: flex;
@@ -4103,6 +4103,13 @@ window.renderSetupOneLiner = function(){
     </div>
   </div>
 
+  <div class="v2-card" id="ariaOppsCardClients" style="display:none;margin-bottom:14px">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-bulb"></i> <span data-fr="Aria détecte" data-en="Aria detects">Aria détecte</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Opportunités" data-en="Opportunities">Opportunités</span></div>
+    </div>
+    <div class="v2-card-body" id="ariaSignalsClients"></div>
+  </div>
+
   <!-- GRID -->
   <div class="v5-grid" id="v5Grid">
     <div class="v5-skel"></div><div class="v5-skel"></div><div class="v5-skel"></div>
@@ -4222,7 +4229,6 @@ window.renderSetupOneLiner = function(){
       <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('checklist')" data-fr="✓ Checklist staff" data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
     </div>
-    <div id="ariaSignalsClients" style="display:none"></div>
   </div>
 </div>
 
@@ -4649,7 +4655,12 @@ window.renderSetupOneLiner = function(){
 
 <!-- ═══ CALENDAR TAB (v3) — 14-day strip + month grid + upcoming list ═══ -->
 <div class="tab" id="tab-calendar" style="display:none">
-  <div id="ariaSignalsCalendar" style="display:none"></div>
+  <div class="v2-card" id="ariaOppsCardCalendar" style="display:none;margin-bottom:14px">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-bulb"></i> <span data-fr="Aria détecte" data-en="Aria detects">Aria détecte</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Opportunités" data-en="Opportunities">Opportunités</span></div>
+    </div>
+    <div class="v2-card-body" id="ariaSignalsCalendar"></div>
+  </div>
   <div class="v2-card" style="margin-bottom:14px;background:var(--green3);color:#fff">
     <div class="v2-card-hd">
       <div class="v2-card-title" style="color:#fff"><i class="ti ti-calendar"></i> <span data-fr="14 prochains jours" data-en="Next 14 days">14 prochains jours</span></div>
@@ -21965,7 +21976,16 @@ function renderAlertsForTab(tab) {
   if (localStorage.getItem('stafflo_aria_opps_v1') !== '1') return;
   var all = window._ariaAllAlerts || [];
   var render = window._ariaRenderAlert;
-  if (!all.length || typeof render !== 'function') return;
+  if (!all.length || typeof render !== 'function') {
+    // Arrays pas encore peuplés (boot) : déclencher generateAlerts puis re-render
+    if (typeof generateAlerts === 'function' && !window._ariaOppsRetry) {
+      window._ariaOppsRetry = true;
+      Promise.resolve(generateAlerts(window._lastWeatherTemp || null)).then(function(){
+        window._ariaOppsRetry = false; renderAlertsForTab(tab);
+      }).catch(function(){ window._ariaOppsRetry = false; });
+    }
+    return;
+  }
 
   var opKw = /(arriv|départ|checkout|check-in|check-out|turnover|in-house|aujourd|today|demain|tomorrow|same-day)/i;
   var isOp = function(a){ return a.type==='urgent'||a.type==='warn'||opKw.test((a.title||'')+(a.sub||'')); };
@@ -21995,6 +22015,9 @@ function renderAlertsForTab(tab) {
 
   container.innerHTML = toRender.map(function(a,i){ return render(a,i); }).join('');
   container.style.display = '';
+  // Afficher la carte wrapper sur Guests/Calendar (Today/Villa l'ont déjà)
+  var wrapId = { clients:'ariaOppsCardClients', calendar:'ariaOppsCardCalendar' }[tab];
+  if (wrapId) { var w = document.getElementById(wrapId); if (w) w.style.display = ''; }
 }
 window.renderAlertsForTab = renderAlertsForTab;
 

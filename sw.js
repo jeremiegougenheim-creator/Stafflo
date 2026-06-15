@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v107 (Opportunités ARIA par onglet : alertes triées par tab, gaté stafflo_aria_opps_v1 OFF)
-const CACHE = 'stafflo-v107';
+// Stafflo Service Worker — v108 (carte Opportunités unifiée 4 onglets : wrapper .v2-card Guests+Calendar + retry boot + items compacts, gaté OFF)
+const CACHE = 'stafflo-v108';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
