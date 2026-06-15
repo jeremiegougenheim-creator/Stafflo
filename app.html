@@ -3448,7 +3448,6 @@ window.renderSoloTurnoverCard = function(){
       <button class="aria-mic-btn" onclick="event.stopPropagation();toggleAriaMic(this)" aria-label="Voice input" data-fr-label="Entrée vocale" data-en-label="Voice input"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <button class="aria-hero-go" onclick="event.stopPropagation();sendAriaSearchToModal(this.closest('.aria-hero-input-row').querySelector('.aria-hero-input'))" aria-label="Open ARIA">↑</button>
     </div>
-    <div id="ariaOppsToday" class="aria-hero-chips" style="display:none"></div>
     <div class="aria-hero-chips">
       <button class="aria-hero-chip" onclick="ariaQuickAction('email')" data-fr="✉ Rédiger un email" data-en="✉ Draft email">✉ Rédiger un email</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
@@ -4217,7 +4216,6 @@ window.renderSetupOneLiner = function(){
       <button class="aria-mic-btn" onclick="event.stopPropagation();toggleAriaMic(this)" aria-label="Voice input" data-fr-label="Entrée vocale" data-en-label="Voice input"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <button class="aria-hero-go" onclick="event.stopPropagation();sendAriaSearchToModal(this.closest('.aria-hero-input-row').querySelector('.aria-hero-input'))" aria-label="Open ARIA">↑</button>
     </div>
-    <div id="ariaOppsClients" class="aria-hero-chips" style="display:none"></div>
     <div class="aria-hero-chips">
       <button class="aria-hero-chip" onclick="ariaQuickAction('email')" data-fr="✉ Rédiger un email" data-en="✉ Draft email">✉ Rédiger un email</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
@@ -4429,7 +4427,6 @@ window.renderSetupOneLiner = function(){
       <button class="aria-mic-btn" onclick="event.stopPropagation();toggleAriaMic(this)" aria-label="Voice input" data-fr-label="Entrée vocale" data-en-label="Voice input"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <button class="aria-hero-go" onclick="event.stopPropagation();sendAriaSearchToModal(this.closest('.aria-hero-input-row').querySelector('.aria-hero-input'))" aria-label="Open ARIA">↑</button>
     </div>
-    <div id="ariaOppsHome" class="aria-hero-chips" style="display:none"></div>
     <div class="aria-hero-chips">
       <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
@@ -4651,7 +4648,6 @@ window.renderSetupOneLiner = function(){
 
 <!-- ═══ CALENDAR TAB (v3) — 14-day strip + month grid + upcoming list ═══ -->
 <div class="tab" id="tab-calendar" style="display:none">
-  <div id="ariaOppsCalendar" class="aria-hero-chips" style="display:none"></div>
   <div class="v2-card" style="margin-bottom:14px;background:var(--green3);color:#fff">
     <div class="v2-card-hd">
       <div class="v2-card-title" style="color:#fff"><i class="ti ti-calendar"></i> <span data-fr="14 prochains jours" data-en="Next 14 days">14 prochains jours</span></div>
@@ -10660,8 +10656,6 @@ function goTab(t) {
     if (btn) btn.classList.toggle('on', id===t);
   });
 
-  if (typeof renderAriaOpportunities==='function') renderAriaOpportunities(t);
-
   if (t === 'clients') { try { renderClients(); } catch(e) { console.error('renderClients error:', e); } }
   if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); } catch(e) { console.error('loadHomeData error:', e); } }
   if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
@@ -10702,58 +10696,6 @@ function goTab(t) {
   }
   localStorage.setItem('stafflo_tab', t);
 }
-
-// Opportunités ARIA contextuelles par onglet — gaté stafflo_aria_opps_v1 (défaut OFF).
-// Remplit un conteneur #ariaOpps<Tab> avec des chips qui réutilisent ariaQuickAction.
-function renderAriaOpportunities(tab) {
-  if (typeof localStorage === 'undefined') return;
-  if (localStorage.getItem('stafflo_aria_opps_v1') !== '1') return;
-  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
-
-  // Chips par onglet — propriétaire distant, pas staff spécifique
-  var OPPS = {
-    today: [
-      {type:'email',    fr:'✉ Rédiger un email',      en:'✉ Draft an email'},
-      {type:'analyze',  fr:'🔍 Analyser un message',  en:'🔍 Analyse a message'},
-      {type:'price',    fr:'💰 Suggérer un prix',      en:'💰 Suggest a price'},
-      {type:'checklist',fr:'🏠 Préparer une arrivée',  en:'🏠 Prepare arrival'}
-    ],
-    clients: [
-      {type:'analyze',  fr:'🔍 Analyser un message',  en:'🔍 Analyse a message'},
-      {type:'email',    fr:'✉ Rédiger un email',      en:'✉ Draft an email'},
-      {type:'checklist',fr:'🏠 Préparer l\'arrivée',  en:'🏠 Prepare check-in'},
-      {type:'price',    fr:'💰 Calculer le décompte', en:'💰 Calculate balance'}
-    ],
-    home: [
-      {type:'checklist',fr:'🔧 Signaler un problème', en:'🔧 Report an issue'},
-      {type:'email',    fr:'✉ Contacter un prestataire', en:'✉ Contact a provider'},
-      {type:'analyze',  fr:'📋 Checklist départ',     en:'📋 Checkout checklist'},
-      {type:'price',    fr:'🏠 Préparer la maison',   en:'🏠 Prepare the house'}
-    ],
-    calendar: [
-      {type:'price',    fr:'💰 Suggérer un prix',      en:'💰 Suggest a price'},
-      {type:'analyze',  fr:'🔍 Analyser une demande',  en:'🔍 Analyse a request'},
-      {type:'email',    fr:'✉ Rédiger un email',       en:'✉ Draft an email'}
-    ]
-  };
-
-  var containerId = {
-    today:'ariaOppsToday', clients:'ariaOppsClients',
-    home:'ariaOppsHome', calendar:'ariaOppsCalendar'
-  }[tab];
-  if (!containerId) return;
-  var container = document.getElementById(containerId);
-  if (!container) return;
-
-  var chips = OPPS[tab] || [];
-  container.innerHTML = chips.map(function(c) {
-    return '<button class="aria-hero-chip" onclick="ariaQuickAction(\'' + c.type + '\')" ' +
-      'data-fr="' + c.fr + '" data-en="' + c.en + '">' +
-      (fr ? c.fr : c.en) + '</button>';
-  }).join('');
-  container.style.display = chips.length ? 'flex' : 'none';
-}
-window.renderAriaOpportunities = renderAriaOpportunities;
 
 // ════════════════════════════════════════════
 // DATA EXPORT / IMPORT
