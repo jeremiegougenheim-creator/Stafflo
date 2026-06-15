@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v103 (catalogue : render aussi sur les chemins d'ouverture Réglages qui bypassent loadSettingsUI)
-const CACHE = 'stafflo-v103';
+// Stafflo Service Worker — v104 (chemins d'ouverture Réglages bypass → openSettings() complet : transform + backdrop + loadSettingsUI)
+const CACHE = 'stafflo-v104';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
