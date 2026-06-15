@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v104 (chemins d'ouverture Réglages bypass → openSettings() complet : transform + backdrop + loadSettingsUI)
-const CACHE = 'stafflo-v104';
+// Stafflo Service Worker — v105 (opportunités ARIA contextuelles par onglet, gaté stafflo_aria_opps_v1 OFF + #todayV3 retiré du dedup)
+const CACHE = 'stafflo-v105';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
