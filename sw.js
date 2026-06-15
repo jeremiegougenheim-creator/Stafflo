@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v102 (catalogue prestations : flip display d'entrée selon le flag dans renderServiceCatalogSettings)
-const CACHE = 'stafflo-v102';
+// Stafflo Service Worker — v103 (catalogue : render aussi sur les chemins d'ouverture Réglages qui bypassent loadSettingsUI)
+const CACHE = 'stafflo-v103';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
