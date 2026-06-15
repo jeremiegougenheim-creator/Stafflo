@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v106 (revert chips contextuels v105 — remplacé par carte Opportunités ARIA par onglet)
-const CACHE = 'stafflo-v106';
+// Stafflo Service Worker — v107 (Opportunités ARIA par onglet : alertes triées par tab, gaté stafflo_aria_opps_v1 OFF)
+const CACHE = 'stafflo-v107';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

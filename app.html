@@ -4222,6 +4222,7 @@ window.renderSetupOneLiner = function(){
       <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('checklist')" data-fr="✓ Checklist staff" data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
     </div>
+    <div id="ariaSignalsClients" style="display:none"></div>
   </div>
 </div>
 
@@ -4648,6 +4649,7 @@ window.renderSetupOneLiner = function(){
 
 <!-- ═══ CALENDAR TAB (v3) — 14-day strip + month grid + upcoming list ═══ -->
 <div class="tab" id="tab-calendar" style="display:none">
+  <div id="ariaSignalsCalendar" style="display:none"></div>
   <div class="v2-card" style="margin-bottom:14px;background:var(--green3);color:#fff">
     <div class="v2-card-hd">
       <div class="v2-card-title" style="color:#fff"><i class="ti ti-calendar"></i> <span data-fr="14 prochains jours" data-en="Next 14 days">14 prochains jours</span></div>
@@ -10656,6 +10658,8 @@ function goTab(t) {
     if (btn) btn.classList.toggle('on', id===t);
   });
 
+  if (typeof renderAlertsForTab==='function') renderAlertsForTab(t);
+
   if (t === 'clients') { try { renderClients(); } catch(e) { console.error('renderClients error:', e); } }
   if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); } catch(e) { console.error('loadHomeData error:', e); } }
   if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
@@ -16660,6 +16664,11 @@ async function generateAlerts(weatherTemp) {
 
   let alertsHtml = visible.map((a, i) => renderAlert(a, i)).join('');
 
+  // Exposé pour renderAlertsForTab (gaté stafflo_aria_opps_v1) — arrays bruts + helper de rendu.
+  window._ariaAllAlerts = alerts.slice();
+  window._ariaSignalAlerts = signalAlerts.slice();
+  window._ariaRenderAlert = renderAlert;
+
   const elV = document.getElementById('alertsContent');
   if (elV) elV.innerHTML = alertsHtml;
 
@@ -21707,6 +21716,13 @@ function v2RenderHero() {
     if (alertsBody) alertsBody.innerHTML = alertsSrc.innerHTML;
     if (alertsBodyVilla) alertsBodyVilla.innerHTML = alertsSrc.innerHTML;
   }
+  // Point 2 mitigation : si un v2RenderHero async réécrit le miroir, se ré-override
+  // par-onglet pour que le tri survive aux refresh. Gaté → flag OFF = jamais exécuté.
+  if (localStorage.getItem('stafflo_aria_opps_v1')==='1'
+      && typeof renderAlertsForTab==='function') {
+    var activeTab = (document.querySelector('.tab.on')?.id||'').replace('tab-','');
+    if (activeTab) renderAlertsForTab(activeTab);
+  }
 
   // Today: morning brief mirror (now in 50/50 row)
   var briefBody = document.getElementById('card50MorningBriefBody');
@@ -21942,6 +21958,45 @@ function v2RenderHero() {
   }
   if (typeof renderStayStatusCard === 'function') renderStayStatusCard();
 }
+
+// Opportunités ARIA par onglet — gaté stafflo_aria_opps_v1 (défaut OFF).
+// Re-rend les alertes depuis les arrays bruts exposés par generateAlerts, triées par onglet.
+function renderAlertsForTab(tab) {
+  if (localStorage.getItem('stafflo_aria_opps_v1') !== '1') return;
+  var all = window._ariaAllAlerts || [];
+  var render = window._ariaRenderAlert;
+  if (!all.length || typeof render !== 'function') return;
+
+  var opKw = /(arriv|départ|checkout|check-in|check-out|turnover|in-house|aujourd|today|demain|tomorrow|same-day)/i;
+  var isOp = function(a){ return a.type==='urgent'||a.type==='warn'||opKw.test((a.title||'')+(a.sub||'')); };
+  var ops  = all.filter(isOp);
+  var sigs = all.filter(function(a){ return !isOp(a); });
+
+  // Priorité par onglet
+  var ordered = (tab==='today'||tab==='clients')
+    ? ops.concat(sigs)
+    : sigs.concat(ops);
+
+  // Dédup par titre + plafond 5
+  var seen = {}, deduped = [];
+  ordered.forEach(function(a){
+    var k = a.title||'';
+    if (!seen[k]) { seen[k]=1; deduped.push(a); }
+  });
+  var toRender = deduped.slice(0,5);
+
+  var containerId = {
+    today:'heroAlertsBody', clients:'ariaSignalsClients',
+    home:'heroVillaAlertsBody', calendar:'ariaSignalsCalendar'
+  }[tab];
+  if (!containerId) return;
+  var container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = toRender.map(function(a,i){ return render(a,i); }).join('');
+  container.style.display = '';
+}
+window.renderAlertsForTab = renderAlertsForTab;
 
 function renderStayStatusCard() {
   var card = document.getElementById('stayStatusCard');
