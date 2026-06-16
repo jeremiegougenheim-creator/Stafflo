@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v109 (cream header on Today (stafflo_cream_v1, OFF))
-const CACHE = 'stafflo-v109';
+// Stafflo Service Worker — v110 (revert cream header (dup of #v3SubHdr) + stat-strip T2-A fix)
+const CACHE = 'stafflo-v110';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
