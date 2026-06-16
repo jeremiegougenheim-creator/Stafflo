@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v108 (carte Opportunités unifiée 4 onglets : wrapper .v2-card Guests+Calendar + retry boot + items compacts, gaté OFF)
-const CACHE = 'stafflo-v108';
+// Stafflo Service Worker — v109 (cream header on Today (stafflo_cream_v1, OFF))
+const CACHE = 'stafflo-v109';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
