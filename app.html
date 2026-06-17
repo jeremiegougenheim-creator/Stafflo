@@ -28055,6 +28055,12 @@ window.addEventListener('DOMContentLoaded', function() {
         }
         if (/^\/deep\s|^\/approfondi/i.test(text)) { aiTask = 'reason'; aiMaxTokens = 1000; }
 
+        // Price-intent grounding — route typed price questions through the same curated-comps prompt as the button (no invention, single-villa).
+        var _isPrice = /\b(prix|tarif|price|rate|combien|how much)\b/i.test(text) || /(€|\$)\s*\d|\d+\s*(€|\$|\/nuit|\/night|per night)/i.test(text);
+        if (_isPrice && typeof buildGroundedPricePrompt==='function') {
+          systemPrompt += '\n\n[PRICING — STRICT] ' + buildGroundedPricePrompt(fr);
+        }
+
         var raw = await callBestAI(aiTask, systemPrompt, userCtx, aiMaxTokens);
         var typing = document.getElementById('chatTyping');
         if (typing) typing.style.display = 'none';
@@ -30861,6 +30867,27 @@ window.addEventListener('DOMContentLoaded', function() {
   window.updateAriaCounter = updateAriaCounter;
 
   /* Quick-action chip handlers */
+  function buildGroundedPricePrompt(fr){
+    var _comps = (typeof loadSavedCompetitors==='function') ? (loadSavedCompetitors()||[]) : [];
+    var _yp = (typeof getPrice==='function' && getPrice()) ? Math.round(getPrice().pricePN) : null;
+    var _compStr = _comps.length ? _comps.map(function(c){return c.name+' '+Math.round(c.price)+'€'+(c.source?' (via '+c.source+')':'');}).join(' · ') : '';
+    var _avg = _comps.length ? Math.round(_comps.reduce(function(s,c){return s+(c.price||0);},0)/_comps.length) : null;
+    var prompt;
+    if (fr) {
+      prompt = 'Suggère le meilleur prix pour ce soir (occupation, météo, événements).';
+      prompt += _yp ? ' Mon tarif actuel : '+_yp+'€/nuit.' : '';
+      prompt += _compStr ? ' COMPARABLES RÉELS : '+_compStr+(_avg?' · moyenne '+_avg+'€':'')+'.' : '';
+      prompt += ' RÈGLE STRICTE : base ta recommandation UNIQUEMENT sur ces comparables et mes données. N\'invente JAMAIS un tarif marché ni un concurrent. Pour cette villa unique, ne donne JAMAIS de tarifs par tranche de personnes — un seul prix pour la villa. Si aucun comparable fiable n\'est fourni, dis-le clairement et propose seulement un ajustement relatif à mon tarif actuel, sans citer de chiffre marché.';
+    } else {
+      prompt = 'Suggest the best price tonight (occupancy, weather, events).';
+      prompt += _yp ? ' My current rate: €'+_yp+'/night.' : '';
+      prompt += _compStr ? ' REAL COMPARABLES: '+_compStr+(_avg?' · avg €'+_avg:'')+'.' : '';
+      prompt += ' STRICT RULE: base your recommendation ONLY on these comparables and my data. NEVER invent a market rate or a competitor. This is a single villa — NEVER give per-guest-count price tiers, one price for the villa. If no reliable comparable is provided, say so clearly and only suggest a relative adjustment to my current rate, without citing any market figure.';
+    }
+    return prompt;
+  }
+  window.buildGroundedPricePrompt = buildGroundedPricePrompt;
+
   window.ariaQuickAction = function(type){
     trackAriaAction('chip_'+type);
     var fr = lang === 'fr';
@@ -30876,21 +30903,7 @@ window.addEventListener('DOMContentLoaded', function() {
     } else if (type === 'analyze') {
       prompt = fr?'Voici un message à analyser : ':'Here is a message to analyze: ';
     } else if (type === 'price') {
-      var _comps = (typeof loadSavedCompetitors==='function') ? (loadSavedCompetitors()||[]) : [];
-      var _yp = (typeof getPrice==='function' && getPrice()) ? Math.round(getPrice().pricePN) : null;
-      var _compStr = _comps.length ? _comps.map(function(c){return c.name+' '+Math.round(c.price)+'€'+(c.source?' (via '+c.source+')':'');}).join(' · ') : '';
-      var _avg = _comps.length ? Math.round(_comps.reduce(function(s,c){return s+(c.price||0);},0)/_comps.length) : null;
-      if (fr) {
-        prompt = 'Suggère le meilleur prix pour ce soir (occupation, météo, événements).';
-        prompt += _yp ? ' Mon tarif actuel : '+_yp+'€/nuit.' : '';
-        prompt += _compStr ? ' COMPARABLES RÉELS : '+_compStr+(_avg?' · moyenne '+_avg+'€':'')+'.' : '';
-        prompt += ' RÈGLE STRICTE : base ta recommandation UNIQUEMENT sur ces comparables et mes données. N\'invente JAMAIS un tarif marché ni un concurrent. Si aucun comparable fiable n\'est fourni, dis-le clairement et propose seulement un ajustement relatif à mon tarif actuel, sans citer de chiffre marché.';
-      } else {
-        prompt = 'Suggest the best price tonight (occupancy, weather, events).';
-        prompt += _yp ? ' My current rate: €'+_yp+'/night.' : '';
-        prompt += _compStr ? ' REAL COMPARABLES: '+_compStr+(_avg?' · avg €'+_avg:'')+'.' : '';
-        prompt += ' STRICT RULE: base your recommendation ONLY on these comparables and my data. NEVER invent a market rate or a competitor. If no reliable comparable is provided, say so clearly and only suggest a relative adjustment to my current rate, without citing any market figure.';
-      }
+      prompt = buildGroundedPricePrompt(fr);
     } else if (type === 'checklist') {
       prompt = refGuest
         ? (fr?'Génère une checklist staff pour préparer l\'arrivée de ':'Generate staff checklist to prepare ') + (refGuest.name||'')+ '\'s arrival'

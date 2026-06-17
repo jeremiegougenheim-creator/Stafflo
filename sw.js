@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v111 (ARIA pricing grounded in curated comps + no-invent rule)
-const CACHE = 'stafflo-v111';
+// Stafflo Service Worker — v112 (typed price questions grounded (shared helper) + no per-guest tiers)
+const CACHE = 'stafflo-v112';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
