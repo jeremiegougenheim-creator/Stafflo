@@ -3704,6 +3704,7 @@ window.renderSetupOneLiner = function(){
       <div class="snap-cell">
         <div id="tsNet" class="snap-val" style="font-family:'Fraunces','Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--green-dark,#0F2318);line-height:1.02">—€</div>
         <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Net ce mois" data-en="Net this month">Net ce mois</div>
+        <div id="tsNetFlag" style="font-size:8px;letter-spacing:.3px;text-transform:uppercase;color:#BA7517;font-weight:600;margin-top:2px;display:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
       </div>
       <div class="snap-cell">
         <div id="tsPipeline" class="snap-val" style="font-family:'Fraunces','Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--green-dark,#0F2318);line-height:1.02">—</div>
@@ -3721,7 +3722,7 @@ window.renderSetupOneLiner = function(){
     var monthStart = new Date(y, m, 1).getTime();
     var monthEnd = new Date(y, m + 1, 1).getTime();
     var daysInMonth = Math.round((monthEnd - monthStart) / 86400000);
-    var bookedNights = 0, netMonth = 0;
+    var bookedNights = 0, netMonth = 0, missingMonth = 0; /* v120: past month firm résas with price=0 */
     if (typeof clients !== 'undefined' && Array.isArray(clients)) {
       clients.forEach(function(c){
         if (!c || c.deleted_at) return;
@@ -3739,13 +3740,15 @@ window.renderSetupOneLiner = function(){
         var price = Number(c.price) || 0;
         var comm  = Number(c.commission) || 0;
         netMonth += price * (1 - comm / 100) * (overlap / total);
+        if (price === 0 && dep < now.getTime()) missingMonth++;
       });
     }
     var out = {
       daysInMonth: daysInMonth,
       bookedNights: bookedNights,
       occupancy: daysInMonth > 0 ? Math.round(100 * bookedNights / daysInMonth) : 0,
-      netMonth: Math.round(netMonth)
+      netMonth: Math.round(netMonth),
+      missingMonth: missingMonth
     };
     try { console.debug('[VillaSnap] month=', new Date(monthStart).toISOString().slice(0,7), out); } catch(e){}
     return out;
@@ -3753,7 +3756,7 @@ window.renderSetupOneLiner = function(){
   function _fmtThousands(n){ return (n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
   function updateTodaySnap() {
     var fr = (typeof lang !== 'undefined' && lang === 'fr');
-    var price = '—€', occ = '—', net = '—€', pipeline = '—';
+    var price = '—€', occ = '—', net = '—€', pipeline = '—', missingMonthCount = 0;
     try {
       if (typeof getPrice === 'function') {
         var pd = getPrice();
@@ -3769,6 +3772,7 @@ window.renderSetupOneLiner = function(){
         if (occLbl) occLbl.textContent = fr ? 'Occupation · ce mois' : 'Occupancy · this month';
       }
       net = s.netMonth > 0 ? _fmtThousands(s.netMonth) + '€' : '—';
+      missingMonthCount = s.missingMonth || 0;
     } catch(e){}
     try {
       if (typeof clients !== 'undefined' && Array.isArray(clients)) {
@@ -3780,6 +3784,16 @@ window.renderSetupOneLiner = function(){
     setText('tsOccupancy', occ);
     setText('tsNet', net);
     setText('tsPipeline', pipeline);
+    (function(){
+      var flag = document.getElementById('tsNetFlag');
+      if (!flag) return;
+      if (missingMonthCount > 0) {
+        flag.textContent = missingMonthCount + (fr ? ' sans prix' : ' missing price');
+        flag.style.display = '';
+      } else {
+        flag.style.display = 'none';
+      }
+    })();
   }
   window.updateTodaySnap = updateTodaySnap;
   // Refresh when existing data-render functions run, without modifying them.

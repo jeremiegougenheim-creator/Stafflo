@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v119 (classifyEmail B — ic-reply-btn + openInboxReply par kind)
-const CACHE = 'stafflo-v119';
+// Stafflo Service Worker — v120 (monthly NET flag — missingMonth counter on #tsNetFlag)
+const CACHE = 'stafflo-v120';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
