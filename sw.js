@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v120 (monthly NET flag — missingMonth counter on #tsNetFlag)
-const CACHE = 'stafflo-v120';
+// Stafflo Service Worker — v121 (payout-parser: parseInboxPayouts + confirmPayoutAlert + generateAlerts alert)
+const CACHE = 'stafflo-v121';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

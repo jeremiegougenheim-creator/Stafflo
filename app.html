@@ -16391,6 +16391,76 @@ function renderScenarios(pricePN) {
 // ════════════════════════════════════════════════════════
 // TODAY TAB — alerts, brief, quick view
 // ════════════════════════════════════════════════════════
+/* v121 — Payout parser: scans _inboxEmails for "We sent a payout" + "YOU EARN" signals,
+   matches to CRM by dates (payout_sent) or name (booking_confirmed), surfaces confirm alert. */
+function parseInboxPayouts() {
+  try {
+    var emails = window._inboxEmails ? Object.values(window._inboxEmails) : [];
+    var results = [];
+    var ddmmToISO = function(s) {
+      var p = s.split('/');
+      return (p.length === 3) ? (p[2] + '-' + p[1] + '-' + p[0]) : null;
+    };
+    emails.forEach(function(e) {
+      if (!e || !e.body || e.archived_at || (e.status || '') === 'trash') return;
+      var subject = e.subject || '';
+      var body = (e.body || '').replace(/<[^>]+>/g, ' ').replace(/\xA0/g, ' ').replace(/\s+/g, ' ');
+      if (/we sent a payout of/i.test(subject)) {
+        var amtM = subject.match(/€\s*([\d,\.]+)\s*EUR/i);
+        if (!amtM) return;
+        var amount = parseFloat(amtM[1].replace(/,/g, ''));
+        if (!amount) return;
+        var codeM = body.match(/\b(HM[A-Z0-9]{6,10})\b/);
+        var guestM = body.match(/Details\s+([\wÀ-ÿ\s\-]+?)\s+[€£]/);
+        var datesM = body.match(/(\d{2}\/\d{2}\/\d{4})\s*[-–—â]+\s*(\d{2}\/\d{2}\/\d{4})/);
+        results.push({
+          type: 'payout_sent',
+          amount: amount,
+          confirmCode: codeM ? codeM[1] : null,
+          guestName: guestM ? guestM[1].trim() : '',
+          arrival: datesM ? ddmmToISO(datesM[1]) : null,
+          departure: datesM ? ddmmToISO(datesM[2]) : null,
+          emailId: e.id
+        });
+      } else if (/reservation (confirmed|reminder)/i.test(subject)) {
+        var earnM = body.match(/YOU EARN\s+[€£\xC2][€£\s\xA0\xC2]*([\d,\s\.]+)/i);
+        if (!earnM) return;
+        var amount2 = parseFloat(earnM[1].replace(/[,\s\xA0]/g, ''));
+        if (!amount2) return;
+        var codeM2 = body.match(/CONFIRMATION CODE\s+([A-Z0-9]{8,12})/i);
+        var guestM2 = subject.match(/confirmed\s*-\s*(.+?)\s+arrives/i) || subject.match(/reminder:\s*(.+?)\s+is coming/i);
+        results.push({
+          type: 'booking_confirmed',
+          amount: amount2,
+          confirmCode: codeM2 ? codeM2[1].trim() : null,
+          guestName: guestM2 ? guestM2[1].trim() : '',
+          arrival: null,
+          departure: null,
+          emailId: e.id
+        });
+      }
+    });
+    return results;
+  } catch(_e) { return []; }
+}
+window.parseInboxPayouts = parseInboxPayouts;
+
+function confirmPayoutAlert(clientId, amount) {
+  try {
+    var c = Array.isArray(clients) ? clients.find(function(x){ return x && x.id === clientId; }) : null;
+    if (!c) { if (typeof toast === 'function') toast('⚠ Client introuvable'); return; }
+    c.price = amount;
+    c.commission = 0;
+    if (typeof saveLocal === 'function') saveLocal();
+    if (typeof pushToSupabase === 'function') pushToSupabase(c);
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    if (typeof toast === 'function') toast((fr ? '✓ Prix mis à jour — ' : '✓ Price updated — ') + amount + '€ · ' + (c.name || ''));
+    try { if (typeof renderTodayStatsStrip === 'function') renderTodayStatsStrip(); } catch(e){}
+    try { if (typeof updateTodaySnap === 'function') updateTodaySnap(); } catch(e){}
+  } catch(_e) { if (typeof toast === 'function') toast('⚠ Erreur confirm payout'); }
+}
+window.confirmPayoutAlert = confirmPayoutAlert;
+
 async function generateAlerts(weatherTemp) {
   const alerts = [];
   const fr = lang === 'fr';
@@ -16786,6 +16856,45 @@ async function generateAlerts(weatherTemp) {
   const opKw = /(arriv|départ|checkout|check-in|check-out|rotation|turnover|in-house|aujourd|today|demain|tomorrow|same.?day|départ.?aujourd)/i;
   const isOperational = (a) => a.type === 'urgent' || a.type === 'warn' || opKw.test((a.title||'') + ' ' + (a.sub||''));
   const signalAlerts = alerts.filter(a => !isOperational(a));
+
+  // ── Payout alerts: versements Airbnb à confirmer dans le CRM ──
+  try {
+    if (typeof parseInboxPayouts === 'function') {
+      var _payouts = parseInboxPayouts();
+      var _payoutSeen = {};
+      _payouts.forEach(function(p) {
+        if (!p || !p.amount) return;
+        var matched = null;
+        if (p.arrival && p.departure) {
+          matched = clients.find(function(c){ return c && !c.deleted_at && _live(c) && c.arrival === p.arrival && c.departure === p.departure; });
+        }
+        if (!matched && p.guestName) {
+          var _first = p.guestName.split(' ')[0].toLowerCase();
+          matched = clients.find(function(c){ return c && !c.deleted_at && _live(c) && (c.name||'').toLowerCase().indexOf(_first) !== -1; });
+        }
+        if (!matched) return;
+        if ((+matched.price || 0) !== 0) return;
+        if (_payoutSeen[matched.id]) return;
+        _payoutSeen[matched.id] = true;
+        var _isPast = matched.departure && matched.departure < today;
+        var _alertType = (_isPast && p.type === 'payout_sent') ? 'warn' : 'info';
+        var _amtLabel = p.amount + '€';
+        var _nameLabel = matched.name || p.guestName;
+        var _cid = matched.id;
+        var _amt = p.amount;
+        var _sub = (p.type === 'payout_sent'
+          ? (fr ? 'Versement reçu : ' : 'Payout received: ')
+          : (fr ? 'Versement estimé : ' : 'Estimated payout: ')) + _amtLabel +
+          (fr ? ' — cliquez pour confirmer dans le CRM.' : ' — click to confirm in CRM.');
+        alerts.push({
+          type: _alertType,
+          title: '💸 ' + (fr ? 'Versement à confirmer' : 'Payout to confirm') + ' — ' + _nameLabel,
+          sub: _sub,
+          fn: (function(cid, amt){ return function(){ if (typeof confirmPayoutAlert === 'function') confirmPayoutAlert(cid, amt); }; })(_cid, _amt)
+        });
+      });
+    }
+  } catch(_pe) {}
 
   // Smart fillers — generic but ARIA-actionable signals to fill the box up to 5
   // Each is a real insight a villa owner cares about, not "all clear" noise.
