@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v124 (billing: friction #3 in-flow correction + #5 normalise multi-ligne + cache template)
-const CACHE = 'stafflo-v124';
+// Stafflo Service Worker — v125 (fiche séjour: openFicheSejour + saveFicheSejour + bouton CRM confirmés)
+const CACHE = 'stafflo-v125';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
