@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v117 (classifyEmail — shared classifier + "needs reply" brief signal)
-const CACHE = 'stafflo-v117';
+// Stafflo Service Worker — v118 (brief: no-invent rule + schematic example, kill Ahmed hallucination)
+const CACHE = 'stafflo-v118';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
