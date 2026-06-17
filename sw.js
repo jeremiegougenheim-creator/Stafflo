@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v121 (payout-parser: parseInboxPayouts + confirmPayoutAlert + generateAlerts alert)
-const CACHE = 'stafflo-v121';
+// Stafflo Service Worker — v122 (payout fix: surface trashed payouts + wire confirm via handleAlertClick)
+const CACHE = 'stafflo-v122';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

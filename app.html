@@ -5396,6 +5396,11 @@ function handleAlertClick(action, alertEl) {
   var kind = parts[0];
   var target = parts[1];
 
+  if (kind === 'confirm_payout') {
+    if (typeof confirmPayoutAlert === 'function') confirmPayoutAlert(target, parseFloat(parts[2]));
+    return;
+  }
+
   if (kind === 'meal_recap') {
     // Phase 4: open ARIA chat pre-filled so Phase 2 picks up the WhatsApp paste.
     var g = (window.clients||[]).find(function(c){return c.id===target;});
@@ -16402,7 +16407,7 @@ function parseInboxPayouts() {
       return (p.length === 3) ? (p[2] + '-' + p[1] + '-' + p[0]) : null;
     };
     emails.forEach(function(e) {
-      if (!e || !e.body || e.archived_at || (e.status || '') === 'trash') return;
+      if (!e || !e.body || e.archived_at) return;
       var subject = e.subject || '';
       var body = (e.body || '').replace(/<[^>]+>/g, ' ').replace(/\xA0/g, ' ').replace(/\s+/g, ' ');
       if (/we sent a payout of/i.test(subject)) {
@@ -16830,6 +16835,7 @@ async function generateAlerts(weatherTemp) {
     const txt = ((a.title||'') + ' ' + (a.sub||'')).toLowerCase();
     if (a._reviewGuestId) return { action: 'review:'+a._reviewGuestId, label: fr?'→ Rédiger':'→ Draft' };
     if (a._mealRecapGuestId) return { action: 'meal_recap:'+a._mealRecapGuestId, label: fr?'→ ARIA récap':'→ ARIA recap' };
+    if (a._payoutClientId) return { action: 'confirm_payout:'+a._payoutClientId+':'+a._payoutAmount, label: fr?'→ Confirmer':'→ Confirm' };
     if (/commentaire|review|rating|avis/i.test(txt)) return { action: 'open:aria-review', label: fr?'→ Aria':'→ Aria' };
     if (/prix|rate|pricing|marché|market|tarif|price/i.test(txt)) return { action: 'goto:home', label: fr?'→ Pricing':'→ Pricing' };
     if (/email|inbox|message|booking|airbnb/i.test(txt)) return { action: 'goto:inbox', label: fr?'→ Inbox':'→ Inbox' };
@@ -16890,7 +16896,8 @@ async function generateAlerts(weatherTemp) {
           type: _alertType,
           title: '💸 ' + (fr ? 'Versement à confirmer' : 'Payout to confirm') + ' — ' + _nameLabel,
           sub: _sub,
-          fn: (function(cid, amt){ return function(){ if (typeof confirmPayoutAlert === 'function') confirmPayoutAlert(cid, amt); }; })(_cid, _amt)
+          _payoutClientId: _cid,
+          _payoutAmount: _amt
         });
       });
     }
