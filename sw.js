@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v115 (kill DEFAULT_COMPETITORS seed fallback + honest benchmark in market card empty-state)
-const CACHE = 'stafflo-v115';
+// Stafflo Service Worker — v116 (honest NET total — flag N past firm résas with price=0)
+const CACHE = 'stafflo-v116';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

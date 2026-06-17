@@ -3464,6 +3464,7 @@ window.renderSoloTurnoverCard = function(){
       <div style="text-align:center;flex:1;min-width:0">
         <div id="tssNet"      class="tss-val" style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--gold);line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
         <div class="tss-lbl" style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:4px">NET</div>
+        <div id="tssNetFlag" style="font-size:8.5px;letter-spacing:.3px;text-transform:uppercase;color:#BA7517;font-weight:600;margin-top:2px;display:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
       </div>
       <div style="text-align:center;flex:1;min-width:0">
         <div id="tssUpcoming" class="tss-val" style="font-family:Fraunces,serif;font-size:20px;font-weight:500;color:var(--ink);line-height:1">—</div>
@@ -3489,12 +3490,17 @@ window.renderTodayStatsStrip = function(){
   var todayMs = today.getTime();
   var sevenAgoMs = todayMs - 7 * 86400000;
   var net = 0, upcoming = 0, pipeline = 0, fresh = 0;
+  var missingPast = 0; /* v116: PAST firm résas with price=0 — honest NET flag, never invents a price */
   list.forEach(function(c){
     if (!c || c.deleted_at) return;
     var firm = (typeof isFirmBooking === 'function') ? isFirmBooking(c) : true;
     if (firm) {
       var pct = +c.commission || 0;
       net += (+c.price || 0) * (1 - pct/100);
+      if ((+c.price || 0) === 0 && c.departure) {            // v116: PAST firm résas with no price
+        var dep = new Date(c.departure); dep.setHours(0,0,0,0);
+        if (!isNaN(dep.getTime()) && dep.getTime() < todayMs) missingPast++;
+      }
       if (c.arrival) {
         var a = new Date(c.arrival); a.setHours(0,0,0,0);
         if (a.getTime() >= todayMs) upcoming++;
@@ -3517,6 +3523,19 @@ window.renderTodayStatsStrip = function(){
   setText('tssUpcoming', String(upcoming));
   setText('tssPipeline', String(pipeline));
   setText('tssNew',      String(fresh));
+  /* v116: honest NET — surface PAST firm bookings with price=0 instead of silently undercounting.
+     Future résas without a price are normal (not yet paid) and excluded. Never invents a price. */
+  (function(){
+    var flag = document.getElementById('tssNetFlag');
+    if (!flag) return;
+    if (missingPast > 0) {
+      var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      flag.textContent = missingPast + (fr ? ' sans prix' : ' missing price');
+      flag.style.display = '';
+    } else {
+      flag.style.display = 'none';
+    }
+  })();
 };
 (function(){
   if (typeof window === 'undefined') return;
