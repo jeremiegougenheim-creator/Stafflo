@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v110 (revert cream header (dup of #v3SubHdr) + stat-strip T2-A fix)
-const CACHE = 'stafflo-v110';
+// Stafflo Service Worker — v111 (ARIA pricing grounded in curated comps + no-invent rule)
+const CACHE = 'stafflo-v111';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
