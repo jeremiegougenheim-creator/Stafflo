@@ -16544,7 +16544,8 @@ async function generateAlerts(weatherTemp) {
       if (typeof computeHotelBenchmark === 'function') {
         _vf = computeHotelBenchmark({
           bedrooms: (typeof getVillaConfig==='function'?getVillaConfig().bedrooms:5),
-          guests: (typeof getCfg==='function' && getCfg().maxGuests) ? getCfg().maxGuests : 6,
+          /* v114 PROVISIONAL: typical group ≈ bedrooms×1.2 (DarJ 5bed → 6 → villaFair ~850€). NOTE: hotelBedroomsForGuests(ceil/2) has a step discontinuity (6→3 rooms, 7→4 rooms) that makes the benchmark jump ~350€ per guest — the deeper fix is to derive hotel-room-equivalent from BEDROOMS not group, and use group only for the density ratio. Revisit post-launch. */
+          guests: (function(){ var _bd=(typeof getVillaConfig==='function'?getVillaConfig().bedrooms:5)||5; var _mx=(typeof getCfg==='function' && getCfg().maxGuests)?getCfg().maxGuests:_bd*2; return Math.max(2, Math.min(Math.round(_bd*1.2), _mx)); })(),
           basePrice: yourPrice
         }).villaFair;
       }

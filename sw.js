@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v113 (market alert -> hotel-benchmark target (honest label) + dedup occupancy)
-const CACHE = 'stafflo-v113';
+// Stafflo Service Worker — v114 (fix benchmark over-shoot: realistic group not maxGuests)
+const CACHE = 'stafflo-v114';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
