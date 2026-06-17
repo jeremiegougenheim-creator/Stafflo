@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v118 (brief: no-invent rule + schematic example, kill Ahmed hallucination)
-const CACHE = 'stafflo-v118';
+// Stafflo Service Worker — v119 (classifyEmail B — ic-reply-btn + openInboxReply par kind)
+const CACHE = 'stafflo-v119';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

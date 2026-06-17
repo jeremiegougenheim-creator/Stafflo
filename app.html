@@ -12370,6 +12370,9 @@ async function loadInboxEmails() {
       // Action row
       html += '<div class="ic-actions">';
       html += '<button class="ic-open-btn" data-email-id="' + row.id + '">📖 ' + (fr?'Analyser':'Analyze') + '</button>';
+      if (typeof classifyEmail === 'function' && classifyEmail(row).needsReply) {
+        html += '<button class="ic-reply-btn" data-email-id="' + row.id + '">✍ ' + (fr?'Répondre':'Reply') + '</button>';
+      }
       if (externalLink) {
         html += '<a class="ic-link-btn" href="' + externalLink + '" target="_blank" onclick="event.stopPropagation()" title="'+(fr?'Ouvrir sur ':'Open on ')+srcLabel+'">' + linkIcon + ' '+(fr?'Ouvrir':'Open')+'</a>';
       }
@@ -12398,6 +12401,14 @@ async function loadInboxEmails() {
         var id = btn.getAttribute('data-email-id');
         var row = window._inboxEmails[id];
         if (row) openInboxEmail(row);
+      });
+    });
+    qsa('.ic-reply-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var id = btn.getAttribute('data-email-id');
+        var row = window._inboxEmails[id];
+        if (row) openInboxReply(row);
       });
     });
     // Also let clicking the whole card open it (except links/buttons)
@@ -12464,6 +12475,53 @@ function openInboxEmail(row) {
     });
   }
 }
+
+function openInboxReply(row) {
+  closeInbox();
+  if (!row) return;
+  var fr = lang === 'fr';
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  var ownerName = cfg.owner || (fr ? 'le propriétaire' : 'the owner');
+  var subject = row.subject || (fr ? 'Email sans sujet' : 'No subject');
+  var fromEmail = row.from_email || '';
+  var fromName = row.from_name || fromEmail;
+  var bodyText = (row.body || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (bodyText.length > 3000) bodyText = bodyText.slice(0, 3000) + '…';
+
+  var kind = (typeof classifyEmail === 'function') ? classifyEmail(row).kind : 'guest_msg';
+  var villaCtx = ((kind === 'enquiry' || kind === 'booking_request') && (cfg.ariaMemory||'').trim())
+    ? '\n\nVILLA REFERENCE:\n' + (cfg.ariaMemory||'').trim().slice(0, 1500)
+    : '';
+
+  var draftInstr;
+  if (kind === 'booking_request') {
+    draftInstr = fr
+      ? 'C\'est une DEMANDE DE RÉSERVATION en attente. Rédige une réponse Airbnb pour accepter ou demander plus d\'infos (dates, nb pers). Chaleureuse, précise sur les conditions (check-in 14h, check-out 12h). Signe ' + ownerName + '.'
+      : 'This is a PENDING BOOKING REQUEST. Draft an Airbnb reply to accept or ask for clarification (dates, guest count). Warm tone, precise on conditions (check-in 2pm, check-out noon). Sign ' + ownerName + '.';
+  } else if (kind === 'enquiry') {
+    draftInstr = fr
+      ? 'C\'est une DEMANDE DE RENSEIGNEMENTS. Rédige une réponse Airbnb complète qui répond à TOUTES les questions posées. Inclus distances, équipements, prix si connus, conditions. Personnel et précis. Signe ' + ownerName + '.'
+      : 'This is an INQUIRY. Draft a complete Airbnb reply answering EVERY question asked. Include distances, amenities, pricing if known, conditions. Personal and precise. Sign ' + ownerName + '.';
+  } else {
+    draftInstr = fr
+      ? 'C\'est un MESSAGE D\'INVITÉ. Rédige une réponse courte et chaleureuse (3-4 lignes max). Réponds directement à ce qu\'ils demandent. Signe ' + ownerName + '.'
+      : 'This is a GUEST MESSAGE. Draft a short, warm reply (3-4 lines max). Respond directly to what they\'re asking. Sign ' + ownerName + '.';
+  }
+
+  var prompt = draftInstr + villaCtx +
+    '\n\n=== EMAIL ===' +
+    '\n' + (fr ? 'De' : 'From') + ': ' + fromName + ' <' + fromEmail + '>' +
+    '\n' + (fr ? 'Sujet' : 'Subject') + ': ' + subject +
+    '\n\n' + bodyText;
+
+  if (typeof openAriaModal === 'function') {
+    openAriaModal(prompt);
+    setTimeout(function(){
+      if (typeof sendAriaModal === 'function') sendAriaModal();
+    }, 120);
+  }
+}
+window.openInboxReply = openInboxReply;
 
 async function handleInboxEmailFull(row, ex) {
   var fr = lang === 'fr';
