@@ -15721,6 +15721,7 @@ function getWeekOfMonth() {
 }
 
 
+/* v115 DEAD: no longer used as fallback (was injecting fake comps). Kept for reference only. */
 const DEFAULT_COMPETITORS = [
   {name:'Dar Julina — 6ch Palmeraie', price:1200, source:'Villanovo'},
   {name:'Dar Tahira — 5ch Amelkis', price:980, source:'Villanovo'},
@@ -16226,8 +16227,8 @@ function saveCompetitors() {
 function loadSavedCompetitors() {
   try {
     const saved = localStorage.getItem('darj_competitors');
-    return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_COMPETITORS));
-  } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_COMPETITORS)); }
+    return saved ? JSON.parse(saved) : []; /* v115: no seed fallback — empty unless real comps saved. DEFAULT_COMPETITORS kept as dead-code below for reference (was source of "Dar Tahira"/fake comps leaking into card + alert + price prompt) */
+  } catch(e) { return []; }
 }
 
 function openAllCompetitors() {
@@ -25513,8 +25514,28 @@ window.addEventListener('DOMContentLoaded', function() {
     var comps = [];
     try { comps = (typeof loadSavedCompetitors === 'function') ? (loadSavedCompetitors() || []) : []; } catch(e){}
     if (!comps.length) {
-      host.innerHTML = '<div style="padding:10px 0;color:#6B6760;font-size:12.5px;font-style:italic">' + (FR?'Ajoutez des concurrents dans Settings.':'Add competitors in Settings.') + '</div>';
-      if (meta) meta.textContent = '';
+      /* v115: empty-state shows honest hotel-benchmark target (computed, not market) instead of nothing — no fake comps */
+      var _yp = getPrice().pricePN;
+      var _vf = null;
+      try {
+        if (typeof computeHotelBenchmark === 'function') {
+          _vf = computeHotelBenchmark({
+            bedrooms: (typeof getVillaConfig==='function'?getVillaConfig().bedrooms:5),
+            guests: (function(){ var _bd=(typeof getVillaConfig==='function'?getVillaConfig().bedrooms:5)||5; var _mx=(typeof getCfg==='function'&&getCfg().maxGuests)?getCfg().maxGuests:_bd*2; return Math.max(2,Math.min(Math.round(_bd*1.2),_mx)); })(),
+            basePrice: _yp
+          }).villaFair;
+        }
+      } catch(e){}
+      var _hint = (FR?'Ajoutez des concurrents réels dans Settings pour comparer.':'Add real competitors in Settings to compare.');
+      if (_vf) {
+        host.innerHTML =
+          '<div class="v4-market-row is-you"><span class="v4-market-name">' + (FR?'Cible benchmark hôtel':'Hotel-benchmark target') + '</span><span class="v4-market-price">' + fmtPrice(_vf) + '</span><span class="v4-market-delta">' + (FR?'cible':'target') + '</span></div>' +
+          '<div style="padding:8px 0 2px;color:#6B6760;font-size:11.5px;font-style:italic">' + _hint + '</div>';
+        if (meta) meta.textContent = (FR?'cible calculée (pas un marché observé)':'computed target (not an observed market)');
+      } else {
+        host.innerHTML = '<div style="padding:10px 0;color:#6B6760;font-size:12.5px;font-style:italic">' + _hint + '</div>';
+        if (meta) meta.textContent = '';
+      }
       return;
     }
     var sorted = comps.slice().sort(function(a,b){ return (b.price||0) - (a.price||0); }).slice(0, 5);
