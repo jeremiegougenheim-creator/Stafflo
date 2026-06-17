@@ -12190,6 +12190,98 @@ function classifyEmail(e){
 }
 window.classifyEmail = classifyEmail;
 
+/* v122 — Multi-signal email parser. Extracts dates, composition, origin, channel, keywords.
+   Pure function — no I/O. enrichInboxEmails() enriches _inboxEmails in-memory after fetch.
+   getAmenityGaps() clusters keywords for amenity-gap alert. Airbnb first. */
+function parseEmailSignals(email) {
+  if (!email) return null;
+  try {
+    var body = (email.body || '').replace(/<[^>]+>/g, ' ').replace(/\xA0/g, ' ').replace(/\s+/g, ' ');
+    var subject = email.subject || '';
+    var fromLow = (email.from_email || '').toLowerCase();
+    var r = {
+      channel: fromLow.indexOf('airbnb') !== -1 ? 'airbnb' : (fromLow.indexOf('booking') !== -1 ? 'booking' : 'direct'),
+      email_type: null, name: null, origin: null,
+      adults: null, children: null, infants: null,
+      arrival: null, departure: null, confirmation_code: null,
+      lead_days: null, keywords: []
+    };
+    // Confirmation code
+    var codeM = body.match(/CONFIRMATION CODE\s+([A-Z0-9]{8,12})/i);
+    if (codeM) r.confirmation_code = codeM[1].trim();
+    // Guest composition
+    var gM = body.match(/GUESTS?\s+(\d+)\s+adult[s]?(?:,?\s*(\d+)\s+child(?:ren)?)?(?:,?\s*(\d+)\s+infant[s]?)?/i);
+    if (gM) { r.adults = parseInt(gM[1])||null; r.children = gM[2]?(parseInt(gM[2])||null):null; r.infants = gM[3]?(parseInt(gM[3])||null):null; }
+    // Origin city
+    var oriM = body.match(/Identity verified[^,\n]*,?\s*\d*\s*review[s]?\s+([\w\s,\-À-ÿ]+?)(?:\s{2,}|(?:Hi|Bonjour|Hello|My|We|I |Je|Nous|Avec)\b)/i);
+    if (oriM) r.origin = oriM[1].trim().replace(/,\s*$/, '');
+    // Dates from "Check-in Checkout Wed 17 Jun Sun 21 Jun"
+    var MON = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+    var dM = body.match(/check-?in\s+checkout\s+\w+\s+(\d{1,2})\s+(\w{3})(?:\s+\d{4})?\s+\w+\s+(\d{1,2})\s+(\w{3})(?:\s+(\d{4}))?/i);
+    if (dM) {
+      var iDay=parseInt(dM[1]), iMon=MON[dM[2].toLowerCase().slice(0,3)];
+      var oDay=parseInt(dM[3]), oMon=MON[dM[4].toLowerCase().slice(0,3)];
+      var yr = dM[5] ? parseInt(dM[5]) : new Date().getFullYear();
+      if (iMon && oMon) {
+        var iDate = new Date(yr, iMon-1, iDay);
+        var oDate = new Date(oMon<iMon?yr+1:yr, oMon-1, oDay);
+        r.arrival = iDate.toISOString().slice(0,10);
+        r.departure = oDate.toISOString().slice(0,10);
+        if (email.received_at) r.lead_days = Math.round((iDate - new Date(email.received_at)) / 86400000);
+      }
+    }
+    // Email type
+    r.email_type = /we sent a payout/i.test(subject) ? 'payout'
+      : /reservation confirmed/i.test(subject) ? 'booking_confirmed'
+      : /reservation reminder/i.test(subject) ? 'booking_reminder'
+      : /reservation request/i.test(subject) ? 'booking_request'
+      : /enquiry for/i.test(subject) ? 'enquiry'
+      : /write a review/i.test(subject) ? 'review_request'
+      : fromLow.indexOf('express@airbnb') !== -1 ? 'guest_message' : 'other';
+    // Guest name from subject
+    var nM = subject.match(/confirmed\s*-\s*(.+?)\s+arrives/i) || subject.match(/reminder:\s*(.+?)\s+is coming/i);
+    if (nM) r.name = nM[1].trim();
+    // Keywords (amenity signals)
+    var bl = body.toLowerCase();
+    [['petit.d[eé]jeuner|breakfast','breakfast'],['piscine chauffée|heated pool','heated_pool'],
+     ['piscine|pool','pool'],['lit (bébé|b[ée]b[ée])|cot |baby bed|crib','baby_bed'],
+     ['chaise haute|high.?chair','highchair'],['allergi','allergy'],
+     ['véga|vegan|végétar|vegetar','vegetarian'],
+     ['transfer|navette|airport|aéroport|minibus','transport'],
+     ['anniversaire|birthday|célébr|celebrat','celebration'],['mariage|wedding','wedding'],
+     ['clim|climatisation|air.?condit','ac'],['wifi|internet','wifi'],
+     ['chef|cuisine|repas|dinner|dîner','catering']
+    ].forEach(function(p){ if (new RegExp(p[0],'i').test(bl) && r.keywords.indexOf(p[1])===-1) r.keywords.push(p[1]); });
+    return r;
+  } catch(_e) { return null; }
+}
+window.parseEmailSignals = parseEmailSignals;
+
+function enrichInboxEmails() {
+  if (!window._inboxEmails || typeof parseEmailSignals !== 'function') return;
+  Object.keys(window._inboxEmails).forEach(function(id) {
+    var e = window._inboxEmails[id];
+    if (!e || e.extracted) return;
+    var parsed = parseEmailSignals(e);
+    if (parsed) e.extracted = parsed;
+  });
+}
+window.enrichInboxEmails = enrichInboxEmails;
+
+function getAmenityGaps() {
+  if (!window._inboxEmails) return [];
+  var counts = {};
+  Object.values(window._inboxEmails).forEach(function(e) {
+    if (!e || !e.extracted || !Array.isArray(e.extracted.keywords)) return;
+    e.extracted.keywords.forEach(function(kw) { counts[kw] = (counts[kw]||0) + 1; });
+  });
+  return Object.keys(counts)
+    .filter(function(k){ return counts[k] >= 2; })
+    .sort(function(a,b){ return counts[b]-counts[a]; })
+    .map(function(k){ return { keyword:k, count:counts[k] }; });
+}
+window.getAmenityGaps = getAmenityGaps;
+
 async function loadInboxCount() {
   var cfg = getCfg();
   var key = cfg.sbKey || SB_ANON;
@@ -12329,6 +12421,7 @@ async function loadInboxEmails() {
     // Store emails for click handler (avoid inline JSON stringify)
     window._inboxEmails = {};
     rows.forEach(function(row) { window._inboxEmails[row.id] = row; });
+    if (typeof enrichInboxEmails === 'function') try { enrichInboxEmails(); } catch(e){}
 
     var fr = lang === 'fr';
     // Relative time helper: "à l'instant", "il y a 5min", "il y a 2h", "hier 14:30", "23/04 14:30"
@@ -16902,6 +16995,28 @@ async function generateAlerts(weatherTemp) {
       });
     }
   } catch(_pe) {}
+
+  // ── Amenity gap detector: keywords appearing in 2+ emails ──
+  try {
+    if (typeof enrichInboxEmails === 'function') enrichInboxEmails();
+    if (typeof getAmenityGaps === 'function') {
+      var _gaps = getAmenityGaps();
+      if (_gaps.length) {
+        var _gapLabels = { breakfast:fr?'petit-déjeuner':'breakfast', heated_pool:fr?'piscine chauffée':'heated pool',
+          pool:fr?'piscine':'pool', baby_bed:fr?'lit bébé/cot':'baby bed/cot', highchair:fr?'chaise haute':'highchair',
+          allergy:fr?'allergies':'allergies', vegetarian:fr?'végétarien':'vegetarian',
+          transport:fr?'navette/transport':'transfer/transport', celebration:fr?'anniversaire':'celebration',
+          wedding:fr?'mariage':'wedding', ac:fr?'climatisation':'AC', wifi:'wifi', catering:fr?'repas/chef':'catering/chef' };
+        _gaps.slice(0,2).forEach(function(g) {
+          var lbl = _gapLabels[g.keyword] || g.keyword;
+          alerts.push({ type:'info',
+            title: '📊 ' + (fr?'Demande récurrente':'Recurring request') + ' — ' + lbl,
+            sub: g.count + (fr?' guests l\'ont mentionné · à mettre en avant dans l\'annonce.'
+                             :' guests mentioned it · highlight in your listing.') });
+        });
+      }
+    }
+  } catch(_ae) {}
 
   // Smart fillers — generic but ARIA-actionable signals to fill the box up to 5
   // Each is a real insight a villa owner cares about, not "all clear" noise.
