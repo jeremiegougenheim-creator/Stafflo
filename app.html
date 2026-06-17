@@ -27523,16 +27523,20 @@ window.addEventListener('DOMContentLoaded', function() {
     }
 
     // Lecture du body du template Supabase (active=false — JAMAIS activé ici). Seam de test : window.__billingTestBody.
+    var _billingBodyCache = null; // #5 cache — évite un 2e aller-réseau si fetchBillingBody réussit une fois
     async function fetchBillingBody(lng){
       try {
         if (typeof window !== 'undefined' && window.__billingTestBody) return window.__billingTestBody;
+        if (_billingBodyCache) return _billingBodyCache; // #5 cache hit
         var cfg = (typeof getCfg === 'function') ? getCfg() : {};
         if (!cfg.sbUrl || !cfg.sbKey || typeof sbHdrs !== 'function') return null;
         var url = cfg.sbUrl + '/rest/v1/templates?key=eq.end_of_stay_billing&lang=eq.' + encodeURIComponent(lng) + '&select=body&limit=1';
         var res = await fetch(url, { headers: sbHdrs(cfg.sbKey) });
         if (!res.ok) return null;
         var rows = await res.json();
-        return (rows && rows[0] && rows[0].body) ? rows[0].body : null;
+        var body = (rows && rows[0] && rows[0].body) ? rows[0].body : null;
+        if (body) _billingBodyCache = body; // #5 cache save
+        return body;
       } catch(e){ return null; }
     }
 
@@ -27677,6 +27681,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
     // Retourne true si le tour est consommé par le billing ; false → laisser le flux ARIA normal.
     async function handleBillingTurn(text, typing){
+      text = String(text || '').replace(/\n+/g, ' ').trim(); // #5 normalise multi-ligne avant tout parsing
       try {
         if (STATE) {
           if (typing) { try { typing.style.display='none'; } catch(e){} }
@@ -27698,6 +27703,18 @@ window.addEventListener('DOMContentLoaded', function() {
             say(qtyConfirmMsg(pq)); return true; // réponse ambiguë → on re-pose la confirmation
           }
 
+          // #3 — correction in-flow: "pardon dîner 8", "en fait les déjeuners c'était 2"
+          // Détecte : intent-correction + keyword-repas + nombre → applique au bon step sans avancer.
+          if (/pardon|d[ée]sol[ée]|en fait|je voulais dire|rectif/i.test(text)) {
+            var _cPairs=[{key:'dinners',rx:/dîner|dinner/i},{key:'lunches',rx:/déjeuner|lunch/i},{key:'brunches',rx:/brunch/i},{key:'shopping_sessions',rx:/courses?|shopping/i}];
+            var _cKey=null, _cN=parseInt0(text);
+            for(var _ci=0;!_cKey&&_ci<_cPairs.length;_ci++){if(_cPairs[_ci].rx.test(text))_cKey=_cPairs[_ci].key;}
+            if (_cKey && _cN!=null && _cN>=0) {
+              STATE.input.costs[_cKey]=_cN; STATE.done[_cKey]=true;
+              if(STATE.pendingQty&&STATE.pendingQty.key===_cKey) STATE.pendingQty=null;
+              say(Q('Corrigé — je continue.','Got it — continuing.')); await askNext(STATE); return true;
+            }
+          }
           // phase collect : la réponse alimente l'étape courante
           var cur = nextStep(STATE);
           if (cur) {

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v123 (email parser C: parseEmailSignals + enrichInboxEmails + amenity gap alert)
-const CACHE = 'stafflo-v123';
+// Stafflo Service Worker — v124 (billing: friction #3 in-flow correction + #5 normalise multi-ligne + cache template)
+const CACHE = 'stafflo-v124';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
