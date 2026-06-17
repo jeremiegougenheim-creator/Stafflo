@@ -7517,14 +7517,17 @@ async function af1BuildBrief() {
   var checkinToday   = firm.filter(function(c){ return c.arrival   === todayISO; });
   var checkinTomorrow= firm.filter(function(c){ return c.arrival   === tomorrowISO; });
   var checkoutToday  = firm.filter(function(c){ return c.departure === todayISO; });
-  var unreadInbox = 0;
+  // "à répondre" — qualifié via classifyEmail (sender+subject), pas le flag read_at mort.
+  var toReply = [];
   try {
-    if (window._inboxEmails) {
-      unreadInbox = Object.keys(window._inboxEmails)
+    if (window._inboxEmails && typeof classifyEmail === 'function') {
+      toReply = Object.keys(window._inboxEmails)
         .map(function(k){ return window._inboxEmails[k]; })
-        .filter(function(e){ return e && !e.read_at; }).length;
+        .filter(function(e){ return e && classifyEmail(e).needsReply; })
+        .sort(function(a,b){ return classifyEmail(a).priority - classifyEmail(b).priority; });
     }
   } catch(e){}
+  var replyCount = toReply.length;
 
   // ── Deterministic primary action (NOT from LLM — reliability) ──────
   var primary;
@@ -7551,11 +7554,15 @@ async function af1BuildBrief() {
       label: (fr ? '💬 Message à ' : '💬 Message ') + inHouse.name,
       fn: function(){ if (typeof smartWhatsApp === 'function') smartWhatsApp('guest', inHouse.id); }
     };
-  } else if (unreadInbox) {
-    primary = {
-      label: (fr ? '📧 Voir ' : '📧 View ') + unreadInbox + (fr ? ' email(s) non lu(s)' : ' unread email(s)'),
-      fn: function(){ if (typeof goTab === 'function') goTab('today'); }
-    };
+  } else if (replyCount) {
+    var top = toReply[0];
+    var k = (typeof classifyEmail === 'function') ? classifyEmail(top).kind : 'guest_msg';
+    var who = (top && (top.from_name || (top.extracted && top.extracted.name))) || '';
+    var lbl = (k === 'booking_request') ? (fr ? '⏰ Demande de réservation à valider' : '⏰ Booking request to confirm')
+            : (k === 'enquiry')         ? (fr ? '📨 Répondre à une demande' + (who?' — '+who:'') : '📨 Reply to an enquiry' + (who?' — '+who:''))
+            :                             (fr ? ('📧 Répondre' + (who?' à '+who:' à un client')) : ('📧 Reply' + (who?' to '+who:' to a guest')));
+    if (replyCount > 1) lbl += ' (+' + (replyCount-1) + ')';
+    primary = { label: lbl, fn: function(){ if (typeof showInbox === 'function') showInbox(); else if (typeof goTab === 'function') goTab('today'); } };
   } else {
     primary = {
       label: (fr ? '✅ Vue d\'ensemble' : '✅ Overview'),
@@ -7571,7 +7578,7 @@ async function af1BuildBrief() {
   if (checkinToday.length)    ctx.ciTdy = checkinToday.map(function(c){ return { n: c.name, g: c.guests }; });
   if (checkinTomorrow.length) ctx.ciTmr = checkinTomorrow.map(function(c){ return { n: c.name, g: c.guests }; });
   if (checkoutToday.length)   ctx.coTdy = checkoutToday.map(function(c){ return c.name; });
-  if (unreadInbox)            ctx.unread = unreadInbox;
+  if (replyCount)             ctx.toReply = { n: replyCount, top: (typeof classifyEmail==='function'?classifyEmail(toReply[0]).kind:'guest_msg') };
 
   var sys = fr
     ? 'Tu es ARIA, assistante personnelle du propriétaire. En 1 paragraphe (max 70 mots), résume ce qui compte aujourd\'hui. Direct, conversationnel, pas de liste, pas d\'emoji, pas de salutation. Tu parles à l\'owner.'
@@ -12137,6 +12144,32 @@ function editChatMsg(btn, clientId) {
 // ════════════════════════════════════════════════════════
 // EMAIL INBOX
 // ════════════════════════════════════════════════════════
+
+/* shared email classifier — "needs reply" (sender+subject, deterministic, never invents).
+   Used by the brief signal (A) and the draft-reply flow (B). */
+function classifyEmail(e){
+  try {
+    var from = ((e && e.from_email) || '').toLowerCase();
+    var subj = ((e && e.subject) || '');
+    var st   = ((e && e.status) || '').toLowerCase();
+    if (st === 'trash' || (e && e.archived_at)) return { needsReply:false, kind:'info', priority:0 };
+    if (from.indexOf('express@airbnb.com') !== -1) {
+      if (/enquiry|inquiry/i.test(subj)) return { needsReply:true, kind:'enquiry', priority:3 };
+      return { needsReply:true, kind:'guest_msg', priority:2 };
+    }
+    if (from.indexOf('automated@airbnb.com') !== -1) {
+      if (/reservation request/i.test(subj)) return { needsReply:true,  kind:'booking_request', priority:1 };
+      if (/enquiry for/i.test(subj))         return { needsReply:true,  kind:'enquiry', priority:3 };
+      return { needsReply:false, kind:'info', priority:0 };
+    }
+    if (from.indexOf('booking.com') !== -1) {
+      if (/new (message|booking|reservation)|request|guest/i.test(subj)) return { needsReply:true, kind:'guest_msg', priority:2 };
+      return { needsReply:false, kind:'info', priority:0 };
+    }
+    return { needsReply:false, kind:'info', priority:0 };
+  } catch(_e){ return { needsReply:false, kind:'info', priority:0 }; }
+}
+window.classifyEmail = classifyEmail;
 
 async function loadInboxCount() {
   var cfg = getCfg();

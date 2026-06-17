@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v116 (honest NET total — flag N past firm résas with price=0)
-const CACHE = 'stafflo-v116';
+// Stafflo Service Worker — v117 (classifyEmail — shared classifier + "needs reply" brief signal)
+const CACHE = 'stafflo-v117';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
