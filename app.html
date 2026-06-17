@@ -16356,9 +16356,20 @@ async function generateAlerts(weatherTemp) {
     });
   });
 
+  // dedup v113: hoist the canonical low-occupancy decision so the "fill the calendar" cards (#1 here, #4 weekend)
+  // can defer to the single Low-occupancy card (#3). Recomputed inline (temp names) — #3's block stays the source of truth.
+  var _occLow = false;
+  try {
+    var _tmDedup = clients.filter(c => _live(c) && c.arrival && c.arrival.slice(0,7) === today.slice(0,7));
+    var _odDedup = _tmDedup.reduce((s,c) => s + Math.max(0,Math.ceil((new Date(c.departure)-new Date(c.arrival))/86400000)), 0);
+    var _dimDedup = new Date(now.getFullYear(), month, 0).getDate();
+    var _orDedup = Math.round(_odDedup / _dimDedup * 100);
+    _occLow = (_orDedup < 30 && month >= 3 && month <= 11);
+  } catch(e){}
+
   // Upcoming gaps — no booking in next 7 days
   const next7 = clients.filter(c => _live(c) && c.arrival && c.arrival > today && daysFrom(c.arrival) <= 7);
-  if (!inHouse && !checkinToday.length && !checkin1d.length && !checkin2d.length && next7.length === 0) {
+  if (!inHouse && !checkinToday.length && !checkin1d.length && !checkin2d.length && next7.length === 0 && !_occLow) { /* dedup v113: suppressed when canonical low-occupancy card (#3) shows — one-thing-one-place */
     alerts.push({type:'info',
       title:'📭 ' + (fr?'Aucune réservation dans les 7 prochains jours':'No bookings in next 7 days'),
       sub: fr?'Activez la promotion last-minute (-15%) pour remplir le calendrier.':'Activate last-minute discount (-15%) to fill the calendar.'});
@@ -16524,22 +16535,39 @@ async function generateAlerts(weatherTemp) {
   }
 
   // ── 6. COMPETITOR PRICING — lower threshold 15% ──
+  // v113: market alert re-anchored on deterministic hotel-benchmark villaFair (honest "target" label), falls back to saved-comps avg.
   try {
     const comps = loadSavedCompetitors ? loadSavedCompetitors() : [];
-    if (comps.length >= 1) {
-      const yourPrice = typeof getPrice === 'function' ? getPrice().pricePN : 0;
-      const avgMarket = Math.round(comps.reduce((s,c) => s + c.price, 0) / comps.length);
-      if (yourPrice && avgMarket) {
-        const pct = Math.round(((yourPrice - avgMarket) / avgMarket) * 100);
+    const yourPrice = typeof getPrice === 'function' ? getPrice().pricePN : 0;
+    var _vf = null;
+    try {
+      if (typeof computeHotelBenchmark === 'function') {
+        _vf = computeHotelBenchmark({
+          bedrooms: (typeof getVillaConfig==='function'?getVillaConfig().bedrooms:5),
+          guests: (typeof getCfg==='function' && getCfg().maxGuests) ? getCfg().maxGuests : 6,
+          basePrice: yourPrice
+        }).villaFair;
+      }
+    } catch(e){}
+    // _vf = deterministic hotel-benchmark TARGET (fair value vs 5★ hotels). Not an observed market.
+    if (_vf || comps.length >= 1) {
+      const avgMarket = comps.length ? Math.round(comps.reduce((s,c) => s + c.price, 0) / comps.length) : null;
+      var _ref = _vf || avgMarket;
+      // Honest label: villaFair is a computed TARGET, never an observed market.
+      var _refLbl    = _vf ? (fr?'Cible benchmark hôtel: ':'Hotel-benchmark target: ') : (fr?'Marché: ':'Market: ');
+      var _refLblAvg = _vf ? (fr?'Cible benchmark hôtel: ':'Hotel-benchmark target: ') : (fr?'Marché moyen: ':'Market average: ');
+      var _vsLbl     = _vf ? (fr?'vs cible':'vs target') : (fr?'vs marché':'vs market');
+      if (yourPrice && _ref) {
+        var pct = Math.round(((yourPrice - _ref) / _ref) * 100);
         if (pct < -25) alerts.push({type:'warn',
-          title:'💰 ' + Math.abs(pct) + '% ' + (fr?'sous le marché — opportunité':'below market — opportunity'),
-          sub: (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + (fr?'Marché: ':'Market: ') + avgMarket + '€ · ' + (fr?'Montez le prix ou activez l\'événement.':'Raise price or activate event modifier.')});
+          title:'💰 ' + Math.abs(pct) + '% ' + (_vf?(fr?'sous la cible — opportunité':'below target — opportunity'):(fr?'sous le marché — opportunité':'below market — opportunity')),
+          sub: (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + _refLbl + _ref + '€ · ' + (fr?'Montez le prix ou activez le modificateur événement.':'Raise price or activate event modifier.')});
         else if (pct > 25) alerts.push({type:'info',
-          title:'📈 ' + pct + '% ' + (fr?'au-dessus du marché':'above market'),
-          sub: (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + (fr?'Marché: ':'Market: ') + avgMarket + '€ · ' + (fr?'Vérifiez votre taux de remplissage.':'Check your occupancy rate.')});
+          title:'📈 ' + pct + '% ' + (_vf?(fr?'au-dessus de la cible':'above target'):(fr?'au-dessus du marché':'above market')),
+          sub: (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + _refLbl + _ref + '€ · ' + (fr?'Vérifiez votre taux de remplissage.':'Check your occupancy rate.')});
         else alerts.push({type:'good',
-          title:'📊 ' + (fr?'Prix compétitif':'Competitive price') + ' — ' + yourPrice + '€ (' + (pct>=0?'+':'') + pct + '% ' + (fr?'vs marché':'vs market') + ')',
-          sub: (fr?'Marché moyen: ':'Market average: ') + avgMarket + '€'});
+          title:'📊 ' + (fr?'Prix compétitif':'Competitive price') + ' — ' + yourPrice + '€ (' + (pct>=0?'+':'') + pct + '% ' + _vsLbl + ')',
+          sub: _refLblAvg + _ref + '€'});
       }
     }
   } catch(e) {}
@@ -16559,7 +16587,7 @@ async function generateAlerts(weatherTemp) {
     sub: (fr?'Revenu brut: ':'Gross revenue: ') + Math.round(monthRevenue).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€ · ' + (fr?'Excellent mois !':'Excellent month!')});
 
   // Weekend pricing opportunity
-  if ((day === 3 || day === 4) && !inHouse) { // Wed/Thu — upcoming weekend gap
+  if ((day === 3 || day === 4) && !inHouse && !_occLow) { /* dedup v113: suppressed when canonical low-occupancy card (#3) shows — one-thing-one-place */ // Wed/Thu — upcoming weekend gap
     alerts.push({type:'info',
       title:'📅 ' + (fr?'Week-end approche — pas de réservation':'Weekend approaching — no booking'),
       sub: fr?'Activez le tarif week-end (+50€) ou proposez une réduction last-minute.':'Activate weekend rate (+50€) or offer last-minute discount.'});

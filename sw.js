@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v112 (typed price questions grounded (shared helper) + no per-guest tiers)
-const CACHE = 'stafflo-v112';
+// Stafflo Service Worker — v113 (market alert -> hotel-benchmark target (honest label) + dedup occupancy)
+const CACHE = 'stafflo-v113';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
