@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v129 (NET fix renderStay + regex jour de l'an + VillaSnap log timezone)
-const CACHE = 'stafflo-v129';
+// Stafflo Service Worker — v130 (pricing fêtes → Peak: jour de l'an/réveillon/noël)
+const CACHE = 'stafflo-v130';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
