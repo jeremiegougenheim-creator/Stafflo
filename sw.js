@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v131 (hero: ligne de décision honnête + état vide)
-const CACHE = 'stafflo-v131';
+// Stafflo Service Worker — v132 (fix Réglages: re-render meal/taux après layout)
+const CACHE = 'stafflo-v132';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

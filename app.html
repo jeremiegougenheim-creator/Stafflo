@@ -17594,7 +17594,13 @@ function openSettings() {
   if (!modal) return;
   modal.style.cssText = 'display:flex!important;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9998;align-items:flex-start;justify-content:flex-end';
   document.body.style.overflow = 'hidden';
-  if (panel) requestAnimationFrame(function() { panel.style.transform = 'translateX(0)'; });
+  if (panel) requestAnimationFrame(function() {
+    panel.style.transform = 'translateX(0)';
+    /* v132 — re-render après layout : meal pricing + taux ne s'affichaient qu'après un clic
+       (render exécuté avant que le panneau soit posé). Lecture seule, aucune écriture cfg. */
+    try { if (typeof renderMealPricingSettings === 'function') renderMealPricingSettings(); } catch(e){}
+    try { if (typeof renderExchangeRatesSettings === 'function') renderExchangeRatesSettings(); } catch(e){}
+  });
   // Auto-save: pull latest from cloud (best-effort), then bind input listeners
   try {
     pullSettingsFromSupabase().then(function(pulled){
