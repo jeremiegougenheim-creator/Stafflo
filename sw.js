@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v138 (fix NaN brief: mesuré pas modélisé, pas de comparaison marché sans donnée)
-const CACHE = 'stafflo-v138';
+// Stafflo Service Worker — v139 (tooltip lisible mobile: ancré droite + largeur responsive)
+const CACHE = 'stafflo-v139';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
