@@ -18325,9 +18325,12 @@ async function loadMorningBrief(forceRefresh = false) {
   const wTemp = document.getElementById('factorWeather')?.textContent?.match(/\d+/)?.[0];
   const wDesc = document.getElementById('weatherContent')?.querySelector('.weather-desc')?.textContent || '';
 
-  // Market
-  const avgMarket = document.getElementById('factorComp')?.textContent || '';
-  const yourPrice = document.getElementById('priceDisplay')?.textContent?.match(/\d+/)?.[0] || '850';
+  // Market — v138: parse numérique, pas de fallback inventé (mesuré pas modélisé)
+  var _avgMarketRaw = document.getElementById('factorComp')?.textContent || '';
+  var _avgMarketNum = (_avgMarketRaw.match(/\d[\d\s.,]*/) || [''])[0].replace(/[\s.,]/g,'');
+  const avgMarket = (_avgMarketNum && parseInt(_avgMarketNum) > 0) ? parseInt(_avgMarketNum) : null;
+  var _yourPriceRaw = document.getElementById('priceDisplay')?.textContent?.match(/\d+/)?.[0];
+  const yourPrice = _yourPriceRaw || null;
 
   // Events
   const activeEvents = MARRAKECH_EVENTS.filter(e => {
@@ -18345,7 +18348,7 @@ async function loadMorningBrief(forceRefresh = false) {
   if (checkinTomorrow.length) dataLines.push((fr?'ARRIVÉE DEMAIN':'ARRIVING TOMORROW') + ': ' + checkinTomorrow.map(c=>c.name + ' (' + (c.guests||'?') + (fr?' pers':' guests') + ')').join(', '));
   if (upcoming7.length) dataLines.push((fr?'PROCHAINS 7J':'NEXT 7 DAYS') + ': ' + upcoming7.map(c=>c.name + ' (' + c.arrival + ', ' + (c.guests||'?') + (fr?' pers, ':' guests, ') + (c.price?c.price+'€':'?') + ')').join(', '));
   dataLines.push('');
-  if (yourPrice) dataLines.push((fr?'PRIX':'PRICE') + ': ' + yourPrice + '€/nuit' + (avgMarket ? ' (' + (fr?'marché':'market') + ': ' + avgMarket + ')' : ''));
+  if (yourPrice) dataLines.push((fr?'PRIX':'PRICE') + ': ' + yourPrice + '€/nuit' + (avgMarket ? ' (' + (fr?'marché':'market') + ': ' + avgMarket + '€)' : ''));
   if (activeEvents.length) dataLines.push((fr?'ÉVÉNEMENTS':'EVENTS') + ': ' + activeEvents.map(e=>(e.name||e.name_fr) + (e.impact?' (impact: '+e.impact+')':'')).join(', '));
 
   const briefSystem = fr
@@ -18362,7 +18365,7 @@ async function loadMorningBrief(forceRefresh = false) {
     (fr ? 'Corrélations à vérifier' : 'Cross-correlations to check') + ':',
     (fr ? '- Chaleur + guests = piscine/parasols' : '- Heat + guests = pool/parasols'),
     (fr ? '- Checkout + checkin même jour = turnaround serré' : '- Checkout + checkin same day = tight turnaround'),
-    (fr ? '- Prix < marché + événement = opportunité hausse' : '- Price < market + event = raise opportunity'),
+    (avgMarket ? (fr ? '- Prix < marché + événement = opportunité hausse' : '- Price < market + event = raise opportunity') : (fr ? '- NE compare PAS au marché (aucune donnée marché disponible)' : '- Do NOT compare to market (no market data available)')),
     '',
     (fr ? 'Échelle urgency : 10=maintenant, 8=aujourd\'hui, 6=demain, 4=cette semaine, 2=info.' : 'Urgency scale: 10=now, 8=today, 6=tomorrow, 4=this week, 2=fyi.'),
     (fr ? 'Max 5 cartes. Trier par urgency desc.' : 'Max 5 cards. Sort by urgency desc.')

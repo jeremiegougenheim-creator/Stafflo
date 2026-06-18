@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v137 (fix parsing prix EN: september/christmas/new year)
-const CACHE = 'stafflo-v137';
+// Stafflo Service Worker — v138 (fix NaN brief: mesuré pas modélisé, pas de comparaison marché sans donnée)
+const CACHE = 'stafflo-v138';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
