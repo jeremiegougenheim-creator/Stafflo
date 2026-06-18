@@ -16617,9 +16617,17 @@ function renderScenarios(pricePN) {
 // ════════════════════════════════════════════════════════
 /* v121 — Payout parser: scans _inboxEmails for "We sent a payout" + "YOU EARN" signals,
    matches to CRM by dates (payout_sent) or name (booking_confirmed), surfaces confirm alert. */
-function parseInboxPayouts() {
+async function parseInboxPayouts() {
   try {
-    var emails = window._inboxEmails ? Object.values(window._inboxEmails) : [];
+    /* v126: fetch direct des emails Airbnb (était window._inboxEmails, plafonné à 50 → ratait Tim & co). Tous statuts, trash inclus. */
+    var _cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var _sbu = (_cfg.sbUrl && _cfg.sbUrl.indexOf('.supabase.co') !== -1) ? _cfg.sbUrl : SB_URL;
+    var _sbk = _cfg.sbKey || SB_ANON;
+    var emails = [];
+    try {
+      var _pr = await fetch(_sbu + "/rest/v1/email_inbox?from_email=eq.automated@airbnb.com&select=id,subject,body,status,received_at&order=received_at.desc&limit=200", { headers: sbHdrs(_sbk) });
+      if (_pr.ok) emails = await _pr.json();
+    } catch(_pe2) {}
     var results = [];
     var ddmmToISO = function(s) {
       var p = s.split('/');
@@ -17085,7 +17093,7 @@ async function generateAlerts(weatherTemp) {
   // ── Payout alerts: versements Airbnb à confirmer dans le CRM ──
   try {
     if (typeof parseInboxPayouts === 'function') {
-      var _payouts = parseInboxPayouts();
+      var _payouts = await parseInboxPayouts();
       var _payoutSeen = {};
       _payouts.forEach(function(p) {
         if (!p || !p.amount) return;

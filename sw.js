@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v125 (fiche séjour: openFicheSejour + saveFicheSejour + bouton CRM confirmés)
-const CACHE = 'stafflo-v125';
+// Stafflo Service Worker — v126 (payout: fetch ciblé au lieu de _inboxEmails plafonné à 50)
+const CACHE = 'stafflo-v126';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
