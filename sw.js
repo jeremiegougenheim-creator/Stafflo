@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v132 (fix Réglages: re-render meal/taux après layout)
-const CACHE = 'stafflo-v132';
+// Stafflo Service Worker — v134 (fix langue ARIA : EN/FR selon toggle)
+const CACHE = 'stafflo-v134';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
