@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v134 (fix langue ARIA : EN/FR selon toggle)
-const CACHE = 'stafflo-v134';
+// Stafflo Service Worker — v135 (fix upsert villa_settings: PATCH par owner_id)
+const CACHE = 'stafflo-v135';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

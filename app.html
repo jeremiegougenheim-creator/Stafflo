@@ -15384,20 +15384,27 @@ async function saveEmailConnection(conn) {
   try {
     var key = cfg.sbKey || SB_ANON;
     var villaKey = (cfg.villa || 'villa').toLowerCase().replace(/[^a-z0-9]/g, '');
-    await fetch(SB_URL + '/rest/v1/villa_settings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: key,
-        Authorization: 'Bearer ' + key,
-        Prefer: 'resolution=merge-duplicates,return=minimal'
-      },
-      body: JSON.stringify({
-        villa_key: villaKey,
-        email_connection: conn,
-        updated_at: new Date().toISOString()
-      })
-    });
+    /* v135: PATCH par owner_id au lieu de POST — évite les doublons villa_settings.
+       saveEmailConnection utilisait POST+merge-duplicates sur villa_key (souvent vide)
+       → créait une nouvelle ligne à chaque save. Fix = même pattern que pushVillaSettings. */
+    var _uid = (typeof _stafflo_user !== 'undefined' && _stafflo_user) ? _stafflo_user.id : null;
+    var _tok = (typeof _stafflo_session !== 'undefined' && _stafflo_session) ? _stafflo_session.access_token : key;
+    if (_uid) {
+      await fetch(SB_URL + '/rest/v1/villa_settings?owner_id=eq.' + _uid, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: key,
+          Authorization: 'Bearer ' + _tok,
+          Prefer: 'return=minimal'
+        },
+        body: JSON.stringify({
+          villa_key: villaKey,
+          email_connection: conn,
+          updated_at: new Date().toISOString()
+        })
+      });
+    }
   } catch(e) { console.warn('villa_settings save:', e); }
 }
 
