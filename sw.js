@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v127 (pricing honnête: déterministe sans comps + ai_refused ne crashe plus)
-const CACHE = 'stafflo-v127';
+// Stafflo Service Worker — v129 (NET fix renderStay + regex jour de l'an + VillaSnap log timezone)
+const CACHE = 'stafflo-v129';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

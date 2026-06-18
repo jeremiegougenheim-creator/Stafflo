@@ -3750,7 +3750,7 @@ window.renderSetupOneLiner = function(){
       netMonth: Math.round(netMonth),
       missingMonth: missingMonth
     };
-    try { console.debug('[VillaSnap] month=', new Date(monthStart).toISOString().slice(0,7), out); } catch(e){}
+    try { console.debug('[VillaSnap] month=', y + '-' + String(m+1).padStart(2,'0'), out); } catch(e){} /* v129: toISOString() → UTC shift → faux mois en UTC+ */
     return out;
   }
   function _fmtThousands(n){ return (n||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
@@ -26727,7 +26727,7 @@ window.addEventListener('DOMContentLoaded', function() {
     var grid = $('v5dStayGrid');
     if (grid) {
       var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
-      var net = c.price ? Math.round(c.price * (1 - (c.commission||0)/100) * nights) : 0;
+      var net = c.price ? Math.round(c.price * (1 - (c.commission||0)/100)) : 0; /* v129: price = total séjour, pas /nuit — jamais * nights */
       var locale = FR ? 'fr-FR' : 'en-GB';
       var fmtDate = function(iso){
         if (!iso) return '—';
@@ -28617,7 +28617,7 @@ window.addEventListener('DOMContentLoaded', function() {
           if (!_pComps.length) {
             var _MON={jan:1,janv:1,fev:2,fevr:2,feb:2,mars:3,mar:3,avr:4,apr:4,mai:5,may:5,jun:6,juin:6,jul:7,juil:7,aug:8,aout:8,sep:9,sept:9,oct:10,nov:11,dec:12,noel:12,an:1};
             var _pDate=new Date();
-            var _mM=text.toLowerCase().match(/\b(jan(?:vier)?|f[eé]v(?:rier)?|mars|avr(?:il)?|mai|may|juin?|juil(?:let)?|ao[uû]t|sep(?:t(?:embre)?)?|oct(?:obre)?|nov(?:embre)?|d[eé]c(?:embre)?|no[eë]l|jour\s+de\s+l[''.]?an)\b/);
+            var _mM=text.toLowerCase().match(/\b(jan(?:vier)?|f[eé]v(?:rier)?|mars|avr(?:il)?|mai|may|juin?|juil(?:let)?|ao[uû]t|sep(?:t(?:embre)?)?|oct(?:obre)?|nov(?:embre)?|d[eé]c(?:embre)?|no[eë]l|jour.{0,8}an|reveillon|réveillon)\b/i);
             if(_mM){var _mk=_mM[1].slice(0,3).toLowerCase().replace(/[éè]/g,'e').replace('û','u');var _mn=_MON[_mk];if(_mn){_pDate=new Date(_pDate.getFullYear(),_mn-1,15);if(_pDate<new Date())_pDate.setFullYear(_pDate.getFullYear()+1);}}
             var _pm=_pDate.getMonth()+1,_pd=_pDate.getDate(),_pp,_pl;
             if((_pm===12&&_pd>=21)||(_pm===1&&_pd<=2)){_pp=1500;_pl=fr?'Peak (Noël/NY)':'Peak (Christmas/NY)';}
