@@ -3452,7 +3452,7 @@ window.renderSoloTurnoverCard = function(){
     <div class="aria-hero-chips">
       <button class="aria-hero-chip" onclick="ariaQuickAction('email')" data-fr="✉ Rédiger un email" data-en="✉ Draft email">✉ Rédiger un email</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button>
+      <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button><span title="Prix calculé depuis ta grille saisonnière via price-intelligence · Confiance A (comps live) / B (météo) / C (grille seule) — jamais inventé" style="cursor:help;font-size:11px;opacity:.55;margin-left:3px;vertical-align:middle;font-family:sans-serif">ℹ</span>
       <button class="aria-hero-chip" onclick="ariaQuickAction('checklist')" data-fr="✓ Checklist staff" data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
     </div>
   </div>
@@ -4260,7 +4260,7 @@ window.renderSetupOneLiner = function(){
     <div class="aria-hero-chips">
       <button class="aria-hero-chip" onclick="ariaQuickAction('email')" data-fr="✉ Rédiger un email" data-en="✉ Draft email">✉ Rédiger un email</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button>
+      <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button><span title="Prix calculé depuis ta grille saisonnière via price-intelligence · Confiance A (comps live) / B (météo) / C (grille seule) — jamais inventé" style="cursor:help;font-size:11px;opacity:.55;margin-left:3px;vertical-align:middle;font-family:sans-serif">ℹ</span>
       <button class="aria-hero-chip" onclick="ariaQuickAction('checklist')" data-fr="✓ Checklist staff" data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
     </div>
   </div>
@@ -4469,7 +4469,7 @@ window.renderSetupOneLiner = function(){
       <button class="aria-hero-go" onclick="event.stopPropagation();sendAriaSearchToModal(this.closest('.aria-hero-input-row').querySelector('.aria-hero-input'))" aria-label="Open ARIA">↑</button>
     </div>
     <div class="aria-hero-chips">
-      <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button>
+      <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button><span title="Prix calculé depuis ta grille saisonnière via price-intelligence · Confiance A (comps live) / B (météo) / C (grille seule) — jamais inventé" style="cursor:help;font-size:11px;opacity:.55;margin-left:3px;vertical-align:middle;font-family:sans-serif">ℹ</span>
       <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('checklist')" data-fr="✓ Checklist staff" data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
       <button class="aria-hero-chip" onclick="ariaQuickAction('email')" data-fr="✉ Rédiger un email" data-en="✉ Draft email">✉ Rédiger un email</button>
@@ -21201,6 +21201,24 @@ function ariaQuickAction(kind) {
     write_msg: { fr: 'Rédige un message WhatsApp de bienvenue chaleureux pour le prochain client qui arrive.', en: 'Write a warm WhatsApp welcome message for the next arriving guest.' },
     weather: { fr: 'Météo Marrakech 7 jours + impact sur les prix et le brief staff piscine/jardin.', en: 'Marrakech weather 7 days + impact on pricing and pool/garden staff briefing.' },
   };
+  /* v136: cas 'price' — pre-fetch price-intelligence, injecte prix grounded avant ARIA */
+  if (kind === 'price') {
+    var _ariaInput = input;
+    var _fr = fr;
+    (async function(){
+      var _pi = await (typeof fetchPriceIntelligence === 'function' ? fetchPriceIntelligence(new Date().toISOString().slice(0,10)) : Promise.resolve(null));
+      var _q = _fr ? '💰 Suggérer un prix pour ce soir' : '💰 Suggest a price for tonight';
+      if (_pi && _pi.suggested_price) {
+        _q += '\n\n[PRICE INTELLIGENCE · Confiance ' + _pi.confidence + '] ' + _pi.label +
+              '\nSaison : ' + _pi.season + ' · Base : ' + (_pi.grid ? _pi.grid[_pi.season] : '?') + '€' +
+              '\n' + _pi.note;
+      }
+      _ariaInput.value = _q;
+      if (typeof sendAriaSearchToModal === 'function') sendAriaSearchToModal(_ariaInput);
+      else if (typeof openAriaModal === 'function') { openAriaModal(); setTimeout(function(){ if (typeof sendAriaModal === 'function') sendAriaModal(); }, 100); }
+    })();
+    return;
+  }
   var p = prompts[kind];
   if (!p) return;
   if (p.trigger === 'file') {
@@ -31459,6 +31477,22 @@ window.addEventListener('DOMContentLoaded', function() {
     } catch(e){}
   }
   window.updateAriaCounter = updateAriaCounter;
+
+  /* v136: fetchPriceIntelligence — appel Edge Function avant LLM pour grounding prix */
+  async function fetchPriceIntelligence(targetDate) {
+    try {
+      var oid = (typeof _stafflo_user !== 'undefined' && _stafflo_user) ? _stafflo_user.id : null;
+      var d = targetDate || new Date().toISOString().slice(0,10);
+      var r = await fetch('https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/price-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_date: d, nights: 1, owner_id: oid })
+      });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch(e) { return null; }
+  }
+  window.fetchPriceIntelligence = fetchPriceIntelligence;
 
   /* v131 — ligne de décision honnête (grammaire ServiceFlow). Date + signaux réels.
      Zéro invention : compte window._briefCards. État vide honnête si 0. */
