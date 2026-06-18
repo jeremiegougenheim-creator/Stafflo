@@ -24777,11 +24777,7 @@ window.addEventListener('DOMContentLoaded', function() {
     write_generic: function(text){
       if (!text || text.length < 30) return { ok:false, reason:'too_short' };
       if (text.length > 3000) return { ok:false, reason:'too_long' };
-      // Refus de l'AI
-      if (/I'?m sorry|I cannot|I can'?t|Je ne peux pas|Désolé.{0,20}je ne peux/i.test(text)) {
-        return { ok:false, reason:'ai_refused' };
-      }
-      return { ok:true };
+      return { ok:true }; /* v127: ai_refused retiré — un refus honnête du LLM = réponse valide, pas une panne */
     }
   };
   function validateAiOutput(task, text){
@@ -28614,8 +28610,28 @@ window.addEventListener('DOMContentLoaded', function() {
 
         // Price-intent grounding — route typed price questions through the same curated-comps prompt as the button (no invention, single-villa).
         var _isPrice = /\b(prix|tarif|price|rate|combien|how much)\b/i.test(text) || /(€|\$)\s*\d|\d+\s*(€|\$|\/nuit|\/night|per night)/i.test(text);
-        if (_isPrice && typeof buildGroundedPricePrompt==='function') {
-          systemPrompt += '\n\n[PRICING — STRICT] ' + buildGroundedPricePrompt(fr);
+        /* v127 — Pricing honnête : si 0 comparable → réponse déterministe (grille saison villa),
+           pas de LLM. L'LLM invente même avec STRICT RULE. "Mesuré, pas modélisé." */
+        if (_isPrice) {
+          var _pComps = (typeof loadSavedCompetitors==='function') ? (loadSavedCompetitors()||[]) : [];
+          if (!_pComps.length) {
+            var _MON={jan:1,janv:1,fev:2,fevr:2,feb:2,mars:3,mar:3,avr:4,apr:4,mai:5,may:5,jun:6,juin:6,jul:7,juil:7,aug:8,aout:8,sep:9,sept:9,oct:10,nov:11,dec:12,noel:12,an:1};
+            var _pDate=new Date();
+            var _mM=text.toLowerCase().match(/\b(jan(?:vier)?|f[eé]v(?:rier)?|mars|avr(?:il)?|mai|may|juin?|juil(?:let)?|ao[uû]t|sep(?:t(?:embre)?)?|oct(?:obre)?|nov(?:embre)?|d[eé]c(?:embre)?|no[eë]l|jour\s+de\s+l[''.]?an)\b/);
+            if(_mM){var _mk=_mM[1].slice(0,3).toLowerCase().replace(/[éè]/g,'e').replace('û','u');var _mn=_MON[_mk];if(_mn){_pDate=new Date(_pDate.getFullYear(),_mn-1,15);if(_pDate<new Date())_pDate.setFullYear(_pDate.getFullYear()+1);}}
+            var _pm=_pDate.getMonth()+1,_pd=_pDate.getDate(),_pp,_pl;
+            if((_pm===12&&_pd>=21)||(_pm===1&&_pd<=2)){_pp=1500;_pl=fr?'Peak (Noël/NY)':'Peak (Christmas/NY)';}
+            else if(_pm===7||_pm===8){_pp=950;_pl=fr?'Très haute saison (juil/août)':'Very high season (Jul/Aug)';}
+            else if(_pm===3||_pm===4||_pm===10||_pm===11){_pp=850;_pl=fr?'Haute saison (mars/avr/oct/nov)':'High season (Mar/Apr/Oct/Nov)';}
+            else if(_pm===5||_pm===6){_pp=650;_pl=fr?'Basse saison (mai/juin)':'Low season (May/Jun)';}
+            else{_pp=750;_pl=fr?'Saison normale':'Normal season';}
+            var _pLabel=_pDate.toLocaleDateString(fr?'fr-FR':'en-GB',{month:'long',year:'numeric'});
+            var _pResp=fr?'Suggestion de prix pour '+_pLabel+' :\n'+_pp+'€/nuit — '+_pl+'.\nAucun comparable marché · Prix de saison Villa DarJ · Mesuré, pas modélisé.\n_Configurez vos tarifs dans Réglages si besoin._':'Price suggestion for '+_pLabel+':\n'+_pp+'€/night — '+_pl+'.\nNo market comps · Villa DarJ seasonal rate · Measured, not modelled.\n_Adjust in Settings._';
+            var _ptyp=document.getElementById('chatTyping');if(_ptyp)_ptyp.style.display='none';
+            addChatBubble('ai',_pResp,[]);
+            return;
+          }
+          if(typeof buildGroundedPricePrompt==='function'){systemPrompt+='\n\n[PRICING — STRICT] '+buildGroundedPricePrompt(fr);}
         }
 
         var raw = await callBestAI(aiTask, systemPrompt, userCtx, aiMaxTokens);

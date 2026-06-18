@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v126 (payout: fetch ciblé au lieu de _inboxEmails plafonné à 50)
-const CACHE = 'stafflo-v126';
+// Stafflo Service Worker — v127 (pricing honnête: déterministe sans comps + ai_refused ne crashe plus)
+const CACHE = 'stafflo-v127';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
