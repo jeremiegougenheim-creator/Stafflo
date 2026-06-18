@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v130 (pricing fêtes → Peak: jour de l'an/réveillon/noël)
-const CACHE = 'stafflo-v130';
+// Stafflo Service Worker — v131 (hero: ligne de décision honnête + état vide)
+const CACHE = 'stafflo-v131';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

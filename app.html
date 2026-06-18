@@ -3431,7 +3431,8 @@ window.renderSoloTurnoverCard = function(){
             <span class="aria-hero-name">ARIA</span>
             <span class="aria-badge">AI</span>
           </div>
-          <div class="aria-hero-tagline" id="ariaHeroTagline" data-fr="La mémoire vive de votre villa" data-en="Your villa's living memory">La mémoire vive de votre villa</div>
+          <div class="aria-hero-tagline" id="ariaHeroTagline" data-fr="La mémoire vive de votre villa" data-en="Your villa's living memory" style="display:none">La mémoire vive de votre villa</div>
+          <div class="aria-hero-decision" id="ariaHeroDecision" style="font-family:'DM Sans',sans-serif;font-size:13.5px;color:rgba(255,255,255,.88);letter-spacing:.2px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
         </div>
       </div>
       <div class="aria-hero-counter" id="ariaHeroCounter" title="Signaux actifs détectés par Aria" data-title-fr="Signaux actifs détectés par Aria" data-title-en="Active signals detected by Aria">
@@ -31441,9 +31442,29 @@ window.addEventListener('DOMContentLoaded', function() {
       var el = document.getElementById('ariaCounterNum');
       if (el) el.textContent = display;
       document.querySelectorAll('.ariaCounterNumMirror').forEach(function(e){ e.textContent = display; });
+      if (typeof updateAriaDecisionLine === 'function') updateAriaDecisionLine();
     } catch(e){}
   }
   window.updateAriaCounter = updateAriaCounter;
+
+  /* v131 — ligne de décision honnête (grammaire ServiceFlow). Date + signaux réels.
+     Zéro invention : compte window._briefCards. État vide honnête si 0. */
+  function updateAriaDecisionLine(){
+    try {
+      var el = document.getElementById('ariaHeroDecision');
+      if (!el) return;
+      var fr = (typeof lang !== 'undefined' && lang === 'fr');
+      var now = new Date();
+      var dateStr = now.toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { weekday:'long', day:'numeric', month:'long' });
+      dateStr = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+      var n = (window._briefCards || []).length;
+      var tail;
+      if (n > 0) tail = fr ? (n + (n>1?' signaux à traiter':' signal à traiter')) : (n + (n>1?' signals to review':' signal to review'));
+      else        tail = fr ? 'Rien d’urgent aujourd’hui' : 'Nothing urgent today';
+      el.textContent = dateStr + ' · ' + tail;
+    } catch(e){}
+  }
+  window.updateAriaDecisionLine = updateAriaDecisionLine;
 
   /* Quick-action chip handlers */
   function buildGroundedPricePrompt(fr){
