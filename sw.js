@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v136 (price-intelligence branché chip prix)
-const CACHE = 'stafflo-v136';
+// Stafflo Service Worker — v137 (fix parsing prix EN: september/christmas/new year)
+const CACHE = 'stafflo-v137';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
