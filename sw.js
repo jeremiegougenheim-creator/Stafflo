@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v166 (ARIA breakpoints : desktop cappé / tablette / mobile plein écran)
-const CACHE = 'stafflo-v166';
+// Stafflo Service Worker — v167 (fix affordance scroll barre chips ARIA : fade bord droit)
+const CACHE = 'stafflo-v167';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
