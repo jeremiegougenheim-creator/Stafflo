@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v161 (dashV2 OFF par défaut — Today blanche en prod, repasse opt-in)
-const CACHE = 'stafflo-v161';
+// Stafflo Service Worker — v162 (fusion orbe ARIA : un seul A + badge sur la nav)
+const CACHE = 'stafflo-v162';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
