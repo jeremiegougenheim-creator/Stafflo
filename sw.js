@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v142 (profil client: chips clés + voir plus + conditionnel)
-const CACHE = 'stafflo-v142';
+// Stafflo Service Worker — v143 (typo Cormorant + registre GRAVEYARD)
+const CACHE = 'stafflo-v143';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
