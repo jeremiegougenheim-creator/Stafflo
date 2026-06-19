@@ -1,4 +1,4 @@
-// Stafflo Service Worker — v167 (fix affordance scroll barre chips ARIA : fade bord droit)
+// Stafflo Service Worker — v167 (fix double orbe ARIA : flottant legacy masque sur mobile reel)
 const CACHE = 'stafflo-v167';
 const CORE = [
   './app.html',
