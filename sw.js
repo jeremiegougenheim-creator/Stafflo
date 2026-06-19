@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v149 (détection boutons tolérante fautes + review/message séparés)
-const CACHE = 'stafflo-v149';
+// Stafflo Service Worker — v150 (intention review/message forcée — review publique vs message invité)
+const CACHE = 'stafflo-v150';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

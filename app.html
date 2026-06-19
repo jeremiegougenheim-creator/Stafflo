@@ -28800,6 +28800,19 @@ window.addEventListener('DOMContentLoaded', function() {
         }
         if (/^\/deep\s|^\/approfondi/i.test(text)) { aiTask = 'reason'; aiMaxTokens = 1000; }
 
+        // v150 — intention review/message forcée en déterministe (évite que chat_fr
+        // dérive : review publique vs message à l'invité).
+        var _lc150 = lc || text.toLowerCase();
+        if (/\brevie?w|\bavis\b|comm?ent|[ée]toile|\bstar\b|\bnote\b/i.test(_lc150)
+            && /\bairb|booking|vrbo|invit|guest|emma|client/i.test(_lc150)) {
+          systemPrompt += '\n\n[TÂCHE — REVIEW PUBLIQUE] L\'hôte laisse une review PUBLIQUE pour l\'invité sur Airbnb/Booking (lue par les futurs hôtes). Écris à propos de l\'invité, à la 3e personne (ex. "Emma et sa famille ont été..."). 2 à 4 phrases, chaleureux et factuel. INTERDIT : demander à l\'invité de laisser un avis, dire "merci d\'avoir choisi", tout préambule type "Here is a draft" / "Voici" / "WA to". Sortie = UNIQUEMENT le texte de la review, prêt à coller.';
+          aiTask = 'write_fr';
+        } else if (/\bmess?ag|\bmsg|[ée]cri[ts]|\bwrite|r[ée]pon|reply|fin de s[ée]jour|checkout|d[ée]part|welcome|accueil/i.test(_lc150)
+            && /\bairb|booking|invit|guest|emma|client/i.test(_lc150)) {
+          systemPrompt += '\n\n[TÂCHE — MESSAGE À L\'INVITÉ] Rédige un message à ENVOYER à l\'invité (2e personne, "vous"), prêt à copier-coller. INTERDIT : tout préambule type "Here is a draft" / "Voici le message" / "WA to". Sortie = UNIQUEMENT le message.';
+          aiTask = 'write_fr';
+        }
+
         // Price-intent grounding — route typed price questions through the same curated-comps prompt as the button (no invention, single-villa).
         var _isPrice = /\b(prix|tarif|price|rate|combien|how much)\b/i.test(text) || /(€|\$)\s*\d|\d+\s*(€|\$|\/nuit|\/night|per night)/i.test(text);
         /* v127 — Pricing honnête : si 0 comparable → réponse déterministe (grille saison villa),
