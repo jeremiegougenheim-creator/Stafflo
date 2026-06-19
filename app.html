@@ -3372,14 +3372,29 @@ window.renderSoloTurnoverCard = function(){
 
 <script>
 /* v153 — ServiceFlow Dashboard v2 — flag + ossature (Étape A).
-   Strangler fig: #dashV2Root coexiste avec le dashboard existant.
-   Activé via localStorage.setItem('dashV2','1') + reload. */
+   v159 — DASH_V2 default ON (localStorage '0' pour désactiver).
+   Strangler fig: quand ON, masque les autres enfants de #tab-today (jamais supprimés). */
 (function(){
-  window.DASH_V2 = localStorage.getItem('dashV2') === '1';
+  // v159: default ON — écrire '0' pour revenir au dashboard classique
+  window.DASH_V2 = localStorage.getItem('dashV2') !== '0';
   function applyDashV2(){
     var root = document.getElementById('dashV2Root');
     if (!root) return;
     root.style.display = window.DASH_V2 ? '' : 'none';
+    // v159: quand DASH_V2 ON, masque tous les autres enfants de #tab-today
+    // (strangler fig: pas de suppression, juste display:none)
+    var tab = document.getElementById('tab-today');
+    if (tab) {
+      Array.prototype.forEach.call(tab.children, function(child){
+        if (child === root) return; // toujours afficher #dashV2Root selon son propre état
+        if (window.DASH_V2) {
+          if (!child._dv2OrigDisplay) child._dv2OrigDisplay = child.style.display || '';
+          child.style.display = 'none';
+        } else if (child._dv2OrigDisplay !== undefined) {
+          child.style.display = child._dv2OrigDisplay;
+        }
+      });
+    }
   }
   window.toggleDashV2 = function(){
     try { localStorage.setItem('dashV2', window.DASH_V2 ? '0' : '1'); } catch(e){}
