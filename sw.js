@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v167 (fix double orbe ARIA : flottant legacy masque sur mobile reel)
-const CACHE = 'stafflo-v167';
+// Stafflo Service Worker — v168 (fix flood 409 email_inbox : POST → upsert-ignore on_conflict=gmail_id)
+const CACHE = 'stafflo-v168';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
