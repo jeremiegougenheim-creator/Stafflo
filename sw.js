@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v165 (ARIA plein écran mobile : feuille native 100dvh)
-const CACHE = 'stafflo-v165';
+// Stafflo Service Worker — v166 (ARIA breakpoints : desktop cappé / tablette / mobile plein écran)
+const CACHE = 'stafflo-v166';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
