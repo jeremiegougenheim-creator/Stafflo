@@ -20604,6 +20604,31 @@ function ariaMaybeShowReviewStars(userText) {
 }
 window.ariaMaybeShowReviewStars = ariaMaybeShowReviewStars;
 
+function ariaCopyAndOpen(target) {
+  var lastAiText = '';
+  var body = document.getElementById('ariaModalMessages');
+  if (body) {
+    var bubbles = body.querySelectorAll('.aria-modal-bubble');
+    for (var i = bubbles.length - 1; i >= 0; i--) {
+      if (!bubbles[i].classList.contains('user')) {
+        lastAiText = (bubbles[i].textContent || '').replace(/^\s*ARIA\s*[·.]?\s*/i, '').trim();
+        break;
+      }
+    }
+  }
+  if (lastAiText) {
+    try { navigator.clipboard.writeText(lastAiText); } catch(e) {}
+  }
+  var urls = {
+    review:  'https://www.airbnb.com/hosting/reviews',
+    message: 'https://www.airbnb.com/inbox'
+  };
+  var url = urls[target] || urls.message;
+  try { window.open(url, '_blank'); } catch(e) {}
+  try { if (typeof toast === 'function') toast(fr() ? '✓ Texte copié — colle-le sur Airbnb' : '✓ Copied — paste it on Airbnb'); } catch(e) {}
+}
+window.ariaCopyAndOpen = ariaCopyAndOpen;
+
 // ── Contextual ARIA actions — chooses follow-up buttons based on
 //   what the USER asked (window._lastAriaQuestion) + what ARIA replied.
 //   Returns up to 3 actions. Each action is { label, prompt? , fn? }.
@@ -28103,6 +28128,8 @@ window.addEventListener('DOMContentLoaded', function() {
         <button onclick="ariaQuickModifier('review_4')" style="flex-shrink:0;background:var(--s-gold-tint);color:#8c6622;border:1px solid var(--s-gold-soft);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">⭐4</button>
         <button onclick="ariaQuickModifier('review_3')" style="flex-shrink:0;background:var(--s-gold-tint);color:#8c6622;border:1px solid var(--s-gold-soft);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">⭐3</button>
       </span>
+      <button onclick="ariaCopyAndOpen('review')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="↗ Ouvrir Airbnb (avis)" data-en="↗ Open Airbnb (review)">↗ Ouvrir Airbnb (avis)</button>
+      <button onclick="ariaCopyAndOpen('message')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="↗ Ouvrir messagerie" data-en="↗ Open messages">↗ Ouvrir messagerie</button>
     </div>
     <div class="aria-modal-input-area">
       <button onclick="document.getElementById('ariaFileInput').click()" title="Joindre fichier ou image" style="background:none;border:1px solid var(--border);color:var(--muted);width:38px;height:38px;border-radius:8px;cursor:pointer;font-size:16px;flex-shrink:0;transition:all .15s" onmouseover="this.style.color='var(--gold)';this.style.borderColor='var(--gold)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">📎</button>

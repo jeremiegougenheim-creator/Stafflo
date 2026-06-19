@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v147 (extract non-fatal : retry chat_fr au lieu de crasher)
-const CACHE = 'stafflo-v147';
+// Stafflo Service Worker — v148 (boutons copie+ouvre Airbnb : reviews + messagerie)
+const CACHE = 'stafflo-v148';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
