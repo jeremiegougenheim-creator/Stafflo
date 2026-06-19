@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v144 (brief skeleton + fallback hardening)
-const CACHE = 'stafflo-v144';
+// Stafflo Service Worker — v145 (strip 14j visible + collapse retiré cartes calendrier)
+const CACHE = 'stafflo-v145';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
