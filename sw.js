@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v163 (auto-update : reload sur nouveau SW, retire désinscription racy)
-const CACHE = 'stafflo-v163';
+// Stafflo Service Worker — v164 (fix responsive : interactive-widget=resizes-content, clavier Android)
+const CACHE = 'stafflo-v164';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
