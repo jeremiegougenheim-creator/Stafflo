@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v153 (ServiceFlow dashV2 flag + ossature Étape A)
-const CACHE = 'stafflo-v153';
+// Stafflo Service Worker — v154 (dashV2 header Étape B — gradient vert + eyebrow gold + Cormorant)
+const CACHE = 'stafflo-v154';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

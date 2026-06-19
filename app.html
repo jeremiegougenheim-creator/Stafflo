@@ -2397,6 +2397,11 @@ body.profile-solo .v4-card-scenarios {
 /* v82 — turnover card is hidden by default and revealed only under solo */
 #soloTurnoverCard { display: none; }
 body.profile-solo #soloTurnoverCard { display: block; }
+/* v154 — ServiceFlow Dashboard v2 — header (Étape B) */
+#dashV2Root{display:flex;flex-direction:column;gap:0;padding:12px 0 0}
+.dv2-header{background:linear-gradient(180deg,var(--green3,#0F2318) 0%,#1D4D3A 100%);padding:24px 20px 18px;border-radius:12px 12px 0 0}
+.dv2-eyebrow{font-family:'Inter','DM Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:2.5px;color:var(--s-gold,#C9963A);text-transform:uppercase;margin-bottom:5px}
+.dv2-villa-name{font-family:'Cormorant Garamond','Georgia',serif;font-size:22px;font-weight:600;color:#FAF6EE;line-height:1.2}
 </style>
 </head>
 <body>
@@ -3343,6 +3348,45 @@ window.renderSoloTurnoverCard = function(){
     document.addEventListener('DOMContentLoaded', applyDashV2);
   } else {
     applyDashV2();
+  }
+})();
+</script>
+
+<script>
+/* v154 — ServiceFlow Dashboard v2 — renderer registry + Header (Étape B).
+   Chaque étape suivante (C→G) pousse un renderer dans window._dashV2Renderers.
+   renderDashV2() vide #dashV2Root et appelle les renderers en ordre. */
+(function(){
+  window._dashV2Renderers = window._dashV2Renderers || [];
+
+  /* Master render — appelé par applyDashV2 et après chaque refresh de données */
+  window.renderDashV2 = function(){
+    if (!window.DASH_V2) return;
+    var root = document.getElementById('dashV2Root');
+    if (!root) return;
+    root.innerHTML = '';
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    window._dashV2Renderers.forEach(function(fn){ try { fn(root, cfg); } catch(e){ console.warn('[dashV2]', e); } });
+  };
+
+  /* Étape B — Header : gradient vert + eyebrow gold + nom villa Cormorant */
+  window._dashV2Renderers.push(function(root, cfg){
+    var city = ((cfg.city || 'Marrakech').trim().toUpperCase());
+    var villa = (cfg.villa || '').trim() || 'Ma villa';
+    var el = document.createElement('div');
+    el.className = 'dv2-header';
+    el.innerHTML = '<div class="dv2-eyebrow">' + city + '</div>' +
+                   '<div class="dv2-villa-name">' + villa + '</div>';
+    root.appendChild(el);
+  });
+
+  function init(){
+    if (window.DASH_V2) window.renderDashV2();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
   }
 })();
 </script>
