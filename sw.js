@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v160 (dashV2 re-render après data + net mensuel cohérent)
-const CACHE = 'stafflo-v160';
+// Stafflo Service Worker — v161 (dashV2 OFF par défaut — Today blanche en prod, repasse opt-in)
+const CACHE = 'stafflo-v161';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
