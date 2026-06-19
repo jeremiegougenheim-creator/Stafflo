@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v154 (dashV2 header Étape B — gradient vert + eyebrow gold + Cormorant)
-const CACHE = 'stafflo-v154';
+// Stafflo Service Worker — v155 (dashV2 snap-grid métriques — Étape C)
+const CACHE = 'stafflo-v155';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

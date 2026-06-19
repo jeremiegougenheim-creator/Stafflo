@@ -2402,6 +2402,12 @@ body.profile-solo #soloTurnoverCard { display: block; }
 .dv2-header{background:linear-gradient(180deg,var(--green3,#0F2318) 0%,#1D4D3A 100%);padding:24px 20px 18px;border-radius:12px 12px 0 0}
 .dv2-eyebrow{font-family:'Inter','DM Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:2.5px;color:var(--s-gold,#C9963A);text-transform:uppercase;margin-bottom:5px}
 .dv2-villa-name{font-family:'Cormorant Garamond','Georgia',serif;font-size:22px;font-weight:600;color:#FAF6EE;line-height:1.2}
+/* v155 — dashV2 snap-grid (Étape C) */
+.dv2-snap-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#1D4D3A}
+.dv2-snap-cell{background:#132B1E;padding:16px 14px 12px;display:flex;flex-direction:column}
+.dv2-snap-num{font-family:'Cormorant Garamond','Georgia',serif;font-size:26px;font-weight:600;color:#FAF6EE;line-height:1}
+.dv2-snap-label{font-family:'Inter',sans-serif;font-size:10px;font-weight:500;color:rgba(250,246,238,.55);text-transform:uppercase;letter-spacing:1px;margin-top:3px}
+.dv2-snap-foot{font-family:'Inter',sans-serif;font-size:9px;color:rgba(201,150,58,.75);margin-top:6px;line-height:1.3}
 </style>
 </head>
 <body>
@@ -3388,6 +3394,56 @@ window.renderSoloTurnoverCard = function(){
   } else {
     init();
   }
+})();
+</script>
+
+<script>
+/* v155 — ServiceFlow Dashboard v2 — snap-grid métriques (Étape C).
+   3 cellules : Net/nuit · Occupation 30j · Ce soir, chacune avec snap-foot provenance. */
+(function(){
+  window._dashV2Renderers = window._dashV2Renderers || [];
+  window._dashV2Renderers.push(function(root, cfg){
+    var today = new Date().toISOString().slice(0, 10);
+    var d0 = new Date(today + 'T12:00:00Z');
+    var cls = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+    var firm = typeof isFirmBooking === 'function' ? isFirmBooking
+      : function(c){ return c && c.bookingStatus !== 'lead' && c.bookingStatus !== 'inquiry' && c.bookingStatus !== 'quoted'; };
+
+    // Occupation 30j
+    var bookedDays = 0;
+    for (var i = 0; i < 30; i++) {
+      var ds = new Date(d0.getTime() + i * 86400000).toISOString().slice(0, 10);
+      if (cls.some(function(c){ return firm(c) && c.arrival && c.departure && c.arrival <= ds && c.departure > ds; })) bookedDays++;
+    }
+    var occPct = Math.round(bookedDays / 30 * 100);
+
+    // Ce soir
+    var soir = cls.find(function(c){ return firm(c) && c.arrival && c.departure && c.arrival <= today && c.departure > today; });
+    var soirTxt = soir ? ((soir.name || 'Invité').split(' ')[0]) : 'Libre';
+
+    // Net/nuit depuis cfg de base
+    var bp = parseFloat(cfg.basePrice) || 0;
+    var cr = cfg.platform === 'booking' ? 0.15 : 0.036;
+    var netPN = bp ? Math.round(bp * (1 - cr)) : 0;
+
+    function cell(num, lbl, foot){
+      return '<div class="dv2-snap-cell">' +
+        '<div class="dv2-snap-num">' + num + '</div>' +
+        '<div class="dv2-snap-label">' + lbl + '</div>' +
+        '<div class="dv2-snap-foot">' + foot + '</div></div>';
+    }
+
+    var el = document.createElement('div');
+    el.className = 'dv2-snap-grid';
+    el.innerHTML =
+      cell(netPN ? netPN + '€' : '—', 'Net / nuit',
+           netPN ? 'Base ' + bp + '€ · -' + Math.round(cr * 100) + '% comm.' : 'Configurer prix de base') +
+      cell(occPct + '%', 'Occupation 30j',
+           'CRM · ' + bookedDays + ' nuit' + (bookedDays !== 1 ? 's' : '') + ' confirmée' + (bookedDays !== 1 ? 's' : '')) +
+      cell(soir ? '⌂' : '◯', 'Ce soir',
+           soir ? 'CRM · ' + soirTxt : 'CRM · nuit libre');
+    root.appendChild(el);
+  });
 })();
 </script>
 
