@@ -28797,7 +28797,17 @@ window.addEventListener('DOMContentLoaded', function() {
           if(typeof buildGroundedPricePrompt==='function'){systemPrompt+='\n\n[PRICING — STRICT] '+buildGroundedPricePrompt(fr);}
         }
 
-        var raw = await callBestAI(aiTask, systemPrompt, userCtx, aiMaxTokens);
+        var raw;
+        try {
+          raw = await callBestAI(aiTask, systemPrompt, userCtx, aiMaxTokens);
+        } catch (eExtract) {
+          if (aiTask === 'extract') {
+            console.warn('[stafflo-ai] extract failed, retrying as chat_fr');
+            raw = await callBestAI('chat_fr', systemPrompt, userCtx, aiMaxTokens);
+          } else {
+            throw eExtract;
+          }
+        }
         var typing = document.getElementById('chatTyping');
         if (typing) typing.style.display = 'none';
         if (isOrchestrator) { addChatBubble('ai', raw || '[]', []); return; }

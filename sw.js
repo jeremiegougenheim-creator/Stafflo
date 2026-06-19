@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v146 (reviews ⭐5/⭐4/⭐3 : 3 cases ariaQuickModifier + rangée étoiles conditionnelle)
-const CACHE = 'stafflo-v146';
+// Stafflo Service Worker — v147 (extract non-fatal : retry chat_fr au lieu de crasher)
+const CACHE = 'stafflo-v147';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
