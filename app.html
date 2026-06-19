@@ -2408,6 +2408,17 @@ body.profile-solo #soloTurnoverCard { display: block; }
 .dv2-snap-num{font-family:'Cormorant Garamond','Georgia',serif;font-size:26px;font-weight:600;color:#FAF6EE;line-height:1}
 .dv2-snap-label{font-family:'Inter',sans-serif;font-size:10px;font-weight:500;color:rgba(250,246,238,.55);text-transform:uppercase;letter-spacing:1px;margin-top:3px}
 .dv2-snap-foot{font-family:'Inter',sans-serif;font-size:9px;color:rgba(201,150,58,.75);margin-top:6px;line-height:1.3}
+/* v156 — dashV2 brief-rows (Étape D) */
+.dv2-briefs{background:#FAF6EE;padding:4px 16px 4px}
+.dv2-brief-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid rgba(15,35,24,.08)}
+.dv2-brief-row:last-child{border-bottom:none}
+.dv2-pill{display:inline-flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;font-size:9px;font-weight:700;letter-spacing:.3px;border-radius:4px;padding:2px 5px;min-width:22px;flex-shrink:0;margin-top:1px}
+.dv2-pill.p0{background:rgba(192,57,43,.12);color:#B03A2E}
+.dv2-pill.p1{background:rgba(201,150,58,.15);color:#7A5010}
+.dv2-pill.p2{background:rgba(15,35,24,.08);color:#1D4D3A}
+.dv2-brief-body{flex:1;min-width:0}
+.dv2-brief-text{font-family:'Inter',sans-serif;font-size:13px;color:#0F2318;line-height:1.4}
+.dv2-brief-action{font-family:'Inter',sans-serif;font-size:11px;color:var(--s-gold,#C9963A);text-decoration:underline;cursor:pointer;margin-top:3px;display:inline-block;background:none;border:none;padding:0}
 </style>
 </head>
 <body>
@@ -3398,7 +3409,7 @@ window.renderSoloTurnoverCard = function(){
 </script>
 
 <script>
-/* v155 — ServiceFlow Dashboard v2 — snap-grid métriques (Étape C).
+/* v155-v156 — ServiceFlow Dashboard v2 — snap-grid métriques + brief-rows (Étapes C-D).
    3 cellules : Net/nuit · Occupation 30j · Ce soir, chacune avec snap-foot provenance. */
 (function(){
   window._dashV2Renderers = window._dashV2Renderers || [];
@@ -3442,6 +3453,55 @@ window.renderSoloTurnoverCard = function(){
            'CRM · ' + bookedDays + ' nuit' + (bookedDays !== 1 ? 's' : '') + ' confirmée' + (bookedDays !== 1 ? 's' : '')) +
       cell(soir ? '⌂' : '◯', 'Ce soir',
            soir ? 'CRM · ' + soirTxt : 'CRM · nuit libre');
+    root.appendChild(el);
+  });
+})();
+</script>
+
+<script>
+/* v156 — ServiceFlow Dashboard v2 — brief-rows (Étape D).
+   Pills P0/P1/P2 + texte action + lien text (pas bouton plein).
+   Sources: arrivées/départs aujourd'hui et demain depuis CRM. */
+(function(){
+  window._dashV2Renderers = window._dashV2Renderers || [];
+  window._dashV2Renderers.push(function(root, cfg){
+    var today = new Date().toISOString().slice(0, 10);
+    var tomorrow = new Date(new Date(today + 'T12:00:00Z').getTime() + 86400000).toISOString().slice(0, 10);
+    var cls = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+    var firm = typeof isFirmBooking === 'function' ? isFirmBooking
+      : function(c){ return c && c.bookingStatus !== 'lead' && c.bookingStatus !== 'inquiry' && c.bookingStatus !== 'quoted'; };
+
+    function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function firstName(n){ return esc((n||'Invité').split(' ')[0]); }
+
+    var rows = [];
+
+    cls.filter(function(c){ return firm(c) && c.departure === today; }).forEach(function(c){
+      rows.push({p:'p0', text:'Départ ' + firstName(c.name) + ' · état des lieux à faire', cid: c.id});
+    });
+    cls.filter(function(c){ return firm(c) && c.arrival === today; }).forEach(function(c){
+      rows.push({p:'p0', text:'Accueil ' + firstName(c.name) + ' · arrivée aujourd\'hui', cid: c.id});
+    });
+    cls.filter(function(c){ return firm(c) && c.arrival === tomorrow; }).forEach(function(c){
+      rows.push({p:'p1', text:'Préparer accueil ' + firstName(c.name) + ' · arrivée demain', cid: c.id});
+    });
+    if (!rows.length) {
+      rows.push({p:'p2', text:'Aucune action prioritaire aujourd\'hui', cid: null});
+    }
+
+    var html = rows.map(function(r){
+      return '<div class="dv2-brief-row' + (r.p === 'p0' ? ' priority' : '') + '">' +
+        '<span class="dv2-pill ' + r.p + '">' + r.p.toUpperCase() + '</span>' +
+        '<div class="dv2-brief-body">' +
+          '<div class="dv2-brief-text">' + r.text + '</div>' +
+          (r.cid ? '<button class="dv2-brief-action" onclick="if(typeof openClientModal===\'function\')openClientModal(' + JSON.stringify(r.cid) + ')">Ouvrir fiche →</button>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    var el = document.createElement('div');
+    el.className = 'dv2-briefs';
+    el.innerHTML = html;
     root.appendChild(el);
   });
 })();

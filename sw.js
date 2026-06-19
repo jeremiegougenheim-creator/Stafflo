@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v155 (dashV2 snap-grid métriques — Étape C)
-const CACHE = 'stafflo-v155';
+// Stafflo Service Worker — v156 (dashV2 brief-rows P0/P1/P2 — Étape D)
+const CACHE = 'stafflo-v156';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
