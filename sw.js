@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v139 (tooltip lisible mobile: ancré droite + largeur responsive)
-const CACHE = 'stafflo-v139';
+// Stafflo Service Worker — v140 (popup d'où vient ce chiffre, ServiceFlow style, branché chip prix)
+const CACHE = 'stafflo-v140';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

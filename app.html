@@ -399,6 +399,24 @@ main{max-width:100%;margin:0 auto;padding:16px}
 .tooltip-icon:hover{background:var(--muted)}
 .tooltip-box{display:none;position:absolute;left:auto;right:0;top:22px;background:var(--ink);color:#fff;font-size:11px;line-height:1.5;padding:8px 11px;border-radius:8px;width:max-content;max-width:min(260px,74vw);white-space:normal;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 .tooltip-icon:hover+.tooltip-box{display:block}
+.ne-overlay{position:fixed;inset:0;background:rgba(15,35,24,.45);z-index:99999;display:flex;align-items:flex-end;justify-content:center;animation:neFade .2s}
+@keyframes neFade{from{opacity:0}to{opacity:1}}
+.ne-sheet{background:var(--cream,#FAF6EE);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:10px 20px 24px;box-shadow:0 -8px 32px rgba(0,0,0,.25);animation:neUp .25s cubic-bezier(.2,.8,.2,1)}
+@keyframes neUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.ne-grip{width:36px;height:4px;border-radius:2px;background:rgba(15,35,24,.2);margin:6px auto 14px}
+.ne-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.ne-val{font-family:'Cormorant Garamond',serif;font-size:38px;font-weight:600;color:var(--green-dark,#0F2318);line-height:1}
+.ne-unit{font-size:15px;font-family:Inter,sans-serif;color:rgba(15,35,24,.5);font-weight:400}
+.ne-conf{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px}
+.ne-conf-A{background:#1d4d3a;color:#fff}
+.ne-conf-B{background:#C9963A;color:#fff}
+.ne-conf-C{background:rgba(15,35,24,.12);color:rgba(15,35,24,.6)}
+.ne-sub{font-size:10px;font-weight:700;letter-spacing:.08em;color:rgba(15,35,24,.45);margin-bottom:10px}
+.ne-lines{display:flex;flex-direction:column;gap:7px;margin-bottom:16px}
+.ne-line{font-size:13.5px;color:var(--green-dark,#0F2318);line-height:1.4;padding-left:14px;position:relative}
+.ne-line:before{content:'•';position:absolute;left:0;color:#C9963A}
+.ne-foot{font-size:12px;color:rgba(15,35,24,.6);border-top:1px solid rgba(15,35,24,.1);padding-top:12px;margin-bottom:16px}
+.ne-close{width:100%;background:var(--green-dark,#0F2318);color:#fff;border:none;padding:13px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer}
 .source-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .15s}
 .source-btn.on{background:var(--gold);border-color:var(--gold);color:var(--green3)}
 .source-btn:hover{background:rgba(255,255,255,.15)}
@@ -21210,6 +21228,7 @@ function ariaQuickAction(kind) {
     var _fr = fr;
     (async function(){
       var _pi = await (typeof fetchPriceIntelligence === 'function' ? fetchPriceIntelligence(new Date().toISOString().slice(0,10)) : Promise.resolve(null));
+        if(_pi && _pi.suggested_price && typeof showNumberExplain==='function') showNumberExplain(_pi);
       var _q = _fr ? '💰 Suggérer un prix pour ce soir' : '💰 Suggest a price for tonight';
       if (_pi && _pi.suggested_price) {
         _q += '\n\n[PRICE INTELLIGENCE · Confiance ' + _pi.confidence + '] ' + _pi.label +
@@ -31496,6 +31515,30 @@ window.addEventListener('DOMContentLoaded', function() {
     } catch(e) { return null; }
   }
   window.fetchPriceIntelligence = fetchPriceIntelligence;
+
+  /* v140: fiche "d'où vient ce chiffre" — ServiceFlow style, tap-to-open */
+  window.showNumberExplain = function(pi){
+    if(!pi) return;
+    var _f = (typeof lang!=='undefined') ? lang==='fr' : true;
+    var _lines = (pi.info_card||[]).map(function(l){ return '<div class="ne-line">'+l+'</div>'; }).join('');
+    var _c = pi.confidence||'C';
+    var _v = pi.suggested_price ? pi.suggested_price+'€' : '—';
+    var _net = (pi.financials&&pi.financials.net_per_night)?pi.financials.net_per_night+'€':'—';
+    var _ov = document.createElement('div');
+    _ov.className = 'ne-overlay';
+    _ov.onclick = function(e){ if(e.target===_ov) _ov.remove(); };
+    _ov.innerHTML =
+      '<div class="ne-sheet">'+
+      '<div class="ne-grip"></div>'+
+      '<div class="ne-head"><div class="ne-val">'+_v+'<span class="ne-unit">/'+(_f?'nuit':'night')+'</span></div>'+
+      '<div class="ne-conf ne-conf-'+_c+'">'+(_f?'Confiance ':'Confidence ')+_c+'</div></div>'+
+      '<div class="ne-sub">'+(_f?"D'OÙ VIENT CE CHIFFRE":'WHERE THIS NUMBER COMES FROM')+'</div>'+
+      '<div class="ne-lines">'+_lines+'</div>'+
+      '<div class="ne-foot">NET '+_net+'/'+(_f?'nuit · après commission Airbnb':'night · after Airbnb fee')+'</div>'+
+      '<button class="ne-close">'+(_f?'Fermer':'Close')+'</button>';
+    _ov.querySelector('.ne-close').onclick = function(){ _ov.remove(); };
+    document.body.appendChild(_ov);
+  };
 
   /* v131 — ligne de décision honnête (grammaire ServiceFlow). Date + signaux réels.
      Zéro invention : compte window._briefCards. État vide honnête si 0. */
