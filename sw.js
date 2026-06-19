@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v150 (intention review/message forcée — review publique vs message invité)
-const CACHE = 'stafflo-v150';
+// Stafflo Service Worker — v151 (micro ARIA doré — color var(--s-gold,#C9963A))
+const CACHE = 'stafflo-v151';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
