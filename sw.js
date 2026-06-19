@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v148 (boutons copie+ouvre Airbnb : reviews + messagerie)
-const CACHE = 'stafflo-v148';
+// Stafflo Service Worker — v149 (détection boutons tolérante fautes + review/message séparés)
+const CACHE = 'stafflo-v149';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
