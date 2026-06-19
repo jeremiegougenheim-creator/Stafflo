@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v157 (dashV2 signals column + layout 2col — Étape E)
-const CACHE = 'stafflo-v157';
+// Stafflo Service Worker — v158 (dashV2 price-intelligence card — Étape F)
+const CACHE = 'stafflo-v158';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -2430,6 +2430,19 @@ body.profile-solo #soloTurnoverCard { display: block; }
 .dv2-signal-name{font-family:'Inter',sans-serif;font-size:11px;color:#0F2318;font-weight:500;line-height:1.3}
 .dv2-signal-delta{font-family:'Inter',sans-serif;font-size:10px;color:rgba(15,35,24,.45);margin-top:1px}
 .dv2-signal-empty{font-family:'Inter',sans-serif;font-size:11px;color:rgba(15,35,24,.4);font-style:italic}
+/* v158 — dashV2 price-intel card (Étape F) */
+.dv2-pi-card{background:#FAF6EE;border-top:1px solid rgba(15,35,24,.08);padding:14px 16px}
+.dv2-pi-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.dv2-pi-price{font-family:'Cormorant Garamond','Georgia',serif;font-size:28px;font-weight:600;color:#0F2318;line-height:1}
+.dv2-pi-badge{font-family:'Inter',sans-serif;font-size:10px;font-weight:700;border-radius:4px;padding:2px 6px;flex-shrink:0}
+.dv2-pi-badge.conf-a{background:rgba(15,35,24,.12);color:#1D4D3A}
+.dv2-pi-badge.conf-b{background:rgba(201,150,58,.15);color:#7A5010}
+.dv2-pi-badge.conf-c{background:rgba(186,117,23,.12);color:#6B4400}
+.dv2-pi-net{font-family:'Inter',sans-serif;font-size:11px;color:rgba(15,35,24,.45);margin-left:auto}
+.dv2-pi-lines{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:3px}
+.dv2-pi-line{font-family:'Inter',sans-serif;font-size:11px;color:rgba(15,35,24,.65);line-height:1.4}
+.dv2-pi-line::before{content:'·';margin-right:5px;color:var(--s-gold,#C9963A)}
+.dv2-pi-msg{font-family:'Inter',sans-serif;font-size:12px;color:rgba(15,35,24,.4);font-style:italic;padding:8px 0}
 </style>
 </head>
 <body>
@@ -3576,6 +3589,60 @@ window.renderSoloTurnoverCard = function(){
     cols.appendChild(colL);
     cols.appendChild(colR);
     root.appendChild(cols);
+  });
+})();
+</script>
+
+<script>
+/* v158 — ServiceFlow Dashboard v2 — price-intelligence card (Étape F).
+   Appelle l'edge fn price-intelligence, affiche suggested_price + info_card[].
+   Async : placeholder → rempli quand la réponse arrive (fire-and-forget safe). */
+(function(){
+  window._dashV2Renderers = window._dashV2Renderers || [];
+  window._dashV2Renderers.push(function(root, cfg){
+    function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    var card = document.createElement('div');
+    card.className = 'dv2-pi-card';
+    card.innerHTML = '<div class="dv2-pi-msg">Calcul du prix suggéré...</div>';
+    root.appendChild(card);
+
+    var sbUrl = (cfg.sbUrl && cfg.sbUrl.indexOf('.supabase.co') !== -1) ? cfg.sbUrl
+      : (typeof SB_URL !== 'undefined' ? SB_URL : null);
+    var sbKey = cfg.sbKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : null);
+    if (!sbUrl || !sbKey) {
+      card.innerHTML = '<div class="dv2-pi-msg">Configurer Supabase pour activer la veille prix</div>';
+      return;
+    }
+
+    var today = new Date().toISOString().slice(0, 10);
+    var ownerId = (typeof _stafflo_user !== 'undefined' && _stafflo_user) ? _stafflo_user.id : null;
+    var body = {target_date: today};
+    if (ownerId) body.owner_id = ownerId;
+
+    fetch(sbUrl + '/functions/v1/price-intelligence', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sbKey},
+      body: JSON.stringify(body)
+    }).then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function(data){
+      if (!data || data.error) { card.innerHTML = '<div class="dv2-pi-msg">Veille prix indisponible</div>'; return; }
+      var price = data.suggested_price || '—';
+      var conf  = (data.confidence || 'C').toUpperCase();
+      var net   = (data.financials && data.financials.net_per_night) ? data.financials.net_per_night : null;
+      var info  = Array.isArray(data.info_card) ? data.info_card : [];
+      var html  = '<div class="dv2-pi-header">' +
+        '<div class="dv2-pi-price">' + price + '€</div>' +
+        '<span class="dv2-pi-badge conf-' + conf.toLowerCase() + '">Confiance ' + conf + '</span>' +
+        (net ? '<div class="dv2-pi-net">NET ' + net + '€/nuit</div>' : '') +
+      '</div>';
+      if (info.length) {
+        html += '<ul class="dv2-pi-lines">' +
+          info.slice(0, 6).map(function(l){ return '<li class="dv2-pi-line">' + esc(l) + '</li>'; }).join('') +
+        '</ul>';
+      }
+      card.innerHTML = html;
+    }).catch(function(){ card.innerHTML = '<div class="dv2-pi-msg">Veille prix indisponible</div>'; });
   });
 })();
 </script>
