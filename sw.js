@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v151 (micro ARIA doré — color var(--s-gold,#C9963A))
-const CACHE = 'stafflo-v151';
+// Stafflo Service Worker — v152 (saveSettings: pushVillaSettings ne wippe plus villa_name/staff_members)
+const CACHE = 'stafflo-v152';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

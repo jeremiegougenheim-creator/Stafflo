@@ -19714,22 +19714,30 @@ async function pushVillaSettings(cfg) {
   if (!_stafflo_session || !_stafflo_user) return;
   try {
     var sbUrl = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+    // v152 — derive staffMembers from text if array not populated, so we never PATCH staff_members:[]
+    var staffMembers = cfg.staffMembers;
+    if ((!staffMembers || !staffMembers.length) && cfg.staff) {
+      try { staffMembers = _staffTextToJson(cfg.staff); } catch(e) {}
+    }
+    // Use undefined (not null/[]) for absent fields — JSON.stringify omits undefined keys,
+    // so Supabase PATCH only touches columns that are actually present. Prevents wiping
+    // villa_name / staff_members when they're temporarily empty in cfg.
     var payload = {
-      villa_name: cfg.villa || null,
-      owner_name: cfg.owner || null,
-      city: cfg.city || null,
-      country: cfg.country || null,
-      bedrooms: cfg.bedrooms || null,
-      max_guests: cfg.maxGuests || null,
-      base_price: cfg.basePrice || null,
-      min_price: (typeof cfg.minPrice === 'number') ? cfg.minPrice : null,
-      max_price: (typeof cfg.maxPrice === 'number') ? cfg.maxPrice : null,
-      base_capacity: cfg.baseCapacity || null,
-      extra_guest_fee: cfg.extraGuestFee != null ? cfg.extraGuestFee : null,
-      platform: cfg.platform || null,
-      staff_members: cfg.staffMembers || [],
+      villa_name: cfg.villa || undefined,
+      owner_name: cfg.owner || undefined,
+      city: cfg.city || undefined,
+      country: cfg.country || undefined,
+      bedrooms: cfg.bedrooms || undefined,
+      max_guests: cfg.maxGuests || undefined,
+      base_price: cfg.basePrice || undefined,
+      min_price: (typeof cfg.minPrice === 'number') ? cfg.minPrice : undefined,
+      max_price: (typeof cfg.maxPrice === 'number') ? cfg.maxPrice : undefined,
+      base_capacity: cfg.baseCapacity || undefined,
+      extra_guest_fee: cfg.extraGuestFee != null ? cfg.extraGuestFee : undefined,
+      platform: cfg.platform || undefined,
+      staff_members: (staffMembers && staffMembers.length) ? staffMembers : undefined,
       onboarded: !!cfg.onboarded,
-      onboarded_at: cfg.onboardedAt || null
+      onboarded_at: cfg.onboardedAt || undefined
     };
     // Upsert (owner_id auto-injected by fetch interceptor; trigger created the row at signup)
     var r = await fetch(sbUrl + '/rest/v1/villa_settings?owner_id=eq.' + _stafflo_user.id, {
