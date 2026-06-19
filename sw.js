@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v159 (dashV2 default ON + masquage ancien dashboard — Étape G)
-const CACHE = 'stafflo-v159';
+// Stafflo Service Worker — v160 (dashV2 re-render après data + net mensuel cohérent)
+const CACHE = 'stafflo-v160';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

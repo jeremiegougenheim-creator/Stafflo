@@ -3471,10 +3471,11 @@ window.renderSoloTurnoverCard = function(){
     var soir = cls.find(function(c){ return firm(c) && c.arrival && c.departure && c.arrival <= today && c.departure > today; });
     var soirTxt = soir ? ((soir.name || 'Invité').split(' ')[0]) : 'Libre';
 
-    // Net/nuit depuis cfg de base
-    var bp = parseFloat(cfg.basePrice) || 0;
-    var cr = cfg.platform === 'booking' ? 0.15 : 0.036;
-    var netPN = bp ? Math.round(bp * (1 - cr)) : 0;
+    // v160 — Net du MOIS depuis _tsMonthStats (même source que l'ancien snap).
+    // Le NET/nuit vit uniquement dans la carte price-intel (pas de double NET contradictoire).
+    var _ms = (typeof _tsMonthStats === 'function') ? _tsMonthStats() : null;
+    var netMonth = (_ms && _ms.netMonth > 0) ? _ms.netMonth : 0;
+    var _fmt = (typeof _fmtThousands === 'function') ? _fmtThousands : function(n){ return String(n); };
 
     function cell(num, lbl, foot){
       return '<div class="dv2-snap-cell">' +
@@ -3486,8 +3487,8 @@ window.renderSoloTurnoverCard = function(){
     var el = document.createElement('div');
     el.className = 'dv2-snap-grid';
     el.innerHTML =
-      cell(netPN ? netPN + '€' : '—', 'Net / nuit',
-           netPN ? 'Base ' + bp + '€ · -' + Math.round(cr * 100) + '% comm.' : 'Configurer prix de base') +
+      cell(netMonth ? _fmt(netMonth) + '€' : '—', 'Net · ce mois',
+           netMonth ? 'CRM · revenu net du mois (toutes nuits fermes)' : 'Aucune réservation ferme ce mois') +
       cell(occPct + '%', 'Occupation 30j',
            'CRM · ' + bookedDays + ' nuit' + (bookedDays !== 1 ? 's' : '') + ' confirmée' + (bookedDays !== 1 ? 's' : '')) +
       cell(soir ? '⌂' : '◯', 'Ce soir',
@@ -4175,6 +4176,14 @@ window.renderSetupOneLiner = function(){
         flag.style.display = 'none';
       }
     })();
+    // v160 — relance le dashboard ServiceFlow quand les données Today se rafraîchissent
+    // (debounce 600ms : collapse le burst de chargement en un seul render + un seul fetch price-intel)
+    try {
+      if (window.DASH_V2 && window.renderDashV2) {
+        clearTimeout(window._dv2RenderT);
+        window._dv2RenderT = setTimeout(function(){ try { window.renderDashV2(); } catch(e){} }, 600);
+      }
+    } catch(e){}
   }
   window.updateTodaySnap = updateTodaySnap;
   // Refresh when existing data-render functions run, without modifying them.
