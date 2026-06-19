@@ -10127,6 +10127,26 @@ function formatGuestSummary(cl, contextRows, fr) {
 }
 
 
+/* v142: extractChips — parse déterministe des notes client → chips colorés */
+function extractClientChips(notes) {
+  if (!notes) return [];
+  var t = notes.toLowerCase(), chips = [];
+  var _vegan = t.match(/vegan[^;,\n]*[;,\n]?.*?(\d+)/);
+  var _veg = (t.match(/végétarien/g)||[]).length;
+  if (_vegan) chips.push({icon:'🌱',label:'Vegan ×'+(_vegan[1]||'1'),color:'#e8f5e9',tc:'#2e7d32'});
+  if (_veg > 0) chips.push({icon:'🥗',label:'Végé ×'+_veg,color:'#f1f8e9',tc:'#558b2f'});
+  if (/sans\s+smen|smen/i.test(notes)) chips.push({icon:'⚠️',label:'Sans SMEN',color:'#fff3e0',tc:'#e65100'});
+  var _enf = t.match(/(\d+)\s*enfant/);
+  if (_enf) chips.push({icon:'🧒',label:_enf[1]+' enfant',color:'#e3f2fd',tc:'#1565c0'});
+  if (/transfert|transfer|pickup|pick up|aéroport/i.test(notes)) chips.push({icon:'🚗',label:'Transfert',color:'#f3e5f5',tc:'#6a1b9a'});
+  if (/ourika|setti\s*fatma/i.test(notes)) chips.push({icon:'🏔️',label:'Ourika',color:'#e0f7fa',tc:'#00695c'});
+  if (/agafay|quad|palmeraie/i.test(notes)) chips.push({icon:'🏜️',label:'Agafay/QUAD',color:'#fbe9e7',tc:'#bf360c'});
+  if (/couscous/i.test(notes)) chips.push({icon:'🥘',label:'Couscous',color:'#fff8e1',tc:'#f57f17'});
+  if (/allergie/i.test(notes)) chips.push({icon:'🚨',label:'Allergie',color:'#ffebee',tc:'#b71c1c'});
+  if (/tofu|tempeh|soja/i.test(notes)) chips.push({icon:'🌿',label:'Bio/Vegan ingr.',color:'#e8f5e9',tc:'#1b5e20'});
+  return chips;
+}
+
 function openDetail(id) {
   const cl = clients.find(x => x.id === id);
   if (!cl) return;
@@ -10214,15 +10234,28 @@ function openDetail(id) {
           '<span style="font-size:12px;color:var(--ink);flex:1">'+t.text+'</span>' +
         '</div>';
       }).join('') +
-      '<a href="'+waUrl+'" target="_blank" style="display:block;margin:10px 0;padding:10px;background:#25D366;color:#fff;border-radius:8px;font-size:12px;font-weight:600;text-align:center;text-decoration:none;font-family:DM Sans,sans-serif">📲 '+(fr?'Envoyer brief staff':'Send staff brief')+'</a>' +
+      (clPhone ? '<a href="'+waUrl+'" target="_blank" style="display:block;margin:10px 0;padding:10px;background:#25D366;color:#fff;border-radius:8px;font-size:12px;font-weight:600;text-align:center;text-decoration:none;font-family:DM Sans,sans-serif">📲 '+(fr?'Envoyer brief staff':'Send staff brief')+'</a>' : '') +
     '</div>';
   }
 
-  // Notes HTML
-  var notesHTML = cl.notes ?
+  // Notes HTML — v142: chips + voir plus
+  var _chips = extractClientChips(cl.notes||'');
+  var _chipsHtml = _chips.length ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin:0 0 10px">'
+    + _chips.map(function(ch){
+        return '<span style="background:'+ch.color+';color:'+ch.tc+';padding:3px 9px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap">'+ch.icon+' '+ch.label+'</span>';
+      }).join('')
+    + '</div>' : '';
+  var _notesRaw = cl.notes || '';
+  var _notesTrunc = _notesRaw.length > 120 ? _notesRaw.slice(0,120)+'…' : _notesRaw;
+  var _notesBody = _notesRaw.length > 120
+    ? '<p style="font-size:13px;line-height:1.5;margin:0" id="notesShort_'+cl.id+'">'+_notesTrunc
+      +'<br><a href="#" onclick="document.getElementById(\'notesShort_'+cl.id+'\').style.display=\'none\';document.getElementById(\'notesFull_'+cl.id+'\').style.display=\'block\';return false;" style="color:#C9963A;font-size:12px">Voir plus</a></p>'
+      +'<p style="font-size:13px;line-height:1.5;margin:0;display:none" id="notesFull_'+cl.id+'">'+_notesRaw+'</p>'
+    : '<p style="font-size:13px;line-height:1.5;margin:0">'+_notesRaw+'</p>';
+  var notesHTML = _notesRaw ?
     '<div style="margin:0 16px 12px;background:var(--gold-light);border-radius:10px;padding:12px 14px;border-left:3px solid var(--gold)">' +
     '<div style="font-size:10px;color:var(--gold);letter-spacing:1px;text-transform:uppercase;font-weight:600;margin-bottom:6px">📝 Notes</div>' +
-    '<div style="font-size:13px;color:var(--ink);line-height:1.6">'+cl.notes+'</div>' +
+    _chipsHtml + _notesBody +
     '</div>' : '';
 
   // Net HTML
@@ -10273,7 +10306,8 @@ function openDetail(id) {
   var cachedMsgs = (cl.messages && Object.keys(cl.messages).length) ? cl.messages : (window._clientMessages && window._clientMessages[cl.id]);
   if (cachedMsgs) { if (!window._clientMessages) window._clientMessages = {}; window._clientMessages[cl.id] = cachedMsgs; }
   var msgKeyMap = {airbnb:fr?'✉ Airbnb':'✉ Airbnb',welcome:fr?'🌴 Accueil':'🌴 Welcome',driver:fr?'🚕 Chauffeur':'🚕 Driver',staff:fr?'👤 Staff':'👤 Staff',passport:fr?'🛂 Passeport':'🛂 Passport',checkout:fr?'⭐ Départ':'⭐ Checkout'};
-  var detailMsgSection = cachedMsgs ?
+  var _hasRealMsgs = cachedMsgs && Object.values(cachedMsgs).some(function(v){ return v && v.trim().length > 10; });
+  var detailMsgSection = _hasRealMsgs ?
     '<div style="margin-top:16px;border-top:1px solid var(--border);padding:14px 16px 0">' +
     '<div class="msg-section-title">'+(fr?'MESSAGES PRÊTS À ENVOYER':'READY TO SEND')+'</div>' +
     '<div class="msg-tabs">' + Object.entries(msgKeyMap).map(function(e,i){ return cachedMsgs[e[0]]?'<button class="msg-tab'+(i===0?' on':'')+'" onclick="showDetailMsg(\''+cl.id+'\',\''+e[0]+'\',this)" id="dmtab_'+cl.id+'_'+e[0]+'">'+e[1]+'</button>':''; }).join('') + '</div>' +

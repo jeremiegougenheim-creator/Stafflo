@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v141 (debounce VillaSnap — fin boucle infinie)
-const CACHE = 'stafflo-v141';
+// Stafflo Service Worker — v142 (profil client: chips clés + voir plus + conditionnel)
+const CACHE = 'stafflo-v142';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
