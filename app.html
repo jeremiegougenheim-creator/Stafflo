@@ -2419,6 +2419,17 @@ body.profile-solo #soloTurnoverCard { display: block; }
 .dv2-brief-body{flex:1;min-width:0}
 .dv2-brief-text{font-family:'Inter',sans-serif;font-size:13px;color:#0F2318;line-height:1.4}
 .dv2-brief-action{font-family:'Inter',sans-serif;font-size:11px;color:var(--s-gold,#C9963A);text-decoration:underline;cursor:pointer;margin-top:3px;display:inline-block;background:none;border:none;padding:0}
+/* v157 — dashV2 signals column + layout 2 col (Étape E) */
+.dv2-cols{display:flex;align-items:stretch;gap:0}
+.dv2-col-main{flex:1;min-width:0}
+.dv2-col-signals{width:176px;flex-shrink:0;background:#F2EDE3;border-left:1px solid rgba(15,35,24,.1);padding:14px}
+@media(max-width:600px){.dv2-cols{flex-direction:column}.dv2-col-signals{width:auto;border-left:none;border-top:1px solid rgba(15,35,24,.1)}}
+.dv2-signal-title{font-family:'Inter',sans-serif;font-size:10px;font-weight:600;color:#1D4D3A;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:10px}
+.dv2-signal-item{display:flex;align-items:flex-start;gap:7px;margin-bottom:9px}
+.dv2-signal-dot{width:6px;height:6px;border-radius:50%;background:var(--s-gold,#C9963A);flex-shrink:0;margin-top:4px}
+.dv2-signal-name{font-family:'Inter',sans-serif;font-size:11px;color:#0F2318;font-weight:500;line-height:1.3}
+.dv2-signal-delta{font-family:'Inter',sans-serif;font-size:10px;color:rgba(15,35,24,.45);margin-top:1px}
+.dv2-signal-empty{font-family:'Inter',sans-serif;font-size:11px;color:rgba(15,35,24,.4);font-style:italic}
 </style>
 </head>
 <body>
@@ -3459,7 +3470,7 @@ window.renderSoloTurnoverCard = function(){
 </script>
 
 <script>
-/* v156 — ServiceFlow Dashboard v2 — brief-rows (Étape D).
+/* v156-v157 — ServiceFlow Dashboard v2 — brief-rows + signals (Étapes D-E).
    Pills P0/P1/P2 + texte action + lien text (pas bouton plein).
    Sources: arrivées/départs aujourd'hui et demain depuis CRM. */
 (function(){
@@ -3503,6 +3514,68 @@ window.renderSoloTurnoverCard = function(){
     el.className = 'dv2-briefs';
     el.innerHTML = html;
     root.appendChild(el);
+  });
+})();
+</script>
+
+<script>
+/* v157 — ServiceFlow Dashboard v2 — colonne Signals + layout 2 col (Étape E).
+   Déplace .dv2-briefs dans une colonne gauche et ajoute la colonne événements à droite.
+   Événements: calcul dynamique sur 90 jours (même logic que price-intelligence v7). */
+(function(){
+  window._dashV2Renderers = window._dashV2Renderers || [];
+  window._dashV2Renderers.push(function(root){
+    // Événements sur les 90 prochains jours (même set que price-intelligence v7)
+    var EVENTS = [
+      {m1:6, d1:19, m2:6, d2:23, name:'Festival Gnaoua'},
+      {m1:10,d1:9,  m2:10,d2:17,name:'Festival Film Marrakech'},
+      {m1:10,d1:17, m2:10,d2:31,name:'Vacances Toussaint FR'},
+      {m1:2, d1:12, m2:2, d2:17,name:'Saint-Valentin / vacances'},
+      {m1:4, d1:1,  m2:5, d2:31,name:'Pont printemps FR'},
+      {m1:12,d1:21, m2:1, d2:2, name:'Noël / Réveillon'}
+    ];
+    function firstDay(ev, year){
+      // Edge: Noël/Réveillon straddles Dec→Jan
+      if (ev.m1 === 12 && ev.m2 === 1) return new Date(Date.UTC(year, ev.m1-1, ev.d1));
+      return new Date(Date.UTC(year, ev.m1-1, ev.d1));
+    }
+    var upcoming = [];
+    var now = new Date();
+    var nowMs = now.getTime();
+    var horizon = nowMs + 90 * 86400000;
+    var yr = now.getUTCFullYear();
+    [yr, yr + 1].forEach(function(y){
+      EVENTS.forEach(function(ev){
+        var start = firstDay(ev, y);
+        if (start.getTime() >= nowMs && start.getTime() <= horizon) {
+          var daysLeft = Math.round((start.getTime() - nowMs) / 86400000);
+          upcoming.push({name: ev.name, daysLeft: daysLeft});
+        }
+      });
+    });
+    upcoming.sort(function(a, b){ return a.daysLeft - b.daysLeft; });
+    upcoming = upcoming.slice(0, 4);
+
+    // 2-col layout: déplace .dv2-briefs (Étape D) dans colonne gauche
+    var briefs = root.querySelector('.dv2-briefs');
+    var cols = document.createElement('div');
+    cols.className = 'dv2-cols';
+    var colL = document.createElement('div');
+    colL.className = 'dv2-col-main';
+    if (briefs) colL.appendChild(briefs);
+    var colR = document.createElement('div');
+    colR.className = 'dv2-col-signals';
+    var sigItems = upcoming.length ? upcoming.map(function(ev){
+      return '<div class="dv2-signal-item">' +
+        '<div class="dv2-signal-dot"></div>' +
+        '<div><div class="dv2-signal-name">' + ev.name + '</div>' +
+        '<div class="dv2-signal-delta">dans ' + ev.daysLeft + 'j</div></div>' +
+      '</div>';
+    }).join('') : '<div class="dv2-signal-empty">Aucun événement à 90j</div>';
+    colR.innerHTML = '<div class="dv2-signal-title">Signaux</div>' + sigItems;
+    cols.appendChild(colL);
+    cols.appendChild(colR);
+    root.appendChild(cols);
   });
 })();
 </script>
