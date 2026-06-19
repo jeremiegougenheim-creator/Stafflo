@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v143 (typo Cormorant + registre GRAVEYARD)
-const CACHE = 'stafflo-v143';
+// Stafflo Service Worker — v144 (brief skeleton + fallback hardening)
+const CACHE = 'stafflo-v144';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

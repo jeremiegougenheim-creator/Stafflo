@@ -10926,7 +10926,7 @@ function goTab(t) {
   if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); } catch(e) { console.error('loadHomeData error:', e); } }
   if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
   if (t === 'today') {
-    renderTodayQV();
+    try { renderTodayQV(); } catch(e) { console.error('renderTodayQV error:', e); }
     // Auto-load inbox into the inline dashboard card (#inboxList)
     if (typeof loadInboxEmails === 'function') { try { loadInboxEmails(); } catch(e) { console.warn('loadInboxEmails on tab switch:', e); } }
     // Restore last AI result if it exists
@@ -16060,7 +16060,7 @@ document.addEventListener('DOMContentLoaded', function() {
   setTimeout(function() {
     loadWeather()
       .then(function() {
-        var wText = document.getElementById('factorWeather').textContent || '';
+        var wText = document.getElementById('factorWeather')?.textContent || '';
         var match = wText.match(/(\d+)/);
         generateAlerts(match ? parseInt(match[1]) : null);
       })
@@ -18464,7 +18464,8 @@ async function loadMorningBrief(forceRefresh = false) {
       const d = await r.json();
       if (!r.ok || d.error) {
         console.warn('Morning brief proxy error:', d.error || r.status);
-        renderBriefFallback(cardsEl, fr);
+        if (skelEl) skelEl.style.display = 'none';
+        try { renderBriefFallback(cardsEl, fr); } catch(_) {}
         return;
       }
       raw = d.text || d.choices?.[0]?.message?.content || '';
@@ -18498,7 +18499,8 @@ async function loadMorningBrief(forceRefresh = false) {
 
   } catch(e) {
     console.warn('Morning brief error:', e.message);
-    renderBriefFallback(cardsEl, fr);
+    if (skelEl) skelEl.style.display = 'none';
+    try { renderBriefFallback(cardsEl, fr); } catch(_) {}
   }
 }
 
