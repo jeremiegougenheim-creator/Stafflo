@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v140 (popup d'où vient ce chiffre, ServiceFlow style, branché chip prix)
-const CACHE = 'stafflo-v140';
+// Stafflo Service Worker — v141 (debounce VillaSnap — fin boucle infinie)
+const CACHE = 'stafflo-v141';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
