@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v164 (fix responsive : interactive-widget=resizes-content, clavier Android)
-const CACHE = 'stafflo-v164';
+// Stafflo Service Worker — v165 (ARIA plein écran mobile : feuille native 100dvh)
+const CACHE = 'stafflo-v165';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
