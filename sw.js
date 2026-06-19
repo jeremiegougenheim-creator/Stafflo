@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v162 (fusion orbe ARIA : un seul A + badge sur la nav)
-const CACHE = 'stafflo-v162';
+// Stafflo Service Worker — v163 (auto-update : reload sur nouveau SW, retire désinscription racy)
+const CACHE = 'stafflo-v163';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

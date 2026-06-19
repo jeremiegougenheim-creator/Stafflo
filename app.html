@@ -18674,14 +18674,21 @@ async function extractFormAI() {
 
 // ── PWA SERVICE WORKER ──
 if ('serviceWorker' in navigator) {
-  // Unregister old SW to prevent stale cache
-  navigator.serviceWorker.getRegistrations().then(regs => {
-    regs.forEach(r => r.unregister());
+  // v163 — auto-update. On retire la désinscription systématique (racy, ne vidait pas le
+  // cache ; le SW nettoie déjà ses caches en 'activate'). On recharge la page UNE fois
+  // quand un nouveau SW prend la main, sauf à la toute 1ère installation.
+  var _swHadController = !!navigator.serviceWorker.controller;
+  var _swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if (!_swHadController) return;   // 1ère install : pas de reload
+    if (_swRefreshing) return;       // anti-boucle : un seul reload
+    _swRefreshing = true;
+    window.location.reload();
   });
-  window.addEventListener('load', () => {
+  window.addEventListener('load', function(){
     navigator.serviceWorker.register('sw.js')
-      .then(reg => console.log('✓ SW registered:', reg.scope))
-      .catch(err => console.log('SW error:', err));
+      .then(function(reg){ console.log('✓ SW registered:', reg.scope); })
+      .catch(function(err){ console.log('SW error:', err); });
   });
 }
 
