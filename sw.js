@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v152 (saveSettings: pushVillaSettings ne wippe plus villa_name/staff_members)
-const CACHE = 'stafflo-v152';
+// Stafflo Service Worker — v153 (ServiceFlow dashV2 flag + ossature Étape A)
+const CACHE = 'stafflo-v153';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
