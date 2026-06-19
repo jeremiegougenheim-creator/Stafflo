@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v145 (strip 14j visible + collapse retiré cartes calendrier)
-const CACHE = 'stafflo-v145';
+// Stafflo Service Worker — v146 (reviews ⭐5/⭐4/⭐3 : 3 cases ariaQuickModifier + rangée étoiles conditionnelle)
+const CACHE = 'stafflo-v146';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

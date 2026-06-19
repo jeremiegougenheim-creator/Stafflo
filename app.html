@@ -20569,6 +20569,24 @@ function ariaQuickModifier(mode) {
         ? (fr?'Reformule ta dernière réponse avec un ton plus formel et professionnel : "':'Rephrase your last answer with a more formal, professional tone: "') + lastAiText.slice(0, 600) + '"'
         : (fr?'Adopte un ton plus formel dans tes prochaines réponses.':'Use a more formal tone.');
       break;
+    case 'review_5':
+      prompt = (fr
+        ? 'Réécris cette review invité Airbnb en 5 étoiles : chaleureuse, enthousiaste, éloge précis et sincère. Termine par une recommandation forte du type "à recommander à tout hôte, avec plaisir de les accueillir à nouveau". Garde le même invité et les mêmes faits. Review actuelle : "'
+        : 'Rewrite this Airbnb guest review as a 5-star review: warm, enthusiastic, specific genuine praise. End with a strong recommendation like "highly recommend to any host, would gladly host again". Keep the same guest and facts. Current review: "')
+        + lastAiText.slice(0, 600) + '"';
+      break;
+    case 'review_4':
+      prompt = (fr
+        ? 'Réécris cette review invité Airbnb en 4 étoiles : positive et amicale, mais SANS superlatifs (pas de "parfait", "exceptionnel", "irréprochable"). Ton sincère avec une légère retenue, du type "séjour agréable, bienvenue à nouveau". Garde le même invité et les mêmes faits. Review actuelle : "'
+        : 'Rewrite this Airbnb guest review as a 4-star review: positive and friendly, but WITHOUT superlatives (no "perfect", "flawless", "exceptional"). Sincere tone with slight reserve, like "a pleasant stay, welcome back anytime". Keep the same guest and facts. Current review: "')
+        + lastAiText.slice(0, 600) + '"';
+      break;
+    case 'review_3':
+      prompt = (fr
+        ? 'Réécris cette review invité Airbnb en 3 étoiles : polie, factuelle, NEUTRE. Constate le séjour sans enthousiasme, courte, diplomatique. NE PAS écrire "je recommande". Donne un signal honnête aux autres hôtes sans être dur. Garde le même invité et les mêmes faits. Review actuelle : "'
+        : 'Rewrite this Airbnb guest review as a 3-star review: polite, factual, NEUTRAL. State the stay without enthusiasm, short, diplomatic. Do NOT write "I recommend". Give an honest signal to other hosts without being harsh. Keep the same guest and facts. Current review: "')
+        + lastAiText.slice(0, 600) + '"';
+      break;
   }
   if (!prompt) return;
   input.value = prompt;
@@ -20576,6 +20594,15 @@ function ariaQuickModifier(mode) {
   setTimeout(function(){ sendAriaModal(); }, 50);
 }
 window.ariaQuickModifier = ariaQuickModifier;
+
+function ariaMaybeShowReviewStars(userText) {
+  var el = document.getElementById('ariaReviewStars');
+  if (!el) return;
+  var t = (userText || '').toLowerCase();
+  var isReview = /\breview\b|\bavis\b|commentaire|comment.*airbnb|airbnb.*comment|étoile|star/.test(t);
+  el.style.display = isReview ? 'inline-flex' : 'none';
+}
+window.ariaMaybeShowReviewStars = ariaMaybeShowReviewStars;
 
 // ── Contextual ARIA actions — chooses follow-up buttons based on
 //   what the USER asked (window._lastAriaQuestion) + what ARIA replied.
@@ -21111,6 +21138,7 @@ function sendAriaModal() {
 
   // Track last user question for contextual ARIA actions
   try { if (text) window._lastAriaQuestion = text; } catch(e){}
+  try { if (typeof ariaMaybeShowReviewStars === 'function') ariaMaybeShowReviewStars(text); } catch(e){}
 
   var displayText = text.replace(/^__orchestrator:true\n?/, '');
   var body = document.getElementById('ariaModalMessages');
@@ -28070,6 +28098,11 @@ window.addEventListener('DOMContentLoaded', function() {
       <button onclick="ariaQuickModifier('staff')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="📋 Brief staff" data-en="📋 Staff brief">📋 Brief staff</button>
       <button onclick="ariaQuickModifier('warmer')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="✨ Plus chaleureux" data-en="✨ Warmer">✨ Plus chaleureux</button>
       <button onclick="ariaQuickModifier('formal')" style="flex-shrink:0;background:#fff;color:var(--ink);border:1px solid var(--border);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap" data-fr="🎩 Formel" data-en="🎩 Formal">🎩 Formel</button>
+      <span id="ariaReviewStars" style="display:none;gap:6px;align-items:center">
+        <button onclick="ariaQuickModifier('review_5')" style="flex-shrink:0;background:var(--s-gold-tint);color:#8c6622;border:1px solid var(--s-gold-soft);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">⭐5</button>
+        <button onclick="ariaQuickModifier('review_4')" style="flex-shrink:0;background:var(--s-gold-tint);color:#8c6622;border:1px solid var(--s-gold-soft);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">⭐4</button>
+        <button onclick="ariaQuickModifier('review_3')" style="flex-shrink:0;background:var(--s-gold-tint);color:#8c6622;border:1px solid var(--s-gold-soft);border-radius:14px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">⭐3</button>
+      </span>
     </div>
     <div class="aria-modal-input-area">
       <button onclick="document.getElementById('ariaFileInput').click()" title="Joindre fichier ou image" style="background:none;border:1px solid var(--border);color:var(--muted);width:38px;height:38px;border-radius:8px;cursor:pointer;font-size:16px;flex-shrink:0;transition:all .15s" onmouseover="this.style.color='var(--gold)';this.style.borderColor='var(--gold)'" onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">📎</button>
