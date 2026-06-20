@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v176 (fix spécificité : contenu main cadré 720px)
-const CACHE = 'stafflo-v176';
+// Stafflo Service Worker — v177 (bot-nav fixée en bas en landscape/desktop)
+const CACHE = 'stafflo-v177';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
