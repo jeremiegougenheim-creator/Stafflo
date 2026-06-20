@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v175 (contenu centré 720px en landscape + desktop)
-const CACHE = 'stafflo-v175';
+// Stafflo Service Worker — v176 (fix spécificité : contenu main cadré 720px)
+const CACHE = 'stafflo-v176';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
