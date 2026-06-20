@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v173 (Today dedup ruthless + responsive luxe desktop/landscape)
-const CACHE = 'stafflo-v173';
+// Stafflo Service Worker — v174 (full-width landscape + desktop, no phone frame)
+const CACHE = 'stafflo-v174';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
