@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v177 (bot-nav fixée en bas en landscape/desktop)
-const CACHE = 'stafflo-v177';
+// Stafflo Service Worker — v178 (V3 onboarding canonique + Appartement/Maison campagne, legacy neutralisé)
+const CACHE = 'stafflo-v178';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

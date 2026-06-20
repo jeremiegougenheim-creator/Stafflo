@@ -2628,6 +2628,8 @@ window.addEventListener('keydown', function(e){
           <button class="onbV3-card" data-value="guesthouse" type="button"><span class="onbV3-card-emoji">🛎️</span><span class="onbV3-card-label" data-fr="Boutique guesthouse" data-en="Boutique guesthouse">Boutique guesthouse</span></button>
           <button class="onbV3-card" data-value="chalet"    type="button"><span class="onbV3-card-emoji">🏔️</span><span class="onbV3-card-label" data-fr="Chalet" data-en="Chalet">Chalet</span></button>
           <button class="onbV3-card" data-value="beach"     type="button"><span class="onbV3-card-emoji">🏖️</span><span class="onbV3-card-label" data-fr="Beach villa" data-en="Beach villa">Beach villa</span></button>
+          <button class="onbV3-card" data-value="apartment" type="button"><span class="onbV3-card-emoji">🏙️</span><span class="onbV3-card-label" data-fr="Appartement" data-en="Apartment">Apartment</span></button>
+          <button class="onbV3-card" data-value="countryhouse" type="button"><span class="onbV3-card-emoji">🌳</span><span class="onbV3-card-label" data-fr="Maison de campagne" data-en="Country house">Country house</span></button>
         </div>
       </section>
 
@@ -16555,12 +16557,13 @@ document.addEventListener('DOMContentLoaded', function() {
         var cfg = getCfg();
         if (!cfg.onboarded) {
           // Defer slightly so the rest of the UI has rendered behind the modal
-          setTimeout(function() { showOnboardingWizard(); }, 400);
+          /* v178 — legacy wizard neutralisé. V3 est désormais canonique. */
+          setTimeout(function() { if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
         }
       }).catch(function() {
         // If pull fails, still check local cfg
         var cfg = getCfg();
-        if (!cfg.onboarded) setTimeout(function() { showOnboardingWizard(); }, 400);
+        if (!cfg.onboarded) setTimeout(function() { if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
       });
     } else {
       // No session — enter demo mode (visitors explore before committing)
@@ -26598,14 +26601,12 @@ window.addEventListener('DOMContentLoaded', function() {
     try { history.replaceState({ onbV3Step: state.step }, '', '?onboarding=1'); } catch(e){}
   };
 
-  /* Monkey-patch DISABLED (2026 onboarding hybride redesign).
-     The legacy #onboardWizard (extended with a splash screen) is now the
-     canonical entry. launchOnboardingV3 stays defined as dead-code-for-
-     rollback — call it manually from the console to surface the old v3
-     panel. ?onboarding=1 now routes to showOnboardingWizard. */
+  /* v178 — V3 est désormais canonique (strangler-fig).
+     Legacy showOnboardingWizard conservé pour le bouton Réglages uniquement.
+     ?onboarding=1 route vers launchOnboardingV3. */
   function init(){
-    if (paramSaysLaunch() && typeof window.showOnboardingWizard === 'function') {
-      window.showOnboardingWizard();
+    if (paramSaysLaunch() && typeof window.launchOnboardingV3 === 'function') {
+      window.launchOnboardingV3();
     }
   }
 
