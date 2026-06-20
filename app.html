@@ -8589,6 +8589,88 @@ async function reconcileFromSupabase() {
   } catch(e) { console.warn('[reconcile] failed:', e); }
 }
 window.reconcileFromSupabase = reconcileFromSupabase;
+
+/* v172 — Réconcilie les virements Airbnb ("We sent a payout") vers crm_clients.
+   Idempotent via payout_id. PATCH price si absent. Review si écart > 10%. */
+async function reconcilePayouts() {
+  if (isDemoMode()) return;
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  if (!cfg.sbUrl || !cfg.sbKey) return;
+  var hdr = sbHdrs(cfg.sbKey);
+
+  // Fetch all Airbnb automated emails, filter payout subjects in JS
+  var eRes; try { eRes = await fetch(cfg.sbUrl + '/rest/v1/email_inbox?from_email=eq.automated@airbnb.com&select=id,subject,body&order=received_at.desc&limit=200', { headers: hdr }); } catch(e) { return; }
+  if (!eRes.ok) return;
+  var emails = (await eRes.json()).filter(function(e) {
+    return e && /we sent a payout/i.test(e.subject || '');
+  });
+
+  // Existing payout_ids for idempotency
+  var crmRes; try { crmRes = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?select=payout_id&deleted_at=is.null', { headers: hdr }); } catch(e) { return; }
+  var existing = crmRes.ok ? await crmRes.json() : [];
+  var seen = {};
+  existing.forEach(function(c) { if (c.payout_id) seen[c.payout_id] = true; });
+
+  var reconciled = 0, review = [];
+
+  for (var i = 0; i < emails.length; i++) {
+    var em = emails[i];
+    var subject = em.subject || '';
+    var body = (em.body || '').replace(/<[^>]+>/g, ' ').replace(/\xA0/g, ' ').replace(/\s+/g, ' ');
+
+    // Amount from subject: "payout of €2,922.84 EUR" → 2922.84
+    var amtM = subject.match(/payout of\s*€?\s*([\d.,]+)\s*EUR/i);
+    if (!amtM) continue;
+    var amount = parseFloat(amtM[1].replace(/,/g, ''));
+    if (!amount || isNaN(amount)) continue;
+
+    // Payout ID from body: "Payout ID G-XYZ123"
+    var pidM = body.match(/Payout ID\s+(G-[A-Z0-9]+)/);
+    if (!pidM) continue;
+    var payoutId = pidM[1];
+    if (seen[payoutId]) continue;
+
+    // Stay start date (DD/MM/YYYY – ...)
+    var dateM = body.match(/(\d{2}\/\d{2}\/\d{4})\s*[–—-]/);
+    if (!dateM) continue;
+    var dp = dateM[1].split('/');
+    var stayStart = dp[2] + '-' + dp[1] + '-' + dp[0];
+
+    // Find CRM client: source Airbnb + arrival = stayStart
+    var mr; try { mr = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?select=id,name,price&source=ilike.Airbnb&deleted_at=is.null&arrival=eq.' + stayStart + '&limit=1', { headers: hdr }); } catch(e) { continue; }
+    if (!mr.ok) continue;
+    var matches = await mr.json();
+    if (!matches.length) continue;
+    var client = matches[0];
+
+    // Price delta → review queue (écart > 10%)
+    var cPrice = parseFloat(client.price);
+    if (cPrice && Math.abs(cPrice - amount) > Math.max(10, cPrice * 0.10)) {
+      review.push({ payoutId: payoutId, amount: amount, clientPrice: cPrice, clientName: client.name });
+    }
+
+    // PATCH: payout_id always; price only if absent
+    var patch = { payout_id: payoutId };
+    if (!client.price) patch.price = amount;
+    var pr; try { pr = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?id=eq.' + encodeURIComponent(client.id), {
+      method: 'PATCH',
+      headers: Object.assign({}, hdr, { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
+      body: JSON.stringify(patch)
+    }); } catch(e) { continue; }
+    if (pr.ok) { reconciled++; seen[payoutId] = true; }
+  }
+
+  if (reconciled > 0 || review.length > 0) {
+    if (typeof toast === 'function') {
+      var msg = reconciled + ' paiement' + (reconciled > 1 ? 's' : '') + ' réconcilié' + (reconciled > 1 ? 's' : '');
+      if (review.length) msg += ' \xB7 ' + review.length + ' \xe9cart' + (review.length > 1 ? 's' : '') + ' net/brut \xe0 v\xe9rifier';
+      toast(msg);
+    }
+  }
+  return { reconciled: reconciled, review: review };
+}
+window.reconcilePayouts = reconcilePayouts;
+
 function saveLocal() {
   if (isDemoMode()) return;
   // Strip _demo:true clients (authenticated-user overlay via ?demo=1) so
@@ -13012,6 +13094,7 @@ async function loadInboxEmails() {
     window._inboxEmails = {};
     rows.forEach(function(row) { window._inboxEmails[row.id] = row; });
     if (typeof enrichInboxEmails === 'function') try { enrichInboxEmails(); } catch(e){}
+    if (typeof reconcilePayouts === 'function') try { reconcilePayouts(); } catch(e){} // v172 fire-and-forget
 
     var fr = lang === 'fr';
     // Relative time helper: "à l'instant", "il y a 5min", "il y a 2h", "hier 14:30", "23/04 14:30"
@@ -25781,6 +25864,7 @@ window.addEventListener('DOMContentLoaded', function() {
           <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">INBOX</div>
           <div style="font-family:'Cormorant Garamond',serif;font-size:17px;color:#fff;font-weight:300">Inbox</div>
         </div>
+        <button onclick="if(typeof reconcilePayouts==='function')reconcilePayouts()" title="Réconcilier les paiements Airbnb" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:0 10px;height:28px;border-radius:14px;font-size:11px;cursor:pointer;margin-right:6px">💸 Réconcilier</button>
         <button onclick="closeInbox()" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
       </div>
       <div id="inboxModalTabs" style="display:flex;gap:6px;padding-bottom:12px;flex-wrap:wrap"></div>
