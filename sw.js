@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v170 (fix blanc Today : force #todayV3 visible en CSS quand is-v3-on, fin de la course JS)
-const CACHE = 'stafflo-v170';
+// Stafflo Service Worker — v171 (fix blanc Today : #todayV3 retire de la liste de masquage CSS v85/86)
+const CACHE = 'stafflo-v171';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
