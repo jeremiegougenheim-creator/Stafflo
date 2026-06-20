@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v172 (reconcilePayouts — payout parser idempotent)
-const CACHE = 'stafflo-v172';
+// Stafflo Service Worker — v173 (Today dedup ruthless + responsive luxe desktop/landscape)
+const CACHE = 'stafflo-v173';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
