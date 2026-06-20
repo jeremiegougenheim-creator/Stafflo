@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v169 (fix blanc <600px : shell flex-column mobile comme desktop)
-const CACHE = 'stafflo-v169';
+// Stafflo Service Worker — v170 (fix blanc Today : force #todayV3 visible en CSS quand is-v3-on, fin de la course JS)
+const CACHE = 'stafflo-v170';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
