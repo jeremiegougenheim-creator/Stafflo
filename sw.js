@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v168 (fix flood 409 email_inbox : POST → upsert-ignore on_conflict=gmail_id)
-const CACHE = 'stafflo-v168';
+// Stafflo Service Worker — v169 (fix blanc <600px : shell flex-column mobile comme desktop)
+const CACHE = 'stafflo-v169';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
