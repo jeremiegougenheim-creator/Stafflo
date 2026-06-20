@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v171 (fix blanc Today : #todayV3 retire de la liste de masquage CSS v85/86)
-const CACHE = 'stafflo-v171';
+// Stafflo Service Worker — v172 (reconcilePayouts — payout parser idempotent)
+const CACHE = 'stafflo-v172';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
