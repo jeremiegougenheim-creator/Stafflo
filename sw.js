@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v197 (bouton Brief staff → buildStaffNote direct, zéro LLM)
-const CACHE = 'stafflo-v197';
+// Stafflo Service Worker — v198 (header 3-zone : retire position:absolute sur #activeTabLabel)
+const CACHE = 'stafflo-v198';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
