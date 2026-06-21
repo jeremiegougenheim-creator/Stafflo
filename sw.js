@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v193 (section prestataires dédiée + CTA wa.me/mailto/sms/tel)
-const CACHE = 'stafflo-v193';
+// Stafflo Service Worker — v194 (fix scroll ARIA : min-height:0 sur aria-modal-body)
+const CACHE = 'stafflo-v194';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
