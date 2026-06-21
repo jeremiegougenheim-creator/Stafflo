@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v192 (classifieur invité/prestataire avant création CRM)
-const CACHE = 'stafflo-v192';
+// Stafflo Service Worker — v193 (section prestataires dédiée + CTA wa.me/mailto/sms/tel)
+const CACHE = 'stafflo-v193';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

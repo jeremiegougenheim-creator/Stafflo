@@ -5214,6 +5214,15 @@ window.renderSetupOneLiner = function(){
   <!-- Villa Checklist will be injected here by renderVillaOpsExtra() -->
   </div><!-- /villaScenarioRow -->
 
+  <!-- RÉPERTOIRE PRESTATAIRES -->
+  <div class="hm-card" id="prestaCard" style="margin-bottom:14px">
+    <div class="hm-hdr">
+      <div class="hm-hdr-lbl"><i class="ti ti-address-book" style="color:#C9963A"></i> <span data-fr="Répertoire prestataires" data-en="Service providers">Répertoire prestataires</span></div>
+      <button class="v2-icon-btn" onclick="openAddPrestaModal()" title="Ajouter un prestataire" style="font-size:18px;font-weight:700;line-height:1">+</button>
+    </div>
+    <div class="hm-body" id="prestaList" style="padding:10px 14px;min-height:40px"></div>
+  </div>
+
 </div><!-- /home -->
 
 
@@ -5457,6 +5466,36 @@ window.renderSetupOneLiner = function(){
   </div>
 </div>
 
+
+<!-- PRESTATAIRE ADD MODAL -->
+<div class="modal-bg" id="prestaModal" onclick="if(event.target===this)closePrestaModal()" style="display:none">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <div class="modal-title" data-fr="Ajouter un prestataire" data-en="Add service provider">Ajouter un prestataire</div>
+      <button class="modal-close" onclick="closePrestaModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label data-fr="Nom *" data-en="Name *">Nom *</label><input id="prestaFName" type="text" placeholder="Houda"></div>
+      <div class="field"><label data-fr="Type de service" data-en="Service type">Type de service</label><input id="prestaFType" type="text" placeholder="massage, plombier…"></div>
+      <div class="field"><label data-fr="Contact (tél ou email) *" data-en="Contact (phone or email) *">Contact *</label><input id="prestaFContact" type="text" placeholder="+212 6…"></div>
+      <div class="field"><label data-fr="Canal" data-en="Channel">Canal</label>
+        <select id="prestaFCanal">
+          <option value="whatsapp">WhatsApp</option>
+          <option value="phone">Téléphone</option>
+          <option value="sms">SMS</option>
+          <option value="email">Email</option>
+          <option value="telegram">Telegram</option>
+          <option value="wechat">WeChat</option>
+          <option value="line">Line</option>
+          <option value="signal">Signal</option>
+          <option value="other">Autre</option>
+        </select>
+      </div>
+      <button onclick="submitAddPresta()" style="width:100%;margin-top:12px;background:var(--green-dark);color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans)" data-fr="Enregistrer" data-en="Save">Enregistrer</button>
+    </div>
+  </div>
+</div>
 
 <!-- CLIENT DETAIL MODAL -->
 <div class="modal-bg" id="detailModal" onclick="if(event.target===this)closeDetail()">
@@ -11490,7 +11529,7 @@ function goTab(t) {
   if (typeof renderAlertsForTab==='function') renderAlertsForTab(t);
 
   if (t === 'clients') { try { renderClients(); } catch(e) { console.error('renderClients error:', e); } }
-  if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); } catch(e) { console.error('loadHomeData error:', e); } }
+  if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); if (typeof renderPrestataires === 'function') setTimeout(renderPrestataires, 100); } catch(e) { console.error('loadHomeData error:', e); } }
   if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
   if (t === 'today') {
     try { renderTodayQV(); } catch(e) { console.error('renderTodayQV error:', e); }
@@ -12772,22 +12811,6 @@ async function handleChatEmailAnalysis(text) {
     await handleWAConvUnknown(text);
     return;
   }
-
-  // ── Classify GUEST vs PROVIDER before CRM extraction ──
-  // PROVIDER (confiant) → carnet prestataires via startPrestaCapture.
-  // GUEST / UNCLEAR / erreur / timeout → chemin CRM inchangé (défaut absolu).
-  var _classRaw = '';
-  try {
-    _classRaw = await callBestAI('fast_classify',
-      'Classify this pasted message. Reply with ONE word only:\nGUEST (someone wanting to book or stay at the villa — has dates, guest count, or a reservation),\nPROVIDER (a service provider being shared — masseur, chef, plumber, driver, etc. — a name + contact + service, NO stay request),\nUNCLEAR (anything else).\nOne word: GUEST, PROVIDER, or UNCLEAR.',
-      text, 30);
-  } catch(e){}
-  if ((_classRaw||'').trim().toUpperCase().replace(/[^A-Z]/g,'') === 'PROVIDER') {
-    document.getElementById('chatTyping').style.display = 'none';
-    await startPrestaCapture(text, fr);
-    return;
-  }
-  // GUEST, UNCLEAR, erreur → extraction CRM comme avant
 
   var p1System = buildExtractSystemPrompt(today);
 
@@ -16928,6 +16951,102 @@ async function startPrestaCapture(text, fr2) {
       addChatBubble('ai', '⚠ ' + (fr2 ? 'Erreur enregistrement' : 'Save error') + ' : ' + (e.message || ''), []);
     }
   };
+}
+
+// ── Prestataires UI — renderPrestataires / modal add / delete ──
+async function renderPrestataires() {
+  var el = document.getElementById('prestaList');
+  if (!el) return;
+  var fr2 = lang === 'fr';
+  var rows = [];
+  try { rows = await fetchPrestataires(); } catch(e){}
+  if (!rows.length) {
+    el.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:4px 0">' +
+      (fr2 ? 'Aucun prestataire. Ajoutez vos contacts de confiance.' : 'No providers yet. Add your trusted contacts.') +
+      '</div>';
+    return;
+  }
+  var chanIcon = { whatsapp:'📱', phone:'📞', sms:'💬', email:'✉️', telegram:'✈️', wechat:'💚', line:'🟢', signal:'🔵', other:'📋' };
+  el.innerHTML = rows.map(function(p) {
+    var phone = p.phone || '';
+    var email = p.email || '';
+    var waNum = phone.replace(/[^0-9]/g, '');
+    var ctaHtml = '';
+    if (p.contact_channel === 'whatsapp' && waNum) ctaHtml += '<a href="https://wa.me/' + waNum + '" target="_blank" rel="noopener" class="presta-cta">📱 WhatsApp</a>';
+    if (p.contact_channel === 'email' && email) ctaHtml += '<a href="mailto:' + email + '" class="presta-cta">✉️ Email</a>';
+    if ((p.contact_channel === 'sms') && phone) ctaHtml += '<a href="sms:' + phone + '" class="presta-cta">💬 SMS</a>';
+    if ((p.contact_channel === 'phone') && phone) ctaHtml += '<a href="tel:' + phone + '" class="presta-cta">📞 Appeler</a>';
+    if (!ctaHtml && phone) {
+      ctaHtml += '<a href="https://wa.me/' + waNum + '" target="_blank" rel="noopener" class="presta-cta">📱 WA</a>';
+      ctaHtml += '<a href="sms:' + phone + '" class="presta-cta">💬 SMS</a>';
+      ctaHtml += '<a href="tel:' + phone + '" class="presta-cta">📞 Tel</a>';
+    }
+    if (!ctaHtml && email) ctaHtml += '<a href="mailto:' + email + '" class="presta-cta">✉️ Email</a>';
+    var contact = email || phone || '—';
+    return '<div class="presta-row" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-weight:600;font-size:14px;color:var(--ink)">' + p.name + (p.type ? ' <span style="font-weight:400;color:var(--muted);font-size:12px">· ' + p.type + '</span>' : '') + '</div>' +
+        '<div style="font-size:12px;color:var(--muted);margin-top:2px">' + (chanIcon[p.contact_channel]||'') + ' ' + contact + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0">' + ctaHtml + '</div>' +
+      '<button onclick="deletePresta(\'' + p.id + '\')" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px;line-height:1;flex-shrink:0" title="' + (fr2?'Supprimer':'Delete') + '">🗑</button>' +
+    '</div>';
+  }).join('') + '<style>.presta-cta{display:inline-block;padding:5px 10px;border-radius:8px;background:var(--paper);border:1px solid var(--border);font-size:12px;font-weight:500;color:var(--ink);text-decoration:none;white-space:nowrap}.presta-cta:hover{background:var(--green3);color:#fff;border-color:var(--green3)}</style>';
+}
+
+function openAddPrestaModal() {
+  var m = document.getElementById('prestaModal');
+  if (!m) return;
+  ['prestaFName','prestaFType','prestaFContact'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  var sc = document.getElementById('prestaFCanal'); if (sc) sc.value = 'whatsapp';
+  m.style.display = 'flex';
+}
+
+function closePrestaModal() {
+  var m = document.getElementById('prestaModal'); if (m) m.style.display = 'none';
+}
+
+async function submitAddPresta() {
+  var fr2 = lang === 'fr';
+  var name = (document.getElementById('prestaFName')||{}).value||'';
+  var type = (document.getElementById('prestaFType')||{}).value||'';
+  var contact = (document.getElementById('prestaFContact')||{}).value||'';
+  var canal = (document.getElementById('prestaFCanal')||{}).value||'whatsapp';
+  name = name.trim(); contact = contact.trim();
+  if (!name || !contact) {
+    var missing = !name ? (fr2?'le nom':'the name') : (fr2?'le contact':'the contact');
+    alert((fr2?'Il manque ':'Missing: ') + missing);
+    return;
+  }
+  var uid = typeof getUserId === 'function' ? getUserId() : null;
+  if (!uid) { alert(fr2?'Non connecté.':'Not logged in.'); return; }
+  var body = { owner_id: uid, name: name, type: type||null, contact_channel: canal, share_with_guests: true };
+  if (canal === 'email') { body.email = contact; } else { body.phone = contact; }
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/prestataires', {
+      method: 'POST',
+      headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _prestaCache = null;
+    closePrestaModal();
+    renderPrestataires();
+  } catch(e) { alert((fr2?'Erreur : ':'Error: ') + (e.message||'')); }
+}
+
+async function deletePresta(id) {
+  var fr2 = lang === 'fr';
+  if (!confirm(fr2?'Supprimer ce prestataire ?':'Delete this provider?')) return;
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/prestataires?id=eq.' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _prestaCache = null;
+    renderPrestataires();
+  } catch(e) { alert((fr2?'Erreur : ':'Error: ') + (e.message||'')); }
 }
 
 // Helper: get current week of month (1-4)
