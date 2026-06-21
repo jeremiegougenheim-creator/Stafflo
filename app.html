@@ -28767,6 +28767,7 @@ window.addEventListener('DOMContentLoaded', function() {
       <div class="aria-modal-bubble aria">
         <strong>ARIA</strong> · <span data-fr="Comment puis-je vous aider ?" data-en="How can I help?">Comment puis-je vous aider ?</span>
         <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+          <div id="ariaCtxChips" style="display:none;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);margin-bottom:4px"></div>
           <div style="font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;font-weight:600" data-fr="Actions rapides" data-en="Quick actions">Actions rapides</div>
           <div id="ariaContextChips" style="display:flex;flex-wrap:wrap;gap:6px">
             <button class="aria-quick-chip" onclick="ariaQuickAction('paste_email')" data-fr="📧 Coller email" data-en="📧 Paste email">📧 Coller email</button>
@@ -28953,12 +28954,48 @@ window.addEventListener('DOMContentLoaded', function() {
     });
   };
 
+  window.buildAriaCtxChips = function(){
+    var row = document.getElementById('ariaCtxChips'); if(!row) return;
+    var today = new Date(); today.setHours(0,0,0,0);
+    var L = (window.clients||[]).filter(function(c){
+      return (typeof isFirmBooking==='function') ? isFirmBooking(c) : c.booking_status==='confirmed';
+    });
+    var chips = [];
+    var up = L.filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
+              .sort(function(a,b){ return new Date(a.arrival)-new Date(b.arrival); });
+    if(up.length){ var c=up[0];
+      var d=Math.ceil((new Date(c.arrival)-today)/864e5);
+      chips.push({label:'🛬 '+c.name.split(' ')[0]+' arrive dans '+d+' j'+(c.guests?' · '+c.guests+' pers.':''),
+        prompt:"Prépare le brief staff pour l'arrivée de "+c.name+" le "+fmtDate(c.arrival)+"."}); }
+    var gap = L.filter(function(c){ return (!c.price||Number(c.price)===0) && c.arrival && new Date(c.arrival) < today; });
+    if(gap.length>=3){
+      chips.push({label:'💶 '+gap.length+' séjours sans montant',
+        prompt:"Liste les séjours passés confirmés sans montant et aide-moi à réconcilier le CA depuis les relevés Airbnb."}); }
+    var rev = L.filter(function(c){ if(!c.departure) return false;
+        var dep=new Date(c.departure); return dep<today && (today-dep)/864e5<=14; })
+      .sort(function(a,b){ return new Date(b.departure)-new Date(a.departure); });
+    if(rev.length){
+      chips.push({label:'⭐ Avis à laisser · '+rev[0].name.split(' ')[0],
+        prompt:"Rédige l'avis public hôte→voyageur pour "+rev[0].name+"."}); }
+    row.innerHTML = chips.map(function(ch){
+      return '<button class="aria-quick-chip" data-prompt="'+ch.prompt.replace(/"/g,'&quot;')+'" onclick="ariaCtxChipSend(this)">'+ch.label+'</button>';
+    }).join('');
+    row.style.display = chips.length ? 'flex' : 'none';
+  };
+
+  window.ariaCtxChipSend = function(btn){
+    var input = document.getElementById('ariaModalInput');
+    if(!input) return;
+    input.value = btn.dataset.prompt;
+    if(typeof sendAriaModal === 'function') sendAriaModal();
+  };
+
   function wireHooks(){
     if (typeof window.openAriaModal === 'function' && !window.openAriaModal._ariaChipsWrapped) {
       var _orig = window.openAriaModal;
       window.openAriaModal = function(){
         var r = _orig.apply(this, arguments);
-        try { setTimeout(window.renderAriaContextChips, 0); } catch(e){}
+        try { setTimeout(function(){ window.renderAriaContextChips(); if(typeof window.buildAriaCtxChips==='function') window.buildAriaCtxChips(); },0); } catch(e){}
         return r;
       };
       window.openAriaModal._ariaChipsWrapped = true;

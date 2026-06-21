@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v180 (wow paste-box live + exemple → carte invité ARIA)
-const CACHE = 'stafflo-v180';
+// Stafflo Service Worker — v181 (chips contextuels ARIA depuis données réelles)
+const CACHE = 'stafflo-v181';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
