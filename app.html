@@ -12146,6 +12146,72 @@ async function chatSend() {
       }
     }
 
+    // ── "garde en mémoire / mémorise / retiens" → écriture prestataire ──
+    if (!isAriaOrchestrator
+        && /garde\s+(ça|ca)\s+en\s+m[ée]moire|m[ée]morise|retiens/i.test(text)
+        && /\+?\d[\d\s]{6,}|[\w.+-]+@[\w-]+\.[a-z]{2,}|@\w{3,}/i.test(text)) {
+      delete window._prestaCanal; // invalide tout callback précédent
+      typing.style.display = 'none';
+      var _fr2 = lang === 'fr';
+      var _pSys = 'Extract a villa service provider from the text. Return ONLY valid JSON: {"name":"","type":"","contact_value":""}\nname = full name of the person, type = service type (massage, plombier, etc.), contact_value = raw phone number, email address, or handle as written. Empty string if absent. NEVER invent.';
+      var _pRaw = '';
+      try { _pRaw = await callBestAI('extract', _pSys, text, 120); } catch(e){}
+      var _pData = {};
+      try { var _pJson = (_pRaw||'').replace(/```[a-z]*/gi,'').replace(/```/g,'').trim(); _pData = JSON.parse(_pJson); } catch(e){}
+      var _pName = (_pData.name||'').trim();
+      var _pContact = (_pData.contact_value||'').trim();
+      var _pType = (_pData.type||'').trim();
+      // Garde : name ou contact absent → ARIA demande, jamais d'invention
+      if (!_pName || !_pContact) {
+        var _missing = !_pName
+          ? (_fr2 ? 'le nom du prestataire' : 'the provider name')
+          : (_fr2 ? 'le contact (tél/email)' : 'the contact (phone/email)');
+        addChatBubble('ai', (_fr2 ? 'Il me manque ' : 'I\'m missing ') + _missing + (_fr2 ? ', peux-tu me le redonner ?' : ', can you give it to me?'), []);
+        return;
+      }
+      // Afficher les boutons de canal (réutilise .aria-quick-chip)
+      var _canalMap = [
+        {k:'whatsapp',l:'WhatsApp'},{k:'phone',l:_fr2?'Téléphone':'Phone'},{k:'sms',l:'SMS'},
+        {k:'email',l:'Email'},{k:'telegram',l:'Telegram'},{k:'wechat',l:'WeChat'},
+        {k:'line',l:'Line'},{k:'signal',l:'Signal'},{k:'other',l:_fr2?'Autre':'Other'}
+      ];
+      var _chipsHtml = '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">' +
+        _canalMap.map(function(c){
+          return '<button class="aria-quick-chip" onclick="if(window._prestaCanal)window._prestaCanal(\'' + c.k + '\');this.closest(\'[data-canal-row]\').querySelectorAll(\'button\').forEach(function(b){b.disabled=true})">' + c.l + '</button>';
+        }).join('') + '</div>';
+      var _cRow = document.createElement('div');
+      _cRow.className = 'chat-bubble ai';
+      _cRow.setAttribute('data-canal-row','1');
+      _cRow.innerHTML = (_fr2
+        ? '📇 <strong>' + _pName + '</strong>' + (_pType ? ' · ' + _pType : '') + ' · <code>' + _pContact + '</code><br>Via quel canal ?'
+        : '📇 <strong>' + _pName + '</strong>' + (_pType ? ' · ' + _pType : '') + ' · <code>' + _pContact + '</code><br>Which contact channel?')
+        + _chipsHtml;
+      var _msgs2 = document.getElementById('chatMessages');
+      if (_msgs2) { _msgs2.appendChild(_cRow); if (typeof scrollChat === 'function') scrollChat(); }
+      // Callback canal — single-use, cleared avant POST
+      window._prestaCanal = async function(canal) {
+        delete window._prestaCanal;
+        var _uid = typeof getUserId === 'function' ? getUserId() : null;
+        if (!_uid) { addChatBubble('ai', _fr2 ? 'Non connecté.' : 'Not logged in.', []); return; }
+        var _body = { owner_id: _uid, name: _pName, type: _pType || null, contact_channel: canal, share_with_guests: true };
+        if (canal === 'email') { _body.email = _pContact; } else { _body.phone = _pContact; }
+        try {
+          var _rp = await fetch(SB_URL + '/rest/v1/prestataires', {
+            method: 'POST',
+            headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+            body: JSON.stringify(_body)
+          });
+          if (!_rp.ok) throw new Error('HTTP ' + _rp.status);
+          _prestaCache = null; // invalide cache lecture
+          var _cLabel = {whatsapp:'WhatsApp',phone:_fr2?'Téléphone':'Phone',sms:'SMS',email:'Email',telegram:'Telegram',wechat:'WeChat',line:'Line',signal:'Signal',other:_fr2?'Autre':'Other'}[canal] || canal;
+          addChatBubble('ai', '✓ ' + _pName + (_pType ? ' (' + _pType + ')' : '') + (_fr2 ? ' enregistré' : ' saved') + ' · ' + _cLabel + ' · ' + _pContact, []);
+        } catch(e) {
+          addChatBubble('ai', '⚠ ' + (_fr2 ? 'Erreur enregistrement' : 'Save error') + ' : ' + (e.message || ''), []);
+        }
+      };
+      return;
+    }
+
     // Tightened email detection: require STRONG signals, not just keyword matches.
     // A prompt mentioning "airbnb" or "guests" in passing should NOT trigger extraction.
     var hasEmailHeaders =
@@ -12608,8 +12674,12 @@ async function handleChatQuestion(text) {
     var _evRows = []; try { _evRows = await fetchActiveEvents(); } catch(e){}
     var _evBlock = formatEventsForPrompt(_evRows, fr);
 
+    var _prestaRows = []; try { _prestaRows = await fetchPrestataires(); } catch(e){}
+    var _prestaBlock = formatPrestaForPrompt(_prestaRows, fr);
+
     var _ctxParts = [(fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman, crmCtx, ''];
     if (_evBlock) { _ctxParts.push(_evBlock); _ctxParts.push(''); }
+    if (_prestaBlock) { _ctxParts.push(_prestaBlock); _ctxParts.push(''); }
     _ctxParts.push(historyBlock, '', ownerName + ': "' + text + '"');
     userCtx = _ctxParts.join('\n');
   }
@@ -16805,6 +16875,38 @@ function formatEventsForPrompt(rows, fr) {
     return '• ' + e.name + ' · ' + e.start_date + ' → ' + e.end_date + ' · demande ' + impact + approx;
   });
   return (fr ? 'ÉVÉNEMENTS DEMANDE (60j) :' : 'DEMAND EVENTS (60d):') + '\n' + lines.join('\n');
+}
+
+// fetchPrestataires: reads owner-scoped `prestataires` table (RLS auth.uid()), 1h memory cache
+var _prestaCache = null;
+async function fetchPrestataires() {
+  var now = Date.now();
+  if (_prestaCache && (now - _prestaCache.ts) < 3600000) return _prestaCache.data;
+  try {
+    var r = await fetch(
+      SB_URL + '/rest/v1/prestataires?select=name,type,phone,email,contact_channel,notes,share_with_guests&order=created_at.asc',
+      { headers: authHeaders() }
+    );
+    if (!r.ok) return [];
+    var data = await r.json();
+    _prestaCache = { ts: now, data: data };
+    return data;
+  } catch(e) { return []; }
+}
+
+function formatPrestaForPrompt(rows, fr) {
+  if (!rows || !rows.length) return '';
+  var chanLabel = { whatsapp:'WhatsApp', sms:'SMS', phone:'Téléphone', email:'Email', telegram:'Telegram', wechat:'WeChat', line:'Line', signal:'Signal', other:'Autre' };
+  var lines = rows.map(function(p) {
+    var contact = p.email || p.phone || '—';
+    var chan = p.contact_channel ? (chanLabel[p.contact_channel] || p.contact_channel) : (fr ? 'non précisé' : 'not set');
+    var share = p.share_with_guests ? (fr ? 'partageable invité: oui' : 'shareable with guests: yes') : '';
+    return '• ' + p.name + ' · ' + (p.type||'—') + ' · ' + contact + ' · canal: ' + chan + (share ? ' · ' + share : '');
+  });
+  var hdr = fr
+    ? 'PRESTATAIRES VILLA (contacts réels — n\'utiliser QUE ces valeurs, JAMAIS inventer) :'
+    : 'VILLA SERVICE PROVIDERS (real contacts — use ONLY these values, NEVER invent):';
+  return hdr + '\n' + lines.join('\n');
 }
 
 // Helper: get current week of month (1-4)

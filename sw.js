@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v190 (bottom nav plus fin)
-const CACHE = 'stafflo-v190';
+// Stafflo Service Worker — v191 (carnet prestataires : lecture ancrée + écriture avec canal)
+const CACHE = 'stafflo-v191';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
