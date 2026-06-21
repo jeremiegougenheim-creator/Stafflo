@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v198 (header 3-zone : retire position:absolute sur #activeTabLabel)
-const CACHE = 'stafflo-v198';
+// Stafflo Service Worker — v199 (villa-hero-banner : bannière photo DarJ sous le header)
+const CACHE = 'stafflo-v199';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
