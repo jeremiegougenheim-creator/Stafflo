@@ -12590,14 +12590,13 @@ async function handleChatQuestion(text) {
       ? buildClientsContextRich(8)
       : 'Clients: ' + clients.filter(function(cl){ return typeof isFirmBooking === 'function' ? isFirmBooking(cl) : true; }).slice(0,8).map(function(cl){ return cl.name + (cl.arrival?' →'+cl.arrival:''); }).join(', ');
 
-    userCtx = [
-      (fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman,
-      crmCtx,
-      '',
-      historyBlock,
-      '',
-      ownerName + ': "' + text + '"'
-    ].join('\n');
+    var _evRows = []; try { _evRows = await fetchActiveEvents(); } catch(e){}
+    var _evBlock = formatEventsForPrompt(_evRows, fr);
+
+    var _ctxParts = [(fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman, crmCtx, ''];
+    if (_evBlock) { _ctxParts.push(_evBlock); _ctxParts.push(''); }
+    _ctxParts.push(historyBlock, '', ownerName + ': "' + text + '"');
+    userCtx = _ctxParts.join('\n');
   }
 
   // ── REFINED Intent classification → choose best AI task route ──
@@ -16761,6 +16760,38 @@ async function loadMarrakechEvents() {
 }
 
 
+// fetchActiveEvents: reads owner-scoped `events` table (RLS auth.uid()), 1h memory cache
+var _eventsCache = null;
+async function fetchActiveEvents() {
+  var now = Date.now();
+  if (_eventsCache && (now - _eventsCache.ts) < 3600000) return _eventsCache.data;
+  try {
+    var url = SB_URL;
+    var today = new Date().toISOString().slice(0,10);
+    var in60 = new Date(); in60.setDate(in60.getDate()+60);
+    var in60str = in60.toISOString().slice(0,10);
+    var r = await fetch(
+      url + '/rest/v1/events?select=name,category,start_date,end_date,demand_impact,notes&end_date=gte.' + today + '&start_date=lte.' + in60str + '&order=start_date.asc',
+      { headers: authHeaders() }
+    );
+    if (!r.ok) return [];
+    var data = await r.json();
+    _eventsCache = { ts: now, data: data };
+    return data;
+  } catch(e) { return []; }
+}
+
+function formatEventsForPrompt(rows, fr) {
+  if (!rows || !rows.length) return '';
+  var labels = { '-1': fr?'faible':'low', '0': fr?'neutre':'neutral', '1': fr?'haute':'high', '2': 'PEAK' };
+  var lines = rows.map(function(e) {
+    var impact = labels[String(e.demand_impact)] || (fr?'neutre':'neutral');
+    var approx = (e.category === 'religious' || (e.notes && e.notes.toLowerCase().indexOf('approx') !== -1)) ? ' (⚠ dates approx.)' : '';
+    return '• ' + e.name + ' · ' + e.start_date + ' → ' + e.end_date + ' · demande ' + impact + approx;
+  });
+  return (fr ? 'ÉVÉNEMENTS DEMANDE (60j) :' : 'DEMAND EVENTS (60d):') + '\n' + lines.join('\n');
+}
+
 // Helper: get current week of month (1-4)
 function getWeekOfMonth() {
   return Math.ceil(new Date().getDate() / 7);
@@ -19047,6 +19078,10 @@ async function loadMorningBrief(forceRefresh = false) {
   dataLines.push('');
   if (yourPrice) dataLines.push((fr?'PRIX':'PRICE') + ': ' + yourPrice + '€/nuit' + (avgMarket ? ' (' + (fr?'marché':'market') + ': ' + avgMarket + '€)' : ''));
   if (activeEvents.length) dataLines.push((fr?'ÉVÉNEMENTS':'EVENTS') + ': ' + activeEvents.map(e=>(e.name||e.name_fr) + (e.impact?' (impact: '+e.impact+')':'')).join(', '));
+
+  var _briefEvRows = []; try { _briefEvRows = await fetchActiveEvents(); } catch(e){}
+  var _briefEvBlock = formatEventsForPrompt(_briefEvRows, fr);
+  if (_briefEvBlock) dataLines.push(_briefEvBlock);
 
   const briefSystem = fr
     ? 'Tu es l\'assistant ops d\'une villa de luxe. Génère le brief matinal : cartes d\'action prioritaires construites UNIQUEMENT à partir des faits présents dans DATA. N\'invente JAMAIS de nom, de nombre d\'invités, de date ni d\'arrivée. Si une info est absente, ne la mentionne pas. Si DATA ne contient rien d\'urgent, retourne un array vide []. Langue : français. JSON array uniquement.'
