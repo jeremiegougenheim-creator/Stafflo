@@ -12150,65 +12150,9 @@ async function chatSend() {
     if (!isAriaOrchestrator
         && /garde\s+(ça|ca)\s+en\s+m[ée]moire|m[ée]morise|retiens/i.test(text)
         && /\+?\d[\d\s]{6,}|[\w.+-]+@[\w-]+\.[a-z]{2,}|@\w{3,}/i.test(text)) {
-      delete window._prestaCanal; // invalide tout callback précédent
       typing.style.display = 'none';
       var _fr2 = lang === 'fr';
-      var _pSys = 'Extract a villa service provider from the text. Return ONLY valid JSON: {"name":"","type":"","contact_value":""}\nname = full name of the person, type = service type (massage, plombier, etc.), contact_value = raw phone number, email address, or handle as written. Empty string if absent. NEVER invent.';
-      var _pRaw = '';
-      try { _pRaw = await callBestAI('extract', _pSys, text, 120); } catch(e){}
-      var _pData = {};
-      try { var _pJson = (_pRaw||'').replace(/```[a-z]*/gi,'').replace(/```/g,'').trim(); _pData = JSON.parse(_pJson); } catch(e){}
-      var _pName = (_pData.name||'').trim();
-      var _pContact = (_pData.contact_value||'').trim();
-      var _pType = (_pData.type||'').trim();
-      // Garde : name ou contact absent → ARIA demande, jamais d'invention
-      if (!_pName || !_pContact) {
-        var _missing = !_pName
-          ? (_fr2 ? 'le nom du prestataire' : 'the provider name')
-          : (_fr2 ? 'le contact (tél/email)' : 'the contact (phone/email)');
-        addChatBubble('ai', (_fr2 ? 'Il me manque ' : 'I\'m missing ') + _missing + (_fr2 ? ', peux-tu me le redonner ?' : ', can you give it to me?'), []);
-        return;
-      }
-      // Afficher les boutons de canal (réutilise .aria-quick-chip)
-      var _canalMap = [
-        {k:'whatsapp',l:'WhatsApp'},{k:'phone',l:_fr2?'Téléphone':'Phone'},{k:'sms',l:'SMS'},
-        {k:'email',l:'Email'},{k:'telegram',l:'Telegram'},{k:'wechat',l:'WeChat'},
-        {k:'line',l:'Line'},{k:'signal',l:'Signal'},{k:'other',l:_fr2?'Autre':'Other'}
-      ];
-      var _chipsHtml = '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">' +
-        _canalMap.map(function(c){
-          return '<button class="aria-quick-chip" onclick="if(window._prestaCanal)window._prestaCanal(\'' + c.k + '\');this.closest(\'[data-canal-row]\').querySelectorAll(\'button\').forEach(function(b){b.disabled=true})">' + c.l + '</button>';
-        }).join('') + '</div>';
-      var _cRow = document.createElement('div');
-      _cRow.className = 'chat-bubble ai';
-      _cRow.setAttribute('data-canal-row','1');
-      _cRow.innerHTML = (_fr2
-        ? '📇 <strong>' + _pName + '</strong>' + (_pType ? ' · ' + _pType : '') + ' · <code>' + _pContact + '</code><br>Via quel canal ?'
-        : '📇 <strong>' + _pName + '</strong>' + (_pType ? ' · ' + _pType : '') + ' · <code>' + _pContact + '</code><br>Which contact channel?')
-        + _chipsHtml;
-      var _msgs2 = document.getElementById('chatMessages');
-      if (_msgs2) { _msgs2.appendChild(_cRow); if (typeof scrollChat === 'function') scrollChat(); }
-      // Callback canal — single-use, cleared avant POST
-      window._prestaCanal = async function(canal) {
-        delete window._prestaCanal;
-        var _uid = typeof getUserId === 'function' ? getUserId() : null;
-        if (!_uid) { addChatBubble('ai', _fr2 ? 'Non connecté.' : 'Not logged in.', []); return; }
-        var _body = { owner_id: _uid, name: _pName, type: _pType || null, contact_channel: canal, share_with_guests: true };
-        if (canal === 'email') { _body.email = _pContact; } else { _body.phone = _pContact; }
-        try {
-          var _rp = await fetch(SB_URL + '/rest/v1/prestataires', {
-            method: 'POST',
-            headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
-            body: JSON.stringify(_body)
-          });
-          if (!_rp.ok) throw new Error('HTTP ' + _rp.status);
-          _prestaCache = null; // invalide cache lecture
-          var _cLabel = {whatsapp:'WhatsApp',phone:_fr2?'Téléphone':'Phone',sms:'SMS',email:'Email',telegram:'Telegram',wechat:'WeChat',line:'Line',signal:'Signal',other:_fr2?'Autre':'Other'}[canal] || canal;
-          addChatBubble('ai', '✓ ' + _pName + (_pType ? ' (' + _pType + ')' : '') + (_fr2 ? ' enregistré' : ' saved') + ' · ' + _cLabel + ' · ' + _pContact, []);
-        } catch(e) {
-          addChatBubble('ai', '⚠ ' + (_fr2 ? 'Erreur enregistrement' : 'Save error') + ' : ' + (e.message || ''), []);
-        }
-      };
+      await startPrestaCapture(text, _fr2);
       return;
     }
 
@@ -12828,6 +12772,22 @@ async function handleChatEmailAnalysis(text) {
     await handleWAConvUnknown(text);
     return;
   }
+
+  // ── Classify GUEST vs PROVIDER before CRM extraction ──
+  // PROVIDER (confiant) → carnet prestataires via startPrestaCapture.
+  // GUEST / UNCLEAR / erreur / timeout → chemin CRM inchangé (défaut absolu).
+  var _classRaw = '';
+  try {
+    _classRaw = await callBestAI('fast_classify',
+      'Classify this pasted message. Reply with ONE word only:\nGUEST (someone wanting to book or stay at the villa — has dates, guest count, or a reservation),\nPROVIDER (a service provider being shared — masseur, chef, plumber, driver, etc. — a name + contact + service, NO stay request),\nUNCLEAR (anything else).\nOne word: GUEST, PROVIDER, or UNCLEAR.',
+      text, 30);
+  } catch(e){}
+  if ((_classRaw||'').trim().toUpperCase().replace(/[^A-Z]/g,'') === 'PROVIDER') {
+    document.getElementById('chatTyping').style.display = 'none';
+    await startPrestaCapture(text, fr);
+    return;
+  }
+  // GUEST, UNCLEAR, erreur → extraction CRM comme avant
 
   var p1System = buildExtractSystemPrompt(today);
 
@@ -16907,6 +16867,67 @@ function formatPrestaForPrompt(rows, fr) {
     ? 'PRESTATAIRES VILLA (contacts réels — n\'utiliser QUE ces valeurs, JAMAIS inventer) :'
     : 'VILLA SERVICE PROVIDERS (real contacts — use ONLY these values, NEVER invent):';
   return hdr + '\n' + lines.join('\n');
+}
+
+// startPrestaCapture: extract name/type/contact from text, show canal chips, save to prestataires.
+// Called from "mémorise" intercept (sendAriaModal) AND from GUEST/PROVIDER classifier (handleChatEmailAnalysis).
+async function startPrestaCapture(text, fr2) {
+  delete window._prestaCanal;
+  var _pSys = 'Extract a villa service provider from the text. Return ONLY valid JSON: {"name":"","type":"","contact_value":""}\nname = full name of the person, type = service type (massage, plombier, etc.), contact_value = raw phone number, email address, or handle as written. Empty string if absent. NEVER invent.';
+  var _pRaw = '';
+  try { _pRaw = await callBestAI('extract', _pSys, text, 120); } catch(e){}
+  var _pData = {};
+  try { var _pJson = (_pRaw||'').replace(/```[a-z]*/gi,'').replace(/```/g,'').trim(); _pData = JSON.parse(_pJson); } catch(e){}
+  var _pName = (_pData.name||'').trim();
+  var _pContact = (_pData.contact_value||'').trim();
+  var _pType = (_pData.type||'').trim();
+  // Garde : name ou contact absent → ARIA demande, jamais d'invention
+  if (!_pName || !_pContact) {
+    var _missing = !_pName
+      ? (fr2 ? 'le nom du prestataire' : 'the provider name')
+      : (fr2 ? 'le contact (tél/email)' : 'the contact (phone/email)');
+    addChatBubble('ai', (fr2 ? 'Il me manque ' : 'I\'m missing ') + _missing + (fr2 ? ', peux-tu me le redonner ?' : ', can you give it to me?'), []);
+    return;
+  }
+  var _canalMap = [
+    {k:'whatsapp',l:'WhatsApp'},{k:'phone',l:fr2?'Téléphone':'Phone'},{k:'sms',l:'SMS'},
+    {k:'email',l:'Email'},{k:'telegram',l:'Telegram'},{k:'wechat',l:'WeChat'},
+    {k:'line',l:'Line'},{k:'signal',l:'Signal'},{k:'other',l:fr2?'Autre':'Other'}
+  ];
+  var _chipsHtml = '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">' +
+    _canalMap.map(function(c){
+      return '<button class="aria-quick-chip" onclick="if(window._prestaCanal)window._prestaCanal(\'' + c.k + '\');this.closest(\'[data-canal-row]\').querySelectorAll(\'button\').forEach(function(b){b.disabled=true})">' + c.l + '</button>';
+    }).join('') + '</div>';
+  var _cRow = document.createElement('div');
+  _cRow.className = 'chat-bubble ai';
+  _cRow.setAttribute('data-canal-row','1');
+  _cRow.innerHTML = (fr2
+    ? '📇 <strong>' + _pName + '</strong>' + (_pType ? ' · ' + _pType : '') + ' · <code>' + _pContact + '</code><br>Via quel canal ?'
+    : '📇 <strong>' + _pName + '</strong>' + (_pType ? ' · ' + _pType : '') + ' · <code>' + _pContact + '</code><br>Which contact channel?')
+    + _chipsHtml;
+  var _msgs2 = document.getElementById('chatMessages');
+  if (_msgs2) { _msgs2.appendChild(_cRow); if (typeof scrollChat === 'function') scrollChat(); }
+  // Callback canal — single-use, cleared avant POST
+  window._prestaCanal = async function(canal) {
+    delete window._prestaCanal;
+    var _uid = typeof getUserId === 'function' ? getUserId() : null;
+    if (!_uid) { addChatBubble('ai', fr2 ? 'Non connecté.' : 'Not logged in.', []); return; }
+    var _body = { owner_id: _uid, name: _pName, type: _pType || null, contact_channel: canal, share_with_guests: true };
+    if (canal === 'email') { _body.email = _pContact; } else { _body.phone = _pContact; }
+    try {
+      var _rp = await fetch(SB_URL + '/rest/v1/prestataires', {
+        method: 'POST',
+        headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+        body: JSON.stringify(_body)
+      });
+      if (!_rp.ok) throw new Error('HTTP ' + _rp.status);
+      _prestaCache = null;
+      var _cLabel = {whatsapp:'WhatsApp',phone:fr2?'Téléphone':'Phone',sms:'SMS',email:'Email',telegram:'Telegram',wechat:'WeChat',line:'Line',signal:'Signal',other:fr2?'Autre':'Other'}[canal] || canal;
+      addChatBubble('ai', '✓ ' + _pName + (_pType ? ' (' + _pType + ')' : '') + (fr2 ? ' enregistré' : ' saved') + ' · ' + _cLabel + ' · ' + _pContact, []);
+    } catch(e) {
+      addChatBubble('ai', '⚠ ' + (fr2 ? 'Erreur enregistrement' : 'Save error') + ' : ' + (e.message || ''), []);
+    }
+  };
 }
 
 // Helper: get current week of month (1-4)

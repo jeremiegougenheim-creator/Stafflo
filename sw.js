@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v191 (carnet prestataires : lecture ancrée + écriture avec canal)
-const CACHE = 'stafflo-v191';
+// Stafflo Service Worker — v192 (classifieur invité/prestataire avant création CRM)
+const CACHE = 'stafflo-v192';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
