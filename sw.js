@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v196 (note staff assemblée par code depuis CRM + villa_settings)
-const CACHE = 'stafflo-v196';
+// Stafflo Service Worker — v196b (anti-doublon CRM additif : match fort arrival+nom)
+const CACHE = 'stafflo-v196b';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

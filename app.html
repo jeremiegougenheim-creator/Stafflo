@@ -25070,33 +25070,40 @@ window.addEventListener('DOMContentLoaded', function() {
 
   // ──────────────── Auto-save guest avec UNDO ────────────────
   async function autoSaveGuest(g, sourceText){
-    // Cherche duplicate
-    var norm = function(s){ return (s||'').toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,''); };
-    var gN = norm(g.name);
-    var existing = (clients||[]).find(function(c){ return norm(c.name) === gN; });
     var f = fr();
+    // Guard anti-junk : pas d'arrivée ET aucun invité → fragment, on n'enregistre pas
+    if (!g.arrival && (!g.guests || +g.guests <= 0)) { return null; }
+
+    // findDuplicate — match fort : même date d'arrivée (exacte) + ≥1 token de nom commun
+    var _dn = function(s){ return (s||''). toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,' ').trim(); };
+    var _newTok = _dn(g.name).split(/\s+/).filter(function(t){ return t.length >= 2; });
+    var existing = (!g.arrival || !_newTok.length) ? null : ((clients||[]).find(function(c){
+      if (!c.arrival || c.arrival.slice(0,10) !== (g.arrival||'').slice(0,10)) return false;
+      return _dn(c.name).split(/\s+/).filter(function(t){ return t.length >= 2; })
+        .some(function(t){ return _newTok.indexOf(t) >= 0; });
+    }) || null);
 
     if (existing){
-      // Smart merge silencieux
+      // Fusion additive : on ne remplace JAMAIS un champ non-vide existant
       var idx = clients.indexOf(existing);
       var m = Object.assign({}, existing);
-      ['nat','phone','source','arrival','departure'].forEach(function(k){
+      ['nat','phone','email','source','arrival','departure'].forEach(function(k){
         if (g[k] && !m[k]) m[k] = g[k];
       });
-      if (g.guests && +g.guests > 0) m.guests = g.guests;
-      if (g.price && +g.price > 0) m.price = g.price;
-      if (g.commission != null) m.commission = g.commission;
+      if (g.guests && +g.guests > 0 && !m.guests) m.guests = g.guests;
+      if (g.price && +g.price > 0 && !m.price) m.price = g.price;
+      if (g.commission != null && !m.commission) m.commission = g.commission;
       if (g.bookingStatus === 'confirmed' && m.bookingStatus === 'inquiry') m.bookingStatus = 'confirmed';
-      // Append notes
-      var newNote = g.notes || '';
-      if (newNote && (!m.notes || m.notes.indexOf(newNote.slice(0,25)) < 0)){
-        m.notes = m.notes ? (m.notes + ' · ' + newNote) : newNote;
+      // Append notes avec tag source/date
+      var _newNote = (g.notes || '').trim();
+      if (_newNote && (!m.notes || m.notes.indexOf(_newNote.slice(0,25)) < 0)){
+        var _tag = '[+' + (g.source || 'src') + ' ' + new Date().toISOString().slice(0,10) + '] ';
+        m.notes = m.notes ? (m.notes + '\n' + _tag + _newNote) : _newNote;
       }
       m.updatedAt = new Date().toISOString();
       clients[idx] = m;
       if (typeof saveLocal==='function') saveLocal();
       if (typeof renderAll==='function') renderAll();
-      // AWAIT le push pour vérifier la persistance
       var ok = await safePushToSupabase(m);
       if (ok) {
         toast('🔄 ' + (existing.name||'').split(' ')[0] + (f?' · fiche mise à jour ✓ Supabase':' · record updated ✓ Supabase'));
