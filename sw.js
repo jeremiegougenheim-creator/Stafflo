@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v185 (snapshot marché depuis concurrents locaux)
-const CACHE = 'stafflo-v185';
+// Stafflo Service Worker — v186 (brief cards : top 3 par urgence, repli supprimé)
+const CACHE = 'stafflo-v186';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
