@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v195 (durcissement prompt ARIA : no-invention rule pour notes/briefs)
-const CACHE = 'stafflo-v195';
+// Stafflo Service Worker — v196 (note staff assemblée par code depuis CRM + villa_settings)
+const CACHE = 'stafflo-v196';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

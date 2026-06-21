@@ -9715,6 +9715,96 @@ function buildStaffBrief(staffMember, cfg, fr) {
 }
 window.buildStaffBrief = buildStaffBrief;
 
+function buildStaffNote(query, fr) {
+  var cfg = getCfg();
+  var villaName = cfg.villa || 'Villa';
+  var today = new Date();
+  var todayISO = today.toISOString().slice(0,10);
+
+  // 1. Find guest: match capitalised words from query against CRM first names
+  var guest = null;
+  var _candidates = (query || '').match(/\b[A-ZÀÁÂÉÈÊËÎÏÔÙÛÜ][a-zàáâéèêëîïôùûüÿ]{2,}\b/g) || [];
+  var _stopRe = /^(Note|Brief|Planning|Message|Pour|Arrivée|Arriv|Personnel|Staff|Equipe|Équipe|Team|Préparer|Prepare|Villa|Les|Son|Ses|Leur|Dans|Sur|Avec|Check|Pers|Heure|Vols?)$/i;
+  _candidates = _candidates.filter(function(w) { return !_stopRe.test(w); });
+  if (typeof clients !== 'undefined' && Array.isArray(clients)) {
+    for (var _ni = 0; _ni < _candidates.length && !guest; _ni++) {
+      var _cand = _candidates[_ni].toLowerCase();
+      guest = clients.find(function(c) {
+        var _first = (c.name || '').split(/\s+/)[0].toLowerCase();
+        return _first === _cand && (typeof isFirmBooking === 'function' ? isFirmBooking(c) : c.bookingStatus === 'confirmed');
+      }) || null;
+    }
+    if (!guest) {
+      var _upcoming = clients.filter(function(c) {
+        return (typeof isFirmBooking === 'function' ? isFirmBooking(c) : c.bookingStatus === 'confirmed')
+          && c.arrival && c.arrival.slice(0,10) >= todayISO;
+      }).sort(function(a,b) { return (a.arrival||'').localeCompare(b.arrival||''); });
+      if (_upcoming.length) guest = _upcoming[0];
+    }
+  }
+
+  // 2. Staff list from cfg
+  var _staff = [];
+  try {
+    if (Array.isArray(cfg.staffMembers) && cfg.staffMembers.length) {
+      _staff = cfg.staffMembers;
+    } else if (cfg.staff) {
+      _staff = cfg.staff.split(/\n/).map(function(s) {
+        var m = s.match(/^([^(]+)\s*(?:\(([^)]+)\))?/);
+        return m ? { name: (m[1]||'').trim(), role: (m[2]||'').trim() } : { name: s.trim(), role: '' };
+      }).filter(function(s) { return s.name; });
+    }
+  } catch(e) {}
+
+  // 3. Assemble note — facts from data, [à confirmer] for everything else
+  var _nc = fr ? '[à confirmer]' : '[to confirm]';
+  var lines = [];
+  var todayStr = today.toLocaleDateString(fr ? 'fr-FR' : 'en-US', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+  lines.push('📋 *' + (fr ? 'Note pour le personnel' : 'Staff note') + ' — ' + villaName + '*');
+  lines.push(todayStr);
+  lines.push('');
+
+  lines.push('*' + (fr ? 'SÉJOUR' : 'STAY') + '*');
+  if (guest) {
+    var _arr = (guest.arrival || '').slice(0,10);
+    var _dep = (guest.departure || '').slice(0,10);
+    var _nights = (_arr && _dep) ? Math.round((new Date(_dep) - new Date(_arr)) / 86400000) : null;
+    lines.push((fr ? 'Invités : ' : 'Guests: ') + '*' + (guest.name || _nc) + '*');
+    lines.push((fr ? 'Personnes : ' : 'Party: ') + (guest.guests ? '*' + guest.guests + (fr ? ' pers.*' : ' guests*') : '*' + _nc + '*'));
+    lines.push((fr ? 'Arrivée : ' : 'Arrival: ') + (_arr ? '*' + _arr + '*' : '*' + _nc + '*'));
+    lines.push((fr ? 'Départ : ' : 'Departure: ') + (_dep ? '*' + _dep + '*' : '*' + _nc + '*'));
+    if (_nights) lines.push((fr ? 'Durée : ' : 'Duration: ') + '*' + _nights + (fr ? ' nuits*' : ' nights*'));
+    if ((guest.notes || '').trim()) lines.push((fr ? 'Notes CRM : ' : 'CRM notes: ') + guest.notes.trim());
+  } else {
+    lines.push((fr ? 'Invités : ' : 'Guests: ') + '*' + _nc + '*');
+    lines.push((fr ? 'Arrivée : ' : 'Arrival: ') + '*' + _nc + '*');
+    lines.push((fr ? 'Départ : ' : 'Departure: ') + '*' + _nc + '*');
+  }
+  lines.push('');
+
+  lines.push('*' + (fr ? 'VILLA' : 'VILLA') + '*');
+  lines.push((fr ? 'Chambres : ' : 'Bedrooms: ') + (cfg.bedrooms ? '*' + cfg.bedrooms + '*' : '*' + _nc + '*'));
+  lines.push((fr ? 'Capacité max : ' : 'Max capacity: ') + (cfg.maxGuests ? '*' + cfg.maxGuests + (fr ? ' pers.*' : ' guests*') : '*' + _nc + '*'));
+  lines.push('');
+
+  if (_staff.length) {
+    lines.push('*' + (fr ? 'ÉQUIPE' : 'TEAM') + '*');
+    _staff.forEach(function(s) { lines.push('• ' + s.name + (s.role ? ' (' + s.role + ')' : '')); });
+    lines.push('');
+  }
+
+  lines.push('*' + (fr ? 'À CONFIRMER AVEC LE CLIENT' : 'TO CONFIRM WITH GUEST') + '*');
+  lines.push('☐ ' + (fr ? "Heure d'arrivée" : 'Check-in time') + ' · ' + _nc);
+  lines.push('☐ ' + (fr ? 'Heure de départ' : 'Check-out time') + ' · ' + _nc);
+  lines.push('☐ ' + (fr ? 'Allergies / régimes alimentaires' : 'Allergies / dietary') + ' · ' + _nc);
+  lines.push('☐ ' + (fr ? 'Services (massage, chef, transfert…)' : 'Services (massage, chef, transfer…)') + ' · ' + _nc);
+  lines.push('☐ ' + (fr ? "Vol / heure d'atterrissage" : 'Flight / landing time') + ' · ' + _nc);
+  lines.push('');
+  lines.push('_Stafflo ✦_');
+  return lines.join('\n');
+}
+window.buildStaffNote = buildStaffNote;
+
 function buildGuestMessage(c, cfg, fr) {
   var today = new Date();
   var arr = c.arrival ? new Date(c.arrival) : null;
@@ -12192,6 +12282,14 @@ async function chatSend() {
       typing.style.display = 'none';
       var _fr2 = lang === 'fr';
       await startPrestaCapture(text, _fr2);
+      return;
+    }
+
+    // ── "note/brief pour le personnel/staff" → assemblée par code, zéro LLM ──
+    if (!isAriaOrchestrator
+        && /\b(note|brief|planning|message)\b.{0,50}\bpour\s+(le\s+)?(personnel|staff|[eé]quipe|team)\b/i.test(text)) {
+      typing.style.display = 'none';
+      addChatBubble('ai', buildStaffNote(text, lang === 'fr'), []);
       return;
     }
 
