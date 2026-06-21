@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v184 (ARIA lit events : contexte chat + brief nourris)
-const CACHE = 'stafflo-v184';
+// Stafflo Service Worker — v185 (snapshot marché depuis concurrents locaux)
+const CACHE = 'stafflo-v185';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

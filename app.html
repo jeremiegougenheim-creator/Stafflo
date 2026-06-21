@@ -18288,6 +18288,28 @@ function loadHomeData() {
 
 
 
+var _lastSnapDay = null;
+function maybeWriteMarketSnapshot(snap) {
+  var today = new Date().toISOString().slice(0,10);
+  if (_lastSnapDay === today) return;
+  if (typeof isAuthed !== 'function' || !isAuthed() || !getUserId()) return;
+  _lastSnapDay = today;
+  try {
+    var cfg = getCfg();
+    var villaKey = (cfg.villa || 'villa').toLowerCase().replace(/[^a-z0-9]/g, '');
+    var body = Object.assign({}, snap, {
+      owner_id: getUserId(),
+      villa_key: villaKey,
+      source: 'local_competitors'
+    });
+    fetch(SB_URL + '/rest/v1/market_snapshots', {
+      method: 'POST',
+      headers: Object.assign({}, authHeaders(), { Prefer: 'return=minimal' }),
+      body: JSON.stringify(body)
+    }).catch(function(){});
+  } catch(e) {}
+}
+
 function renderMarketBand() {
   const comps = loadSavedCompetitors ? loadSavedCompetitors() : [];
   const el = document.getElementById('marketBandContent');
@@ -18311,6 +18333,18 @@ function renderMarketBand() {
     '</div>' +
     '<div>' + rows + '</div>';
   el.innerHTML = html;
+  // v185 — persist market snapshot (throttled 1/day, only if real data)
+  var _cp = sortedComps.map(function(x){ return x.price; }).filter(function(p){ return p > 0; });
+  if (_cp.length && yourPrice > 0) {
+    maybeWriteMarketSnapshot({
+      our_price: Math.round(yourPrice),
+      comp_median: _cp[Math.floor((_cp.length - 1) / 2)],
+      comp_min: _cp[0],
+      comp_max: _cp[_cp.length - 1],
+      comp_count: _cp.length,
+      raw: { competitors: comps, our_price: yourPrice }
+    });
+  }
 }
 
 
