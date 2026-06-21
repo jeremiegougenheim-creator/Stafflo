@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v199 (villa-hero-banner : bannière photo DarJ sous le header)
-const CACHE = 'stafflo-v199';
+// Stafflo Service Worker — v200 (retire banner photo du Today, #v3SubHdr redevient seul titre)
+const CACHE = 'stafflo-v200';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
