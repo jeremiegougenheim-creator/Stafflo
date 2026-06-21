@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v196b (anti-doublon CRM additif : match fort arrival+nom)
-const CACHE = 'stafflo-v196b';
+// Stafflo Service Worker — v197 (bouton Brief staff → buildStaffNote direct, zéro LLM)
+const CACHE = 'stafflo-v197';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
