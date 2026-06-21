@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v188 (inférence canal/type/commission depuis email WOW)
-const CACHE = 'stafflo-v188';
+// Stafflo Service Worker — v189 (label tab actif en gold)
+const CACHE = 'stafflo-v189';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
