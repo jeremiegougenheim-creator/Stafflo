@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v186 (brief cards : top 3 par urgence, repli supprimé)
-const CACHE = 'stafflo-v186';
+// Stafflo Service Worker — v187 (fix calendrier + largeur desktop 1100px)
+const CACHE = 'stafflo-v187';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
