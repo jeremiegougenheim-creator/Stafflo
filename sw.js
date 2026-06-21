@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v189 (label tab actif en gold)
-const CACHE = 'stafflo-v189';
+// Stafflo Service Worker — v190 (bottom nav plus fin)
+const CACHE = 'stafflo-v190';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
