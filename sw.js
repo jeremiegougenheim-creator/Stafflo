@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v187 (fix calendrier + largeur desktop 1100px)
-const CACHE = 'stafflo-v187';
+// Stafflo Service Worker — v188 (inférence canal/type/commission depuis email WOW)
+const CACHE = 'stafflo-v188';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
