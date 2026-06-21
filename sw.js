@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v194 (fix scroll ARIA : min-height:0 sur aria-modal-body)
-const CACHE = 'stafflo-v194';
+// Stafflo Service Worker — v195 (durcissement prompt ARIA : no-invention rule pour notes/briefs)
+const CACHE = 'stafflo-v195';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
