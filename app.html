@@ -15431,22 +15431,77 @@ async function saveImapConnection() {
 
 // ══════════════════════════════════════════════════════
 // GMAIL DIRECT PULL — client-side, no Edge Function needed
+// Returns a valid Gmail access_token, refreshing if needed. Returns null if unavailable.
+// Never logs tokens. _gmailRefreshing prevents concurrent refresh races.
+var _gmailRefreshing = false;
+async function getValidGmailToken() {
+  var cfg = getCfg();
+  var conn = cfg.email_connection || {};
+  if (!conn.provider || conn.provider !== 'Google') return null;
+  // Token still valid (>5 min remaining)
+  if (conn.access_token && conn.expires_at && (conn.expires_at - Date.now()) > 300000) {
+    return conn.access_token;
+  }
+  // Another refresh in flight — wait up to 10s
+  if (_gmailRefreshing) {
+    for (var _ri = 0; _ri < 20; _ri++) {
+      await new Promise(function(res){ setTimeout(res, 500); });
+      var _c2 = (getCfg().email_connection || {});
+      if (_c2.access_token && _c2.expires_at && (_c2.expires_at - Date.now()) > 300000) return _c2.access_token;
+    }
+    return null;
+  }
+  // No refresh_token → trigger full reconsent
+  if (!conn.refresh_token) {
+    if (typeof connectEmailProvider === 'function') connectEmailProvider('google');
+    return null;
+  }
+  _gmailRefreshing = true;
+  try {
+    var r = await fetch(SB_URL + '/functions/v1/gmail-token-exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: conn.refresh_token })
+    });
+    var data = {};
+    try { data = await r.json(); } catch(e) {}
+    if (r.ok && data.access_token) {
+      conn.access_token = data.access_token;
+      conn.expires_at = Date.now() + (parseInt(data.expires_in || 3600, 10) * 1000) - 60000;
+      delete conn.last_error; delete conn.last_error_at;
+      try { await saveEmailConnection(conn); } catch(e) { cfg.email_connection = conn; setCfg(cfg); }
+      return data.access_token;
+    }
+    // invalid_grant = token revoked → clear + full reconsent
+    if (r.status === 400 || data.error === 'invalid_grant') {
+      conn.access_token = null; conn.refresh_token = null;
+      conn.last_error = 'invalid_grant'; conn.last_error_at = new Date().toISOString();
+      cfg.email_connection = conn; setCfg(cfg);
+      if (typeof connectEmailProvider === 'function') connectEmailProvider('google');
+    }
+    return null;
+  } catch(e) {
+    return null;
+  } finally {
+    _gmailRefreshing = false;
+  }
+}
+window.getValidGmailToken = getValidGmailToken;
+
 // Pulls emails directly from Gmail API using stored OAuth token
 // and inserts them into the email_inbox Supabase table.
 // ══════════════════════════════════════════════════════
 async function syncGmailDirect(opts) {
   opts = opts || {};
-  var cfg = getCfg();
-  var conn = cfg.email_connection;
-  if (!conn || conn.provider !== 'Google' || !conn.access_token) {
-    return { skipped: true, reason: 'no gmail connection' };
-  }
   // RLS on email_inbox requires auth.uid() = owner_id — bail in demo / unauth
   if (!isAuthed() || !getUserId()) {
     return { skipped: true, reason: 'not_authed' };
   }
+  var token = await getValidGmailToken();
+  if (!token) return { skipped: true, reason: 'no_valid_token' };
+  var cfg = getCfg();
+  var conn = cfg.email_connection || {};
   var ownerId = getUserId();
-  var token = conn.access_token;
   var sbKey = cfg.sbKey || SB_ANON;
   var fr = lang === 'fr';
 

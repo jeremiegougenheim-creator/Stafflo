@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v181 (chips contextuels ARIA depuis données réelles)
-const CACHE = 'stafflo-v181';
+// Stafflo Service Worker — v183 (refresh Gmail avant chaque appel — fin du 401 token expiré)
+const CACHE = 'stafflo-v183';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
