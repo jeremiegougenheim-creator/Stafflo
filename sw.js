@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v178 (V3 onboarding canonique + Appartement/Maison campagne, legacy neutralisé)
-const CACHE = 'stafflo-v178';
+// Stafflo Service Worker — v179 (onboarding V3 → 4 écrans value-first : splash/wow/villa+type/canaux+équipe)
+const CACHE = 'stafflo-v179';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
