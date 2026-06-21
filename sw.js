@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v179 (onboarding V3 → 4 écrans value-first : splash/wow/villa+type/canaux+équipe)
-const CACHE = 'stafflo-v179';
+// Stafflo Service Worker — v180 (wow paste-box live + exemple → carte invité ARIA)
+const CACHE = 'stafflo-v180';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -2596,8 +2596,9 @@ window.addEventListener('keydown', function(e){
       <section class="onbV3-screen" data-step="wow">
         <h2 class="onbV3-h2" data-fr="Le test en 5 secondes" data-en="The 5-second test">Le test en 5 secondes</h2>
         <p class="onbV3-sub" data-fr="Aucune saisie. Aucun compte." data-en="No typing. No account.">Aucune saisie. Aucun compte.</p>
-        <textarea class="onbV3-wow-input" placeholder="Collez un email de réservation…" rows="3" disabled></textarea>
-        <button type="button" class="onbV3-wow-sample" data-fr="Voir un exemple" data-en="See an example">Voir un exemple</button>
+        <textarea class="onbV3-wow-input" id="onbV3WowInput" placeholder="Collez un email de réservation…" rows="3"></textarea>
+        <button type="button" id="onbV3WowAnalyze" class="onbV3-wow-sample" style="display:none;margin-top:8px;width:100%" data-fr="Analyser" data-en="Analyze">Analyser</button>
+        <button type="button" id="onbV3WowSample" class="onbV3-wow-sample" data-fr="Voir un exemple" data-en="See an example">Voir un exemple</button>
         <div id="onbV3WowResult" style="display:none"></div>
       </section>
 
@@ -26498,6 +26499,106 @@ window.addEventListener('DOMContentLoaded', function() {
         debouncedPersist();
       });
     });
+
+    // WOW screen — step 1 (v180)
+    var wowInput   = $('onbV3WowInput');
+    var wowAnalyze = $('onbV3WowAnalyze');
+    var wowSample  = $('onbV3WowSample');
+    var wowResult  = $('onbV3WowResult');
+    var _wowBusy   = false;
+
+    var SAMPLE = { guest:'Sophie Bissuel', checkin:'01/05/2026', checkout:'09/05/2026', nights:8, amount:'3 170 €', channel:'Airbnb' };
+
+    function renderWowCard(data) {
+      if (!wowResult) return;
+      var g  = data.guest    || '—';
+      var ci = data.checkin  || '—';
+      var co = data.checkout || '—';
+      var ni = data.nights   ? data.nights + ' nuits' : '—';
+      var am = data.amount   || '—';
+      var ch = data.channel  || '';
+      wowResult.innerHTML =
+        '<div style="background:#0F2318;border-radius:14px;padding:16px 18px;margin-top:14px;color:#FAF6EE">' +
+          '<div style="font-size:9px;letter-spacing:3px;color:rgba(229,199,122,.6);margin-bottom:8px">ARIA · CARTE INVITÉ</div>' +
+          '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:22px;font-weight:600;color:#FAF6EE;margin-bottom:10px">' + g + '</div>' +
+          '<div style="font-size:13px;color:rgba(250,246,238,.75);line-height:1.6">' +
+            ci + ' → ' + co +
+            '<span style="color:#C9963A;margin:0 8px">·</span>' + ni +
+            '<span style="color:#C9963A;margin:0 8px">·</span>' + am +
+          '</div>' +
+          (ch ? '<div style="margin-top:8px;font-size:10px;letter-spacing:1.5px;color:#C9963A">' + ch.toUpperCase() + '</div>' : '') +
+          '<div style="margin-top:12px;display:flex;gap:16px">' +
+            '<div style="font-size:11px;color:rgba(250,246,238,.55)">6 <span style="color:rgba(250,246,238,.4)">messages prêts</span></div>' +
+            '<div style="font-size:11px;color:rgba(250,246,238,.55)">3 <span style="color:rgba(250,246,238,.4)">tâches staff</span></div>' +
+          '</div>' +
+        '</div>';
+      wowResult.style.display = 'block';
+    }
+
+    function wowExtract() {
+      if (_wowBusy) return;
+      if (!wowInput || !wowResult) return;
+      var text = wowInput.value.trim();
+      if (text.length < 40) {
+        wowResult.innerHTML = '<div style="padding:14px;font-size:13px;color:#6B6760;font-style:italic">' +
+          (fr() ? 'ARIA n\'a pas trouvé de résa ici. Essayez l\'exemple.' : 'ARIA didn\'t find a booking here. Try the example.') + '</div>';
+        wowResult.style.display = 'block';
+        return;
+      }
+      _wowBusy = true;
+      wowResult.innerHTML = '<div style="padding:14px;font-size:13px;color:#6B6760;font-style:italic">ARIA lit…</div>';
+      wowResult.style.display = 'block';
+      var today = new Date().toISOString().slice(0,10);
+      var sys = 'You are a booking data extractor for a luxury villa.\nRead ANY text and extract guest info.\nReturn ONLY valid JSON. No markdown. No explanation.\nToday is ' + today + '.\nFields: name (guest full name), arrival (YYYY-MM-DD), departure (YYYY-MM-DD), nights (integer), price (number — guest paid total, never host payout), source (Airbnb|Booking|Direct).\nIf a field is not found: "" for strings, 0 for numbers. NEVER invent data.';
+      var usr = 'Extract from this message:\n\n' + text.slice(0, 2000);
+      fetch(STAFFLO_PROXY, {
+        method: 'POST',
+        headers: (typeof proxyHeaders === 'function') ? proxyHeaders() : { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: 'extract', system: sys, user: usr, max_tokens: 400 })
+      })
+      .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function(d) {
+        var raw = (d.text || (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '').trim();
+        var cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        var m = cleaned.match(/\{[\s\S]*\}/);
+        if (!m) { throw new Error('no-json'); }
+        var result = JSON.parse(m[0]);
+        if (!result.name && !result.arrival) { throw new Error('empty'); }
+        function fmtDate(iso) {
+          if (!iso) return '—';
+          var parts = iso.split('-');
+          return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : iso;
+        }
+        renderWowCard({
+          guest:    result.name   || '—',
+          checkin:  fmtDate(result.arrival),
+          checkout: fmtDate(result.departure),
+          nights:   result.nights || 0,
+          amount:   result.price  ? result.price + ' €' : '—',
+          channel:  result.source || ''
+        });
+        _wowBusy = false;
+      })
+      .catch(function() {
+        wowResult.innerHTML = '<div style="padding:14px;font-size:13px;color:#6B6760;font-style:italic">' +
+          (fr() ? 'ARIA n\'a pas trouvé de résa ici. Essayez l\'exemple.' : 'ARIA didn\'t find a booking here. Try the example.') + '</div>';
+        wowResult.style.display = 'block';
+        _wowBusy = false;
+      });
+    }
+
+    if (wowSample) {
+      wowSample.addEventListener('click', function() { renderWowCard(SAMPLE); });
+    }
+    if (wowInput) {
+      wowInput.addEventListener('paste', function() { setTimeout(wowExtract, 120); });
+      wowInput.addEventListener('input', function() {
+        if (wowAnalyze) wowAnalyze.style.display = wowInput.value.trim().length > 0 ? 'block' : 'none';
+      });
+    }
+    if (wowAnalyze) {
+      wowAnalyze.addEventListener('click', wowExtract);
+    }
 
     // Swipe nav on stage
     bindSwipe();
