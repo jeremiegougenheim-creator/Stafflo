@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v202 (signature Aria veille : emblème cover Villa + filigrane + favicon vert)
-const CACHE = 'stafflo-v202';
+// Stafflo Service Worker — v203 (bandeau de marque Aria veille : photo+emblème sur toutes les pages, retrait villa-cover)
+const CACHE = 'stafflo-v203';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
