@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v203 (bandeau de marque Aria veille : photo+emblème sur toutes les pages, retrait villa-cover)
-const CACHE = 'stafflo-v203';
+// Stafflo Service Worker — v204 (bandeau photo config-driven : applyHdrCover par onglet + cfg.coverPhoto upload-ready)
+const CACHE = 'stafflo-v204';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

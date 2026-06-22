@@ -2492,8 +2492,8 @@ body.no-frame #v3SubHdr{display:none}
 /* .villa-cover — v203 strangler-fig: remplacée par #v3SubHdr photo+emblème */
 /*.villa-cover{position:relative;height:150px;border-radius:18px;overflow:hidden;margin:0 0 18px;background:#0F2318 url('assets/villa-cover-emblem.svg') center/cover no-repeat}*/
 /*@media(max-width:520px){.villa-cover{height:120px}}*/
-/* v203 — bandeau de marque Aria veille : photo + scrim + emblème */
-#v3SubHdr{position:relative;padding-left:76px;background:linear-gradient(90deg,rgba(15,35,24,.86) 0%,rgba(15,35,24,.50) 55%,rgba(15,35,24,.72) 100%),#0F2318 url('assets/hero-fr.jpg') center/cover no-repeat;border-bottom:1px solid rgba(201,150,58,.5)}
+/* v204 — bandeau config-driven : background-image posé par applyHdrCover() en JS */
+#v3SubHdr{position:relative;padding-left:76px;background-color:#0F2318;background-position:center;background-size:cover;background-repeat:no-repeat;border-bottom:1px solid rgba(201,150,58,.5)}
 #v3SubHdr::before{content:"";position:absolute;left:20px;top:50%;transform:translateY(-50%);width:44px;height:44px;background:url('assets/stafflo-mark.svg') center/contain no-repeat}
 @media(max-width:520px){#v3SubHdr{padding-left:68px}#v3SubHdr::before{width:38px;height:38px;left:16px}}
 
@@ -11623,6 +11623,19 @@ function _ariaStartRotation() {
 // ════════════════════════════════════════════
 // TABS
 // ════════════════════════════════════════════
+var VILLA_COVERS = {
+  today:    'assets/hero-fr.jpg',
+  home:     'assets/hero-fr.jpg',
+  clients:  'assets/int-dining.jpg',
+  calendar: 'assets/villa-view.jpg'
+};
+function applyHdrCover(tab) {
+  var el = document.getElementById('v3SubHdr'); if (!el) return;
+  var scrim = 'linear-gradient(90deg,rgba(15,35,24,.86),rgba(15,35,24,.50) 55%,rgba(15,35,24,.72))';
+  var cfg2 = (typeof getCfg === 'function') ? getCfg() : {};
+  var url = (cfg2 && cfg2.coverPhoto) ? cfg2.coverPhoto : (VILLA_COVERS[tab] || VILLA_COVERS.today);
+  el.style.backgroundImage = scrim + ",url('" + url + "')";
+}
 function goTab(t) {
   ['today','clients','home','calendar'].forEach(id => {
     const tab = document.getElementById('tab-'+id);
@@ -11677,6 +11690,7 @@ function goTab(t) {
   var _atl = document.getElementById('activeTabLabel');
   if (_atl) { var _atlMap = {today:lang==='fr'?'Aujourd\'hui':'Today',clients:lang==='fr'?'Guests':'Guests',home:'Villa',calendar:lang==='fr'?'Calendrier':'Calendar'}; _atl.textContent = _atlMap[t]||''; }
   localStorage.setItem('stafflo_tab', t);
+  applyHdrCover(t);
 }
 
 // ════════════════════════════════════════════
