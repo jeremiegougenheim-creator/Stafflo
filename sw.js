@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v201 (villa-cover : photo DarJ en tête de l'onglet Villa)
-const CACHE = 'stafflo-v201';
+// Stafflo Service Worker — v202 (signature Aria veille : emblème cover Villa + filigrane + favicon vert)
+const CACHE = 'stafflo-v202';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
