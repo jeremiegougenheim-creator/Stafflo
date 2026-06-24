@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v214 (crash null client + dates relatives + fallback classify + no-dispo + no-fake-action)
-const CACHE = 'stafflo-v214';
+// Stafflo Service Worker — v215 (fix crash g.phone null — conv staff sans infos séjour)
+const CACHE = 'stafflo-v215';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

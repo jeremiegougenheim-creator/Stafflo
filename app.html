@@ -25796,6 +25796,7 @@ window.addEventListener('DOMContentLoaded', function() {
   // ──────────────── Générateur d'actions contextuelles ────────────────
   // Pas de LLM ici. Le LLM est appelé seulement quand l'user clique "Envoyer".
   function generateContextualActions(g, sourceText){
+    if (!g) return [];
     var f = fr();
     var fam = detectFamily(sourceText || '');
     var guestLang = detectLang ? detectLang(sourceText||'') : detectGuestLang(sourceText||'');
@@ -26464,6 +26465,10 @@ window.addEventListener('DOMContentLoaded', function() {
 
       // Auto-save + actions
       var saved = await autoSaveGuest(g, cleanedForLLM);
+      if (!saved) {
+        if (typing) typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?'Lu — pas d\'infos séjour exploitables (dates, nb personnes). Conv de service ou message incomplet ?':'Read — no usable stay info (dates, guest count). Staff message or incomplete data?');
+        return true;
+      }
       var actions = generateContextualActions(saved, cleanedForLLM);
       var cardHtml = renderExtractedCard(saved, actions, cleanedForLLM);
       if (typing){
