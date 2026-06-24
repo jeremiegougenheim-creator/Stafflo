@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v209 (intention nouveau sejour → action Ajouter au CRM)
-const CACHE = 'stafflo-v209';
+// Stafflo Service Worker — v210 (scroll zone messages ARIA — flex min-height:0)
+const CACHE = 'stafflo-v210';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
