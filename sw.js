@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v217 (triage: filtrer!=jeter — owner/staff/maison rangés au lieu d'être ignorés)
-const CACHE = 'stafflo-v217';
+// Stafflo Service Worker — v218 (voice: iOS-safe pickMime, VAD auto-stop, waveform, multilingue, transcribe-to-input)
+const CACHE = 'stafflo-v218';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
