@@ -26475,9 +26475,11 @@ window.addEventListener('DOMContentLoaded', function() {
         return true;
       }
 
-      // Pas de nom → pas de fiche, juste un résumé
+      // Pas de nom → ingère + classe (owner/staff/maison au lieu de jeter)
       if (!g.name){
-        if (typing) typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?'Lu, mais pas assez d\'infos pour identifier un client.':'Read, but not enough info to identify a client.');
+        var _cid2 = await ingestConversation(cleanedForLLM, classification.source, '', '', { type: classification.type }, null);
+        var _cls2 = _cid2 ? await classifyConversation(_cid2, cleanedForLLM, '', '', typing) : null;
+        if (!_cls2 && typing) typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?'Lu, mais pas assez d\'infos pour identifier un client.':'Read, but not enough info to identify a client.');
         return true;
       }
 
@@ -26496,7 +26498,9 @@ window.addEventListener('DOMContentLoaded', function() {
       // Auto-save + actions
       var saved = await autoSaveGuest(g, cleanedForLLM);
       if (!saved) {
-        if (typing) typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?'Lu — pas d\'infos séjour exploitables (dates, nb personnes). Conv de service ou message incomplet ?':'Read — no usable stay info (dates, guest count). Staff message or incomplete data?');
+        var _cid = await ingestConversation(cleanedForLLM, classification.source, g.name||'', g.phone||'', { extracted: { name: g.name, phone: g.phone } }, null);
+        var _cls = _cid ? await classifyConversation(_cid, cleanedForLLM, g.name||'', g.phone||'', typing) : null;
+        if (!_cls && typing) typing.innerHTML = '<strong>ARIA</strong> · ' + (fr()?'Lu — pas d\'infos séjour exploitables (dates, nb personnes). Conv de service ou message incomplet ?':'Read — no usable stay info (dates, guest count). Staff message or incomplete data?');
         return true;
       }
       var actions = generateContextualActions(saved, cleanedForLLM);
@@ -26522,6 +26526,138 @@ window.addEventListener('DOMContentLoaded', function() {
       if (typing) typing.innerHTML = '<strong>ARIA</strong> · <span style="color:var(--red)">⚠ ' + (e.message||(lang==='fr'?'Erreur':'Error')) + '</span>';
       return true;
     }
+  }
+
+  // ── v217 : ingestion + cerveau de tri (filtrer ≠ jeter) ──────────────────────────────
+  async function ingestConversation(body, source, fromName, fromHandle, rawExtra, occurredAt){
+    try {
+      var payload = {
+        source: source || 'paste',
+        direction: 'in',
+        body: (body || '').slice(0, 8000),
+        from_name: fromName || null,
+        from_handle: fromHandle || null,
+        occurred_at: occurredAt || new Date().toISOString(),
+        raw: rawExtra || {}
+      };
+      var r = await fetch(SB_URL + '/rest/v1/conversations', {
+        method: 'POST',
+        headers: Object.assign({}, authHeaders(), { 'Prefer': 'return=representation' }),
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) return null;
+      var rows = await r.json();
+      return (Array.isArray(rows) && rows[0]) ? rows[0].id : null;
+    } catch(e){ console.warn('[ingest]', e); return null; }
+  }
+
+  async function classifyConversation(convId, body, fromName, fromHandle, typingEl){
+    try {
+      var _cfg2 = (typeof getCfg === 'function') ? getCfg() : {};
+      var _ownerName2 = (_cfg2.owner || 'Jérémie').trim();
+      var _staffNames2 = [];
+      try {
+        if (Array.isArray(_cfg2.staffMembers) && _cfg2.staffMembers.length) {
+          _staffNames2 = _cfg2.staffMembers.map(function(s){ return typeof s === 'object' ? (s.name||'') : s; }).filter(Boolean);
+        } else if (_cfg2.staff) {
+          _staffNames2 = _cfg2.staff.split(/[\n,]/).map(function(s){ return s.replace(/\(.*?\)/g,'').trim(); }).filter(Boolean);
+        }
+      } catch(e2){}
+      if (!_staffNames2.length) _staffNames2 = ['Saïd', 'Faiza', 'Bouchra'];
+
+      // Référentiel clients actifs
+      var _clientRef = [];
+      try {
+        var _cr = await fetch(SB_URL + '/rest/v1/crm_clients?select=id,name&deleted_at=is.null&order=created_at.desc&limit=50', { headers: authHeaders() });
+        if (_cr.ok) _clientRef = await _cr.json();
+      } catch(e3){}
+      var _clientList = _clientRef.length ? _clientRef.map(function(c){ return c.id + ' = ' + c.name; }).join(', ') : '(aucun)';
+
+      var _sys = [
+        'Tu es le moteur de tri de Villa DarJ. Classe CE message. Retourne UNIQUEMENT du JSON valide, sans markdown.',
+        'Référentiel (seule source de vérité) :',
+        '- Clients : ' + _clientList,
+        '- Équipe : ' + _staffNames2.join(', '),
+        '- Propriétaire : ' + _ownerName2,
+        'Règles :',
+        '- entity_type parmi : "client", "staff", "maison", "unknown".',
+        '- Client connu → "client" + entity_id = id EXACT de la liste. Jamais un id inventé.',
+        '- Staff/owner (paiement, congé, logistique interne) → "staff" (entity_id = prénom) OU "maison" si dépense.',
+        '- Maison (piscine, jardin, clim, voiture, alarme, dépense, course, facture, salaire, travaux) → "maison".',
+        '- Pas sûr → "unknown" + needs_review:true.',
+        '- N\'invente JAMAIS montant/date/nom absent du message.',
+        '- Si entity_id n\'est pas dans le référentiel clients → entity_type:"unknown", needs_review:true.',
+        'JSON shape : {"entity_type":"maison","entity_id":null,"subject":"Paiement Saïd 3000 MAD","confidence":0.95,"needs_review":false,"actions":[{"title":"Virer 3000 MAD à Saïd","category":"depense","amount":3000,"due_date":null}]}'
+      ].join('\n');
+
+      var _user = 'Message : "' + (body||'').slice(0, 3000) + '"' + (fromName ? ' — Expéditeur : ' + fromName + (fromHandle ? ' (' + fromHandle + ')' : '') : '');
+      var _raw2 = await callBestAI('extract', _sys, _user, 400);
+      var _cls = null;
+      try { _cls = JSON.parse((_raw2||'').trim().replace(/^```json\s*|```\s*$/g, '')); } catch(pe){}
+      if (!_cls || !_cls.entity_type) return null;
+
+      // Valider entity_id pour les clients (pas d'id inventé)
+      if (_cls.entity_type === 'client') {
+        var _knownIds = _clientRef.map(function(c){ return c.id; });
+        if (_knownIds.indexOf(_cls.entity_id) < 0) { _cls.entity_type = 'unknown'; _cls.needs_review = true; }
+      }
+
+      // PATCH la ligne conversation
+      try {
+        await fetch(SB_URL + '/rest/v1/conversations?id=eq.' + convId, {
+          method: 'PATCH',
+          headers: Object.assign({}, authHeaders(), { 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({
+            entity_type: _cls.entity_type,
+            entity_id: _cls.entity_id || null,
+            subject: _cls.subject || null,
+            confidence: _cls.confidence || null,
+            needs_review: !!_cls.needs_review,
+            classified_at: new Date().toISOString()
+          })
+        });
+      } catch(pe2){}
+
+      // Créer les tasks issues de la classification
+      var _clsActions = Array.isArray(_cls.actions) ? _cls.actions : [];
+      for (var _ai = 0; _ai < _clsActions.length; _ai++) {
+        var _a = _clsActions[_ai];
+        if (!_a || !_a.title) continue;
+        try {
+          await fetch(SB_URL + '/rest/v1/tasks', {
+            method: 'POST',
+            headers: Object.assign({}, authHeaders(), { 'Prefer': 'return=minimal' }),
+            body: JSON.stringify({
+              title: _a.title,
+              category: _a.category || 'maison',
+              status: 'todo',
+              amount: _a.amount || null,
+              due_date: _a.due_date || null,
+              assigned_to: (_cls.entity_type === 'staff' && _cls.entity_id) ? { name: _cls.entity_id } : null
+            })
+          });
+        } catch(te){}
+      }
+      _tasksCache = null; // invalider cache maison
+
+      // Feedback visuel dans la bulle ARIA
+      if (typingEl) {
+        var _et = _cls.entity_type;
+        var _icon = _et === 'maison' ? '🏠' : _et === 'staff' ? '👤' : _et === 'client' ? '🧳' : '📋';
+        var _label = _et === 'maison' ? 'Maison' : _et === 'staff' ? 'Staff' : _et === 'client' ? 'Client' : (fr()?'À vérifier':'To review');
+        var _subj = _cls.subject || (fr()?'message rangé':'message filed');
+        var _fhtml = '<strong>ARIA</strong> · ' + _icon + ' <strong>' + _label + '</strong> · ' + _subj;
+        if (_cls.needs_review) _fhtml += ' <span style="color:var(--gold)">· ' + (fr()?'à vérifier':'to review') + '</span>';
+        var _shownActions = _clsActions.filter(function(x){ return x && x.title; });
+        if (_shownActions.length) {
+          _fhtml += '<div style="margin-top:6px;font-size:11px;color:#3a2f1f">';
+          _shownActions.forEach(function(x){ _fhtml += '→ ' + x.title + (x.amount ? ' · ' + x.amount + ' MAD' : '') + '<br>'; });
+          _fhtml += '</div>';
+        }
+        typingEl.innerHTML = _fhtml;
+      }
+      return _cls;
+    } catch(e){ console.warn('[classify]', e); return null; }
   }
 
   // Override final sendAriaModal — délègue au pipeline universel pour tous types détectés

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v216 (aria: reconnaissance owner+staff dans extraction WA)
-const CACHE = 'stafflo-v216';
+// Stafflo Service Worker — v217 (triage: filtrer!=jeter — owner/staff/maison rangés au lieu d'être ignorés)
+const CACHE = 'stafflo-v217';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
