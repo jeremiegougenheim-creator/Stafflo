@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v208 (separation intention + anti-fuite entre guests)
-const CACHE = 'stafflo-v208';
+// Stafflo Service Worker — v209 (intention nouveau sejour → action Ajouter au CRM)
+const CACHE = 'stafflo-v209';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

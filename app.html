@@ -12822,6 +12822,17 @@ async function handleChatQuestion(text) {
   var isOrchestrator = /^__orchestrator:true\b/m.test(text);
   if (isOrchestrator) text = text.replace(/^__orchestrator:true\n?/, '');
 
+  // Detect "new stay" announcement — name + dates, not a question, not a write command.
+  // Ex: "Maxime vient du 2 au 16 août avec sa femme" → route to create_client orchestrator.
+  var isNewStay = !isOrchestrator && (function(){
+    var lc = (text || '').toLowerCase();
+    var hasVerb = /\b(vient|viennent|arrive[sz]?|arrivent|séjour|viendra|coming|arrives?|visit|staying|stays|vient\s+avec|viendront)\b/.test(lc);
+    var hasDate = /\b(du\s+\d|\bau\s+\d|from\s+\d|\bto\s+\d|août|janvier|f[eé]vrier|mars|avril|mai|juin|juillet|septembre|octobre|novembre|d[eé]cembre|january|february|march|april|may|june|july|august|september|october|november|december|\d{1,2}\s+au\s+\d|\d{1,2}[\/\-]\d{1,2})/.test(lc);
+    var isQuestion = /\?$/.test(text.trim());
+    var isWrite = /^(écris|rédige|draft|write|compose)/i.test(text.trim());
+    return hasVerb && hasDate && !isQuestion && !isWrite;
+  })();
+
   // Factual questions about today / upcoming / current guests must not be
   // contaminated by stale conversation history. Detect them and starve the
   // model down to 2 turns of in-memory context — also skips the DB round-trip.
@@ -12829,11 +12840,20 @@ async function handleChatQuestion(text) {
   var dbHistory = isFactual ? null : await loadRecentChatContext(12);
   var historyBlock = isFactual ? buildChatHistoryBlock(2) : (dbHistory || buildChatHistoryBlock(8));
 
+  var _curYear = new Date().getFullYear();
   var systemPrompt;
-  if (isOrchestrator) {
+  if (isOrchestrator || isNewStay) {
     systemPrompt = (fr
-      ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\nRÈGLE : N\'invente jamais un montant, un prénom, un contact ou un nombre absent des données fournies. Info absente → omets-la ou écris « non précisé ».\nPropose 2-3 actions prêtes à l\'emploi. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"message complet signé ' + ownerName + '"}]'
-      : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\nRULE: Never invent an amount, name, contact or number absent from the provided data. Missing info → omit it or write "not specified".\nPropose 2-3 ready-to-use actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"full message signed ' + ownerName + '"}]');
+      ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\n' +
+        'RÈGLE : N\'invente jamais un montant, prénom, contact ou nombre absent des données. Info absente → omets ou écris « non précisé ».\n' +
+        'INTENTION NOUVEAU SÉJOUR : si ' + ownerName + ' énonce un nouveau contact/séjour (prénom + dates, AUTRE que le guest ouvert), retourne UNE seule action kind:"create_client" avec les champs extraits dans "fields". Ne rédige AUCUN message guest. Dates : AAAA-MM-JJ (année ' + _curYear + '). N\'invente aucun champ — laisse price à null si inconnu.\n' +
+        'Sinon, propose 2-3 actions. JSON array uniquement (PAS de texte avant ou après) :\n' +
+        '[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"récap ou message complet signé ' + ownerName + '"}]'
+      : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\n' +
+        'RULE: Never invent an amount, name, contact or number absent from the data. Missing → omit or write "not specified".\n' +
+        'NEW STAY INTENT: if ' + ownerName + ' states a new contact/stay (name + dates, OTHER than the open guest), return ONE action kind:"create_client" with extracted fields in "fields". Do NOT draft any guest message. Dates as YYYY-MM-DD (year ' + _curYear + '). Invent nothing — leave price null if unknown.\n' +
+        'Otherwise propose 2-3 actions. JSON array only (NO text before or after):\n' +
+        '[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"recap or full message signed ' + ownerName + '"}]');
   // -- end orchestrator systemPrompt
   } else {
     systemPrompt = fr ? [
@@ -12956,8 +12976,9 @@ async function handleChatQuestion(text) {
   // Priority order: INFO query → REASON → WRITE (only on explicit verbs) → EXTRACT → fast.
   // The system prompt now also handles mode selection, this just picks the right model.
   var aiTask = 'chat_fr'; // default
-  var aiMaxTokens = isOrchestrator ? 700 : 500;
-  if (!isOrchestrator) {
+  var aiMaxTokens = (isOrchestrator || isNewStay) ? 700 : 500;
+  if (isNewStay) { aiTask = 'reason'; }
+  if (!isOrchestrator && !isNewStay) {
     var lc = text.toLowerCase();
     var wordCount = text.split(/\s+/).length;
 
@@ -13002,7 +13023,19 @@ async function handleChatQuestion(text) {
   document.getElementById('chatTyping').style.display = 'none';
 
   // For orchestrator: emit raw JSON so the ARIA modal parser kicks in
-  if (isOrchestrator) {
+  if (isOrchestrator || isNewStay) {
+    // Essaie de rendre les actions en cartes cliquables
+    if (typeof window._renderJsonActions === 'function') {
+      var _rendered = window._renderJsonActions(raw);
+      if (_rendered) {
+        addChatBubble('ai', raw, []);
+        setTimeout(function(){
+          var _pane = document.getElementById('chatMessages');
+          if (_pane) { var _bs = _pane.querySelectorAll('.chat-bubble.ai'); var _lb = _bs[_bs.length - 1]; if (_lb) _lb.innerHTML = _rendered; }
+        }, 0);
+        return;
+      }
+    }
     addChatBubble('ai', raw || '[]', []);
     return;
   }
@@ -30358,8 +30391,23 @@ window.addEventListener('DOMContentLoaded', function() {
     window['_staffloActions_' + ts] = actions;
     var html = '<div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">';
     actions.forEach(function(a, i){
-      var icon = a.kind === 'whatsapp' ? '💬' : a.kind === 'email' ? '✉️' : a.kind === 'sms' ? '📱' : a.kind === 'internal_note' ? '📝' : '📋';
       var safeContent = (a.content || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      // ── create_client : carte de confirmation spéciale ──
+      if (a.kind === 'create_client') {
+        html += '<div style="border:1.5px solid var(--gold);border-radius:10px;padding:10px 12px;background:var(--paper)">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+            '<span style="font-size:14px">➕</span>' +
+            '<span style="font-weight:600;font-size:12px;color:var(--ink)">' + (a.label || (fr?'Ajouter au CRM':'Add to CRM')) + '</span>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--ink);line-height:1.5;margin-bottom:6px;white-space:pre-wrap">' + safeContent + '</div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+            '<button onclick="window._staffloDoAction(' + ts + ',' + i + ',\'create\')" style="background:var(--green3,#1D4D3A);color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">' + (fr?'✓ Confirmer et créer':'✓ Confirm & create') + '</button>' +
+            '<button onclick="window._staffloDoAction(' + ts + ',' + i + ',\'copy\')" style="background:var(--paper);color:var(--ink);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:DM Sans,sans-serif">📋 ' + (fr?'Copier':'Copy') + '</button>' +
+          '</div>' +
+        '</div>';
+        return;
+      }
+      var icon = a.kind === 'whatsapp' ? '💬' : a.kind === 'email' ? '✉️' : a.kind === 'sms' ? '📱' : a.kind === 'internal_note' ? '📝' : '📋';
       html += '<div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--paper)">' +
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
           '<span style="font-size:14px">' + icon + '</span>' +
@@ -30377,14 +30425,60 @@ window.addEventListener('DOMContentLoaded', function() {
     html += '</div>';
     return html;
   }
+  window._renderJsonActions = _renderJsonActions;
   window._staffloDoAction = function(ts, idx, what){
     var actions = window['_staffloActions_' + ts];
     if (!actions || !actions[idx]) return;
     var a = actions[idx];
     var content = a.content || '';
-    if (what === 'copy') navigator.clipboard.writeText(content).then(function(){ if (typeof toast === 'function') toast('📋 ' + (lang==='fr'?'Copié':'Copied')); });
+    var fr = lang === 'fr';
+    if (what === 'copy') navigator.clipboard.writeText(content).then(function(){ if (typeof toast === 'function') toast('📋 ' + (fr?'Copié':'Copied')); });
     else if (what === 'send' && (a.kind === 'whatsapp' || a.kind === 'sms')) window.open('https://wa.me/?text=' + encodeURIComponent(content), '_blank');
     else if (what === 'email') window.location.href = 'mailto:?body=' + encodeURIComponent(content);
+    else if (what === 'create' && a.kind === 'create_client') {
+      var f = a.fields || {};
+      var adults = Number(f.adults) || 0, kids = Number(f.children) || 0;
+      var totalGuests = (adults || kids) ? (adults + kids) : (f.guests ? Number(f.guests) : 0);
+      var noteParts = [content];
+      if (f.relation) noteParts.push((fr?'Relation : ':'Relation: ') + f.relation);
+      if (f.children_ages && f.children_ages.length) noteParts.push((fr?'Enfants : ':'Children: ') + f.children_ages.join(', ') + (fr?' ans':' y/o'));
+      var nm = (f.name || '').trim();
+      if (!nm) { if (typeof toast === 'function') toast(fr?'⚠ Nom requis pour créer la fiche':'⚠ Name required'); return; }
+      // Anti-doublon : même nom + même arrivée
+      var dupCheck = nm.toLowerCase();
+      var arrCheck = f.arrival || '';
+      if (typeof clients !== 'undefined' && clients.some(function(c){ return (c.name||'').toLowerCase().trim() === dupCheck && (c.arrival||'') === arrCheck; })) {
+        if (typeof toast === 'function') toast((fr?'⚠ ':' ⚠ ') + nm + (fr?' existe déjà (même arrivée)':' already exists (same arrival)'));
+        return;
+      }
+      var newClient = {
+        id: Date.now().toString(),
+        name: nm,
+        nat: f.nat || '',
+        arrival: f.arrival || '',
+        departure: f.departure || '',
+        guests: totalGuests || 0,
+        price: (f.price != null && f.price !== '') ? Number(f.price) : 0,
+        commission: 0, commMode: 'percent', source: 'Direct',
+        phone: f.phone || '', email: f.email || '',
+        notes: noteParts.filter(Boolean).join(' · '),
+        bookingStatus: 'confirmed', payStatus: '',
+        contact_type: f.relation ? 'owner_friend' : 'client',
+        createdAt: new Date().toISOString(), deleted_at: null, ops_state: {}
+      };
+      if (typeof clients !== 'undefined') clients.unshift(newClient);
+      if (typeof saveLocal === 'function') saveLocal();
+      if (typeof pushToSupabase === 'function') pushToSupabase(newClient);
+      if (typeof renderAll === 'function') renderAll();
+      var datesStr = newClient.arrival ? ' (' + newClient.arrival + (newClient.departure ? ' → ' + newClient.departure : '') + ')' : '';
+      var confirmMsg = (fr ? '✓ ' + newClient.name + ' ajouté au CRM' : '✓ ' + newClient.name + ' added to CRM') + datesStr;
+      if (typeof toast === 'function') toast(confirmMsg);
+      // Disable confirm button to prevent double-create
+      try {
+        var _btn = document.querySelector('[onclick*="_staffloDoAction(' + ts + ',' + idx + ',\'create\')"]');
+        if (_btn) { _btn.disabled = true; _btn.textContent = '✓ ' + (fr?'Créé':'Created'); _btn.style.opacity = '0.5'; }
+      } catch(_e) {}
+    }
   };
 
   if (typeof window.openAriaModal === 'function') {
@@ -30407,8 +30501,8 @@ window.addEventListener('DOMContentLoaded', function() {
               var villaName = cfg.villa || 'Villa DarJ';
               var fr = lang === 'fr';
               var systemPrompt = (fr
-                ? 'Tu es ARIA pour ' + villaName + '. Staff : Said, Faiza, Bouchra.\nPropose 2-3 actions prêtes à l\'emploi. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"message complet signé ' + ownerName + '"}]'
-                : 'You are ARIA for ' + villaName + '. Staff: Said, Faiza, Bouchra.\nPropose 2-3 ready-to-use actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"full message signed ' + ownerName + '"}]');
+                ? 'Tu es ARIA pour ' + villaName + '. Staff : Said, Faiza, Bouchra.\nRÈGLE : N\'invente jamais un montant, prénom ou contact absent des données. Info absente → omets ou « non précisé ».\nPropose 2-3 actions. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"message complet signé ' + ownerName + '"}]'
+                : 'You are ARIA for ' + villaName + '. Staff: Said, Faiza, Bouchra.\nRULE: Never invent an amount, name or contact absent from the data. Missing → omit or "not specified".\nPropose 2-3 actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"full message signed ' + ownerName + '"}]');
               var clientList = _getClients();
               var clientCtx = 'Active clients (' + clientList.length + '): ' + buildClientLines(fullPrompt, 5);
               var userCtx = 'Today: ' + _today() + '\n' + clientCtx + '\n\nSituation:\n' + fullPrompt;
