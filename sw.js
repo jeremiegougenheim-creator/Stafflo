@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v211 (is_comp — sejour offert, exclu NET, badge, ARIA-aware)
-const CACHE = 'stafflo-v211';
+// Stafflo Service Worker — v212 (suppression douce client + confirm + fix hard-delete fallback)
+const CACHE = 'stafflo-v212';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

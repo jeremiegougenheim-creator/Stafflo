@@ -8647,7 +8647,8 @@ async function deleteFromSupabase(id) {
   const cfg = getCfg();
   if (!cfg.sbUrl || !cfg.sbKey) return;
   await fetch(cfg.sbUrl + '/rest/v1/crm_clients?id=eq.'+id, {
-    method:'DELETE', headers:sbHdrs(cfg.sbKey)
+    method:'PATCH', headers:Object.assign({},sbHdrs(cfg.sbKey),{'Prefer':'return=minimal'}),
+    body: JSON.stringify({ deleted_at: new Date().toISOString() })
   });
 }
 
@@ -11075,7 +11076,7 @@ function openDetail(id) {
    :
     '<button class="btn-action" onclick="openPhoneEditor(\''+cl.id+'\')" style="flex:1;background:#25D366;color:#fff;border-color:#25D366">📱 + Ajouter WhatsApp</button>'
   ) +
-    '<button class="btn-action" onclick="deleteClient(\''+cl.id+'\')" style="flex:1;color:var(--red);border-color:var(--red)">🗑</button>';
+    '<button class="btn-action" onclick="deleteClient(\''+cl.id+'\')" style="flex:1;color:var(--red);border-color:var(--red)" title="'+(fr?'Supprimer ce séjour':'Delete this stay')+'">🗑 '+(fr?'Supprimer':'Delete')+'</button>';
 
   var dm = document.getElementById('detailModal');
   dm.classList.add('on');
@@ -11238,6 +11239,12 @@ function saveClient() {
 function deleteClient(id) {
   var client = clients.find(function(c){return c.id===id});
   if (!client) return;
+  var fr = lang === 'fr';
+  var dateStr = client.arrival ? ' (' + client.arrival + (client.departure ? ' → ' + client.departure : '') + ')' : '';
+  var msg = fr
+    ? 'Supprimer ' + client.name + dateStr + ' ?\n\nLe séjour disparaîtra de toutes les vues.\nUn toast « ANNULER » apparaîtra pendant 6 secondes.'
+    : 'Delete ' + client.name + dateStr + '?\n\nThe stay will disappear from all views.\nAn "UNDO" toast will appear for 6 seconds.';
+  if (!confirm(msg)) return;
   clients = clients.filter(function(c){return c.id !== id});
   saveLocal(); closeDetail(); renderAll();
   try{var cfg=getCfg();if(cfg.sbUrl&&cfg.sbKey){fetch(cfg.sbUrl+'/rest/v1/crm_clients?id=eq.'+id,{method:'PATCH',headers:Object.assign({},sbHdrs(cfg.sbKey),{'Prefer':'return=minimal'}),body:JSON.stringify({deleted_at:new Date().toISOString()})}).catch(function(){deleteFromSupabase(id)})}}catch(e){deleteFromSupabase(id)}
