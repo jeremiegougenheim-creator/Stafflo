@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v206 (LLM context: client_context+msg_log batch prewarm, detectStage, notes 200, saveOpsState, logMsg wiring)
-const CACHE = 'stafflo-v206';
+// Stafflo Service Worker — v207 (regle no-invent durcie en tete prompt ARIA + data framing)
+const CACHE = 'stafflo-v207';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

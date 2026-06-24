@@ -12832,18 +12832,25 @@ async function handleChatQuestion(text) {
   var systemPrompt;
   if (isOrchestrator) {
     systemPrompt = (fr
-      ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\nPropose 2-3 actions prêtes à l\'emploi. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"message complet signé ' + ownerName + '"}]'
-      : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\nPropose 2-3 ready-to-use actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"full message signed ' + ownerName + '"}]');
+      ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\nRÈGLE : N\'invente jamais un montant, un prénom, un contact ou un nombre absent des données fournies. Info absente → omets-la ou écris « non précisé ».\nPropose 2-3 actions prêtes à l\'emploi. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"message complet signé ' + ownerName + '"}]'
+      : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\nRULE: Never invent an amount, name, contact or number absent from the provided data. Missing info → omit it or write "not specified".\nPropose 2-3 ready-to-use actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"full message signed ' + ownerName + '"}]');
   // -- end orchestrator systemPrompt
   } else {
     systemPrompt = fr ? [
       'Tu es ARIA, assistant de ' + ownerName + ' pour ' + villaName + ' (Marrakech).',
       'Staff : ' + staffList + '.',
+      '',
+      '═══ RÈGLE ABSOLUE — NE JAMAIS INVENTER ═══',
+      'N\'énonce JAMAIS un prix, un montant, un nombre (personnes, enfants, nuits), une date, un nom ou un contact qui n\'est pas LITTÉRALEMENT présent dans les données fournies ci-dessous.',
+      '- Info absente → écris « non précisé » ou pose la question. Ne devine pas.',
+      '- Données contradictoires → SIGNALE la contradiction, ne tranche pas.',
+      '- Combler un trou par une valeur plausible est une faute grave.',
+      'Exemple : si aucun tarif chauffeur/jour n\'est fourni, dis « tarif/jour non précisé » — ne sors PAS un chiffre inventé.',
+      '═══ FIN RÈGLE ═══',
+      '',
       'Réponds en français, concis (2-4 phrases max).',
       'Si on te demande un message WA/email : rédige-le complet, signé ' + ownerName + '.',
       'Si tu ne trouves pas l\'info dans le contexte ci-dessous, dis-le explicitement.',
-      'RÈGLE ABSOLUE : N\'invente JAMAIS un horaire, un prix, une température, un numéro de chambre, un menu, ni aucun détail absent du contexte fourni.',
-      'Pour toute info manquante dans une note ou un brief : écris [à confirmer] ou pose la question. JAMAIS de valeur fabriquée.',
       'Une note courte et honnête avec des blancs > une note longue et inventée.',
       'Aujourd\'hui : ' + todayHuman + '. Dates = toujours avec le jour de la semaine.',
       'CRM : CONFIRMED = séjours réels. PIPELINE = prospects non confirmés, JAMAIS des arrivées.',
@@ -12851,11 +12858,18 @@ async function handleChatQuestion(text) {
     ].join('\n') : [
       'You are ARIA, assistant to ' + ownerName + ' for ' + villaName + ' (Marrakech).',
       'Staff: ' + staffList + '.',
+      '',
+      '═══ ABSOLUTE RULE — NEVER INVENT ═══',
+      'Never state a price, amount, number (people, children, nights), date, name or contact that is not LITERALLY present in the data below.',
+      '- Missing info → write "not specified" or ask. Never guess.',
+      '- Contradictory data → flag the contradiction, do not resolve it.',
+      '- Filling a gap with a plausible value is a serious error.',
+      'Example: if no driver day-rate is given, say "day rate not specified" — do NOT output an invented figure.',
+      '═══ END RULE ═══',
+      '',
       'Reply in English, concise (2-4 sentences max).',
       'If asked to draft a WA/email message: write it complete, signed ' + ownerName + '.',
       'If info is not in the context below, say so explicitly.',
-      'ABSOLUTE RULE: NEVER invent a time, price, temperature, room number, menu, or any detail not present in the context below.',
-      'For any missing info in a note or brief: write [to confirm] or ask the question. NEVER a fabricated value.',
       'A short honest note with blanks > a long invented one.',
       'Today: ' + todayHuman + '. Dates = always include weekday.',
       'CRM: CONFIRMED = real stays. PIPELINE = unconfirmed prospects, NEVER arrivals.',
@@ -12906,10 +12920,12 @@ async function handleChatQuestion(text) {
     var _prestaRows = []; try { _prestaRows = await fetchPrestataires(); } catch(e){}
     var _prestaBlock = formatPrestaForPrompt(_prestaRows, fr);
 
-    var _ctxParts = [(fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman, crmCtx, ''];
-    if (_evBlock) { _ctxParts.push(_evBlock); _ctxParts.push(''); }
-    if (_prestaBlock) { _ctxParts.push(_prestaBlock); _ctxParts.push(''); }
-    _ctxParts.push(historyBlock, '', ownerName + ': "' + text + '"');
+    var _dataHdr = fr ? '═══ DONNÉES FOURNIES (seule source de vérité) ═══' : '═══ PROVIDED DATA (sole source of truth) ═══';
+    var _dataFtr = fr ? '═══ FIN DES DONNÉES ═══' : '═══ END OF DATA ═══';
+    var _ctxParts = [(fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman, '', _dataHdr, crmCtx];
+    if (_evBlock) { _ctxParts.push(''); _ctxParts.push(_evBlock); }
+    if (_prestaBlock) { _ctxParts.push(''); _ctxParts.push(_prestaBlock); }
+    _ctxParts.push('', _dataFtr, '', historyBlock, '', ownerName + ': "' + text + '"');
     userCtx = _ctxParts.join('\n');
   }
 
