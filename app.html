@@ -26376,6 +26376,7 @@ window.addEventListener('DOMContentLoaded', function() {
       'JSON shape: {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","guests":0,"children":0,"infants":0,"price":0,"commission":15.5,"source":"","phone":"","email":"","bookingStatus":"confirmed","lang":"","notes":""}',
       'Rules:',
       '- "name": full name (first + last) of the GUEST (the person staying at the villa). Extract even from informal sources (WhatsApp, SMS).',
+      '- AIRBNB ROLE LABEL: in Airbnb emails the word "Booker" appears on its own line after the guest first name — it is a ROLE LABEL (the person who booked), NEVER a surname. Never produce a name ending with "Booker". If only a first name is available, use the first name alone.',
     ].concat(nonGuestRule).concat([
       '- "nat": city, country if mentioned',
       '- "arrival"/"departure": YYYY-MM-DD format. If only "in May" mentioned, use first matching weekend.',
@@ -26437,6 +26438,8 @@ window.addEventListener('DOMContentLoaded', function() {
     if (!g.name && !raw) g._extractFailed = true;
     // Cleanup name
     if (g.name) g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
+    // "Booker" = Airbnb role label, never a surname
+    if (g.name) g.name = g.name.replace(/\s+Booker\s*$/i, '').trim();
     // Post-filter: if extracted name matches owner or staff, it's not a guest
     if (g.name) {
       var _norm = function(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,' ').trim(); };
