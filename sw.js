@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v220 (trust: badge "Donnees traitees en Europe · RGPD" Reglages + modal ARIA)
-const CACHE = 'stafflo-v220';
+// Stafflo Service Worker — v221 (fix: scroll modale ARIA — flex-shrink:0 + -webkit-overflow-scrolling:touch)
+const CACHE = 'stafflo-v221';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
