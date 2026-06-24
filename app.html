@@ -8583,10 +8583,12 @@ async function loadFromSupabase() {
         contact_type: r.contact_type || null,
         messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
         createdAt: r.created_at||new Date().toISOString(),
-        deleted_at: r.deleted_at || null
+        deleted_at: r.deleted_at || null,
+        ops_state: (r.ops_state && typeof r.ops_state === 'object') ? r.ops_state : {}
       }; });
       deduplicateClients();
       saveLocal(); renderAll(); setSyncDot('ok');
+      if (typeof _prewarmAriaCache === 'function') _prewarmAriaCache(clients).catch(function(){});
       // Refresh all collapsed v2-card summaries with new data (calendar timeline, etc)
       setTimeout(function(){
         try {
@@ -11825,6 +11827,7 @@ function sendDetailByWA(clientId) {
   var text = el ? el.textContent : '';
   var url = phone ? 'https://wa.me/' + phone + '?text=' + encodeURIComponent(text) : 'https://wa.me/?text=' + encodeURIComponent(text);
   window.open(url, '_blank');
+  logMsg({ clientId: cl.id, clientName: cl.name, phone: phone, type: 'whatsapp', body: text, waLink: url });
 }
 
 
@@ -11923,6 +11926,46 @@ async function logMsgSent(body, waLink) {
   } catch(e) {
     console.warn('logMsgSent error:', e);
   }
+}
+
+async function logMsg(opts) {
+  try {
+    var cfg = getCfg();
+    var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+    var key = cfg.sbKey || SB_ANON;
+    if (!key) return;
+    await fetch(url + '/rest/v1/msg_log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: key, Authorization: 'Bearer ' + key },
+      body: JSON.stringify({
+        client_id: opts.clientId || null,
+        client_name: opts.clientName || '?',
+        phone: opts.phone || null,
+        msg_type: opts.type || 'custom',
+        msg_body: opts.body || '',
+        wa_link: opts.waLink || null
+      })
+    });
+  } catch(e) { console.warn('logMsg failed:', e); }
+}
+
+async function saveOpsState(clientId, patch) {
+  try {
+    var cl = clients.find(function(c){ return c.id === clientId; });
+    var cur = (cl && cl.ops_state) || {};
+    var next = Object.assign({}, cur, patch, { updated_at: new Date().toISOString() });
+    if (cl) cl.ops_state = next;
+    try { localStorage.setItem('ops_' + clientId, JSON.stringify(next)); } catch(_e){}
+    var cfg = getCfg();
+    var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+    var key = cfg.sbKey || SB_ANON;
+    if (!key) return;
+    fetch(url + '/rest/v1/crm_clients?id=eq.' + clientId, {
+      method: 'PATCH',
+      headers: sbHdrs(key),
+      body: JSON.stringify({ ops_state: next })
+    }).catch(function(e){ console.warn('saveOpsState patch failed:', e); });
+  } catch(e) { console.warn('saveOpsState error:', e); }
 }
 
 async function loadMsgHistory(clientId) {
@@ -12395,6 +12438,16 @@ function buildClientsContextRich(maxItems) {
   upcoming.sort(function(a,b){ return (a.arrival||'').localeCompare(b.arrival||''); });
   past.sort(function(a,b){ return (b.departure||'').localeCompare(a.departure||''); });
 
+  function fmtMsgs(list) {
+    if (!list || !list.length) return '';
+    return 'Messages DÉJÀ ENVOYÉS au guest (ne pas répéter) :\n' +
+      list.map(function(m){
+        var d = new Date(m.sent_at).toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'});
+        var body = (m.msg_body||'').replace(/\s+/g,' ').slice(0,120);
+        return '· ['+d+'·'+(m.msg_type||'wa')+'] '+body+((m.msg_body||'').length>120?'…':'');
+      }).join('\n');
+  }
+
   function fmtClient(c) {
     var bits = [c.name || (fr?'sans nom':'unnamed')];
     if (c.nat) bits.push(c.nat);
@@ -12421,8 +12474,12 @@ function buildClientsContextRich(maxItems) {
     }
     if (c.net) bits.push('net ' + c.net + '€');
     if (c.source) bits.push(c.source);
-    if (c.notes) bits.push('notes: ' + (c.notes.length > 80 ? c.notes.slice(0,80) + '…' : c.notes));
-    return bits.join(' · ');
+    if (c.notes) bits.push('notes: ' + (c.notes.length > 200 ? c.notes.slice(0,200) + '…' : c.notes));
+    if (typeof window.detectStage === 'function') { try { var _st = window.detectStage(c); if (_st && _st !== 'unknown') bits.push('['+_st+']'); } catch(e){} }
+    var _cc = window._ccCache && window._ccCache[c.id]; if (_cc && _cc.length) bits.push('ctx: '+_cc.map(function(r){return r.category+':'+r.value;}).slice(0,5).join(', '));
+    var out = bits.join(' · ');
+    var _ml = window._msgLogCache && window._msgLogCache[c.id]; if (_ml && _ml.length) { out += '\n    ' + fmtMsgs(_ml).split('\n').join('\n    '); }
+    return out;
   }
 
   function fmtLead(c) {
@@ -12440,7 +12497,7 @@ function buildClientsContextRich(maxItems) {
     if (c.guests) bits.push(c.guests + (fr?' personnes':' guests'));
     if (c.price) bits.push('budget ' + c.price + '€');
     if (c.source) bits.push(c.source);
-    if (c.notes) bits.push('notes: ' + (c.notes.length > 80 ? c.notes.slice(0,80) + '…' : c.notes));
+    if (c.notes) bits.push('notes: ' + (c.notes.length > 200 ? c.notes.slice(0,200) + '…' : c.notes));
     return bits.join(' · ');
   }
 
@@ -12487,6 +12544,57 @@ function buildClientsContextRich(maxItems) {
   } catch(e){}
 
   return lines.join('\n');
+}
+
+window._ccCache = window._ccCache || {};
+window._msgLogCache = window._msgLogCache || {};
+
+async function _prewarmAriaCache(clientList) {
+  var todayISO = new Date().toISOString().slice(0,10);
+  var targets = (clientList || []).filter(function(c){
+    if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return false;
+    var inHouse = (c.arrival||'') <= todayISO && (c.departure||'') >= todayISO;
+    var upcoming = (c.arrival||'') > todayISO;
+    return inHouse || upcoming;
+  }).slice(0, 8);
+  if (!targets.length) return;
+  var ids = targets.map(function(c){ return c.id; });
+  var cfg = getCfg();
+  var url = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+  var key = cfg.sbKey || SB_ANON;
+  if (!key) return;
+  var hdrs = { apikey: key, Authorization: 'Bearer ' + key };
+
+  // Batch fetch client_context (prefs, allergies, dietary)
+  try {
+    var r1 = await fetch(url + '/rest/v1/client_context?client_id=in.(' + ids.join(',') + ')&order=category.asc', { headers: hdrs });
+    if (r1.ok) {
+      var ccRows = await r1.json();
+      ccRows.forEach(function(row){
+        if (!window._ccCache[row.client_id]) window._ccCache[row.client_id] = [];
+        window._ccCache[row.client_id].push(row);
+      });
+    }
+  } catch(e){}
+
+  // Batch fetch msg_log — last 60 across all targets, cap to 8/client, reverse to chrono
+  try {
+    var r2 = await fetch(url + '/rest/v1/msg_log?client_id=in.(' + ids.join(',') + ')&order=sent_at.desc&limit=60&select=client_id,msg_type,msg_body,sent_at', { headers: hdrs });
+    if (r2.ok) {
+      var msgs = await r2.json();
+      var byClient = {};
+      (msgs || []).forEach(function(m){
+        if (!byClient[m.client_id]) byClient[m.client_id] = [];
+        if (byClient[m.client_id].length < 8) byClient[m.client_id].push(m);
+      });
+      Object.keys(byClient).forEach(function(cid){
+        byClient[cid].reverse();
+        window._msgLogCache[cid] = byClient[cid];
+      });
+    }
+  } catch(e){}
+
+  console.log('[ARIA-CTX] prewarm done —', targets.length, 'clients | ccCache:', Object.keys(window._ccCache).length, '| msgLog:', Object.keys(window._msgLogCache).length);
 }
 
 // ── Meal recap handler ──
@@ -12606,6 +12714,8 @@ async function handleMealRecap(parts, chefName) {
   // Mark done so Phase 4 checkout alert turns green and the daily notif suppresses.
   if (ok && client && client.id && client.departure){
     try { localStorage.setItem('stafflo_meal_recap_done_' + client.id + '_' + client.departure, String(Date.now())); } catch(e){}
+    saveOpsState(client.id, { meal_recap_done: true });
+    logMsg({ clientId: client.id, clientName: client.name||'?', phone: client.phone||null, type: 'meal_recap', body: (finalMsg||'').slice(0,300), waLink: null });
   }
   addChatBubble('ai', finalMsg || '...', [
     { label: '👍 OK', cls: 'yes', fn: 'dismissChatAction(this)' }
@@ -19956,10 +20066,13 @@ function generateStaffChecklist() {
   const waUrl = phone ? 'https://wa.me/' + phone + '?text=' + encoded : 'https://wa.me/?text=' + encoded;
   
   // Copy to clipboard and offer WhatsApp
+  const _logStaff = () => logMsg({ clientId: (relevant && relevant.id)||null, clientName: (relevant && relevant.name)||'staff', phone: phone||null, type: 'brief', body: briefText.slice(0,300), waLink: waUrl });
   navigator.clipboard.writeText(briefText).then(() => {
     toast(fr ? '📋 Checklist copiée — ouvrez WhatsApp pour envoyer' : '📋 Checklist copied — open WhatsApp to send');
+    _logStaff();
     setTimeout(() => window.open(waUrl, '_blank'), 800);
   }).catch(() => {
+    _logStaff();
     window.open(waUrl, '_blank');
   });
 }
@@ -20444,7 +20557,7 @@ function renderVillaOpsExtra() {
   }).join('');
 
   const sopHtml =
-    '<div class="hm-card" id="sopSection" style="margin-bottom:0">' +
+    '<div class="hm-card" id="sopSection" data-gid="'+gid+'" style="margin-bottom:0">' +
       '<div class="hm-hdr" style="display:flex;align-items:center;gap:10px">' +
         '<div class="hm-hdr-lbl" style="flex-shrink:0"><i class="ti ti-checks" style="color:var(--gold)"></i> ' + (fr?'Checklist séjour':'Stay checklist') + '</div>' +
         '<div style="flex:1;min-width:0">' + hdrCtx + '</div>' +
@@ -20464,6 +20577,18 @@ function toggleSOP2(key, rowEl) {
   var cur = localStorage.getItem(key) === 'done';
   var next = !cur;
   localStorage.setItem(key, next ? 'done' : 'todo');
+  try {
+    var _sopSec = document.getElementById('sopSection');
+    var _sgid = _sopSec && _sopSec.dataset ? _sopSec.dataset.gid : null;
+    if (_sgid && _sgid !== 'none' && typeof saveOpsState === 'function') {
+      var _sopMap = {};
+      for (var _si = 0; _si < localStorage.length; _si++) {
+        var _sk = localStorage.key(_si);
+        if (_sk && _sk.indexOf('sop2_') === 0 && _sk.length > _sgid.length && _sk.slice(-(_sgid.length+1)) === '_'+_sgid) _sopMap[_sk] = localStorage.getItem(_sk) === 'done';
+      }
+      saveOpsState(_sgid, { sop: _sopMap });
+    }
+  } catch(_sopE){}
   var box = rowEl.querySelector('.sop2-box');
   var lbl = rowEl.querySelector('.sop2-lbl');
   if (box) {
@@ -22859,6 +22984,20 @@ function saveInboxSettings() {
     localStorage.setItem('stafflo_inbox_interval', String(interval));
     updateAutoToggleVisual();
     setupInboxAutoRefresh();
+    // Sync to villa_settings.email_connection (non-destructive merge)
+    try {
+      var _cfg = getCfg();
+      var _url = (_cfg.sbUrl && _cfg.sbUrl.includes('.supabase.co')) ? _cfg.sbUrl : SB_URL;
+      var _key = _cfg.sbKey || SB_ANON;
+      if (_key && _cfg.villaKey) {
+        var _ec = Object.assign({}, _cfg.email_connection || {}, { auto_sync: auto, interval_min: interval });
+        fetch(_url + '/rest/v1/villa_settings?villa_key=eq.' + encodeURIComponent(_cfg.villaKey), {
+          method: 'PATCH',
+          headers: sbHdrs(_key),
+          body: JSON.stringify({ email_connection: _ec })
+        }).catch(function(){});
+      }
+    } catch(_e){}
   } catch(e){}
 }
 function updateAutoToggleVisual() {

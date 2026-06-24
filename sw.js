@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v204 (bandeau photo config-driven : applyHdrCover par onglet + cfg.coverPhoto upload-ready)
-const CACHE = 'stafflo-v204';
+// Stafflo Service Worker — v206 (LLM context: client_context+msg_log batch prewarm, detectStage, notes 200, saveOpsState, logMsg wiring)
+const CACHE = 'stafflo-v206';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
