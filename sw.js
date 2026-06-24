@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v212 (suppression douce client + confirm + fix hard-delete fallback)
-const CACHE = 'stafflo-v212';
+// Stafflo Service Worker — v213 (vue Maison unifiée v1 — tâches, entretien, dépenses, ARIA-aware)
+const CACHE = 'stafflo-v213';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

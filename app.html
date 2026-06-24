@@ -5235,6 +5235,17 @@ window.renderSetupOneLiner = function(){
   <!-- Villa Checklist will be injected here by renderVillaOpsExtra() -->
   </div><!-- /villaScenarioRow -->
 
+  <!-- MAISON — tâches, entretien, dépenses (v213) -->
+  <div class="hm-card" id="maisonCard" style="margin-bottom:14px">
+    <div class="hm-hdr">
+      <div class="hm-hdr-lbl">🏠 <span data-fr="Maison" data-en="House">Maison</span></div>
+      <button class="v2-icon-btn" onclick="openAddTaskModal()" title="Ajouter une tâche" style="font-size:18px;font-weight:700;line-height:1">+</button>
+    </div>
+    <div class="hm-body" id="maisonTasksList" style="padding:10px 14px;min-height:40px">
+      <div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    </div>
+  </div>
+
   <!-- RÉPERTOIRE PRESTATAIRES -->
   <div class="hm-card" id="prestaCard" style="margin-bottom:14px">
     <div class="hm-hdr">
@@ -11687,7 +11698,7 @@ function goTab(t) {
   if (typeof renderAlertsForTab==='function') renderAlertsForTab(t);
 
   if (t === 'clients') { try { renderClients(); } catch(e) { console.error('renderClients error:', e); } }
-  if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); if (typeof renderPrestataires === 'function') setTimeout(renderPrestataires, 100); } catch(e) { console.error('loadHomeData error:', e); } }
+  if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); if (typeof renderPrestataires === 'function') setTimeout(renderPrestataires, 100); if (typeof renderMaisonTasks === 'function') setTimeout(renderMaisonTasks, 150); } catch(e) { console.error('loadHomeData error:', e); } }
   if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
   if (t === 'today') {
     try { renderTodayQV(); } catch(e) { console.error('renderTodayQV error:', e); }
@@ -12993,6 +13004,8 @@ async function handleChatQuestion(text) {
 
     var _prestaRows = []; try { _prestaRows = await fetchPrestataires(); } catch(e){}
     var _prestaBlock = formatPrestaForPrompt(_prestaRows, fr);
+    var _taskRows2 = []; try { _taskRows2 = await fetchTasks(); } catch(e){}
+    var _maisonBlock = (typeof formatTasksForPrompt === 'function') ? formatTasksForPrompt(_taskRows2, fr) : '';
 
     var _dataHdr = fr ? '═══ DONNÉES FOURNIES (seule source de vérité) ═══' : '═══ PROVIDED DATA (sole source of truth) ═══';
     var _dataFtr = fr ? '═══ FIN DES DONNÉES ═══' : '═══ END OF DATA ═══';
@@ -13006,6 +13019,7 @@ async function handleChatQuestion(text) {
     _ctxParts.push(crmCtx);
     if (_evBlock) { _ctxParts.push(''); _ctxParts.push(_evBlock); }
     if (_prestaBlock) { _ctxParts.push(''); _ctxParts.push(_prestaBlock); }
+    if (_maisonBlock) { _ctxParts.push(''); _ctxParts.push(_maisonBlock); }
     _ctxParts.push('', _dataFtr, '', historyBlock, '', ownerName + ': "' + text + '"');
     userCtx = _ctxParts.join('\n');
   }
@@ -17410,6 +17424,252 @@ function getWeekOfMonth() {
   return Math.ceil(new Date().getDate() / 7);
 }
 
+// ── Maison Tasks v213 — fetch, render, add, complete, cancel ──────────────
+var _tasksCache = null;
+var _tasksCacheTs = 0;
+
+async function fetchTasks() {
+  var nowMs = Date.now();
+  if (_tasksCache && (nowMs - _tasksCacheTs) < 120000) return _tasksCache;
+  try {
+    var r = await fetch(
+      SB_URL + '/rest/v1/tasks?select=id,title,category,status,priority,due_date,assigned_to,amount,recurrence&status=neq.cancelled&order=due_date.asc.nullslast',
+      { headers: authHeaders() }
+    );
+    if (!r.ok) return [];
+    var data = await r.json();
+    _tasksCache = data;
+    _tasksCacheTs = nowMs;
+    return data;
+  } catch(e) { return []; }
+}
+
+function formatTasksForPrompt(tasks, fr2) {
+  if (!tasks || !tasks.length) return '';
+  var today = new Date(); today.setHours(0,0,0,0);
+  var in7 = new Date(today.getTime() + 7 * 86400000);
+  var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  var week = tasks.filter(function(t2) {
+    if (t2.status === 'done' || t2.status === 'cancelled' || !t2.due_date) return false;
+    var d = new Date(t2.due_date + 'T12:00:00');
+    return d >= today && d <= in7;
+  });
+  var depenses = tasks.filter(function(t2) {
+    if (t2.category !== 'depense' || !t2.amount || t2.status === 'cancelled') return false;
+    if (!t2.due_date) return false;
+    var d = new Date(t2.due_date + 'T12:00:00');
+    return d >= monthStart && d < monthEnd;
+  });
+  var totalDep = depenses.reduce(function(s, t2) { return s + (parseFloat(t2.amount) || 0); }, 0);
+  var lines = ['═══ MAISON (tâches & entretien) ═══'];
+  var weekStr = week.length
+    ? week.map(function(t2) { var a = Array.isArray(t2.assigned_to) && t2.assigned_to.length ? (' — ' + t2.assigned_to.join(', ')) : ''; return '· ' + t2.title + a + (t2.due_date ? ' (' + t2.due_date + ')' : ''); }).join('\n')
+    : (fr2 ? 'Aucune tâche cette semaine' : 'No tasks this week');
+  lines.push((fr2 ? 'À venir 7j :' : 'Next 7 days:') + '\n' + weekStr);
+  lines.push((fr2 ? 'Dépenses ce mois :' : 'Expenses this month:') + ' ' + Math.round(totalDep) + ' MAD' + (depenses.length ? ' (' + depenses.length + ' ligne' + (depenses.length > 1 ? 's' : '') + ')' : ''));
+  lines.push('═══ FIN MAISON ═══');
+  return lines.join('\n');
+}
+
+function _nextRecurringDue(task) {
+  if (!task.recurrence || !task.due_date) return task.due_date;
+  var today = new Date(); today.setHours(0,0,0,0);
+  var d = new Date(task.due_date + 'T12:00:00');
+  var tries = 0;
+  while (d < today && tries++ < 365) {
+    if (task.recurrence.startsWith('weekly:')) d.setDate(d.getDate() + 7);
+    else if (task.recurrence === 'monthly') d.setMonth(d.getMonth() + 1);
+    else break;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+function _fmtDueShort(due, fr2) {
+  if (!due) return '';
+  var d = new Date(due + 'T12:00:00');
+  var today = new Date(); today.setHours(0,0,0,0);
+  var diff = Math.round((d.getTime() - today.getTime()) / 86400000);
+  if (diff === 0) return fr2 ? 'auj.' : 'today';
+  if (diff === 1) return fr2 ? 'demain' : 'tomorrow';
+  if (diff > 1 && diff <= 7) return d.toLocaleDateString(fr2 ? 'fr-FR' : 'en-US', {weekday: 'short'});
+  return d.toLocaleDateString(fr2 ? 'fr-FR' : 'en-US', {day: 'numeric', month: 'short'});
+}
+
+function _renderTaskRow(t2, fr2) {
+  var due = t2.recurrence ? _nextRecurringDue(t2) : t2.due_date;
+  var dueStr = _fmtDueShort(due, fr2);
+  var assignArr = Array.isArray(t2.assigned_to) ? t2.assigned_to.map(function(s) { return typeof s === 'object' ? (s.name || '') : s; }).filter(Boolean) : [];
+  var assignStr = assignArr.join(', ');
+  var amtStr = t2.amount ? ' · ' + Math.round(t2.amount) + ' MAD' : '';
+  var recIcon = t2.recurrence ? ' ↻' : '';
+  var catIcon = t2.category === 'entretien' ? '🔧' : t2.category === 'depense' ? '💸' : t2.category === 'equipe' ? '👤' : '·';
+  var pStyle = t2.priority === 'urgent' ? 'color:var(--red);font-weight:600' : 'color:var(--ink)';
+  var sid = (t2.id || '').replace(/[^a-zA-Z0-9-]/g, '');
+  return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(15,35,24,.05)">' +
+    '<span style="font-size:13px;flex-shrink:0">' + catIcon + '</span>' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="font-size:12px;' + pStyle + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (t2.title || '') + recIcon + amtStr + '</div>' +
+      ((dueStr || assignStr) ? '<div style="font-size:11px;color:var(--muted)">' + [dueStr, assignStr].filter(Boolean).join(' · ') + '</div>' : '') +
+    '</div>' +
+    '<button onclick="completeTask(\'' + sid + '\')" title="' + (fr2 ? 'Marquer fait' : 'Mark done') + '" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;flex-shrink:0">✓</button>' +
+    '<button onclick="cancelTask(\'' + sid + '\')" title="' + (fr2 ? 'Supprimer' : 'Remove') + '" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:2px 4px;flex-shrink:0">🗑</button>' +
+  '</div>';
+}
+
+async function renderMaisonTasks() {
+  var el = document.getElementById('maisonTasksList');
+  if (!el) return;
+  var fr2 = lang === 'fr';
+  el.innerHTML = '<div style="font-size:12px;color:var(--muted)">…</div>';
+  var tasks = await fetchTasks();
+  var today = new Date(); today.setHours(0,0,0,0);
+  var in7 = new Date(today.getTime() + 7 * 86400000);
+  var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  var active = tasks.filter(function(t2) { return t2.status !== 'done' && t2.status !== 'cancelled'; });
+  var active2 = active.map(function(t2) { return Object.assign({}, t2, {_due: t2.recurrence ? _nextRecurringDue(t2) : t2.due_date}); });
+  var thisWeek = active2.filter(function(t2) {
+    if (!t2._due) return false;
+    var d = new Date(t2._due + 'T12:00:00');
+    return d >= today && d <= in7;
+  }).sort(function(a, b) { return a._due < b._due ? -1 : 1; });
+  var noDate = active2.filter(function(t2) { return !t2._due; });
+  var depenses = tasks.filter(function(t2) {
+    if (t2.category !== 'depense' || !t2.amount || t2.status === 'cancelled') return false;
+    if (!t2.due_date) return false;
+    var d = new Date(t2.due_date + 'T12:00:00');
+    return d >= monthStart && d < monthEnd;
+  });
+  var totalDep = depenses.reduce(function(s, t2) { return s + (parseFloat(t2.amount) || 0); }, 0);
+  var secLbl = function(txt) { return '<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin:8px 0 5px">' + txt + '</div>'; };
+  var html = '';
+  if (thisWeek.length === 0 && noDate.length === 0) {
+    html += '<div style="font-size:12px;color:var(--muted);padding:4px 0">' + (fr2 ? 'Aucune tâche à venir — ' : 'No upcoming tasks — ') + '<span style="color:var(--gold);cursor:pointer;text-decoration:underline" onclick="openAddTaskModal()">' + (fr2 ? 'en ajouter une' : 'add one') + '</span></div>';
+  } else {
+    if (thisWeek.length) {
+      html += secLbl('📅 ' + (fr2 ? 'Cette semaine' : 'This week') + ' (' + thisWeek.length + ')');
+      thisWeek.forEach(function(t2) { html += _renderTaskRow(t2, fr2); });
+    }
+    if (noDate.length) {
+      html += secLbl('📌 ' + (fr2 ? 'Sans date' : 'Undated'));
+      noDate.forEach(function(t2) { html += _renderTaskRow(t2, fr2); });
+    }
+  }
+  html += secLbl('💸 ' + (fr2 ? 'Dépenses ce mois' : 'Expenses this month') + (totalDep > 0 ? ' — ' + Math.round(totalDep) + ' MAD' : ''));
+  if (!depenses.length) {
+    html += '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">' + (fr2 ? 'Aucune dépense ce mois' : 'No expenses this month') + '</div>';
+  } else {
+    depenses.forEach(function(t2) { html += _renderTaskRow(t2, fr2); });
+  }
+  el.innerHTML = html;
+}
+
+async function completeTask(id) {
+  try {
+    await fetch(SB_URL + '/rest/v1/tasks?id=eq.' + id, {
+      method: 'PATCH',
+      headers: Object.assign({}, authHeaders(), {'Prefer': 'return=minimal'}),
+      body: JSON.stringify({status: 'done'})
+    });
+    _tasksCache = null;
+    renderMaisonTasks();
+    if (typeof toast === 'function') toast(lang === 'fr' ? '✓ Fait' : '✓ Done');
+  } catch(e) { console.warn('completeTask:', e); }
+}
+
+async function cancelTask(id) {
+  try {
+    await fetch(SB_URL + '/rest/v1/tasks?id=eq.' + id, {
+      method: 'PATCH',
+      headers: Object.assign({}, authHeaders(), {'Prefer': 'return=minimal'}),
+      body: JSON.stringify({status: 'cancelled'})
+    });
+    _tasksCache = null;
+    renderMaisonTasks();
+  } catch(e) { console.warn('cancelTask:', e); }
+}
+
+function openAddTaskModal() {
+  var fr2 = lang === 'fr';
+  var cfg = getCfg();
+  var staffMembers = [];
+  if (Array.isArray(cfg.staffMembers) && cfg.staffMembers.length) {
+    staffMembers = cfg.staffMembers.map(function(s) { return typeof s === 'object' ? (s.name || '') : s; }).filter(Boolean);
+  } else if (cfg.staff) {
+    staffMembers = cfg.staff.split(/\n/).map(function(s) { return s.split(/[(\[]/)[0].trim(); }).filter(Boolean);
+  }
+  var ex = document.getElementById('addTaskModal'); if (ex) ex.remove();
+  var staffHtml = staffMembers.map(function(s) {
+    return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" class="task-assignee" value="' + s.replace(/</g, '&lt;').replace(/"/g, '&quot;') + '"> ' + s + '</label>';
+  }).join('');
+  var el = document.createElement('div');
+  el.id = 'addTaskModal';
+  el.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.5);z-index:10001;display:flex;align-items:flex-end;justify-content:center';
+  el.onclick = function(e) { if (e.target === el) el.remove(); };
+  el.innerHTML = '<div style="background:var(--card);border-radius:16px 16px 0 0;padding:20px 16px 32px;width:100%;max-width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 -4px 32px rgba(0,0,0,.25)">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+      '<div style="font-family:Cormorant Garamond,serif;font-size:18px;font-weight:600;color:var(--ink)">' + (fr2 ? 'Nouvelle tâche' : 'New task') + '</div>' +
+      '<button onclick="document.getElementById(\'addTaskModal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1">✕</button>' +
+    '</div>' +
+    '<div class="field"><label>' + (fr2 ? 'Titre *' : 'Title *') + '</label><input id="taskTitle" placeholder="' + (fr2 ? 'Nettoyage piscine…' : 'Pool cleaning…') + '" style="width:100%;box-sizing:border-box"></div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
+      '<div class="field"><label>' + (fr2 ? 'Catégorie' : 'Category') + '</label>' +
+        '<select id="taskCategory" onchange="document.getElementById(\'taskAmountWrap\').style.display=this.value===\'depense\'?\'\':\'none\'">' +
+          '<option value="general">' + (fr2 ? 'Général' : 'General') + '</option>' +
+          '<option value="entretien">🔧 ' + (fr2 ? 'Entretien' : 'Maintenance') + '</option>' +
+          '<option value="equipe">👤 ' + (fr2 ? 'Équipe' : 'Staff') + '</option>' +
+          '<option value="depense">💸 ' + (fr2 ? 'Dépense' : 'Expense') + '</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="field"><label>' + (fr2 ? 'Date' : 'Due date') + '</label><input type="date" id="taskDueDate" style="width:100%;box-sizing:border-box"></div>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">' +
+      '<div class="field"><label>' + (fr2 ? 'Récurrence' : 'Recurrence') + '</label>' +
+        '<select id="taskRecurrence">' +
+          '<option value="">' + (fr2 ? 'Aucune' : 'None') + '</option>' +
+          '<option value="weekly:mon">' + (fr2 ? 'Hebdo lundi' : 'Weekly Mon') + '</option>' +
+          '<option value="weekly:tue">' + (fr2 ? 'Hebdo mardi' : 'Weekly Tue') + '</option>' +
+          '<option value="weekly:wed">' + (fr2 ? 'Hebdo mercredi' : 'Weekly Wed') + '</option>' +
+          '<option value="weekly:thu">' + (fr2 ? 'Hebdo jeudi' : 'Weekly Thu') + '</option>' +
+          '<option value="weekly:fri">' + (fr2 ? 'Hebdo vendredi' : 'Weekly Fri') + '</option>' +
+          '<option value="monthly">' + (fr2 ? 'Mensuelle' : 'Monthly') + '</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="field" id="taskAmountWrap" style="display:none"><label>' + (fr2 ? 'Montant (MAD)' : 'Amount (MAD)') + '</label><input type="number" id="taskAmount" placeholder="0" min="0" style="width:100%;box-sizing:border-box"></div>' +
+    '</div>' +
+    (staffHtml ? '<div class="field"><label>' + (fr2 ? 'Assigné à' : 'Assigned to') + '</label><div style="display:flex;flex-direction:column;gap:4px">' + staffHtml + '</div></div>' : '') +
+    '<button onclick="saveTask()" style="width:100%;margin-top:12px;padding:12px;background:var(--green3);color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">' + (fr2 ? 'Ajouter' : 'Add task') + '</button>' +
+  '</div>';
+  document.body.appendChild(el);
+  setTimeout(function() { var t2 = document.getElementById('taskTitle'); if (t2) t2.focus(); }, 80);
+}
+
+async function saveTask() {
+  var fr2 = lang === 'fr';
+  var titleEl = document.getElementById('taskTitle');
+  var title = titleEl ? (titleEl.value || '').trim() : '';
+  if (!title) { if (typeof toast === 'function') toast(fr2 ? 'Titre requis' : 'Title required'); return; }
+  var category = (document.getElementById('taskCategory') || {}).value || 'general';
+  var dueDate = (document.getElementById('taskDueDate') || {}).value || null;
+  var recurrence = (document.getElementById('taskRecurrence') || {}).value || null;
+  var amount = category === 'depense' ? (parseFloat((document.getElementById('taskAmount') || {}).value) || null) : null;
+  var assigned = [];
+  document.querySelectorAll('.task-assignee:checked').forEach(function(cb) { assigned.push(cb.value); });
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/tasks', {
+      method: 'POST',
+      headers: Object.assign({}, authHeaders(), {'Prefer': 'return=minimal'}),
+      body: JSON.stringify({title: title, category: category, due_date: dueDate || null, due_time: null, assigned_to: assigned.length ? assigned : null, recurrence: recurrence || null, amount: amount, status: 'todo', priority: 'normal'})
+    });
+    if (!r.ok) throw new Error(r.status);
+    _tasksCache = null;
+    var m = document.getElementById('addTaskModal'); if (m) m.remove();
+    renderMaisonTasks();
+    if (typeof toast === 'function') toast(fr2 ? '✓ Tâche ajoutée' : '✓ Task added');
+  } catch(e) { if (typeof toast === 'function') toast(fr2 ? '⚠ Erreur' : '⚠ Error'); console.warn('saveTask:', e); }
+}
+// ── End Maison Tasks v213 ──────────────────────────────────────────────────
 
 /* v115 DEAD: no longer used as fallback (was injecting fake comps). Kept for reference only. */
 const DEFAULT_COMPETITORS = [
