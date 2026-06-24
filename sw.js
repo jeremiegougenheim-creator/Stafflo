@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v218 (voice: iOS-safe pickMime, VAD auto-stop, waveform, multilingue, transcribe-to-input)
-const CACHE = 'stafflo-v218';
+// Stafflo Service Worker — v219 (onboarding: acces a la demande — ?onboarding=1 + bouton Reglages)
+const CACHE = 'stafflo-v219';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
