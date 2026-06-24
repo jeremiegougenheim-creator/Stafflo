@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v219 (onboarding: acces a la demande — ?onboarding=1 + bouton Reglages)
-const CACHE = 'stafflo-v219';
+// Stafflo Service Worker — v220 (trust: badge "Donnees traitees en Europe · RGPD" Reglages + modal ARIA)
+const CACHE = 'stafflo-v220';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
