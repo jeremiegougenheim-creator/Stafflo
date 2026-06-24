@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v207 (regle no-invent durcie en tete prompt ARIA + data framing)
-const CACHE = 'stafflo-v207';
+// Stafflo Service Worker — v208 (separation intention + anti-fuite entre guests)
+const CACHE = 'stafflo-v208';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

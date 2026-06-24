@@ -12848,8 +12848,16 @@ async function handleChatQuestion(text) {
       'Exemple : si aucun tarif chauffeur/jour n\'est fourni, dis « tarif/jour non précisé » — ne sors PAS un chiffre inventé.',
       '═══ FIN RÈGLE ═══',
       '',
+      '═══ CIBLE & INTENTION ═══',
+      'Identifie d\'abord ce que veut ' + ownerName + ' :',
+      '• RÉDIGER un message → UNIQUEMENT s\'il le demande explicitement (« écris à… », « message pour… », « rédige… »). Sinon, ne rédige AUCUN message.',
+      '• ENREGISTRER une info → s\'il te donne un fait nouveau (date, préférence, personne, séjour), REFORMULE ce que tu as compris et propose de l\'enregistrer. Ne rédige pas de message au guest.',
+      '• RÉPONDRE → réponds de façon factuelle, sans inventer.',
+      'ANTI-FUITE : n\'attribue JAMAIS une info à un guest si elle ne le concerne pas explicitement. Si ' + ownerName + ' parle d\'une AUTRE personne ou d\'un AUTRE séjour (ex. « mon frère vient en août »), c\'est un contact/séjour DISTINCT — ne le mélange pas au guest actuellement ouvert, ne le glisse pas dans un message au guest actuel.',
+      '═══',
+      '',
       'Réponds en français, concis (2-4 phrases max).',
-      'Si on te demande un message WA/email : rédige-le complet, signé ' + ownerName + '.',
+      'Rédige un message (WA/email) UNIQUEMENT si explicitement demandé ; sinon réponds ou enregistre. Tout message est signé ' + ownerName + '.',
       'Si tu ne trouves pas l\'info dans le contexte ci-dessous, dis-le explicitement.',
       'Une note courte et honnête avec des blancs > une note longue et inventée.',
       'Aujourd\'hui : ' + todayHuman + '. Dates = toujours avec le jour de la semaine.',
@@ -12867,8 +12875,16 @@ async function handleChatQuestion(text) {
       'Example: if no driver day-rate is given, say "day rate not specified" — do NOT output an invented figure.',
       '═══ END RULE ═══',
       '',
+      '═══ TARGET & INTENT ═══',
+      'First identify what ' + ownerName + ' wants:',
+      '• DRAFT a message → ONLY if explicitly asked ("write to…", "message for…", "draft…"). Otherwise, do NOT draft any message.',
+      '• RECORD info → if given a new fact (date, preference, person, stay), RESTATE what you understood and offer to save it. Do not draft a guest message.',
+      '• ANSWER → answer factually, no invention.',
+      'NO-LEAK: never attribute info to a guest unless it explicitly concerns them. If ' + ownerName + ' mentions ANOTHER person or ANOTHER stay (e.g. "my brother comes in August"), it is a SEPARATE contact/stay — do not merge it into the currently open guest or slip it into a message to the current guest.',
+      '═══',
+      '',
       'Reply in English, concise (2-4 sentences max).',
-      'If asked to draft a WA/email message: write it complete, signed ' + ownerName + '.',
+      'Draft a (WA/email) message ONLY if explicitly asked; otherwise answer or record. Any message is signed ' + ownerName + '.',
       'If info is not in the context below, say so explicitly.',
       'A short honest note with blanks > a long invented one.',
       'Today: ' + todayHuman + '. Dates = always include weekday.',
@@ -12922,7 +12938,14 @@ async function handleChatQuestion(text) {
 
     var _dataHdr = fr ? '═══ DONNÉES FOURNIES (seule source de vérité) ═══' : '═══ PROVIDED DATA (sole source of truth) ═══';
     var _dataFtr = fr ? '═══ FIN DES DONNÉES ═══' : '═══ END OF DATA ═══';
-    var _ctxParts = [(fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman, '', _dataHdr, crmCtx];
+    var _focusedGuest = (typeof _chatActiveClient !== 'undefined' && _chatActiveClient && _chatActiveClient.name)
+      ? (fr
+          ? '═══ GUEST ACTUELLEMENT OUVERT : ' + _chatActiveClient.name + ' (référence — ' + ownerName + ' peut parler d\'une autre personne) ═══'
+          : '═══ CURRENTLY OPEN GUEST: ' + _chatActiveClient.name + ' (reference — ' + ownerName + ' may be talking about someone else) ═══')
+      : '';
+    var _ctxParts = [(fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman, '', _dataHdr];
+    if (_focusedGuest) _ctxParts.push(_focusedGuest);
+    _ctxParts.push(crmCtx);
     if (_evBlock) { _ctxParts.push(''); _ctxParts.push(_evBlock); }
     if (_prestaBlock) { _ctxParts.push(''); _ctxParts.push(_prestaBlock); }
     _ctxParts.push('', _dataFtr, '', historyBlock, '', ownerName + ': "' + text + '"');
