@@ -3133,7 +3133,7 @@ window.renderSoloTurnoverCard = function(){
     var firmList = clients.filter(firm);
     var upcoming = firmList.filter(function(c){ return c.arrival && new Date(c.arrival) > today; })
                            .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
-    var net = firmList.reduce(function(s,c){
+    var net = firmList.filter(function(c){return !c.is_comp;}).reduce(function(s,c){
       var p = +c.price || 0; var comm = +c.commission || 0;
       return s + Math.round(p * (1 - comm/100));
     }, 0);
@@ -4016,11 +4016,13 @@ window.renderTodayStatsStrip = function(){
     if (!c || c.deleted_at) return;
     var firm = (typeof isFirmBooking === 'function') ? isFirmBooking(c) : true;
     if (firm) {
-      var pct = +c.commission || 0;
-      net += (+c.price || 0) * (1 - pct/100);
-      if ((+c.price || 0) === 0 && c.departure) {            // v116: PAST firm résas with no price
-        var dep = new Date(c.departure); dep.setHours(0,0,0,0);
-        if (!isNaN(dep.getTime()) && dep.getTime() < todayMs) missingPast++;
+      if (!c.is_comp) {
+        var pct = +c.commission || 0;
+        net += (+c.price || 0) * (1 - pct/100);
+        if ((+c.price || 0) === 0 && c.departure) {            // v116: PAST firm résas with no price
+          var dep = new Date(c.departure); dep.setHours(0,0,0,0);
+          if (!isNaN(dep.getTime()) && dep.getTime() < todayMs) missingPast++;
+        }
       }
       if (c.arrival) {
         var a = new Date(c.arrival); a.setHours(0,0,0,0);
@@ -4248,6 +4250,7 @@ window.renderSetupOneLiner = function(){
       clients.forEach(function(c){
         if (!c || c.deleted_at) return;
         if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
+        if (c.is_comp) return;
         if (!c.arrival || !c.departure) return;
         var arr = new Date(c.arrival + 'T12:00:00').getTime();
         var dep = new Date(c.departure + 'T12:00:00').getTime();
@@ -5565,6 +5568,12 @@ window.renderSetupOneLiner = function(){
         </div>
         <div class="field"><label data-fr="Prix brut" data-en="Gross price">Prix brut</label><input type="number" id="fPrice" placeholder="2600" oninput="updateNetPreview()"></div>
         <div class="field"><label data-fr="Commission %" data-en="Commission %">Commission %</label><input type="number" id="fComm" placeholder="3.6" step="0.1" oninput="updateNetPreview()"></div>
+      </div>
+      <div style="margin:6px 0 2px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:var(--ink)">
+          <input type="checkbox" id="fIsComp" onchange="toggleCompField(this.checked)" style="width:15px;height:15px;accent-color:var(--gold);cursor:pointer">
+          <span data-fr="🎁 Séjour offert (famille / invité) — exclu du revenu" data-en="🎁 Complimentary stay (family / guest) — excl. revenue">🎁 Séjour offert (famille / invité) — exclu du revenu</span>
+        </label>
       </div>
       <div id="netPreview" style="background:var(--green-light);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--green);font-weight:500;margin-bottom:10px;display:none"></div>
       <div class="field"><label>Source</label>
@@ -8584,7 +8593,8 @@ async function loadFromSupabase() {
         messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
         createdAt: r.created_at||new Date().toISOString(),
         deleted_at: r.deleted_at || null,
-        ops_state: (r.ops_state && typeof r.ops_state === 'object') ? r.ops_state : {}
+        ops_state: (r.ops_state && typeof r.ops_state === 'object') ? r.ops_state : {},
+        is_comp: r.is_comp === true
       }; });
       deduplicateClients();
       saveLocal(); renderAll(); setSyncDot('ok');
@@ -8620,7 +8630,8 @@ async function pushToSupabase(client) {
     comm_mode:client.commMode||'percent', source:client.source||'Direct',
     notes:client.notes||'', pay_status:client.payStatus||'',
     booking_status:client.bookingStatus||'confirmed',
-    messages: client.messages || null
+    messages: client.messages || null,
+    is_comp: !!client.is_comp
   };
   setSyncDot('busy');
   try {
@@ -10400,7 +10411,7 @@ function renderAll() {
 function updateHeaderStats() {
   // Stats reflect real revenue/guests — leads are NOT counted here.
   const firm = clients.filter(c => isFirmBooking(c));
-  const total = firm.reduce((s,c) => s + netAmt(c), 0);
+  const total = firm.filter(c => !c.is_comp).reduce((s,c) => s + netAmt(c), 0);
   document.getElementById('hNet').textContent = Math.round(total).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
   document.getElementById('hCount').textContent = firm.length;
   document.getElementById('crmCount').textContent = firm.length;
@@ -10676,7 +10687,7 @@ function renderClients() {
         '<div class="cc-item"><label>' + (fr?'ARRIVÉE':'ARRIVAL') + '</label><span>' + fmtDate(cl.arrival, true) + '</span></div>' +
         '<div class="cc-item"><label>' + (fr?'NUITS':'NIGHTS') + '</label><span>' + (n||'—') + '</span></div>' +
         '<div class="cc-item"><label>' + (fr?'PERS.':'GUESTS') + '</label><span>' + (cl.guests||'—') + '</span></div>' +
-        (netStr ? '<div class="cc-item"><label>' + (fr?'NET VOUS':'YOUR NET') + '</label><span class="net">' + netStr + '</span></div>' : '') +
+        (cl.is_comp ? '<div class="cc-item"><label>' + (fr?'TARIF':'RATE') + '</label><span style="color:var(--gold);font-weight:600">🎁 ' + (fr?'Offert':'Comp') + '</span></div>' : (netStr ? '<div class="cc-item"><label>' + (fr?'NET VOUS':'YOUR NET') + '</label><span class="net">' + netStr + '</span></div>' : '')) +
       '</div>' +
       (extraAction || '') +
       waBtn +
@@ -11002,7 +11013,7 @@ function openDetail(id) {
     '</div>' : '';
 
   // Rows HTML
-  var rowData = [['Source',cl.source],[fr?'Prix brut':'Gross',cl.price?Math.round(cl.price).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')+'€':null],[fr?'Commission':'Commission',cl.commission?cl.commission+'%':null],[fr?'Paiement':'Payment',payLabel]].filter(function(r){return r[1];});
+  var rowData = [['Source',cl.source],cl.is_comp?[fr?'Tarification':'Pricing','🎁 '+(fr?'Offert (hors revenu)':'Complimentary (excl. revenue)')]:[fr?'Prix brut':'Gross',cl.price?Math.round(cl.price).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')+'€':null],cl.is_comp?null:[fr?'Commission':'Commission',cl.commission?cl.commission+'%':null],[fr?'Paiement':'Payment',payLabel]].filter(function(r){return r&&r[1];});
   var rowsHTML = '<div style="margin:0 16px 12px;border-radius:10px;border:1px solid var(--border);overflow:hidden">' +
     rowData.map(function(r,i){
       return '<div style="display:flex;justify-content:space-between;padding:10px 14px;'+(i<rowData.length-1?'border-bottom:1px solid var(--border)':'')+'">' +
@@ -11140,17 +11151,23 @@ function openForm(id) {
     document.getElementById('fDep').value = c.departure || '';
     document.getElementById('fGuests').value = c.guests || '';
     document.getElementById('fNat').value = c.nat || '';
-    document.getElementById('fPrice').value = c.price || '';
+    document.getElementById('fPrice').value = c.is_comp ? '' : (c.price || '');
     document.getElementById('fComm').value = c.commission || '';
     document.getElementById('fSource').value = c.source || 'Airbnb';
     document.getElementById('fPhone').value = c.phone || '';
     document.getElementById('fNotes').value = c.notes || '';
-    updateNetPreview();
+    var _fIsComp = document.getElementById('fIsComp');
+    if (_fIsComp) { _fIsComp.checked = !!c.is_comp; toggleCompField(!!c.is_comp); } else updateNetPreview();
   } else {
-    ['fName','fArr','fDep','fGuests','fPrice','fPhone','fNotes'].forEach(id => document.getElementById(id).value = '');
+    ['fName','fArr','fDep','fGuests','fPhone','fNotes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('fPrice').value = '';
+    document.getElementById('fPrice').disabled = false;
+    document.getElementById('fPrice').style.opacity = '';
     document.getElementById('fNat').value = '';
     document.getElementById('fComm').value = '3.6';
     document.getElementById('fSource').value = 'Airbnb';
+    var _fIsCompNew = document.getElementById('fIsComp');
+    if (_fIsCompNew) _fIsCompNew.checked = false;
     document.getElementById('netPreview').style.display = 'none';
   }
 
@@ -11171,14 +11188,24 @@ function autoComm() {
 }
 
 function updateNetPreview() {
+  const el = document.getElementById('netPreview');
+  if (document.getElementById('fIsComp')?.checked) { el.style.display = 'none'; return; }
   const p = parseFloat(document.getElementById('fPrice').value)||0;
   const comm = parseFloat(document.getElementById('fComm').value)||0;
-  const el = document.getElementById('netPreview');
   if (p > 0) {
     const net = Math.round(p*(1-comm/100));
     el.textContent = '→ Net : ' + Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€ (−'+comm+'%)';
     el.style.display = 'block';
   } else { el.style.display = 'none'; }
+}
+
+function toggleCompField(checked) {
+  var fp = document.getElementById('fPrice');
+  if (!fp) return;
+  fp.disabled = checked;
+  fp.style.opacity = checked ? '0.35' : '';
+  if (checked) fp.value = '';
+  updateNetPreview();
 }
 
 function saveClient() {
@@ -11191,7 +11218,8 @@ function saveClient() {
     arrival: document.getElementById('fArr').value,
     departure: document.getElementById('fDep').value,
     guests: parseInt(document.getElementById('fGuests').value)||0,
-    price: parseFloat(document.getElementById('fPrice').value)||0,
+    is_comp: !!(document.getElementById('fIsComp')?.checked),
+    price: document.getElementById('fIsComp')?.checked ? 0 : (parseFloat(document.getElementById('fPrice').value)||0),
     commission: parseFloat(document.getElementById('fComm').value)||0,
     commMode: 'percent',
     source: document.getElementById('fSource').value,
@@ -12465,8 +12493,11 @@ function buildClientsContextRich(maxItems) {
     } else if (c.arrival) bits.push((fr?'arrivée ':'arrival ') + fmtDateHuman(c.arrival));
     if (c.guests) bits.push(c.guests + (fr?' personnes':' guests'));
     if (c.nights) bits.push(c.nights + (fr?' nuits':' nights'));
-    if (c.price && Number(c.price) > 0) bits.push(c.price + '€');
-    else {
+    if (c.is_comp) {
+      bits.push(fr?'Tarification : SÉJOUR OFFERT (gratuit, hors revenu) — ne pas proposer de prix':'Pricing: COMPLIMENTARY STAY (free, excl. revenue) — do not suggest a price');
+    } else if (c.price && Number(c.price) > 0) {
+      bits.push(c.price + '€');
+    } else {
       // Confirmed/pending stays without a price → flag explicitly so ARIA
       // says "prix non renseigné" instead of citing 0€.
       var _bsP = c.bookingStatus || 'confirmed';
@@ -12846,12 +12877,12 @@ async function handleChatQuestion(text) {
     systemPrompt = (fr
       ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\n' +
         'RÈGLE : N\'invente jamais un montant, prénom, contact ou nombre absent des données. Info absente → omets ou écris « non précisé ».\n' +
-        'INTENTION NOUVEAU SÉJOUR : si ' + ownerName + ' énonce un nouveau contact/séjour (prénom + dates, AUTRE que le guest ouvert), retourne UNE seule action kind:"create_client" avec les champs extraits dans "fields". Ne rédige AUCUN message guest. Dates : AAAA-MM-JJ (année ' + _curYear + '). N\'invente aucun champ — laisse price à null si inconnu.\n' +
+        'INTENTION NOUVEAU SÉJOUR : si ' + ownerName + ' énonce un nouveau contact/séjour (prénom + dates, AUTRE que le guest ouvert), retourne UNE seule action kind:"create_client" avec les champs extraits dans "fields". Ne rédige AUCUN message guest. Dates : AAAA-MM-JJ (année ' + _curYear + '). N\'invente aucun champ — laisse price à null si inconnu. Si le contexte indique gratuit/offert/famille/ami proche, passe is_comp:true dans fields.\n' +
         'Sinon, propose 2-3 actions. JSON array uniquement (PAS de texte avant ou après) :\n' +
         '[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"récap ou message complet signé ' + ownerName + '"}]'
       : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\n' +
         'RULE: Never invent an amount, name, contact or number absent from the data. Missing → omit or write "not specified".\n' +
-        'NEW STAY INTENT: if ' + ownerName + ' states a new contact/stay (name + dates, OTHER than the open guest), return ONE action kind:"create_client" with extracted fields in "fields". Do NOT draft any guest message. Dates as YYYY-MM-DD (year ' + _curYear + '). Invent nothing — leave price null if unknown.\n' +
+        'NEW STAY INTENT: if ' + ownerName + ' states a new contact/stay (name + dates, OTHER than the open guest), return ONE action kind:"create_client" with extracted fields in "fields". Do NOT draft any guest message. Dates as YYYY-MM-DD (year ' + _curYear + '). Invent nothing — leave price null if unknown. If context indicates complimentary/family/close friend, set is_comp:true in fields.\n' +
         'Otherwise propose 2-3 actions. JSON array only (NO text before or after):\n' +
         '[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"recap or full message signed ' + ownerName + '"}]');
   // -- end orchestrator systemPrompt
@@ -30398,6 +30429,7 @@ window.addEventListener('DOMContentLoaded', function() {
           '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
             '<span style="font-size:14px">➕</span>' +
             '<span style="font-weight:600;font-size:12px;color:var(--ink)">' + (a.label || (fr?'Ajouter au CRM':'Add to CRM')) + '</span>' +
+            ((a.fields && (a.fields.is_comp === true || a.fields.is_comp === 'true')) ? '<span style="margin-left:auto;font-size:11px;color:var(--gold);font-weight:600">🎁 ' + (fr?'Offert':'Comp') + '</span>' : '') +
           '</div>' +
           '<div style="font-size:12px;color:var(--ink);line-height:1.5;margin-bottom:6px;white-space:pre-wrap">' + safeContent + '</div>' +
           '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
@@ -30451,6 +30483,7 @@ window.addEventListener('DOMContentLoaded', function() {
         if (typeof toast === 'function') toast((fr?'⚠ ':' ⚠ ') + nm + (fr?' existe déjà (même arrivée)':' already exists (same arrival)'));
         return;
       }
+      var _isComp = f.is_comp === true || f.is_comp === 'true';
       var newClient = {
         id: Date.now().toString(),
         name: nm,
@@ -30458,12 +30491,13 @@ window.addEventListener('DOMContentLoaded', function() {
         arrival: f.arrival || '',
         departure: f.departure || '',
         guests: totalGuests || 0,
-        price: (f.price != null && f.price !== '') ? Number(f.price) : 0,
+        price: _isComp ? 0 : ((f.price != null && f.price !== '') ? Number(f.price) : 0),
         commission: 0, commMode: 'percent', source: 'Direct',
         phone: f.phone || '', email: f.email || '',
         notes: noteParts.filter(Boolean).join(' · '),
         bookingStatus: 'confirmed', payStatus: '',
         contact_type: f.relation ? 'owner_friend' : 'client',
+        is_comp: _isComp,
         createdAt: new Date().toISOString(), deleted_at: null, ops_state: {}
       };
       if (typeof clients !== 'undefined') clients.unshift(newClient);
@@ -30501,8 +30535,8 @@ window.addEventListener('DOMContentLoaded', function() {
               var villaName = cfg.villa || 'Villa DarJ';
               var fr = lang === 'fr';
               var systemPrompt = (fr
-                ? 'Tu es ARIA pour ' + villaName + '. Staff : Said, Faiza, Bouchra.\nRÈGLE : N\'invente jamais un montant, prénom ou contact absent des données. Info absente → omets ou « non précisé ».\nPropose 2-3 actions. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"message complet signé ' + ownerName + '"}]'
-                : 'You are ARIA for ' + villaName + '. Staff: Said, Faiza, Bouchra.\nRULE: Never invent an amount, name or contact absent from the data. Missing → omit or "not specified".\nPropose 2-3 actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"full message signed ' + ownerName + '"}]');
+                ? 'Tu es ARIA pour ' + villaName + '. Staff : Said, Faiza, Bouchra.\nRÈGLE : N\'invente jamais un montant, prénom ou contact absent des données. Info absente → omets ou « non précisé ».\nINTENTION NOUVEAU SÉJOUR : si énoncé d\'un nouveau contact + dates, retourne UNE action kind:"create_client". Si contexte gratuit/offert/famille, is_comp:true dans fields.\nPropose 2-3 actions. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"message complet signé ' + ownerName + '"}]'
+                : 'You are ARIA for ' + villaName + '. Staff: Said, Faiza, Bouchra.\nRULE: Never invent an amount, name or contact absent from the data. Missing → omit or "not specified".\nNEW STAY INTENT: if new contact + dates are stated, return ONE action kind:"create_client". If complimentary/family context, is_comp:true in fields.\nPropose 2-3 actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"full message signed ' + ownerName + '"}]');
               var clientList = _getClients();
               var clientCtx = 'Active clients (' + clientList.length + '): ' + buildClientLines(fullPrompt, 5);
               var userCtx = 'Today: ' + _today() + '\n' + clientCtx + '\n\nSituation:\n' + fullPrompt;

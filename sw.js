@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v210 (scroll zone messages ARIA — flex min-height:0)
-const CACHE = 'stafflo-v210';
+// Stafflo Service Worker — v211 (is_comp — sejour offert, exclu NET, badge, ARIA-aware)
+const CACHE = 'stafflo-v211';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
