@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v222 (fix: extraction "Booker" = role label Airbnb, jamais un nom de famille)
-const CACHE = 'stafflo-v222';
+// Stafflo Service Worker — v223 (fix: rangee boutons ARIA — flex-wrap:wrap, stats chip scrollbar visible)
+const CACHE = 'stafflo-v223';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
