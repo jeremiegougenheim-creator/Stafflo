@@ -26353,13 +26353,20 @@ window.addEventListener('DOMContentLoaded', function() {
   /* ══════════════════════════════════════════════════════════════════
      EXTRACTION UNIVERSELLE — un seul prompt qui marche pour toutes sources
      ══════════════════════════════════════════════════════════════════ */
-  function buildUniversalExtractPrompt(today, sourceHint){
+  function buildUniversalExtractPrompt(today, sourceHint, ownerName, staffNames){
+    var knownNonGuests = [];
+    if (ownerName) knownNonGuests.push(ownerName);
+    if (staffNames && staffNames.length) staffNames.forEach(function(s){ if (s) knownNonGuests.push(s); });
+    var nonGuestRule = knownNonGuests.length
+      ? ['KNOWN NON-GUESTS (owner & staff — NEVER extract as guest name, they are the villa team): ' + knownNonGuests.join(', ') + '.']
+      : [];
     return [
       'You extract guest data from any source (Airbnb/Booking email, WhatsApp conversation, SMS, generic email, transcribed photo/document).',
       'Return ONLY valid JSON, no markdown, no comments.',
       'JSON shape: {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","guests":0,"children":0,"infants":0,"price":0,"commission":15.5,"source":"","phone":"","email":"","bookingStatus":"confirmed","lang":"","notes":""}',
       'Rules:',
-      '- "name": full name (first + last). Extract even from informal sources (WhatsApp, SMS).',
+      '- "name": full name (first + last) of the GUEST (the person staying at the villa). Extract even from informal sources (WhatsApp, SMS).',
+    ].concat(nonGuestRule).concat([
       '- "nat": city, country if mentioned',
       '- "arrival"/"departure": YYYY-MM-DD format. If only "in May" mentioned, use first matching weekend.',
       '- "guests": total adults+children+infants. "children": 1-12yo. "infants": 0-2yo.',
@@ -26385,13 +26392,24 @@ window.addEventListener('DOMContentLoaded', function() {
       'Example 3 (SMS short):',
       'INPUT: "Hi from John Smith, +44 7700 900123. Question about your villa for July, 6 ppl, peanut allergy"',
       'OUTPUT: {"name":"John Smith","nat":"","arrival":"","departure":"","guests":6,"children":0,"infants":0,"price":0,"commission":0,"source":"SMS","phone":"+447700900123","email":"","bookingStatus":"inquiry","lang":"en","notes":"⚠️ peanut allergy, July, 6 people"}'
-    ].join('\n');
+    ]).join('\n');
   }
 
   // Extraction unique pour TOUS les types texte
   async function extractFromAnyText(cleaned, sourceHint){
     var today = new Date().toISOString().slice(0,10);
-    var sys = buildUniversalExtractPrompt(today, sourceHint);
+    // Inject owner + staff so LLM doesn't extract them as guests
+    var _cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var _ownerName = (_cfg.owner || '').trim();
+    var _staffNames = [];
+    try {
+      if (Array.isArray(_cfg.staffMembers) && _cfg.staffMembers.length) {
+        _staffNames = _cfg.staffMembers.map(function(s){ return typeof s === 'object' ? (s.name||'') : s; }).filter(Boolean);
+      } else if (_cfg.staff) {
+        _staffNames = _cfg.staff.split(/[\n,]/).map(function(s){ return s.replace(/\(.*?\)/g,'').trim().split(/\s+/)[0]; }).filter(Boolean);
+      }
+    } catch(e2){}
+    var sys = buildUniversalExtractPrompt(today, sourceHint, _ownerName, _staffNames);
     var raw;
     try {
       raw = await window.callBestAI('extract', sys, cleaned, 700);
@@ -26409,6 +26427,18 @@ window.addEventListener('DOMContentLoaded', function() {
     if (!g.name && !raw) g._extractFailed = true;
     // Cleanup name
     if (g.name) g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
+    // Post-filter: if extracted name matches owner or staff, it's not a guest
+    if (g.name) {
+      var _norm = function(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z]/g,' ').trim(); };
+      var _gFirst = _norm(g.name).split(/\s+/)[0];
+      var _knownNonGuests = [_ownerName].concat(_staffNames);
+      var _isOwnerOrStaff = _knownNonGuests.some(function(n){
+        if (!n) return false;
+        var tok = _norm(n).split(/\s+/)[0];
+        return tok && tok.length >= 3 && (_gFirst === tok || _norm(g.name).indexOf(tok) >= 0);
+      });
+      if (_isOwnerOrStaff) { g.name = ''; }
+    }
     return g;
   }
 

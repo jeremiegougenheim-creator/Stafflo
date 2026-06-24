@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v215 (fix crash g.phone null — conv staff sans infos séjour)
-const CACHE = 'stafflo-v215';
+// Stafflo Service Worker — v216 (aria: reconnaissance owner+staff dans extraction WA)
+const CACHE = 'stafflo-v216';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
