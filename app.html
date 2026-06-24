@@ -12875,7 +12875,7 @@ async function handleChatQuestion(text) {
   // Ex: "Maxime vient du 2 au 16 août avec sa femme" → route to create_client orchestrator.
   var isNewStay = !isOrchestrator && (function(){
     var lc = (text || '').toLowerCase();
-    var hasVerb = /\b(vient|viennent|arrive[sz]?|arrivent|séjour|viendra|coming|arrives?|visit|staying|stays|vient\s+avec|viendront)\b/.test(lc);
+    var hasVerb = /\b(vient|viennent|arrive[sz]?|arrivent|séjour|viendra|coming|arrives?|visit|staying|stays|vient\s+avec|viendront|register|enregistr[eé][rz]?|cr[eé]e[rz]?\s+(?:un\s+)?(?:nouveau\s+)?(?:guest|client|contact)|nouveau\s+guest|new\s+guest|nouveau\s+client|new\s+client)\b/.test(lc);
     var hasDate = /\b(du\s+\d|\bau\s+\d|from\s+\d|\bto\s+\d|août|janvier|f[eé]vrier|mars|avril|mai|juin|juillet|septembre|octobre|novembre|d[eé]cembre|january|february|march|april|may|june|july|august|september|october|november|december|\d{1,2}\s+au\s+\d|\d{1,2}[\/\-]\d{1,2})/.test(lc);
     var isQuestion = /\?$/.test(text.trim());
     var isWrite = /^(écris|rédige|draft|write|compose)/i.test(text.trim());
@@ -12890,17 +12890,24 @@ async function handleChatQuestion(text) {
   var historyBlock = isFactual ? buildChatHistoryBlock(2) : (dbHistory || buildChatHistoryBlock(8));
 
   var _curYear = new Date().getFullYear();
+  var _todayISO = today;
   var systemPrompt;
   if (isOrchestrator || isNewStay) {
     systemPrompt = (fr
       ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\n' +
         'RÈGLE : N\'invente jamais un montant, prénom, contact ou nombre absent des données. Info absente → omets ou écris « non précisé ».\n' +
-        'INTENTION NOUVEAU SÉJOUR : si ' + ownerName + ' énonce un nouveau contact/séjour (prénom + dates, AUTRE que le guest ouvert), retourne UNE seule action kind:"create_client" avec les champs extraits dans "fields". Ne rédige AUCUN message guest. Dates : AAAA-MM-JJ (année ' + _curYear + '). N\'invente aucun champ — laisse price à null si inconnu. Si le contexte indique gratuit/offert/famille/ami proche, passe is_comp:true dans fields.\n' +
+        'DATE DE RÉFÉRENCE : aujourd\'hui = ' + _todayISO + ' (année ' + _curYear + '). « l\'année prochaine » = ' + (_curYear+1) + '. « dans N jours » / « +N jours » = aujourd\'hui + N. « la semaine prochaine » = +7j. Recalcule TOUJOURS depuis cette date. Si ' + ownerName + ' corrige (« je voulais l\'année prochaine »), RECALCULE — ne t\'excuse pas sans corriger la date.\n' +
+        'INTENTION NOUVEAU SÉJOUR : si ' + ownerName + ' énonce un nouveau contact/séjour (prénom + dates, AUTRE que le guest ouvert) OU demande d\'enregistrer/créer/register un nouveau guest, retourne UNE seule action kind:"create_client" avec les champs extraits dans "fields". Ne rédige AUCUN message guest. Dates : AAAA-MM-JJ. N\'invente aucun champ — laisse price à null si inconnu. Si le contexte indique gratuit/offert/famille/ami proche, passe is_comp:true dans fields.\n' +
+        'DISPONIBILITÉ : ne vérifie JAMAIS la disponibilité (aucun moteur de dispo n\'existe). Ne refuse JAMAIS de créer un séjour pour « plus de place » ou « déjà réservé ». Crée le contact, c\'est tout.\n' +
+        'NO-FAKE-ACTION : n\'affirme JAMAIS avoir EFFECTUÉ une action (éteint les lumières, prévenu le staff, envoyé, réservé) que l\'app n\'a pas exécutée. Tu PROPOSES ou RÉDIGES — tu ne prétends pas avoir agi.\n' +
         'Sinon, propose 2-3 actions. JSON array uniquement (PAS de texte avant ou après) :\n' +
         '[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"récap ou message complet signé ' + ownerName + '"}]'
       : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\n' +
         'RULE: Never invent an amount, name, contact or number absent from the data. Missing → omit or write "not specified".\n' +
-        'NEW STAY INTENT: if ' + ownerName + ' states a new contact/stay (name + dates, OTHER than the open guest), return ONE action kind:"create_client" with extracted fields in "fields". Do NOT draft any guest message. Dates as YYYY-MM-DD (year ' + _curYear + '). Invent nothing — leave price null if unknown. If context indicates complimentary/family/close friend, set is_comp:true in fields.\n' +
+        'REFERENCE DATE: today = ' + _todayISO + ' (year ' + _curYear + '). "next year" = ' + (_curYear+1) + '. "in N days"/"+N days" = today + N. "next week" = +7d. ALWAYS recompute from this reference. If ' + ownerName + ' corrects you ("I meant next year"), RECOMPUTE — don\'t apologize without fixing the date.\n' +
+        'NEW STAY INTENT: if ' + ownerName + ' states a new contact/stay (name + dates, OTHER than the open guest) OR asks to register/create a new guest, return ONE action kind:"create_client" with extracted fields in "fields". Do NOT draft any guest message. Dates as YYYY-MM-DD. Invent nothing — leave price null if unknown. If context indicates complimentary/family/close friend, set is_comp:true in fields.\n' +
+        'AVAILABILITY: NEVER check availability (no availability engine exists). NEVER refuse to create a stay due to "no rooms" / "already booked". Just create the contact.\n' +
+        'NO-FAKE-ACTION: NEVER claim you PERFORMED an action (turned off lights, informed staff, sent, booked) the app didn\'t actually execute. You PROPOSE or DRAFT it — you don\'t pretend it\'s done.\n' +
         'Otherwise propose 2-3 actions. JSON array only (NO text before or after):\n' +
         '[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"recap or full message signed ' + ownerName + '"}]');
   // -- end orchestrator systemPrompt
@@ -12929,9 +12936,10 @@ async function handleChatQuestion(text) {
       'Rédige un message (WA/email) UNIQUEMENT si explicitement demandé ; sinon réponds ou enregistre. Tout message est signé ' + ownerName + '.',
       'Si tu ne trouves pas l\'info dans le contexte ci-dessous, dis-le explicitement.',
       'Une note courte et honnête avec des blancs > une note longue et inventée.',
-      'Aujourd\'hui : ' + todayHuman + '. Dates = toujours avec le jour de la semaine.',
+      'Aujourd\'hui : ' + todayHuman + ' (' + _todayISO + ', année ' + _curYear + '). « l\'année prochaine » = ' + (_curYear+1) + '. « dans N jours » = aujourd\'hui + N. Dates = toujours avec le jour de la semaine.',
       'CRM : CONFIRMED = séjours réels. PIPELINE = prospects non confirmés, JAMAIS des arrivées.',
-      'Prix MANQUANT = "à compléter", pas "0€". Leads EXPIRÉES = ignorer.'
+      'Prix MANQUANT = "à compléter", pas "0€". Leads EXPIRÉES = ignorer.',
+      'NO-FAKE-ACTION : n\'affirme JAMAIS avoir effectué une action (éteint les lumières, prévenu le staff, envoyé) que l\'app n\'a pas exécutée. Tu PROPOSES — tu ne prétends pas avoir agi.'
     ].join('\n') : [
       'You are ARIA, assistant to ' + ownerName + ' for ' + villaName + ' (Marrakech).',
       'Staff: ' + staffList + '.',
@@ -12956,9 +12964,10 @@ async function handleChatQuestion(text) {
       'Draft a (WA/email) message ONLY if explicitly asked; otherwise answer or record. Any message is signed ' + ownerName + '.',
       'If info is not in the context below, say so explicitly.',
       'A short honest note with blanks > a long invented one.',
-      'Today: ' + todayHuman + '. Dates = always include weekday.',
+      'Today: ' + todayHuman + ' (' + _todayISO + ', year ' + _curYear + '). "next year" = ' + (_curYear+1) + '. "in N days" = today + N. Dates = always include weekday.',
       'CRM: CONFIRMED = real stays. PIPELINE = unconfirmed prospects, NEVER arrivals.',
-      'Missing price = "to be filled", not "0€". Expired leads = ignore.'
+      'Missing price = "to be filled", not "0€". Expired leads = ignore.',
+      'NO-FAKE-ACTION: NEVER claim you PERFORMED an action (turned off lights, informed staff, sent) the app didn\'t actually execute. You PROPOSE — you don\'t pretend it\'s done.'
     ].join('\n');
   }
 
@@ -13071,7 +13080,20 @@ async function handleChatQuestion(text) {
     aiMaxTokens = 1000;
   }
 
-  var raw = await callBestAI(aiTask, systemPrompt, userCtx, aiMaxTokens);
+  var raw;
+  try {
+    raw = await callBestAI(aiTask, systemPrompt, userCtx, aiMaxTokens);
+  } catch(e) {
+    console.warn('[aria] ' + aiTask + ' cascade failed:', e.message);
+    if (aiTask !== 'chat_fr') {
+      try { raw = await callBestAI('chat_fr', systemPrompt, userCtx, Math.min(aiMaxTokens, 500)); } catch(e2) { raw = null; }
+    }
+    if (raw == null) {
+      document.getElementById('chatTyping').style.display = 'none';
+      addChatBubble('ai', fr ? '⚠ Service temporairement indisponible, réessaie dans un instant.' : '⚠ Service temporarily unavailable, try again in a moment.', []);
+      return;
+    }
+  }
   document.getElementById('chatTyping').style.display = 'none';
 
   // For orchestrator: emit raw JSON so the ARIA modal parser kicks in
@@ -13121,6 +13143,11 @@ async function handleChatQuestion(text) {
 
 async function handleChatSendCommand(client, text) {
   var fr = lang === 'fr';
+  if (!client) {
+    addChatBubble('ai', fr ? 'Pour quel guest ? (aucun n\'est ouvert)' : 'Which guest? (none open)', []);
+    document.getElementById('chatTyping').style.display = 'none';
+    return;
+  }
   var lastMsg = '';
   if (client.messages) {
     var keys = Object.keys(client.messages);
