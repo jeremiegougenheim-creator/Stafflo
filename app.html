@@ -5853,6 +5853,23 @@ function proxyHeaders() {
   if (STAFFLO_PROXY_SECRET) h['x-stafflo-secret'] = STAFFLO_PROXY_SECRET;
   return h;
 }
+// ── Gate concurrence IA : jamais plus de 2 appels ai-proxy simultanés ──
+// Évite de saturer la limite de concurrence Mistral au boot (brief + classify).
+const __aiGate = { max: 2, active: 0, q: [] };
+function __aiRun(fn) {
+  return new Promise(function(resolve, reject) {
+    var run = function() {
+      __aiGate.active++;
+      fn().then(resolve, reject).finally(function() {
+        __aiGate.active--;
+        var next = __aiGate.q.shift();
+        if (next) next();
+      });
+    };
+    if (__aiGate.active < __aiGate.max) run();
+    else __aiGate.q.push(run);
+  });
+}
 // ── Hardcoded Supabase constants (never broken by bad localStorage) ──
 const SB_URL  = 'https://rcjhgilpmojohmrqzokx.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
@@ -20051,11 +20068,11 @@ async function loadMorningBrief(forceRefresh = false) {
     let raw = '';
     
     if (STAFFLO_PROXY) {
-      const r = await fetch(STAFFLO_PROXY, {
+      const r = await __aiRun(() => fetch(STAFFLO_PROXY, {
         method: 'POST',
         headers: proxyHeaders(),
         body: JSON.stringify({ task: 'brief', system: briefSystem, user: prompt, max_tokens: 700 })
-      });
+      }));
       const d = await r.json();
       if (!r.ok || d.error) {
         console.warn('Morning brief proxy error:', d.error || r.status);
@@ -26812,14 +26829,14 @@ window.addEventListener('DOMContentLoaded', function() {
         var proxyTimer = setTimeout(function(){ proxyAC.abort(); }, 25000);
         var pr;
         try {
-          pr = await fetch(STAFFLO_PROXY, {
+          pr = await __aiRun(() => fetch(STAFFLO_PROXY, {
             method:'POST', headers: headers, signal: proxyAC.signal,
             body: JSON.stringify({
               task: task, system: systemPrompt||'', user: userContent,
               max_tokens: maxTokens||1000,
               session_key: sessionKey, client_mode: clientMode
             })
-          });
+          }));
         } finally { clearTimeout(proxyTimer); }
         if (pr.status === 429){
           if (typeof toast==='function') toast(fr() ? '⏳ Limite atteinte — réessayez dans une heure' : '⏳ Rate limit — try again in an hour');

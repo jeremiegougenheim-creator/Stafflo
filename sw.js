@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v223 (fix: rangee boutons ARIA — flex-wrap:wrap, stats chip scrollbar visible)
-const CACHE = 'stafflo-v223';
+// Stafflo Service Worker — v224 (fix: gate concurrence IA 2 max — stoppe burst Mistral au boot)
+const CACHE = 'stafflo-v224';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
