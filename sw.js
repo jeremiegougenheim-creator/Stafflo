@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v225 (fix: modale ARIA scroll — retire overscroll-behavior, restaure welcome si vide)
-const CACHE = 'stafflo-v225';
+// Stafflo Service Worker — v226 (fix: routing intent — "infos sur X" affiche la fiche au lieu de rédiger)
+const CACHE = 'stafflo-v226';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
