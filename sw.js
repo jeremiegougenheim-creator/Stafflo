@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v227 (onboarding V2 gate — copy WOW screen, vire faux chiffres renderWowCard)
-const CACHE = 'stafflo-v227';
+// Stafflo Service Worker — v228 (feat: bouton WhatsApp à côté email — format court, copier vert)
+const CACHE = 'stafflo-v228';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
