@@ -27822,10 +27822,6 @@ window.addEventListener('DOMContentLoaded', function() {
             '<span style="color:#C9963A;margin:0 8px">·</span>' + am +
           '</div>' +
           (ch ? '<div style="margin-top:8px;font-size:10px;letter-spacing:1.5px;color:#C9963A">' + ch.toUpperCase() + '</div>' : '') +
-          '<div style="margin-top:12px;display:flex;gap:16px">' +
-            '<div style="font-size:11px;color:rgba(250,246,238,.55)">6 <span style="color:rgba(250,246,238,.4)">messages prêts</span></div>' +
-            '<div style="font-size:11px;color:rgba(250,246,238,.55)">3 <span style="color:rgba(250,246,238,.4)">tâches staff</span></div>' +
-          '</div>' +
         '</div>';
       wowResult.style.display = 'block';
     }
@@ -28038,6 +28034,47 @@ window.addEventListener('DOMContentLoaded', function() {
   } else {
     init();
   }
+})();
+</script>
+
+<script>
+/* ── Onboarding V2 copy gate (default OFF — strangler fig) ─────────────────
+   Activation : localStorage.setItem('stafflo_onboarding_v2','1') + reload.
+   Patche uniquement le copy du WOW screen ; structure HTML et logique AI intacts. */
+(function() {
+  var ONBOARDING_V2 = localStorage.getItem('stafflo_onboarding_v2') === '1';
+  if (!ONBOARDING_V2) return;
+
+  function patchWowCopy() {
+    var h2  = document.querySelector('#onboardingV3 [data-step="wow"] .onbV3-h2');
+    var sub = document.querySelector('#onboardingV3 [data-step="wow"] .onbV3-sub');
+    var inp = document.getElementById('onbV3WowInput');
+    var analyze = document.getElementById('onbV3WowAnalyze');
+    var sample  = document.getElementById('onbV3WowSample');
+    if (h2)  h2.textContent  = 'Votre villa sous contrôle, où que vous soyez.';
+    if (sub) sub.textContent = 'ARIA lit vos emails et WhatsApp de villa, repère ce qui compte, et prépare vos réponses. Vous validez d\'un geste.';
+    if (inp) inp.placeholder = 'Collez un email ou un message reçu…';
+    if (analyze) { analyze.setAttribute('data-fr', 'Voir ce qu\'ARIA comprend'); analyze.textContent = 'Voir ce qu\'ARIA comprend'; }
+    if (sample)  { sample.setAttribute('data-fr', 'Pas de message ? Essayer un exemple'); sample.textContent = 'Pas de message ? Essayer un exemple'; }
+    var wow = document.querySelector('#onboardingV3 [data-step="wow"]');
+    if (wow && !wow.querySelector('.onbV3-trust')) {
+      var t = document.createElement('p');
+      t.className = 'onbV3-trust';
+      t.style.cssText = 'margin-top:auto;padding-top:20px;font-size:11px;color:#9B978E;text-align:center;line-height:1.5';
+      t.textContent = 'Sans installation · 29€/villa · Données en Europe';
+      wow.appendChild(t);
+    }
+  }
+
+  var _origLaunch = window.launchOnboardingV3;
+  window.launchOnboardingV3 = function() {
+    var r = _origLaunch ? _origLaunch.apply(this, arguments) : null;
+    patchWowCopy();
+    return r;
+  };
+
+  if (document.readyState !== 'loading') { patchWowCopy(); }
+  else { document.addEventListener('DOMContentLoaded', patchWowCopy); }
 })();
 </script>
 

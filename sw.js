@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v226 (fix: routing intent — "infos sur X" affiche la fiche au lieu de rédiger)
-const CACHE = 'stafflo-v226';
+// Stafflo Service Worker — v227 (onboarding V2 gate — copy WOW screen, vire faux chiffres renderWowCard)
+const CACHE = 'stafflo-v227';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
