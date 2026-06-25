@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v224 (fix: gate concurrence IA 2 max — stoppe burst Mistral au boot)
-const CACHE = 'stafflo-v224';
+// Stafflo Service Worker — v225 (fix: modale ARIA scroll — retire overscroll-behavior, restaure welcome si vide)
+const CACHE = 'stafflo-v225';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
