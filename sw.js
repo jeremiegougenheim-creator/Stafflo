@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v230 (wowExtract V2: prompt large, guests/topic, condition echec tolerante)
-const CACHE = 'stafflo-v230';
+// Stafflo Service Worker — v231 (onboarding V2: prompt FR anti-invention, confirmation villa+staff, cfg write)
+const CACHE = 'stafflo-v231';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
