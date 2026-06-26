@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v228 (feat: bouton WhatsApp à côté email — format court, copier vert)
-const CACHE = 'stafflo-v228';
+// Stafflo Service Worker — v229 (fix: prix fantôme × nights — price = total séjour, jamais * nights)
+const CACHE = 'stafflo-v229';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
