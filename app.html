@@ -27811,20 +27811,22 @@ window.addEventListener('DOMContentLoaded', function() {
     function renderWowCard(data) {
       if (!wowResult) return;
       var g  = data.guest    || '—';
-      var ci = data.checkin  || '—';
-      var co = data.checkout || '—';
-      var ni = data.nights   ? data.nights + ' nuits' : '—';
-      var am = data.amount   || '—';
+      var ci = data.checkin  || '';
+      var co = data.checkout || '';
+      var ni = data.nights   ? data.nights + ' nuits' : '';
+      var am = data.amount   || '';
       var ch = data.channel  || '';
+      var gx = data.guests   ? data.guests + ' pers.' : '';
+      var tp = data.topic    || '';
+      var sep = '<span style="color:#C9963A;margin:0 6px">·</span>';
+      var dateLine = (ci && co) ? ci + ' → ' + co : (ci || co);
+      var metaParts = [dateLine, ni, gx, am].filter(Boolean);
       wowResult.innerHTML =
         '<div style="background:#0F2318;border-radius:14px;padding:16px 18px;margin-top:14px;color:#FAF6EE">' +
           '<div style="font-size:9px;letter-spacing:3px;color:rgba(229,199,122,.6);margin-bottom:8px">ARIA · CARTE INVITÉ</div>' +
           '<div style="font-family:\'Cormorant Garamond\',Georgia,serif;font-size:22px;font-weight:600;color:#FAF6EE;margin-bottom:10px">' + g + '</div>' +
-          '<div style="font-size:13px;color:rgba(250,246,238,.75);line-height:1.6">' +
-            ci + ' → ' + co +
-            '<span style="color:#C9963A;margin:0 8px">·</span>' + ni +
-            '<span style="color:#C9963A;margin:0 8px">·</span>' + am +
-          '</div>' +
+          (metaParts.length ? '<div style="font-size:13px;color:rgba(250,246,238,.75);line-height:1.6">' + metaParts.join(sep) + '</div>' : '') +
+          (tp ? '<div style="margin-top:8px;font-size:12px;color:rgba(250,246,238,.55);font-style:italic">' + tp + '</div>' : '') +
           (ch ? '<div style="margin-top:8px;font-size:10px;letter-spacing:1.5px;color:#C9963A">' + ch.toUpperCase() + '</div>' : '') +
         '</div>';
       wowResult.style.display = 'block';
@@ -27858,9 +27860,12 @@ window.addEventListener('DOMContentLoaded', function() {
       if (_wowBusy) return;
       if (!wowInput || !wowResult) return;
       var text = wowInput.value.trim();
+      var _V2 = localStorage.getItem('stafflo_onboarding_v2') === '1';
       if (text.length < 40) {
         wowResult.innerHTML = '<div style="padding:14px;font-size:13px;color:#6B6760;font-style:italic">' +
-          (fr() ? 'ARIA n\'a pas trouvé de résa ici. Essayez l\'exemple.' : 'ARIA didn\'t find a booking here. Try the example.') + '</div>';
+          (_V2
+            ? (fr() ? 'Collez un message plus long (email, WhatsApp, demande…)' : 'Paste a longer message (email, WhatsApp, inquiry…)')
+            : (fr() ? 'ARIA n\'a pas trouvé de résa ici. Essayez l\'exemple.' : 'ARIA didn\'t find a booking here. Try the example.')) + '</div>';
         wowResult.style.display = 'block';
         return;
       }
@@ -27868,7 +27873,26 @@ window.addEventListener('DOMContentLoaded', function() {
       wowResult.innerHTML = '<div style="padding:14px;font-size:13px;color:#6B6760;font-style:italic">ARIA lit…</div>';
       wowResult.style.display = 'block';
       var today = new Date().toISOString().slice(0,10);
-      var sys = 'You are a booking data extractor for a luxury villa.\nRead ANY text and extract guest info.\nReturn ONLY valid JSON. No markdown. No explanation.\nToday is ' + today + '.\nFields: name (guest full name), arrival (YYYY-MM-DD), departure (YYYY-MM-DD), nights (integer), price (number — guest paid total, never host payout), source (Airbnb|Booking|Direct), commission (number — platform commission rate in %, 0 if not stated or unknown).\nIf a field is not found: "" for strings, 0 for numbers. NEVER invent data.';
+      var sys = _V2
+        ? ('You are an assistant helping a luxury villa owner understand a message.\n' +
+           'Read ANY message — WhatsApp, email, booking confirmation, inquiry — and extract what you can find.\n' +
+           'Return ONLY valid JSON. No markdown. No explanation.\n' +
+           'Today is ' + today + '.\n' +
+           'JSON fields: {"name":"first or full name of guest/contact, or empty","arrival":"YYYY-MM-DD or empty","departure":"YYYY-MM-DD or empty","nights":0,"guests":0,"amount":0,"source":"Airbnb|Booking|Direct|WhatsApp|Email or empty","topic":"one short phrase summarizing what the person wants or needs, or empty"}\n' +
+           'Rules:\n' +
+           '- Use first name if that is all you find.\n' +
+           '- Convert informal dates ("28 juin", "July 6th") to YYYY-MM-DD relative to today.\n' +
+           '- NEVER invent a price. If no amount is explicitly stated, leave amount as 0.\n' +
+           '- Do NOT sum up multiple amounts — only extract if one clear total is stated.\n' +
+           '- guests: total number of people mentioned, 0 if not stated.\n' +
+           '- topic: very short phrase ("repas vegan + transferts", "ask about availability"), not a full sentence.\n' +
+           '- If nothing is found at all: return {"name":"","arrival":"","departure":"","nights":0,"guests":0,"amount":0,"source":"","topic":""}')
+        : ('You are a booking data extractor for a luxury villa.\n' +
+           'Read ANY text and extract guest info.\n' +
+           'Return ONLY valid JSON. No markdown. No explanation.\n' +
+           'Today is ' + today + '.\n' +
+           'Fields: name (guest full name), arrival (YYYY-MM-DD), departure (YYYY-MM-DD), nights (integer), price (number — guest paid total, never host payout), source (Airbnb|Booking|Direct), commission (number — platform commission rate in %, 0 if not stated or unknown).\n' +
+           'If a field is not found: "" for strings, 0 for numbers. NEVER invent data.');
       var usr = 'Extract from this message:\n\n' + text.slice(0, 2000);
       fetch(STAFFLO_PROXY, {
         method: 'POST',
@@ -27882,26 +27906,39 @@ window.addEventListener('DOMContentLoaded', function() {
         var m = cleaned.match(/\{[\s\S]*\}/);
         if (!m) { throw new Error('no-json'); }
         var result = JSON.parse(m[0]);
-        if (!result.name && !result.arrival) { throw new Error('empty'); }
-        function fmtDate(iso) {
-          if (!iso) return '—';
+        var hasName = !!(result.name && result.name.trim());
+        var hasDate = !!(result.arrival || result.departure);
+        if (!hasName && !hasDate) { throw new Error('empty'); }
+        function fmtDate(iso, fallback) {
+          if (!iso) return fallback || '';
           var parts = iso.split('-');
           return parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : iso;
         }
-        renderWowCard({
-          guest:    result.name   || '—',
+        renderWowCard(_V2 ? {
+          guest:    result.name     || '—',
           checkin:  fmtDate(result.arrival),
           checkout: fmtDate(result.departure),
-          nights:   result.nights || 0,
-          amount:   result.price  ? result.price + ' €' : '—',
-          channel:  result.source || ''
+          nights:   result.nights   || 0,
+          guests:   result.guests   || 0,
+          amount:   result.amount   ? result.amount + ' €' : '',
+          channel:  result.source   || '',
+          topic:    result.topic    || ''
+        } : {
+          guest:    result.name     || '—',
+          checkin:  fmtDate(result.arrival, '—'),
+          checkout: fmtDate(result.departure, '—'),
+          nights:   result.nights   || 0,
+          amount:   result.price    ? result.price + ' €' : '—',
+          channel:  result.source   || ''
         });
         applyWowInference(result, text);
         _wowBusy = false;
       })
       .catch(function() {
         wowResult.innerHTML = '<div style="padding:14px;font-size:13px;color:#6B6760;font-style:italic">' +
-          (fr() ? 'ARIA n\'a pas trouvé de résa ici. Essayez l\'exemple.' : 'ARIA didn\'t find a booking here. Try the example.') + '</div>';
+          (_V2
+            ? (fr() ? 'Pas de nom ni de date trouvés. Essayez de coller un vrai message.' : 'No name or date found. Try pasting a real message.')
+            : (fr() ? 'ARIA n\'a pas trouvé de résa ici. Essayez l\'exemple.' : 'ARIA didn\'t find a booking here. Try the example.')) + '</div>';
         wowResult.style.display = 'block';
         _wowBusy = false;
       });

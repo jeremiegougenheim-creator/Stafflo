@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v229 (fix: prix fantôme × nights — price = total séjour, jamais * nights)
-const CACHE = 'stafflo-v229';
+// Stafflo Service Worker — v230 (wowExtract V2: prompt large, guests/topic, condition echec tolerante)
+const CACHE = 'stafflo-v230';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
