@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v231 (onboarding V2: prompt FR anti-invention, confirmation villa+staff, cfg write)
-const CACHE = 'stafflo-v231';
+// Stafflo Service Worker — v233 (règle intégrité globale : ARIA n'invente jamais une donnée absente — couvre déduction, prestataires, toutes générations)
+const CACHE = 'stafflo-v233';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

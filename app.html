@@ -12837,6 +12837,7 @@ async function handleInstructionWithContext(parts) {
   var systemPrompt = [
     'Tu es ARIA, assistant pour ' + ownerName + ' (gestion ' + villaName + ', villa de luxe à Marrakech).',
     'Le user a collé un bloc de ' + typeLabel + ' et te demande d\'exécuter une TASK en l\'utilisant.',
+    'INTÉGRITÉ : N\'invente JAMAIS un chiffre, date, montant, nombre de chambres ou statut de paiement absent du CONTEXT. Ne DÉDUIS jamais un chiffre d\'un autre (N personnes ≠ N chambres ; frais ≠ prix du séjour). Ceci vaut pour tout employé ET prestataire occasionnel. Donnée absente → écris « non renseigné ».',
     'Exécute la TASK en utilisant le CONTEXT. Réponds en français, ton chaleureux et professionnel.',
     'Si la TASK demande un texte à envoyer (WhatsApp, email), génère DIRECTEMENT le texte final, sans préambule.',
     'Si des données manquent dans le CONTEXT pour exécuter la TASK, propose une action concrète (jamais "à vérifier").'
@@ -12924,7 +12925,7 @@ async function handleChatQuestion(text) {
   if (isOrchestrator || isNewStay) {
     systemPrompt = (fr
       ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\n' +
-        'RÈGLE : N\'invente jamais un montant, prénom, contact ou nombre absent des données. Info absente → omets ou écris « non précisé ».\n' +
+        'RÈGLES D\'INTÉGRITÉ (jamais enfreintes) : (1) N\'invente jamais un montant, prénom, contact, date, quantité ou nombre absent des données — info absente → écris « non renseigné ». (2) Ne DÉDUIS jamais un chiffre d\'un autre : N personnes ≠ N chambres ; montant de frais ≠ prix du séjour ; n\'additionne pas des montants pour inventer un total. (3) Ceci vaut pour TOUT intervenant — employé résident OU prestataire occasionnel (plombier, électricien, jardinier, gardien, femme de ménage) : ne JAMAIS inventer leur date, tarif, fréquence ou statut de paiement. (4) Tu peux SUGGÉRER une action sans affirmer un chiffre.\n' +
         'DATE DE RÉFÉRENCE : aujourd\'hui = ' + _todayISO + ' (année ' + _curYear + '). « l\'année prochaine » = ' + (_curYear+1) + '. « dans N jours » / « +N jours » = aujourd\'hui + N. « la semaine prochaine » = +7j. Recalcule TOUJOURS depuis cette date. Si ' + ownerName + ' corrige (« je voulais l\'année prochaine »), RECALCULE — ne t\'excuse pas sans corriger la date.\n' +
         'INTENTION NOUVEAU SÉJOUR : si ' + ownerName + ' énonce un nouveau contact/séjour (prénom + dates, AUTRE que le guest ouvert) OU demande d\'enregistrer/créer/register un nouveau guest, retourne UNE seule action kind:"create_client" avec les champs extraits dans "fields". Ne rédige AUCUN message guest. Dates : AAAA-MM-JJ. N\'invente aucun champ — laisse price à null si inconnu. Si le contexte indique gratuit/offert/famille/ami proche, passe is_comp:true dans fields.\n' +
         'DISPONIBILITÉ : ne vérifie JAMAIS la disponibilité (aucun moteur de dispo n\'existe). Ne refuse JAMAIS de créer un séjour pour « plus de place » ou « déjà réservé ». Crée le contact, c\'est tout.\n' +
@@ -12932,7 +12933,7 @@ async function handleChatQuestion(text) {
         'Sinon, propose 2-3 actions. JSON array uniquement (PAS de texte avant ou après) :\n' +
         '[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"récap ou message complet signé ' + ownerName + '"}]'
       : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\n' +
-        'RULE: Never invent an amount, name, contact or number absent from the data. Missing → omit or write "not specified".\n' +
+        'INTEGRITY RULES (never broken): (1) Never invent an amount, name, contact, date, quantity or number absent from the data — missing → write "not specified". (2) Never DEDUCE a figure from another: N guests ≠ N rooms; stay fees ≠ total price; do not add amounts to invent a total. (3) This applies to ALL persons — resident staff OR occasional contractors (plumber, electrician, gardener, caretaker, cleaner): NEVER invent their date, rate, frequency or payment status. (4) You may SUGGEST an action without asserting a figure.\n' +
         'REFERENCE DATE: today = ' + _todayISO + ' (year ' + _curYear + '). "next year" = ' + (_curYear+1) + '. "in N days"/"+N days" = today + N. "next week" = +7d. ALWAYS recompute from this reference. If ' + ownerName + ' corrects you ("I meant next year"), RECOMPUTE — don\'t apologize without fixing the date.\n' +
         'NEW STAY INTENT: if ' + ownerName + ' states a new contact/stay (name + dates, OTHER than the open guest) OR asks to register/create a new guest, return ONE action kind:"create_client" with extracted fields in "fields". Do NOT draft any guest message. Dates as YYYY-MM-DD. Invent nothing — leave price null if unknown. If context indicates complimentary/family/close friend, set is_comp:true in fields.\n' +
         'AVAILABILITY: NEVER check availability (no availability engine exists). NEVER refuse to create a stay due to "no rooms" / "already booked". Just create the contact.\n' +
@@ -12946,11 +12947,13 @@ async function handleChatQuestion(text) {
       'Staff : ' + staffList + '.',
       '',
       '═══ RÈGLE ABSOLUE — NE JAMAIS INVENTER ═══',
-      'N\'énonce JAMAIS un prix, un montant, un nombre (personnes, enfants, nuits), une date, un nom ou un contact qui n\'est pas LITTÉRALEMENT présent dans les données fournies ci-dessous.',
-      '- Info absente → écris « non précisé » ou pose la question. Ne devine pas.',
+      'N\'énonce JAMAIS un prix, un montant, un nombre (personnes, enfants, nuits, chambres), une date, un nom ou un contact qui n\'est pas LITTÉRALEMENT présent dans les données fournies ci-dessous.',
+      '- Info absente → écris « non renseigné » ou « à confirmer ». Ne devine pas.',
       '- Données contradictoires → SIGNALE la contradiction, ne tranche pas.',
       '- Combler un trou par une valeur plausible est une faute grave.',
-      'Exemple : si aucun tarif chauffeur/jour n\'est fourni, dis « tarif/jour non précisé » — ne sors PAS un chiffre inventé.',
+      '- Ne DÉDUIS jamais un chiffre d\'un autre : N personnes ≠ N chambres ; frais de séjour ≠ prix total ; n\'additionne pas des montants pour inventer un total.',
+      '- Ceci vaut pour TOUT intervenant — employé résident OU prestataire occasionnel (plombier, électricien, jardinier, gardien, femme de ménage) : ne JAMAIS inventer leur date d\'intervention, leur tarif, leur fréquence ou leur statut de paiement.',
+      'Exemple : si aucun tarif chauffeur/jour n\'est fourni, dis « tarif/jour non renseigné » — ne sors PAS un chiffre inventé.',
       '═══ FIN RÈGLE ═══',
       '',
       '═══ CIBLE & INTENTION ═══',
@@ -12974,10 +12977,12 @@ async function handleChatQuestion(text) {
       'Staff: ' + staffList + '.',
       '',
       '═══ ABSOLUTE RULE — NEVER INVENT ═══',
-      'Never state a price, amount, number (people, children, nights), date, name or contact that is not LITERALLY present in the data below.',
-      '- Missing info → write "not specified" or ask. Never guess.',
+      'Never state a price, amount, number (people, children, nights, rooms), date, name or contact that is not LITERALLY present in the data below.',
+      '- Missing info → write "not specified" or "to confirm". Never guess.',
       '- Contradictory data → flag the contradiction, do not resolve it.',
       '- Filling a gap with a plausible value is a serious error.',
+      '- Never DEDUCE a figure from another: N guests ≠ N rooms; stay fees ≠ total price; do not add amounts to invent a total.',
+      '- This applies to ALL persons — resident staff OR occasional contractors (plumber, electrician, gardener, caretaker, cleaner): NEVER invent their date, rate, frequency or payment status.',
       'Example: if no driver day-rate is given, say "day rate not specified" — do NOT output an invented figure.',
       '═══ END RULE ═══',
       '',
@@ -17115,12 +17120,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!cfg.onboarded) {
           // Defer slightly so the rest of the UI has rendered behind the modal
           /* v178 — legacy wizard neutralisé. V3 est désormais canonique. */
-          setTimeout(function() { if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
+          setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
         }
       }).catch(function() {
         // If pull fails, still check local cfg
         var cfg = getCfg();
-        if (!cfg.onboarded) setTimeout(function() { if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
+        if (!cfg.onboarded) setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
       });
     } else {
       // No session — enter demo mode (visitors explore before committing)
@@ -28185,6 +28190,76 @@ window.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <script>
+/* === stafflo_tour_v1 — intro carousel (strangler-fig, default OFF) === */
+const TOUR_STEPS = [
+  { t:"Bienvenue chez Stafflo", b:"Aria veille, vous décidez. Votre villa, gérée à distance — sans rien lâcher du contrôle." },
+  { t:"Collez une conversation", b:"WhatsApp, e-mail, note. Aria lit le fil et en sort une fiche de séjour propre, en quelques secondes." },
+  { t:"Aria organise pour vous", b:"Dates, repas, avances, demandes spéciales — rangés automatiquement. Une case vide signalée vaut mieux qu'une valeur inventée." },
+  { t:"Vous gardez la main", b:"Aria suggère et prépare. Rien ne part sans votre validation. Jamais." },
+  { t:"Le Brief du jour", b:"Chaque matin, ce qui vous attend : arrivées, repas, signaux à surveiller. En un coup d'œil." },
+  { t:"C'est parti", b:"Créons votre première villa à partir d'une vraie conversation.", cta:"Commencer →" }
+];
+function startTour(){
+  if (new URLSearchParams(location.search).get('demo')==='1') return;
+  if (localStorage.getItem('stafflo_tour_v1_done')) return;
+  if (localStorage.getItem('stafflo_tour_v1')!=='on') return;
+  var i = 0;
+  var ov = document.createElement('div');
+  ov.id = 'stafflo-tour';
+  ov.innerHTML = '<style>' +
+    '#stafflo-tour{position:fixed;inset:0;z-index:99999;background:rgba(15,35,24,.78);' +
+    'display:flex;align-items:center;justify-content:center;font-family:Inter,system-ui,sans-serif}' +
+    '#stafflo-tour .card{background:#FAF6EE;max-width:440px;width:90%;border-radius:18px;' +
+    'padding:38px 34px 26px;box-shadow:0 24px 60px rgba(0,0,0,.35);position:relative}' +
+    '#stafflo-tour .skip{position:absolute;top:14px;right:18px;background:none;border:none;' +
+    'color:#1d4d3a;opacity:.55;font-size:13px;cursor:pointer}' +
+    '#stafflo-tour h3{font-family:"Cormorant Garamond",Georgia,serif;color:#0F2318;' +
+    'font-size:30px;line-height:1.1;margin:0 0 14px}' +
+    '#stafflo-tour p{color:#1d4d3a;font-size:16px;line-height:1.55;margin:0 0 26px}' +
+    '#stafflo-tour .dots{display:flex;gap:7px;justify-content:center;margin-bottom:22px}' +
+    '#stafflo-tour .dot{width:8px;height:8px;border-radius:50%;background:#1d4d3a;opacity:.22}' +
+    '#stafflo-tour .dot.on{opacity:1;background:#C9963A}' +
+    '#stafflo-tour .nav{display:flex;justify-content:space-between;align-items:center}' +
+    '#stafflo-tour .prev{background:none;border:none;color:#1d4d3a;font-size:15px;cursor:pointer;opacity:.7}' +
+    '#stafflo-tour .prev:disabled{opacity:0;cursor:default}' +
+    '#stafflo-tour .next{background:#0F2318;color:#FAF6EE;border:none;border-radius:10px;' +
+    'padding:11px 22px;font-size:15px;font-weight:600;cursor:pointer}' +
+    '#stafflo-tour .next.cta{background:#C9963A;color:#0F2318}' +
+    '</style>' +
+    '<div class="card">' +
+    '<button class="skip">Passer</button>' +
+    '<h3></h3><p></p>' +
+    '<div class="dots"></div>' +
+    '<div class="nav">' +
+    '<button class="prev">‹ Précédent</button>' +
+    '<button class="next">Suivant ›</button>' +
+    '</div></div>';
+  document.body.appendChild(ov);
+  function q(s){ return ov.querySelector(s); }
+  function done(launchPaste){
+    localStorage.setItem('stafflo_tour_v1_done','1');
+    ov.remove();
+    if (launchPaste && typeof window.launchOnboardingV3 === 'function') { window.launchOnboardingV3(); }
+  }
+  function render(){
+    var s = TOUR_STEPS[i];
+    q('h3').textContent = s.t;
+    q('p').textContent  = s.b;
+    q('.dots').innerHTML = TOUR_STEPS.map(function(_,k){ return '<span class="dot ' + (k===i?'on':'') + '"></span>'; }).join('');
+    q('.prev').disabled = i===0;
+    var n = q('.next');
+    n.textContent = s.cta || 'Suivant ›';
+    n.classList.toggle('cta', !!s.cta);
+  }
+  q('.skip').onclick = function(){ done(false); };
+  q('.prev').onclick = function(){ if(i>0){i--;render();} };
+  q('.next').onclick = function(){ if(i<TOUR_STEPS.length-1){i++;render();} else done(true); };
+  render();
+  return true;
+}
+</script>
+
+<script>
 /* ════════════════════════════════════════════════════════════════════
    Villa v4 controller (Lot 4) — pricing hero + signals + push channels
    Strangler fig: gated by stafflo_aria_first_v1 (same flag as Today v3).
@@ -30894,12 +30969,20 @@ window.addEventListener('DOMContentLoaded', function() {
         var systemPrompt;
         if (isOrchestrator) {
           systemPrompt = (fr
-            ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\nPropose 2-3 actions prêtes à l\'emploi. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"message complet signé ' + ownerName + '"}]'
-            : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\nPropose 2-3 ready-to-use actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"full message signed ' + ownerName + '"}]');
+            ? 'Tu es ARIA pour ' + villaName + '. Staff : ' + staffList + '.\nINTÉGRITÉ : N\'invente JAMAIS un chiffre, date, montant, nombre de chambres ou statut de paiement absent des données — info absente → « non renseigné ». Ne DÉDUIS jamais un chiffre d\'un autre (N personnes ≠ N chambres). Ceci vaut pour tout employé ET prestataire occasionnel.\nPropose 2-3 actions prêtes à l\'emploi. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"message complet signé ' + ownerName + '"}]'
+            : 'You are ARIA for ' + villaName + '. Staff: ' + staffList + '.\nINTEGRITY: NEVER invent a figure, date, amount, room count or payment status absent from the data — missing → "not specified". Never DEDUCE a figure from another (N guests ≠ N rooms). Applies to all staff AND occasional contractors.\nPropose 2-3 ready-to-use actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note","target":"staff|guest|owner","content":"full message signed ' + ownerName + '"}]');
         } else {
           systemPrompt = fr ? [
             'Tu es ARIA, assistant de ' + ownerName + ' pour ' + villaName + ' (Marrakech). RÈGLE ABSOLUE : réponds TOUJOURS en français, jamais en anglais.',
             'Staff : ' + staffList + '.',
+            '',
+            '═══ RÈGLE ABSOLUE — NE JAMAIS INVENTER ═══',
+            'N\'énonce JAMAIS un prix, montant, nombre (personnes, chambres, nuits), date, nom ou contact qui n\'est pas LITTÉRALEMENT présent dans les données ci-dessous.',
+            '- Info absente → écris « non renseigné » ou « à confirmer ». Ne devine pas.',
+            '- Ne DÉDUIS jamais un chiffre d\'un autre : N personnes ≠ N chambres ; n\'additionne pas des montants pour inventer un total.',
+            '- Ceci vaut pour TOUT intervenant — employé OU prestataire occasionnel (plombier, électricien, jardinier, gardien, femme de ménage).',
+            '═══ FIN RÈGLE ═══',
+            '',
             'Réponds en français, concis (2-4 phrases max).',
             'Si on te demande un message WA/email : rédige-le complet, signé ' + ownerName + '.',
             'Si tu ne trouves pas l\'info dans le CRM ci-dessous, dis-le.',
@@ -30909,6 +30992,14 @@ window.addEventListener('DOMContentLoaded', function() {
           ].join('\n') : [
             'You are ARIA, assistant to ' + ownerName + ' for ' + villaName + ' (Marrakech). ABSOLUTE RULE: respond ALWAYS in English, never in French.',
             'Staff: ' + staffList + '.',
+            '',
+            '═══ ABSOLUTE RULE — NEVER INVENT ═══',
+            'Never state a price, amount, number (people, rooms, nights), date, name or contact that is not LITERALLY present in the data below.',
+            '- Missing info → write "not specified" or "to confirm". Never guess.',
+            '- Never DEDUCE a figure from another: N guests ≠ N rooms; do not add amounts to invent a total.',
+            '- Applies to ALL persons — staff OR occasional contractors (plumber, electrician, gardener, caretaker, cleaner).',
+            '═══ END RULE ═══',
+            '',
             'Reply in English, concise (2-4 sentences max).',
             'If asked to draft a WA/email message: write it complete, signed ' + ownerName + '.',
             'If info is not in the CRM below, say so.',
