@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v233 (règle intégrité globale : ARIA n'invente jamais une donnée absente — couvre déduction, prestataires, toutes générations)
-const CACHE = 'stafflo-v233';
+// Stafflo Service Worker — v234 (règle intégrité globale : ARIA n'invente jamais une donnée absente — couvre déduction, prestataires, toutes générations)
+const CACHE = 'stafflo-v234';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
