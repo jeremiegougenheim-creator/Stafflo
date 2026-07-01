@@ -161,6 +161,7 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 - **Monitoring proactif / agent** — v2
 - **Streaming card materialization** — v1.5
 - **Mode silencieux, multi-langues au-delà de FR/EN** — plus tard
+  - Glossaire FR/EN existant (1125 lignes, issu des passes `fix(i18n)`) archivé dans `_archive/strings.tsv` — à réutiliser comme base de traduction quand ce chantier démarre, plutôt que de repartir de zéro
 - **Tout cleanup du code dashboard existant** — uniquement après que v1 soit prouvée en prod ≥14 jours
 
 ## 10. Success criteria v1
