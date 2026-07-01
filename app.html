@@ -18261,10 +18261,10 @@ function updatePrice() {
   else { badge.textContent = lang==='fr' ? 'Sous objectif' : 'Below target'; badge.className = 'price-badge-home pbh-warn'; }
 
   const activeMods = [];
-  if (mods.event) activeMods.push('Événement +15%');
-  if (mods.weekend) activeMods.push('Week-end +50€');
-  if (mods.lastmin) activeMods.push('Last min -15%');
-  if (mods.longstay) activeMods.push('Long séjour -20%');
+  if (d.appliedMods.event) activeMods.push('Événement +15%');
+  if (d.appliedMods.weekend) activeMods.push('Week-end +50€');
+  if (d.appliedMods.lastmin) activeMods.push('Last min -15%');
+  if (d.appliedMods.longstay) activeMods.push('Long séjour -20%');
   document.getElementById('factorMod').textContent = activeMods.length ? activeMods.join(' · ') : (lang==='fr' ? 'Aucun' : 'None');
 
   renderCompetitors();
@@ -18277,13 +18277,27 @@ function getPrice() {
   const nights = parseInt(document.getElementById('nights').value);
   const guests = parseInt(document.getElementById('guests').value);
   let price = base;
-  
+  const appliedMods = {event:false, weekend:false, lastmin:false, longstay:false};
+
   // Modifiers
-  if (mods.event)    price = Math.round(price * 1.15);  // +15% événement
-  if (mods.weekend)  price = price + 50;                 // +50€ week-end
-  if (mods.lastmin)  price = Math.round(price * 0.85);  // -15% last minute
-  if (mods.longstay && nights >= 14) price = Math.round(price * 0.80); // -20% long séjour 14n+
-  
+  if (mods.event)    { price = Math.round(price * 1.15); appliedMods.event = true; }    // +15% événement
+  if (mods.weekend)  { price = price + 50; appliedMods.weekend = true; }                 // +50€ week-end
+  if (mods.lastmin)  { price = Math.round(price * 0.85); appliedMods.lastmin = true; }  // -15% last minute
+  if (mods.longstay && nights >= 14) { price = Math.round(price * 0.80); appliedMods.longstay = true; } // -20% long séjour 14n+
+
+  // Invariant guard: the "ARIA explains" breakdown must never claim a modifier
+  // that isn't in this price. Replay appliedMods only and compare.
+  if (typeof console !== 'undefined' && console.warn) {
+    let replay = base;
+    if (appliedMods.event)    replay = Math.round(replay * 1.15);
+    if (appliedMods.weekend)  replay = replay + 50;
+    if (appliedMods.lastmin)  replay = Math.round(replay * 0.85);
+    if (appliedMods.longstay) replay = Math.round(replay * 0.80);
+    if (replay !== price) {
+      console.warn('[pricing] breakdown/total mismatch: appliedMods replay=' + replay + ' vs pipeline price=' + price + ' — ARIA explains would misreport a modifier.');
+    }
+  }
+
   // Floor/cap from user config (cfg.minPrice / cfg.maxPrice). Fallback 720€ floor.
   var _cfg = (typeof getCfg === 'function') ? getCfg() : {};
   var floor = (typeof _cfg.minPrice === 'number' && _cfg.minPrice > 0) ? _cfg.minPrice : 720;
@@ -18303,7 +18317,7 @@ function getPrice() {
   const comm = Math.round(gross * hostFeeRate);
   const net = gross - comm;
   
-  return {base, price, pricePN, guestExtra, nights, guests, gross, comm, net, hostFeeRate, floor, cap};
+  return {base, price, pricePN, guestExtra, nights, guests, gross, comm, net, hostFeeRate, floor, cap, appliedMods};
 }
 
 function toggleMod(k) {
@@ -28530,11 +28544,11 @@ function startTour(){
     if (explain) {
       var parts = [];
       parts.push((FR?'Base saison':'Season base') + ' : <strong>' + fmtPrice(p.base) + '</strong>');
-      if (typeof mods !== 'undefined') {
-        if (mods.event)    parts.push('+15% ' + (FR?'événement':'event'));
-        if (mods.weekend)  parts.push('+50€ ' + (FR?'week-end':'weekend'));
-        if (mods.lastmin)  parts.push('−15% ' + (FR?'last minute':'last minute'));
-        if (mods.longstay) parts.push('−20% ' + (FR?'long séjour (≥14n)':'long stay (≥14n)'));
+      if (p.appliedMods) {
+        if (p.appliedMods.event)    parts.push('+15% ' + (FR?'événement':'event'));
+        if (p.appliedMods.weekend)  parts.push('+50€ ' + (FR?'week-end':'weekend'));
+        if (p.appliedMods.lastmin)  parts.push('−15% ' + (FR?'last minute':'last minute'));
+        if (p.appliedMods.longstay) parts.push('−20% ' + (FR?'long séjour (≥14n)':'long stay (≥14n)'));
       }
       if (p.guestExtra) parts.push('+' + fmtPrice(p.guestExtra) + ' ' + (FR?'invités sup.':'extra guests'));
       parts.push((FR?'Cible':'Target') + ' ' + (p.floor||0) + '€–' + (p.cap||'∞') + '€');
