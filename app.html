@@ -8703,7 +8703,8 @@ async function loadFromSupabase() {
         createdAt: r.created_at||new Date().toISOString(),
         deleted_at: r.deleted_at || null,
         ops_state: (r.ops_state && typeof r.ops_state === 'object') ? r.ops_state : {},
-        is_comp: r.is_comp === true
+        is_comp: r.is_comp === true,
+        details: (r.details && typeof r.details === 'object') ? r.details : {}
       }; });
       deduplicateClients();
       saveLocal(); renderAll(); setSyncDot('ok');
@@ -8740,7 +8741,8 @@ async function pushToSupabase(client) {
     notes:client.notes||'', pay_status:client.payStatus||'',
     booking_status:client.bookingStatus||'confirmed',
     messages: client.messages || null,
-    is_comp: !!client.is_comp
+    is_comp: !!client.is_comp,
+    details: client.details || {}
   };
   setSyncDot('busy');
   try {
@@ -9029,7 +9031,7 @@ function buildExtractSystemPrompt(today) {
   return [
     'ROLE: Extract guest data from Airbnb/Booking/WhatsApp emails.',
     'OUTPUT: JSON only, no markdown, no comments.',
-    '{"name":"Full Name","nat":"🇫🇷 Français","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":4,"guests":6,"price":2116,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"inquiry","notes":""}',
+    '{"name":"Full Name","nat":"🇫🇷 Français","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":4,"guests":6,"price":2116,"commission":15.5,"source":"Airbnb","phone":"","bookingStatus":"inquiry","notes":"","details":{"party":{"adults":6,"children":0,"infants":0},"diet":["vegan"],"diet_notes":"","transport":{"car":true},"transfers":[{"date":"2026-06-28","route":"aéroport→villa","cost_mad":600}],"meals_by":"","activities":[],"contacts":[{"role":"massage","name":"Houda","phone":"+212649967722"}],"special":[]}}',
     'RULES:',
     '- bookingStatus: "inquiry" if question/availability, "confirmed" if paid booking',
     '- price: guest paid total (NOT host payout)',
@@ -9037,6 +9039,12 @@ function buildExtractSystemPrompt(today) {
     '- Fuzzy dates (just a month): use 1st of that month',
     '- nat: flag emoji + language deduced from context',
     '- notes: allergies, kids ages, occasions, transport, diet. Max 200 chars',
+    '- details: structured ops data (party/diet/transport/transfers/meals_by/activities/contacts/special). Include ONLY fields explicitly present in the message — never invent a value. Omit the entire "details" key if nothing structured was said.',
+    '- details.party.children/infants: set to 0 ONLY if guest explicitly says "no kids"/"aucun enfant" — otherwise omit the key entirely',
+    '- details.transport.car: set to false ONLY if guest explicitly says "no car"/"pas de voiture" — otherwise omit',
+    '- details.transfers: [{date, route, cost_mad}] for airport/villa transfers mentioned with a cost',
+    '- details.meals_by: staff first name if message says who cooks/prepares meals',
+    '- details.contacts: [{role, name, phone}] third-party contacts mentioned (massage, driver, etc.)',
     'Today: ' + today
   ].join('\n');
 }
@@ -9371,6 +9379,7 @@ async function saveFromResult(g) {
       commMode: 'percent', source: g.source||'Direct',
       notes: g.notes||'', payStatus: '',
       bookingStatus: isLead ? 'lead' : 'inquiry',
+      details: g.details || {},
       createdAt: new Date().toISOString(),
       messages: currentMsgs && Object.keys(currentMsgs).length ? Object.assign({}, currentMsgs) : null
     };
@@ -9430,6 +9439,7 @@ async function saveFromResult(g) {
     commMode: 'percent', source: g.source||'Airbnb',
     notes: g.notes||'', payStatus: '',
     bookingStatus: g.bookingStatus||'confirmed',
+    details: g.details || {},
     createdAt: new Date().toISOString(),
     messages: currentMsgs && Object.keys(currentMsgs).length ? Object.assign({}, currentMsgs) : null
   };
@@ -9442,6 +9452,41 @@ async function saveFromResult(g) {
   toast(lang==='fr' ? '\u2713 Client sauvegard\u00e9' : '\u2713 Guest saved');
 }
 
+// Defensive merge for crm_clients.details — never let an omitted/empty
+// incoming field erase an already-known value. Nested objects (party,
+// transport) merge key-by-key (hasOwnProperty, so an explicit 0/false is
+// kept — the extraction schema only emits those when the guest actually
+// said so). String/array leaves fill-or-union; object arrays append+dedupe.
+function mergeDetailsObjects(existing, incoming) {
+  if (!incoming || typeof incoming !== 'object') return existing || {};
+  var out = Object.assign({}, existing || {});
+  ['party', 'transport'].forEach(function(k) {
+    if (incoming[k] && typeof incoming[k] === 'object') {
+      out[k] = Object.assign({}, out[k] || {}, incoming[k]);
+    }
+  });
+  ['diet_notes', 'meals_by'].forEach(function(k) {
+    if (incoming[k] && String(incoming[k]).trim()) out[k] = incoming[k];
+  });
+  ['diet', 'special', 'activities'].forEach(function(k) {
+    if (Array.isArray(incoming[k]) && incoming[k].length) {
+      out[k] = Array.from(new Set([].concat(out[k]||[], incoming[k])));
+    }
+  });
+  ['transfers', 'contacts'].forEach(function(k) {
+    if (Array.isArray(incoming[k]) && incoming[k].length) {
+      var arr = (out[k] || []).slice();
+      var seen = new Set(arr.map(function(x){ return JSON.stringify(x); }));
+      incoming[k].forEach(function(item) {
+        var key = JSON.stringify(item);
+        if (!seen.has(key)) { arr.push(item); seen.add(key); }
+      });
+      out[k] = arr;
+    }
+  });
+  return out;
+}
+
 function mergeWithExisting(existingId, newData) {
   const fr = lang === 'fr';
   const idx = clients.findIndex(c => c.id === existingId);
@@ -9451,6 +9496,7 @@ function mergeWithExisting(existingId, newData) {
 
   // Smart merge: only overwrite empty/missing fields, always append notes
   const merged = { ...existing };
+  merged.details = mergeDetailsObjects(existing.details, newData.details);
 
   // Fields to update only if missing in existing
   const fillIfEmpty = ['nat','arrival','departure','guests','price','commission','source','phone'];
@@ -26028,7 +26074,8 @@ window.addEventListener('DOMContentLoaded', function() {
         comm_mode: client.commMode||'percent', source: client.source||'Direct',
         notes: client.notes||'', pay_status: client.payStatus||'',
         booking_status: client.bookingStatus||'confirmed',
-        messages: client.messages || null
+        messages: client.messages || null,
+        details: client.details || {}
       };
       // Token JWT prioritaire si user authentifié (RLS)
       var auth = key;
