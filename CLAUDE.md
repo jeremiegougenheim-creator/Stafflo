@@ -180,6 +180,8 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 - **Service Worker** : `sw.js` filtre les requêtes non-HTTP/API pour éviter les erreurs cache chrome-extension. Si on ajoute des ressources externes, vérifier qu'elles ne cassent pas le filtre. **Toujours bump `CACHE_NAME` après un déploiement** pour forcer le refresh sur les devices users.
 - **`isFirmBooking()`** : filtre les leads (inquiry/lead/quoted) des surfaces opérationnelles (calendrier, brief, contexte ARIA, header stats). Tab Demandes utilise `isRequestStatus()` séparément. **iCal merge logic et dup detection on save ne sont PAS filtrés** — ils ont besoin de la donnée brute.
 - **Onboarding** : 3-step wizard, synced Supabase. Ne pas toucher sauf si la tâche le demande explicitement.
+- **`handle_new_user()`** (trigger `on_auth_user_created` sur `auth.users`) provisionne `profiles` ET `villa_settings` au signup, chaque insert dans son propre `BEGIN...EXCEPTION WHEN OTHERS` pour qu'une erreur sur une table ne bloque jamais la création de compte. Les échecs ne remontent PAS dans l'app (le trigger ne peut pas faire échouer le signup) — ils vont en `RAISE WARNING`, visibles uniquement dans les logs Postgres : Dashboard Supabase → Logs → Postgres Logs, ou MCP `get_logs(service: postgres)`, filtrer `error_severity = WARNING` et `event_message` contenant `[handle_new_user]`. Vérifier ces logs après toute campagne de signups si des comptes semblent mal provisionnés.
+- **`create_profile_for_user()`** : orpheline (aucun trigger ne l'appelle, sa logique est dupliquée dans `handle_new_user()`), `EXECUTE` révoqué pour `anon`/`authenticated`/`PUBLIC`. Cleanup (suppression) différé à une session dédiée, pas pendant le build ARIA-first.
 
 ## 12. Limitations connues à NE PAS toucher dans v1
 
