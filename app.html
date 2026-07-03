@@ -9038,12 +9038,24 @@ async function reconcileConfirmationBreakdowns() {
       var mergedDetails = Object.assign({}, client.details || {});
       mergedDetails.financial = financial;
 
+      // Source price from the confirmation too (guest total, not the room-fee
+      // brut) — same guard as details.financial: only from a reconciled
+      // confirmation, per record, idempotent via bookingRef above. If
+      // guestTotal wasn't parsed, leave the client's existing price untouched
+      // rather than null it — no source means no write, never a fabricated gap.
+      var patchBody = { details: mergedDetails };
+      if (financial.guestTotal != null) patchBody.price = financial.guestTotal;
+
       var pr; try { pr = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?id=eq.' + encodeURIComponent(client.id), {
         method: 'PATCH',
         headers: Object.assign({}, hdr, { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
-        body: JSON.stringify({ details: mergedDetails })
+        body: JSON.stringify(patchBody)
       }); } catch(e) { continue; }
-      if (pr.ok) { reconciled++; client.details = mergedDetails; }
+      if (pr.ok) {
+        reconciled++;
+        client.details = mergedDetails;
+        if (patchBody.price != null) client.price = patchBody.price;
+      }
     }
   }
 
@@ -9155,29 +9167,22 @@ function buildExtractSystemPrompt(today) {
   ].join('\n');
 }
 
-/* Ingestion guard (Commit B) — a WA/ARIA extraction pass can hallucinate
-   `price` from an unrelated number in the source text (e.g. a MAD transfer
-   cost — the Guillaume Bastard NET=5408 bug traced back to exactly this:
-   "transferts inclus 6400 MAD" became price=6400, treated as EUR). Prompt
-   rules alone aren't reliable enough (LLM output isn't deterministic), so
-   this is a deterministic backstop: if the extracted price's digits sit
-   immediately next to a non-EUR currency token in the source text, strip it
-   rather than trust it. Same "null over fabricated" philosophy as the
-   financial provenance guard — never silently write a wrong-currency amount
-   as if it were EUR. Single shared check; every extraction call site that
-   parses a `price` field runs the same rule. */
-function stripNonEurPrice(g, sourceText) {
-  if (!g || !g.price || !sourceText) return g;
-  var amount = parseFloat(g.price);
-  if (!amount) return g;
-  var digits = String(Math.round(amount));
-  var CUR = '(MAD|DHS?|Dhs?|dirhams?|USD|GBP|AED|\\$|£)';
-  var re = new RegExp(CUR + '\\s*' + digits + '(?:[.,]\\d{1,2})?|' + digits + '(?:[.,]\\d{1,2})?\\s*' + CUR, 'i');
-  var m = sourceText.match(re);
-  if (m) {
-    console.warn('[price-guard] extracted price ' + amount + ' sits next to a non-EUR currency marker ("' + (m[1] || m[2]) + '") in the source text — refusing to write it as EUR price.');
-    delete g.price;
-  }
+/* Ingestion invariant (Commit B) — price (and commission) may ONLY ever be
+   set by reconcileConfirmationBreakdowns() from a verified Airbnb
+   confirmation breakdown. No LLM extraction pass (WA paste, ARIA "signal"
+   paste, inbox email summary) is an authoritative source for a financial
+   amount — the Guillaume Bastard NET=5408 bug traced back to exactly this:
+   a MAD transfer-cost figure from a WhatsApp message became price=6400,
+   treated as EUR. Rather than try to detect "is this really EUR", strip
+   price/commission unconditionally at every LLM-extraction call site: a
+   confirmed booking gets its price back automatically via reconciliation; an
+   unconfirmed one simply has no auto-guessed price, which is honest. Single
+   shared check; every extraction call site that parses a guest object runs
+   the same rule before it's used for save/display. */
+function stripUnsourcedPrice(g) {
+  if (!g) return g;
+  delete g.price;
+  delete g.commission;
   return g;
 }
 async function analyze() {
@@ -9259,7 +9264,7 @@ async function analyze() {
       const m = clean.match(/\{[\s\S]*\}/);
       if (m) g1 = JSON.parse(m[0]);
     } catch(e) { throw new Error('AI parse error: ' + raw1.slice(0,80)); }
-    stripNonEurPrice(g1.guest || g1, text);
+    stripUnsourcedPrice(g1.guest || g1);
 
     // Render guest card immediately (no messages yet)
     const partialJson = {
@@ -13637,7 +13642,7 @@ async function handleChatEmailAnalysis(text) {
       var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
       if (m) { var parsed = JSON.parse(m[0]); g = parsed.guest || parsed; }
     } catch(e) {}
-    stripNonEurPrice(g, text);
+    stripUnsourcedPrice(g);
 
     if (g.name) g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
     if (!g.name) {
@@ -14324,7 +14329,7 @@ async function handleInboxEmailFull(row, ex) {
   }
 
   var g = parsed.guest || {};
-  stripNonEurPrice(g, row.body || '');
+  stripUnsourcedPrice(g);
   var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
   var net = g.price ? Math.round(g.price * (1 - 15.5/100)) : 0;
 
@@ -26900,7 +26905,7 @@ window.addEventListener('DOMContentLoaded', function() {
       console.warn('[stafflo] extract parse failed:', e);
     }
     if (!g.name && !raw) g._extractFailed = true;
-    stripNonEurPrice(g, cleaned);
+    stripUnsourcedPrice(g);
     // Cleanup name
     if (g.name) g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
     // "Booker" = Airbnb role label, never a surname
@@ -33196,7 +33201,7 @@ function startTour(){
         }
 
         var g = parsed.guest || {};
-        stripNonEurPrice(g, cleanRow.body || '');
+        stripUnsourcedPrice(g);
         var nights = g.nights || (g.arrival && g.departure ? Math.round((new Date(g.departure)-new Date(g.arrival))/864e5) : 0);
         var commissionPct = (cleanRow.from_email||'').match(/airbnb/i) ? 3.6 : (cleanRow.from_email||'').match(/booking/i) ? 15 : 0;
         var net = g.price ? Math.round(g.price * (1 - commissionPct/100)) : 0;
