@@ -8978,10 +8978,16 @@ async function reconcileConfirmationBreakdowns() {
   });
   if (!emails.length) return;
 
-  var crmRes; try { crmRes = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?select=id,name,source,arrival,details&deleted_at=is.null', { headers: hdr }); } catch(e) { return; }
+  var crmRes; try { crmRes = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?select=id,name,source,arrival,departure,details&deleted_at=is.null', { headers: hdr }); } catch(e) { return; }
   var clientsRows = crmRes.ok ? await crmRes.json() : [];
 
   var num = function(s) { return parseFloat(String(s).replace(/,/g, '')); };
+  // Canonical yyyy-mm-dd regardless of stray time components/whitespace on
+  // either side — defense in depth on top of the parseEmailSignals fix above.
+  var normISODate = function(s) {
+    var m = s && String(s).match(/(\d{4})-(\d{2})-(\d{2})/);
+    return m ? (m[1] + '-' + m[2] + '-' + m[3]) : null;
+  };
   var reconciled = 0;
 
   for (var i = 0; i < emails.length; i++) {
@@ -9020,13 +9026,30 @@ async function reconcileConfirmationBreakdowns() {
       console.warn('[financial] ' + financial.bookingRef + ': net parsed but breakdown components missing — writing net only, marked unreconciled.');
     }
 
-    // Match by source=Airbnb + arrival (same heuristic as reconcilePayouts).
-    // Duplicate CRM records for the same booking (unresolved dedup, separate
-    // brief) all get written — idempotence is per-record via bookingRef, so
-    // re-running never re-patches a record that's already reconciled.
+    // Match by source=Airbnb, then in priority order: (1) a bookingRef the
+    // client already carries — handles reruns/manually-tagged records, (2)
+    // exact arrival match on normalized ISO dates, (3) guest name + stay
+    // overlap fallback for any remaining date-parsing slop. Duplicate CRM
+    // records for the same booking (unresolved dedup, separate brief) all
+    // get written — idempotence is per-record via bookingRef, so re-running
+    // never re-patches a record that's already reconciled.
+    var sigArrival = normISODate(sig.arrival);
+    var sigDeparture = normISODate(sig.departure);
+    var sigFirstName = sig.name ? sig.name.toLowerCase().split(' ')[0] : null;
     var matches = clientsRows.filter(function(c) {
-      return c.source && /airbnb/i.test(c.source) && c.arrival === sig.arrival;
+      if (!c.source || !/airbnb/i.test(c.source)) return false;
+      if (c.details && c.details.financial && c.details.financial.bookingRef === financial.bookingRef) return true;
+      var cArrival = normISODate(c.arrival);
+      if (cArrival && sigArrival && cArrival === sigArrival) return true;
+      var cDeparture = normISODate(c.departure);
+      var nameMatches = sigFirstName && c.name && c.name.toLowerCase().indexOf(sigFirstName) !== -1;
+      var overlap = cArrival && cDeparture && sigArrival && sigDeparture && cArrival <= sigDeparture && cDeparture >= sigArrival;
+      return nameMatches && overlap;
     });
+    if (!matches.length) {
+      console.warn('[financial] ' + financial.bookingRef + ' (' + (sig.name || '?') + ', arrival ' + (sigArrival || '?') + '): parsed OK but no matching Airbnb-sourced CRM record — nothing to write.');
+      continue;
+    }
 
     for (var j = 0; j < matches.length; j++) {
       var client = matches[j];
@@ -13870,11 +13893,17 @@ function parseEmailSignals(email) {
       var oDay=parseInt(dM[3]), oMon=MON[dM[4].toLowerCase().slice(0,3)];
       var yr = dM[5] ? parseInt(dM[5]) : new Date().getFullYear();
       if (iMon && oMon) {
-        var iDate = new Date(yr, iMon-1, iDay);
-        var oDate = new Date(oMon<iMon?yr+1:yr, oMon-1, oDay);
-        r.arrival = iDate.toISOString().slice(0,10);
-        r.departure = oDate.toISOString().slice(0,10);
-        if (email.received_at) r.lead_days = Math.round((iDate - new Date(email.received_at)) / 86400000);
+        var oYr = oMon<iMon ? yr+1 : yr;
+        // Build the ISO string directly from the parsed y/m/d — new Date(y,m,d)
+        // is LOCAL-timezone, so .toISOString() silently rolls the date back a
+        // day for any positive UTC offset (e.g. Africa/Casablanca, UTC+1 —
+        // exactly where this app runs). That off-by-one is why
+        // reconcileConfirmationBreakdowns' arrival-equality match was
+        // silently failing for every confirmed booking.
+        var pad2 = function(n){ return n < 10 ? '0'+n : ''+n; };
+        r.arrival = yr + '-' + pad2(iMon) + '-' + pad2(iDay);
+        r.departure = oYr + '-' + pad2(oMon) + '-' + pad2(oDay);
+        if (email.received_at) r.lead_days = Math.round((Date.UTC(yr, iMon-1, iDay) - new Date(email.received_at).getTime()) / 86400000);
       }
     }
     // Email type
