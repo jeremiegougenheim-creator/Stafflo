@@ -13498,7 +13498,7 @@ async function handleChatEmailAnalysis(text) {
       var m = raw.replace(/```json\n?/g,'').replace(/```/g,'').trim().match(/\{[\s\S]*\}/);
       if (m) { var parsed = JSON.parse(m[0]); g = parsed.guest || parsed; }
     } catch(e) {}
-    
+
     if (g.name) g.name = g.name.replace(/^[~@\-_*]+/, '').trim();
     if (!g.name) {
       addChatBubble('ai', fr ? '🤔 Je n\'ai pas pu extraire d\'infos de ce message. C\'est bien un email Airbnb ?' : '🤔 Could not extract info. Is this an Airbnb email?');
@@ -15194,9 +15194,10 @@ async function handleChatContextCommandWithText(client, fullText) {
     '2. Identifie ce qui est en attente de réponse',
     '3. Rédige la réponse WA de ' + owner + ' (MAX 6 lignes, chaleureux, concis, signé ' + owner + ')',
     '   Si le message précédent était trop long → résume en gardant l\'essentiel',
+    '4. details: structured ops data (party/diet/diet_notes/transport/transfers/meals_by/activities/contacts/special). Include ONLY fields explicitly present in the conversation — never invent a value. Omit the entire "details" key if nothing structured was said.',
     '',
     'JSON format EXACT:',
-    '{"response":"message court max 6 lignes","action":"send_wa","extracted":[{"category":"flight|meals|transport|arrival|preferences|general","key":"snake_case","value":"valeur"}],"missing":["info manquante"]}'
+    '{"response":"message court max 6 lignes","action":"send_wa","extracted":[{"category":"flight|meals|transport|arrival|preferences|general","key":"snake_case","value":"valeur"}],"details":{"party":{"adults":6,"children":0,"infants":0},"diet":["vegan"],"diet_notes":"","transport":{"car":true},"transfers":[{"date":"2026-06-28","route":"aéroport→villa","cost_mad":600}],"meals_by":"","activities":[],"contacts":[{"role":"massage","name":"Houda","phone":"+212649967722"}],"special":[]},"missing":["info manquante"]}'
   ].filter(Boolean).join('\n');
 
   var raw = await callBestAI('reason', '', prompt, 1000);
@@ -15235,6 +15236,24 @@ async function handleChatContextCommandWithText(client, fullText) {
     document.getElementById('chatMessages').appendChild(b);
     scrollChat();
   }
+
+  // Save structured details into crm_clients.details — same merge helper as the
+  // non-WA extraction path (saveFromResult/mergeWithExisting), so WA-sourced ops
+  // data (régime, transferts, palier repas, logistique…) lands in the same place.
+  if (parsed.details && typeof parsed.details === 'object' && Object.keys(parsed.details).length) {
+    var mergedDetails = mergeDetailsObjects(client.details, parsed.details);
+    if (typeof console !== 'undefined' && console.warn && !Object.keys(mergedDetails).length) {
+      console.warn('[details] WA matched-client: extracted details were non-empty but merge produced {} — client=' + client.id);
+    }
+    var clientIdx = clients.findIndex(function(c) { return c.id === client.id; });
+    if (clientIdx >= 0) {
+      clients[clientIdx].details = mergedDetails;
+      saveLocal();
+      pushToSupabase(clients[clientIdx]);
+      renderAll();
+    }
+  }
+
   if (parsed.missing && parsed.missing.length) {
     addChatBubble('system', '❓ Manquant: ' + parsed.missing.join(' · '));
   }
