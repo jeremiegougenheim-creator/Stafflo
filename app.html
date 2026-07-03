@@ -9020,33 +9020,38 @@ async function reconcileConfirmationBreakdowns() {
       console.warn('[financial] ' + financial.bookingRef + ': net parsed but breakdown components missing — writing net only, marked unreconciled.');
     }
 
-    // Idempotent: a client already tagged with this bookingRef from a confirmation
-    // email is left alone. Otherwise match by source=Airbnb + arrival (same
-    // heuristic as reconcilePayouts).
-    var already = clientsRows.some(function(c) {
-      return c.details && c.details.financial && c.details.financial.bookingRef === financial.bookingRef
-        && c.details.financial.source === 'confirmation_email';
-    });
-    if (already) continue;
-
-    var client = clientsRows.find(function(c) {
+    // Match by source=Airbnb + arrival (same heuristic as reconcilePayouts).
+    // Duplicate CRM records for the same booking (unresolved dedup, separate
+    // brief) all get written — idempotence is per-record via bookingRef, so
+    // re-running never re-patches a record that's already reconciled.
+    var matches = clientsRows.filter(function(c) {
       return c.source && /airbnb/i.test(c.source) && c.arrival === sig.arrival;
     });
-    if (!client) continue;
 
-    var mergedDetails = Object.assign({}, client.details || {});
-    mergedDetails.financial = financial;
+    for (var j = 0; j < matches.length; j++) {
+      var client = matches[j];
+      var already = client.details && client.details.financial &&
+        client.details.financial.bookingRef === financial.bookingRef &&
+        client.details.financial.source === 'confirmation_email';
+      if (already) continue;
 
-    var pr; try { pr = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?id=eq.' + encodeURIComponent(client.id), {
-      method: 'PATCH',
-      headers: Object.assign({}, hdr, { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
-      body: JSON.stringify({ details: mergedDetails })
-    }); } catch(e) { continue; }
-    if (pr.ok) { reconciled++; client.details = mergedDetails; }
+      var mergedDetails = Object.assign({}, client.details || {});
+      mergedDetails.financial = financial;
+
+      var pr; try { pr = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?id=eq.' + encodeURIComponent(client.id), {
+        method: 'PATCH',
+        headers: Object.assign({}, hdr, { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({ details: mergedDetails })
+      }); } catch(e) { continue; }
+      if (pr.ok) { reconciled++; client.details = mergedDetails; }
+    }
   }
+
+  console.log('[financial] reconciled ' + reconciled + ' booking(s) from confirmation emails');
 
   if (reconciled > 0) {
     if (typeof loadFromSupabase === 'function') try { await loadFromSupabase(); } catch(e){}
+    if (typeof renderAll === 'function') try { renderAll(); } catch(e){}
     if (typeof toast === 'function') {
       toast(reconciled + ' net' + (reconciled > 1 ? 's' : '') + ' réconcilié' + (reconciled > 1 ? 's' : '') + ' depuis la confirmation Airbnb');
     }
@@ -17530,6 +17535,7 @@ document.addEventListener('DOMContentLoaded', function() {
   loadFromSupabase()
     .then(function() {
       renderTodayQV();
+      if (typeof reconcileConfirmationBreakdowns === 'function') reconcileConfirmationBreakdowns().catch(function() {});
     })
     .catch(function() {});
 
