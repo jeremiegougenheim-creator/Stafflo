@@ -8954,6 +8954,107 @@ async function reconcilePayouts() {
 }
 window.reconcilePayouts = reconcilePayouts;
 
+/* Provenance spine — the financial truth for a booking (net/gross/adjustment/
+   host fee/booking ref) is read exclusively from the Airbnb confirmation
+   breakdown ("Reservation confirmed" / "Reservation reminder" emails, both
+   carry the same "YOU EARN" breakdown). Never from a WA paste, never from
+   ARIA, never calculated. Booking-request/pending emails only ever show
+   "potential" figures and are never treated as authoritative — email_type
+   classification (parseEmailSignals) already distinguishes them.
+   Idempotent via details.financial.bookingRef. Writes only crm_clients.details
+   (no schema migration) so netAmt() below can prefer it over the generic
+   price×commission estimate without touching any other call site. */
+async function reconcileConfirmationBreakdowns() {
+  if (isDemoMode()) return;
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  if (!cfg.sbUrl || !cfg.sbKey) return;
+  var hdr = sbHdrs(cfg.sbKey);
+
+  var eRes; try { eRes = await fetch(cfg.sbUrl + '/rest/v1/email_inbox?from_email=eq.automated@airbnb.com&select=id,subject,body,received_at&order=received_at.desc&limit=200', { headers: hdr }); } catch(e) { return; }
+  if (!eRes.ok) return;
+  var emails = (await eRes.json()).filter(function(e) {
+    var sig = (typeof parseEmailSignals === 'function') ? parseEmailSignals(e) : null;
+    return sig && (sig.email_type === 'booking_confirmed' || sig.email_type === 'booking_reminder');
+  });
+  if (!emails.length) return;
+
+  var crmRes; try { crmRes = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?select=id,name,source,arrival,details&deleted_at=is.null', { headers: hdr }); } catch(e) { return; }
+  var clientsRows = crmRes.ok ? await crmRes.json() : [];
+
+  var num = function(s) { return parseFloat(String(s).replace(/,/g, '')); };
+  var reconciled = 0;
+
+  for (var i = 0; i < emails.length; i++) {
+    var em = emails[i];
+    var body = (em.body || '').replace(/<[^>]+>/g, ' ').replace(/\xA0/g, ' ').replace(/\s+/g, ' ');
+    var sig = parseEmailSignals(em);
+    if (!sig || !sig.confirmation_code) continue;
+
+    var guestTotalM = body.match(/TOTAL\s*\(EUR\)[^\d]*([\d.,]+)/i);
+    var roomFeeM    = body.match(/room fee[^\d]*([\d.,]+)/i);
+    var adjM        = body.match(/adjustment\s*(-?)[^\d]*([\d.,]+)/i);
+    var hostFeeM    = body.match(/Host service fee\s*\(([\d.]+)%[^)]*\)\s*(-?)[^\d]*([\d.,]+)/i);
+    var netM        = body.match(/YOU EARN[^\d]*([\d.,]+)/i);
+    if (!netM) continue; // no "You earn" line → not a real breakdown, skip rather than guess
+
+    var financial = {
+      bookingRef: sig.confirmation_code,
+      net: num(netM[1]),
+      guestTotal: guestTotalM ? num(guestTotalM[1]) : null,
+      grossRoomFee: roomFeeM ? num(roomFeeM[1]) : null,
+      adjustment: adjM ? (adjM[1] === '-' ? -1 : 1) * num(adjM[2]) : null,
+      hostFee: hostFeeM ? (hostFeeM[2] === '-' ? -1 : 1) * num(hostFeeM[3]) : null,
+      source: 'confirmation_email',
+      emailId: em.id
+    };
+
+    // Provenance guard (same philosophy as the pricing invariant d516973): the
+    // parsed net must reconcile with gross+adjustment+hostFee, or we don't write it.
+    if (financial.grossRoomFee != null && financial.adjustment != null && financial.hostFee != null) {
+      var replay = Math.round((financial.grossRoomFee + financial.adjustment + financial.hostFee) * 100) / 100;
+      if (Math.abs(replay - financial.net) > 0.5) {
+        console.warn('[financial] ' + financial.bookingRef + ': YOU EARN (' + financial.net + ') does not reconcile with room fee + adjustment + host fee (' + replay + ') — not written.');
+        continue;
+      }
+    } else {
+      console.warn('[financial] ' + financial.bookingRef + ': net parsed but breakdown components missing — writing net only, marked unreconciled.');
+    }
+
+    // Idempotent: a client already tagged with this bookingRef from a confirmation
+    // email is left alone. Otherwise match by source=Airbnb + arrival (same
+    // heuristic as reconcilePayouts).
+    var already = clientsRows.some(function(c) {
+      return c.details && c.details.financial && c.details.financial.bookingRef === financial.bookingRef
+        && c.details.financial.source === 'confirmation_email';
+    });
+    if (already) continue;
+
+    var client = clientsRows.find(function(c) {
+      return c.source && /airbnb/i.test(c.source) && c.arrival === sig.arrival;
+    });
+    if (!client) continue;
+
+    var mergedDetails = Object.assign({}, client.details || {});
+    mergedDetails.financial = financial;
+
+    var pr; try { pr = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?id=eq.' + encodeURIComponent(client.id), {
+      method: 'PATCH',
+      headers: Object.assign({}, hdr, { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
+      body: JSON.stringify({ details: mergedDetails })
+    }); } catch(e) { continue; }
+    if (pr.ok) { reconciled++; client.details = mergedDetails; }
+  }
+
+  if (reconciled > 0) {
+    if (typeof loadFromSupabase === 'function') try { await loadFromSupabase(); } catch(e){}
+    if (typeof toast === 'function') {
+      toast(reconciled + ' net' + (reconciled > 1 ? 's' : '') + ' réconcilié' + (reconciled > 1 ? 's' : '') + ' depuis la confirmation Airbnb');
+    }
+  }
+  return { reconciled: reconciled };
+}
+window.reconcileConfirmationBreakdowns = reconcileConfirmationBreakdowns;
+
 function saveLocal() {
   if (isDemoMode()) return;
   // Strip _demo:true clients (authenticated-user overlay via ?demo=1) so
@@ -10493,6 +10594,12 @@ function nights(c) {
 }
 
 function netAmt(c) {
+  // Provenance spine: a net sourced from the Airbnb confirmation breakdown
+  // (reconcileConfirmationBreakdowns) always wins over the generic estimate —
+  // never overwritten by price×commission, which stays only as a fallback
+  // for bookings that haven't been reconciled yet.
+  const fin = c && c.details && c.details.financial;
+  if (fin && fin.source === 'confirmation_email' && typeof fin.net === 'number') return Math.round(fin.net);
   const p = parseFloat(c.price)||0;
   const comm = parseFloat(c.commission)||0;
   return c.commMode === 'fixed' ? Math.round(p-comm) : Math.round(p*(1-comm/100));
@@ -13925,6 +14032,7 @@ async function loadInboxEmails() {
     rows.forEach(function(row) { window._inboxEmails[row.id] = row; });
     if (typeof enrichInboxEmails === 'function') try { enrichInboxEmails(); } catch(e){}
     if (typeof reconcilePayouts === 'function') try { reconcilePayouts(); } catch(e){} // v172 fire-and-forget
+    if (typeof reconcileConfirmationBreakdowns === 'function') try { reconcileConfirmationBreakdowns(); } catch(e){} // provenance spine, fire-and-forget
 
     var fr = lang === 'fr';
     // Relative time helper: "à l'instant", "il y a 5min", "il y a 2h", "hier 14:30", "23/04 14:30"
@@ -27535,7 +27643,7 @@ window.addEventListener('DOMContentLoaded', function() {
           <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">INBOX</div>
           <div style="font-family:'Cormorant Garamond',serif;font-size:17px;color:#fff;font-weight:300">Inbox</div>
         </div>
-        <button onclick="if(typeof reconcilePayouts==='function')reconcilePayouts()" title="Réconcilier les paiements Airbnb" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:0 10px;height:28px;border-radius:14px;font-size:11px;cursor:pointer;margin-right:6px">💸 Réconcilier</button>
+        <button onclick="if(typeof reconcilePayouts==='function')reconcilePayouts();if(typeof reconcileConfirmationBreakdowns==='function')reconcileConfirmationBreakdowns()" title="Réconcilier les paiements Airbnb" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:0 10px;height:28px;border-radius:14px;font-size:11px;cursor:pointer;margin-right:6px">💸 Réconcilier</button>
         <button onclick="closeInbox()" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
       </div>
       <div id="inboxModalTabs" style="display:flex;gap:6px;padding-bottom:12px;flex-wrap:wrap"></div>
