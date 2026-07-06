@@ -2664,6 +2664,26 @@ window.addEventListener('keydown', function(e){
 }, true);
 </script>
 <div id="staffloShell">
+<!-- ══ SUBSCRIPTION WALL — overlay bloquant non-dismissable (strangler fig — gated by
+     stafflo_subscription_wall_v1, default OFF). Renommé depuis le brief stafflo_billing_wall_v1
+     pour la même raison que stafflo_subscription_v1 : stafflo_billing_v1 est déjà pris par le
+     décompte fin de séjour. La vraie protection est la RLS billing_gate (déjà live côté DB,
+     indépendante de ce flag) ; ce mur n'est que l'UX propre au lieu d'un écran vide. ══ -->
+<div id="subscriptionWall" style="display:none;position:fixed;inset:0;z-index:99999;background:#0F2318;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#FAF6EE;max-width:420px;width:100%;border-radius:20px;padding:36px 28px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,.4)">
+    <div style="width:52px;height:52px;border-radius:50%;background:#0F2318;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;border:2px solid #C9963A">
+      <span style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:700;color:#C9963A">A</span>
+    </div>
+    <div style="font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:700;color:#0F2318;margin-bottom:10px" data-fr="Votre accès à ARIA est en pause" data-en="Your access to ARIA is paused">Votre accès à ARIA est en pause</div>
+    <div style="font-family:'Inter',sans-serif;font-size:13.5px;color:#6B6760;margin-bottom:26px;line-height:1.5" data-fr="Votre essai est terminé. Passez à l'offre Solo — 79 €/mois — pour retrouver ARIA, votre assistant villa, vos séjours et vos opérations." data-en="Your trial has ended. Upgrade to the Solo plan — €79/month — to get ARIA, your villa assistant, your stays and your operations back.">Votre essai est terminé. Passez à l'offre Solo — 79 €/mois — pour retrouver ARIA, votre assistant villa, vos séjours et vos opérations.</div>
+    <button type="button" onclick="if(typeof startCheckout==='function')startCheckout()" style="width:100%;padding:14px;background:#C9963A;color:#0F2318;border:none;border-radius:14px;font-family:'Inter',sans-serif;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:12px" data-fr="Passer à Solo" data-en="Upgrade to Solo">Passer à Solo</button>
+    <div style="font-size:12.5px;color:#8a8a7a;margin-bottom:14px">
+      <span data-fr="J'ai déjà un abonnement · " data-en="I already have a subscription · ">J'ai déjà un abonnement · </span><span onclick="if(typeof openPortal==='function')openPortal()" style="color:#0F2318;font-weight:600;cursor:pointer;text-decoration:underline" data-fr="Gérer" data-en="Manage">Gérer</span>
+    </div>
+    <div onclick="if(typeof doSignOut==='function')doSignOut()" style="font-size:12px;color:#8a8a7a;cursor:pointer;text-decoration:underline" data-fr="Se déconnecter" data-en="Log out">Se déconnecter</div>
+    <div style="margin-top:22px;padding-top:16px;border-top:1px solid rgba(15,35,24,.1);font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#8a8a7a" data-fr="Aria veille, vous décidez." data-en="Aria watches, you decide.">Aria veille, vous décidez.</div>
+  </div>
+</div>
 <!-- ══ ONBOARDING V3 — 7-screen mobile-first flow (Lot 3) ══════════════
      Active when ?onboarding=1 in URL or cfg.onboarded !== true post-auth.
      Strangler fig: legacy onboardModal + onboardWizard untouched. -->
@@ -3906,7 +3926,7 @@ window.renderSoloTurnoverCard = function(){
 
 <!-- === Subscription banners (strangler fig — gated by stafflo_subscription_v1, default OFF) === -->
 <div id="subscriptionBannerTrial" style="display:none;align-items:center;justify-content:space-between;gap:10px;background:#FBF3DE;border:1px solid rgba(201,150,58,.35);color:#5A4A1E;border-radius:14px;padding:12px 16px;margin-bottom:14px;font-family:'Inter','DM Sans',sans-serif;font-size:13px">
-  <span>✨ <span data-fr="Essai en cours · Passez à Solo pour garder ARIA après votre essai" data-en="Trial in progress · Upgrade to Solo to keep ARIA after your trial">Essai en cours · Passez à Solo pour garder ARIA après votre essai</span></span>
+  <span>✨ <span id="subscriptionBannerTrialText">Essai en cours · Passez à Solo pour garder ARIA après votre essai</span></span>
   <button onclick="if(typeof startCheckout==='function')startCheckout()" style="background:#C9963A;color:#0F2318;border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit" data-fr="Passer à Solo" data-en="Upgrade to Solo">Passer à Solo</button>
 </div>
 <div id="subscriptionBannerPastDue" style="display:none;align-items:center;justify-content:space-between;gap:10px;background:#FDF0DC;border:1px solid rgba(201,110,30,.35);color:#7A4A12;border-radius:14px;padding:12px 16px;margin-bottom:14px;font-family:'Inter','DM Sans',sans-serif;font-size:13px">
@@ -6275,6 +6295,16 @@ window.authHeaders = authHeaders;
     var s = (typeof u === 'string') ? u : (u.url || '');
     return /\/auth\/v1\/(token|signup|recover|user|logout)/.test(s);
   }
+  // Polar checkout/portal + entitlement RPC (verify_jwt:true / user-scoped) — never override:
+  // this module sets the JWT explicitly via a defensive multi-source lookup (see authToken()
+  // in the subscription module); this unconditional-overwrite interceptor uses
+  // STAFFLO_AUTH.session, which is populated once at boot with no refresh and can go stale
+  // independently of the token that lookup finds.
+  function isPolarBillingEndpoint(u) {
+    if (!u) return false;
+    var s = (typeof u === 'string') ? u : (u.url || '');
+    return /\/functions\/v1\/polar-(checkout|portal)\b/.test(s) || /\/rest\/v1\/rpc\/(ensure_trial|billing_status)\b/.test(s);
+  }
   // Tables that have an owner_id column (auto-injected on insert)
   var OWNED_TABLES = ['email_inbox','chat_history','ai_usage_log','villa_settings','clients'];
   function getTableFromUrl(u) {
@@ -6305,7 +6335,7 @@ window.authHeaders = authHeaders;
   }
   window.fetch = function(input, init){
     try {
-      if (isSupabaseUrl(input) && !isSupabaseAuthEndpoint(input) && isAuthed && isAuthed() && STAFFLO_AUTH.session && STAFFLO_AUTH.session.access_token) {
+      if (isSupabaseUrl(input) && !isSupabaseAuthEndpoint(input) && !isPolarBillingEndpoint(input) && isAuthed && isAuthed() && STAFFLO_AUTH.session && STAFFLO_AUTH.session.access_token) {
         init = init || {};
         init.headers = init.headers || {};
         var h = {};
@@ -17552,12 +17582,17 @@ async function onAuthSuccess() {
 async function initAppAfterAuth() {
   // Update user indicator in header
   updateUserIndicator();
+  // Entitlement d'abord : si le mur s'engage, la RLS billing_gate renverrait 0 ligne de
+  // toute façon sur crm_clients/sejours/etc — inutile de tenter le rendu normal derrière.
+  if (typeof __staffloBootSubscription === 'function') {
+    var _wallEngaged = await __staffloBootSubscription();
+    if (_wallEngaged) return;
+  }
   // Reload data with JWT
   await loadFromSupabase();
   renderAll();
   renderTodayQV();
   if (typeof updateCrmCounts === 'function') updateCrmCounts();
-  if (typeof __staffloBootSubscription === 'function') await __staffloBootSubscription();
 }
 
 function updateUserIndicator() {
@@ -36786,10 +36821,15 @@ function stopAriaMic(btn) {
 }
 </script>
 
-<!-- ══ SUBSCRIPTION / POLAR CHECKOUT — gaté stafflo_subscription_v1 (DÉFAUT OFF) ══
-     Brief CC : abonnement Polar (checkout + portal + bannière Today + Réglages).
-     Nom de flag volontairement distinct de stafflo_billing_v1 (décompte fin de séjour,
-     commits eda1846/a66c266) pour ne pas coupler deux features indépendantes. -->
+<!-- ══ SUBSCRIPTION / POLAR CHECKOUT + WALL — gaté stafflo_subscription_v1 (DÉFAUT ON) et
+     stafflo_subscription_wall_v1 (DÉFAUT OFF) ══
+     Brief CC : abonnement Polar (checkout + portal + bannières Today + Réglages + mur bloquant).
+     Noms de flags volontairement distincts de stafflo_billing_v1 / stafflo_billing_wall_v1
+     (décompte fin de séjour, commits eda1846/a66c266) pour ne pas coupler deux features
+     indépendantes sous le même toggle.
+     La vraie protection est la RLS billing_gate, déjà live côté DB sur crm_clients/sejours/etc,
+     indépendante de ces flags — ce module ne fait que lire l'entitlement (ensure_trial() RPC,
+     fail-open si erreur réseau) et afficher une UX propre au lieu d'un écran vide. -->
 <script>
 (function(){
   function isSubscriptionV1(){
@@ -36800,28 +36840,69 @@ function stopAriaMic(btn) {
         if (qs === '0') return false;
       }
     } catch(e){}
-    try { return localStorage.getItem('stafflo_subscription_v1') === '1'; } catch(e){ return false; }
+    try { var v = localStorage.getItem('stafflo_subscription_v1'); return v === null ? true : v === '1'; } catch(e){ return true; }
   }
 
-  var _sub = null; // cache mémoire { status, current_period_end }
+  function isSubscriptionWallV1(){
+    try {
+      if (typeof location !== 'undefined' && location.search){
+        var qs = new URLSearchParams(location.search).get('wall');
+        if (qs === '1') return true;
+        if (qs === '0') return false;
+      }
+    } catch(e){}
+    try { return localStorage.getItem('stafflo_subscription_wall_v1') === '1'; } catch(e){ return false; }
+  }
 
+  // Deux systèmes de session coexistent dans l'app (STAFFLO_AUTH.session, plus ancien ;
+  // _stafflo_session, courant) et bootent en parallèle sur deux DOMContentLoaded distincts —
+  // rien ne garantit lequel a fini de résoudre au moment où startCheckout()/openPortal() sont
+  // cliqués. Fallback multi-source, jusqu'au localStorage brut (même clé stafflo_session que
+  // les deux systèmes) pour ne jamais dépendre de cet ordre de boot.
   function authToken(){
-    try { return (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token) || null; } catch(e){ return null; }
+    try { if (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token) return _stafflo_session.access_token; } catch(e){}
+    try { if (typeof STAFFLO_AUTH !== 'undefined' && STAFFLO_AUTH.session && STAFFLO_AUTH.session.access_token) return STAFFLO_AUTH.session.access_token; } catch(e){}
+    try {
+      var raw = localStorage.getItem('stafflo_session');
+      if (raw) { var s = JSON.parse(raw); if (s && s.access_token) return s.access_token; }
+    } catch(e){}
+    return null;
   }
 
-  async function getSubscription(){
-    if (!isSubscriptionV1()) return null;
+  // Headers RPC : mêmes apikey/Authorization que sbHdrs(), SANS Prefer:return=minimal —
+  // ce Prefer force un 204 sans corps sur les appels RPC POST, ce qui casserait la lecture
+  // du JSON renvoyé par ensure_trial()/billing_status().
+  function rpcHeaders(){
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var apikey = cfg.sbKey || SB_ANON;
+    var tok = authToken() || apikey; // JWT si dispo (via authToken(), pas l'interceptor) ; sinon anon → ensure_trial() renvoie entitled:false,status:'anonymous'
+    return { 'Content-Type':'application/json', 'apikey':apikey, 'Authorization':'Bearer '+tok };
+  }
+
+  // window.__ent = { entitled, status, trial_ends_at, current_period_end } — fail-open :
+  // toute erreur réseau/RPC renvoie entitled:true plutôt que de bloquer un user payant.
+  async function loadEntitlement(){
     try {
       var cfg = (typeof getCfg === 'function') ? getCfg() : {};
       var base = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
-      var res = await fetch(base + '/rest/v1/subscriptions?select=status,current_period_end', {
-        headers: (typeof sbHdrs === 'function') ? sbHdrs(cfg.sbKey || SB_ANON) : { 'Content-Type':'application/json' }
+      var res = await fetch(base + '/rest/v1/rpc/ensure_trial', {
+        method: 'POST',
+        headers: rpcHeaders(),
+        body: '{}'
       });
-      if (!res.ok) return _sub;
-      var rows = await res.json();
-      _sub = (rows && rows[0]) ? rows[0] : { status:'none', current_period_end:null };
-      return _sub;
-    } catch(e){ return _sub; }
+      if (!res.ok) { window.__ent = { entitled:true, status:'unknown' }; return window.__ent; }
+      var data = await res.json();
+      window.__ent = (data && typeof data === 'object') ? data : { entitled:true, status:'unknown' };
+    } catch(e){ window.__ent = { entitled:true, status:'unknown' }; }
+    return window.__ent;
+  }
+
+  function daysLeft(iso){
+    if (!iso) return null;
+    try {
+      var ms = new Date(iso).getTime() - Date.now();
+      return Math.max(0, Math.ceil(ms / 86400000));
+    } catch(e){ return null; }
   }
 
   async function startCheckout(){
@@ -36859,15 +36940,33 @@ function stopAriaMic(btn) {
     var trialEl = document.getElementById('subscriptionBannerTrial');
     var pastDueEl = document.getElementById('subscriptionBannerPastDue');
     if (!trialEl && !pastDueEl) return;
-    if (!isSubscriptionV1() || !_sub) {
+    var ent = window.__ent;
+    if (!isSubscriptionV1() || !ent) {
       if (trialEl) trialEl.style.display = 'none';
       if (pastDueEl) pastDueEl.style.display = 'none';
       return;
     }
-    var s = _sub.status;
+    var s = ent.status;
     var isTrial = !s || s === 'none' || s === 'trialing';
     var isPastDue = s === 'past_due' || s === 'canceled';
-    if (trialEl) trialEl.style.display = isTrial ? 'flex' : 'none';
+    if (trialEl) {
+      trialEl.style.display = isTrial ? 'flex' : 'none';
+      if (isTrial) {
+        var span = document.getElementById('subscriptionBannerTrialText');
+        var n = daysLeft(ent.trial_ends_at);
+        var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+        if (span) {
+          if (n != null) {
+            var txt = fr
+              ? 'Essai en cours — il vous reste ' + n + ' jour' + (n===1?'':'s') + '. Passez à Solo pour garder ARIA.'
+              : 'Trial in progress — ' + n + ' day' + (n===1?'':'s') + ' left. Upgrade to Solo to keep ARIA.';
+            span.textContent = txt;
+          } else {
+            span.textContent = fr ? 'Essai en cours · Passez à Solo pour garder ARIA.' : 'Trial in progress · Upgrade to Solo to keep ARIA.';
+          }
+        }
+      }
+    }
     if (pastDueEl) pastDueEl.style.display = isPastDue ? 'flex' : 'none';
   }
 
@@ -36882,7 +36981,7 @@ function stopAriaMic(btn) {
     if (!sec) return;
     if (!isSubscriptionV1()) { sec.style.display = 'none'; return; }
     sec.style.display = '';
-    var s = _sub || { status:'none' };
+    var s = window.__ent || { status:'none' };
     var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
     var statusEl = document.getElementById('cfgSubscriptionStatus');
     if (statusEl) {
@@ -36898,6 +36997,7 @@ function stopAriaMic(btn) {
           past_due: fr ? 'Paiement en retard'  : 'Payment past due',
           canceled: fr ? 'Annulé'              : 'Canceled',
           revoked:  fr ? 'Révoqué'             : 'Revoked',
+          unknown:  fr ? 'Statut inconnu'      : 'Status unknown',
           none:     fr ? 'Aucun abonnement'    : 'No subscription'
         };
         statusEl.textContent = labels[s.status] || s.status || labels.none;
@@ -36911,31 +37011,46 @@ function stopAriaMic(btn) {
     }
   }
 
-  async function bootSubscription(){
-    if (!isSubscriptionV1()) return;
-    var qs;
-    try { qs = new URLSearchParams(location.search); } catch(e){ qs = null; }
-    var justPaid = !!(qs && qs.get('checkout') === 'success');
-    await getSubscription();
-    renderSubscriptionBanner();
-    renderSubscriptionSettings();
-    if (justPaid) {
-      try {
-        qs.delete('checkout');
-        var clean = location.pathname + (qs.toString() ? '?' + qs.toString() : '') + location.hash;
-        history.replaceState({}, '', clean);
-      } catch(e){}
-      try { if (typeof toast === 'function') toast((typeof lang!=='undefined'&&lang==='fr') ? 'Bienvenue dans Solo ✨' : 'Welcome to Solo ✨'); } catch(e){}
-    }
+  function renderWall(show){
+    var el = document.getElementById('subscriptionWall');
+    if (el) el.style.display = show ? 'flex' : 'none';
   }
 
-  window.getSubscription = getSubscription;
+  // Retourne true si le mur est engagé (l'appelant doit alors sauter le rendu normal —
+  // la RLS billing_gate renverrait 0 ligne de toute façon, donc autant ne pas tenter).
+  async function bootSubscription(){
+    await loadEntitlement(); // toujours : sert au mur ET aux bannières/réglages
+    var wallOn = isSubscriptionWallV1() && window.__ent && window.__ent.entitled === false;
+    renderWall(wallOn);
+    if (wallOn) return true;
+
+    if (isSubscriptionV1()) {
+      renderSubscriptionBanner();
+      renderSubscriptionSettings();
+      var qs;
+      try { qs = new URLSearchParams(location.search); } catch(e){ qs = null; }
+      if (qs && qs.get('checkout') === 'success') {
+        try {
+          qs.delete('checkout');
+          var clean = location.pathname + (qs.toString() ? '?' + qs.toString() : '') + location.hash;
+          history.replaceState({}, '', clean);
+        } catch(e){}
+        await loadEntitlement(); // le webhook a eu le temps d'écrire — relit le statut frais
+        renderSubscriptionBanner();
+        renderSubscriptionSettings();
+        try { if (typeof toast === 'function') toast((typeof lang!=='undefined'&&lang==='fr') ? 'Bienvenue dans Solo ✨ · votre abonnement est actif' : 'Welcome to Solo ✨ · your subscription is active'); } catch(e){}
+      }
+    }
+    return false;
+  }
+
   window.startCheckout = startCheckout;
   window.openPortal = openPortal;
   window.renderSubscriptionBanner = renderSubscriptionBanner;
   window.renderSubscriptionSettings = renderSubscriptionSettings;
   window.__staffloBootSubscription = bootSubscription;
   window.isSubscriptionV1 = isSubscriptionV1;
+  window.isSubscriptionWallV1 = isSubscriptionWallV1;
 })();
 </script>
 </div><!-- /#staffloShell -->

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v238 (abonnement Polar : checkout/portal/bannière, gaté stafflo_subscription_v1)
-const CACHE = 'stafflo-v238';
+// Stafflo Service Worker — v239 (entitlement RPC + mur paywall + bannières de relance, gaté stafflo_subscription_wall_v1)
+const CACHE = 'stafflo-v239';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
