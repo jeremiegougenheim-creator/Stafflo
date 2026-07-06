@@ -3904,6 +3904,16 @@ window.renderSoloTurnoverCard = function(){
 <!-- ═══ TODAY ═════════════════════════════════════════════ -->
 <div class="tab on" id="tab-today">
 
+<!-- === Subscription banners (strangler fig — gated by stafflo_subscription_v1, default OFF) === -->
+<div id="subscriptionBannerTrial" style="display:none;align-items:center;justify-content:space-between;gap:10px;background:#FBF3DE;border:1px solid rgba(201,150,58,.35);color:#5A4A1E;border-radius:14px;padding:12px 16px;margin-bottom:14px;font-family:'Inter','DM Sans',sans-serif;font-size:13px">
+  <span>✨ <span data-fr="Essai en cours · Passez à Solo pour garder ARIA après votre essai" data-en="Trial in progress · Upgrade to Solo to keep ARIA after your trial">Essai en cours · Passez à Solo pour garder ARIA après votre essai</span></span>
+  <button onclick="if(typeof startCheckout==='function')startCheckout()" style="background:#C9963A;color:#0F2318;border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit" data-fr="Passer à Solo" data-en="Upgrade to Solo">Passer à Solo</button>
+</div>
+<div id="subscriptionBannerPastDue" style="display:none;align-items:center;justify-content:space-between;gap:10px;background:#FDF0DC;border:1px solid rgba(201,110,30,.35);color:#7A4A12;border-radius:14px;padding:12px 16px;margin-bottom:14px;font-family:'Inter','DM Sans',sans-serif;font-size:13px">
+  <span>⚠️ <span data-fr="Paiement en attente · mettez à jour votre moyen de paiement" data-en="Payment pending · update your payment method">Paiement en attente · mettez à jour votre moyen de paiement</span></span>
+  <button onclick="if(typeof openPortal==='function')openPortal()" style="background:#C96E1E;color:#FAF6EE;border:none;border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit" data-fr="Mettre à jour" data-en="Update">Mettre à jour</button>
+</div>
+
 <!-- === AriaFirst v1 hero (strangler fig — gated by stafflo_aria_first_v1, default OFF) === -->
 <div id="ariaFirstHero" class="af1-hero" style="display:none">
   <div class="af1-orb-wrap">
@@ -5422,6 +5432,15 @@ window.renderSetupOneLiner = function(){
   <input type="hidden" id="cfgOpenaiKey" value="">
   <input type="hidden" id="cfgPerplexityKey" value="">
   <input type="hidden" id="cfgAiProvider" value="gemini">
+
+  <!-- === Subscription settings (strangler fig — gated by stafflo_subscription_v1, default OFF) === -->
+  <div class="settings-section" id="cfgSubscriptionSection" style="display:none">
+    <div class="settings-title" data-fr="ABONNEMENT" data-en="SUBSCRIPTION">ABONNEMENT</div>
+    <div class="field">
+      <div id="cfgSubscriptionStatus" style="font-size:13px;color:var(--ink);margin-bottom:10px">—</div>
+      <button type="button" id="cfgSubscriptionBtn" style="width:100%;padding:12px;background:#0F2318;color:#FAF6EE;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit"></button>
+    </div>
+  </div>
 
 <div class="settings-section">
     <div class="settings-title" data-fr="VOTRE VILLA" data-en="YOUR VILLA">VOTRE VILLA</div>
@@ -11928,6 +11947,7 @@ function loadSettingsUI() {
   try { renderMealPricingSettings(); } catch(e){}
   try { renderExchangeRatesSettings(); } catch(e){}
   try { renderServiceCatalogSettings(); } catch(e){} // gaté stafflo_billing_form_v1 (caché si OFF)
+  try { if (typeof renderSubscriptionSettings === 'function') renderSubscriptionSettings(); } catch(e){} // gaté stafflo_subscription_v1 (caché si OFF)
 }
 
 async function saveSettings() {
@@ -17537,6 +17557,7 @@ async function initAppAfterAuth() {
   renderAll();
   renderTodayQV();
   if (typeof updateCrmCounts === 'function') updateCrmCounts();
+  if (typeof __staffloBootSubscription === 'function') await __staffloBootSubscription();
 }
 
 function updateUserIndicator() {
@@ -36763,6 +36784,159 @@ function stopAriaMic(btn) {
   _ariaFinishRecording(true);
   if (btn) btn.classList.remove('listening');
 }
+</script>
+
+<!-- ══ SUBSCRIPTION / POLAR CHECKOUT — gaté stafflo_subscription_v1 (DÉFAUT OFF) ══
+     Brief CC : abonnement Polar (checkout + portal + bannière Today + Réglages).
+     Nom de flag volontairement distinct de stafflo_billing_v1 (décompte fin de séjour,
+     commits eda1846/a66c266) pour ne pas coupler deux features indépendantes. -->
+<script>
+(function(){
+  function isSubscriptionV1(){
+    try {
+      if (typeof location !== 'undefined' && location.search){
+        var qs = new URLSearchParams(location.search).get('subscription');
+        if (qs === '1') return true;
+        if (qs === '0') return false;
+      }
+    } catch(e){}
+    try { return localStorage.getItem('stafflo_subscription_v1') === '1'; } catch(e){ return false; }
+  }
+
+  var _sub = null; // cache mémoire { status, current_period_end }
+
+  function authToken(){
+    try { return (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token) || null; } catch(e){ return null; }
+  }
+
+  async function getSubscription(){
+    if (!isSubscriptionV1()) return null;
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      var base = (cfg.sbUrl && cfg.sbUrl.includes('.supabase.co')) ? cfg.sbUrl : SB_URL;
+      var res = await fetch(base + '/rest/v1/subscriptions?select=status,current_period_end', {
+        headers: (typeof sbHdrs === 'function') ? sbHdrs(cfg.sbKey || SB_ANON) : { 'Content-Type':'application/json' }
+      });
+      if (!res.ok) return _sub;
+      var rows = await res.json();
+      _sub = (rows && rows[0]) ? rows[0] : { status:'none', current_period_end:null };
+      return _sub;
+    } catch(e){ return _sub; }
+  }
+
+  async function startCheckout(){
+    try {
+      var tok = authToken();
+      if (!tok) return;
+      var res = await fetch(SB_URL + '/functions/v1/polar-checkout', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + tok }
+      });
+      var j = await res.json();
+      if (j && j.url) location.href = j.url;
+    } catch(e){ try{console.warn('[subscription] checkout', e);}catch(_){ } }
+  }
+
+  async function openPortal(){
+    try {
+      var tok = authToken();
+      if (!tok) return;
+      var res = await fetch(SB_URL + '/functions/v1/polar-portal', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + tok }
+      });
+      var j = await res.json();
+      if (j && j.url) location.href = j.url;
+    } catch(e){ try{console.warn('[subscription] portal', e);}catch(_){ } }
+  }
+
+  // past_due : Polar relance le paiement, l'accès reste actif pendant la grâce.
+  function isActiveStatus(s){ return s === 'active' || s === 'past_due'; }
+
+  // Trois états visibles seulement : essai (none/trialing/null) → CTA upgrade ;
+  // à relancer (past_due/canceled) → CTA mise à jour moyen de paiement ; actif → pas de bannière.
+  function renderSubscriptionBanner(){
+    var trialEl = document.getElementById('subscriptionBannerTrial');
+    var pastDueEl = document.getElementById('subscriptionBannerPastDue');
+    if (!trialEl && !pastDueEl) return;
+    if (!isSubscriptionV1() || !_sub) {
+      if (trialEl) trialEl.style.display = 'none';
+      if (pastDueEl) pastDueEl.style.display = 'none';
+      return;
+    }
+    var s = _sub.status;
+    var isTrial = !s || s === 'none' || s === 'trialing';
+    var isPastDue = s === 'past_due' || s === 'canceled';
+    if (trialEl) trialEl.style.display = isTrial ? 'flex' : 'none';
+    if (pastDueEl) pastDueEl.style.display = isPastDue ? 'flex' : 'none';
+  }
+
+  function fmtPeriodEnd(iso, fr){
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { day:'numeric', month:'long', year:'numeric' }); }
+    catch(e){ return ''; }
+  }
+
+  function renderSubscriptionSettings(){
+    var sec = document.getElementById('cfgSubscriptionSection');
+    if (!sec) return;
+    if (!isSubscriptionV1()) { sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    var s = _sub || { status:'none' };
+    var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+    var statusEl = document.getElementById('cfgSubscriptionStatus');
+    if (statusEl) {
+      if (s.status === 'active') {
+        var dateStr = fmtPeriodEnd(s.current_period_end, fr);
+        var line = fr
+          ? 'Solo · actif' + (dateStr ? ' · prochain prélèvement le ' + dateStr : '')
+          : 'Solo · active' + (dateStr ? ' · next charge on ' + dateStr : '');
+        statusEl.innerHTML = '<span style="color:#2D9F52;font-size:12px">●</span> <span>' + line + '</span>';
+      } else {
+        var labels = {
+          trialing: fr ? 'Essai en cours'      : 'Trial',
+          past_due: fr ? 'Paiement en retard'  : 'Payment past due',
+          canceled: fr ? 'Annulé'              : 'Canceled',
+          revoked:  fr ? 'Révoqué'             : 'Revoked',
+          none:     fr ? 'Aucun abonnement'    : 'No subscription'
+        };
+        statusEl.textContent = labels[s.status] || s.status || labels.none;
+      }
+    }
+    var btn = document.getElementById('cfgSubscriptionBtn');
+    if (btn) {
+      var active = isActiveStatus(s.status);
+      btn.textContent = active ? (fr ? 'Gérer mon abonnement' : 'Manage my subscription') : (fr ? 'Passer à Solo' : 'Upgrade to Solo');
+      btn.onclick = active ? openPortal : startCheckout;
+    }
+  }
+
+  async function bootSubscription(){
+    if (!isSubscriptionV1()) return;
+    var qs;
+    try { qs = new URLSearchParams(location.search); } catch(e){ qs = null; }
+    var justPaid = !!(qs && qs.get('checkout') === 'success');
+    await getSubscription();
+    renderSubscriptionBanner();
+    renderSubscriptionSettings();
+    if (justPaid) {
+      try {
+        qs.delete('checkout');
+        var clean = location.pathname + (qs.toString() ? '?' + qs.toString() : '') + location.hash;
+        history.replaceState({}, '', clean);
+      } catch(e){}
+      try { if (typeof toast === 'function') toast((typeof lang!=='undefined'&&lang==='fr') ? 'Bienvenue dans Solo ✨' : 'Welcome to Solo ✨'); } catch(e){}
+    }
+  }
+
+  window.getSubscription = getSubscription;
+  window.startCheckout = startCheckout;
+  window.openPortal = openPortal;
+  window.renderSubscriptionBanner = renderSubscriptionBanner;
+  window.renderSubscriptionSettings = renderSubscriptionSettings;
+  window.__staffloBootSubscription = bootSubscription;
+  window.isSubscriptionV1 = isSubscriptionV1;
+})();
 </script>
 </div><!-- /#staffloShell -->
 </body>

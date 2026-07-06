@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v237 (modale ARIA : verrouillage viewport, scroll conversation restauré)
-const CACHE = 'stafflo-v237';
+// Stafflo Service Worker — v238 (abonnement Polar : checkout/portal/bannière, gaté stafflo_subscription_v1)
+const CACHE = 'stafflo-v238';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
