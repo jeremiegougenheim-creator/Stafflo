@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v234 (règle intégrité globale : ARIA n'invente jamais une donnée absente — couvre déduction, prestataires, toutes générations)
-const CACHE = 'stafflo-v234';
+// Stafflo Service Worker — v235 (bottom nav opaque, plus de blur ni de transparence)
+const CACHE = 'stafflo-v235';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
