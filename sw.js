@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v235 (bottom nav opaque, plus de blur ni de transparence)
-const CACHE = 'stafflo-v235';
+// Stafflo Service Worker — v236 (fiche guest 4→3 onglets : Séjour/Profil/Journal)
+const CACHE = 'stafflo-v236';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
