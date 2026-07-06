@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v236 (fiche guest 4→3 onglets : Séjour/Profil/Journal)
-const CACHE = 'stafflo-v236';
+// Stafflo Service Worker — v237 (modale ARIA : verrouillage viewport, scroll conversation restauré)
+const CACHE = 'stafflo-v237';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
