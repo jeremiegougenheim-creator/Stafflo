@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v240 (onboarding V3 canonique : neutralise onboardModal legacy + wizard réglages)
-const CACHE = 'stafflo-v240';
+// Stafflo Service Worker — v241 (V3 complete() rafraîchit ville+identité, ville obligatoire step 2)
+const CACHE = 'stafflo-v241';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
