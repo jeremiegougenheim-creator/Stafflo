@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v239 (entitlement RPC + mur paywall + bannières de relance, gaté stafflo_subscription_wall_v1)
-const CACHE = 'stafflo-v239';
+// Stafflo Service Worker — v240 (onboarding V3 canonique : neutralise onboardModal legacy + wizard réglages)
+const CACHE = 'stafflo-v240';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
