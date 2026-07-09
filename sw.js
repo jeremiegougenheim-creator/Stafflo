@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v241 (V3 complete() rafraîchit ville+identité, ville obligatoire step 2)
-const CACHE = 'stafflo-v241';
+// Stafflo Service Worker — v242 (écran connexion unique, guest sans session → landing V3)
+const CACHE = 'stafflo-v242';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
