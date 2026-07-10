@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v242 (écran connexion unique, guest sans session → landing V3)
-const CACHE = 'stafflo-v242';
+// Stafflo Service Worker — v243 (bandeaux arrondis + icônes bottom-nav agrandies)
+const CACHE = 'stafflo-v243';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
