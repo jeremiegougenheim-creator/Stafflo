@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v245 (ARIA : templates de réponse bilingues FR/EN + météo selon la date)
-const CACHE = 'stafflo-v245';
+// Stafflo Service Worker — v246 (inbox : auto-intégration des demandes de réservation Airbnb)
+const CACHE = 'stafflo-v246';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

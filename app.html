@@ -9163,6 +9163,138 @@ async function reconcileConfirmationBreakdowns() {
 }
 window.reconcileConfirmationBreakdowns = reconcileConfirmationBreakdowns;
 
+/* Auto-integrates Airbnb "Reservation Request" emails (classifyEmail kind:'booking_request')
+   into crm_clients as inquiry leads — booking_status:'inquiry' keeps them out of ops surfaces
+   via isFirmBooking(), while contact_type:'client' matches the convention already used for
+   manually-integrated inquiries. Creation goes through the same clients/saveLocal/
+   pushToSupabase/renderAll path as any other new client (saveFromResult, saveClient) — never
+   a raw Supabase insert — so the session's RLS/auth flow through the normal fetch interceptor.
+   Idempotent via details.reservation_code (Airbnb's own booking reference, parsed from the
+   "reservations/details/XXXX" link every request/reminder email carries). Airbnb's transport
+   mangles UTF-8 (€ → "â¬", 's → "â’S" etc.) so amount/name regexes tolerate the artifact
+   rather than matching the real glyph. */
+async function integrateReservationRequests() {
+  if (isDemoMode()) return;
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  if (!cfg.sbUrl || !cfg.sbKey) return;
+  var hdr = sbHdrs(cfg.sbKey);
+
+  var eRes;
+  try {
+    eRes = await fetch(cfg.sbUrl + '/rest/v1/email_inbox?from_email=eq.automated@airbnb.com&client_id=is.null&or=(status.neq.processed,status.is.null)&select=id,subject,body,received_at&order=received_at.desc&limit=200', { headers: hdr });
+  } catch(e) { return; }
+  if (!eRes.ok) return;
+  var emails = (await eRes.json()).filter(function(e) {
+    return e && /reservation request/i.test(e.subject || '');
+  });
+  if (!emails.length) return;
+
+  var MON = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+  var pad2 = function(n) { return n < 10 ? '0' + n : '' + n; };
+  var integrated = 0;
+
+  for (var i = 0; i < emails.length; i++) {
+    var em = emails[i];
+    var subject = em.subject || '';
+    var body = (em.body || '').replace(/<[^>]+>/g, ' ').replace(/\xA0/g, ' ').replace(/\s+/g, ' ');
+
+    var codeM = body.match(/reservations\/details\/([A-Z0-9]{6,})/);
+    var code = codeM ? codeM[1] : '';
+
+    // Idempotency: a request/reminder for a reservation already integrated just gets
+    // linked + marked processed, never a second client record.
+    var already = code ? clients.find(function(c) { return (c.details || {}).reservation_code === code; }) : null;
+    if (already) {
+      try {
+        await fetch(cfg.sbUrl + '/rest/v1/email_inbox?id=eq.' + encodeURIComponent(em.id), {
+          method: 'PATCH',
+          headers: Object.assign({}, hdr, { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
+          body: JSON.stringify({ client_id: already.id, status: 'processed' })
+        });
+      } catch(e) {}
+      continue;
+    }
+
+    var nameM = body.match(/RESPOND TO ([A-Z][A-Za-z]+)/);
+    var name = nameM ? (nameM[1].charAt(0) + nameM[1].slice(1).toLowerCase()) : '';
+
+    var dm = subject.match(/for (\d{1,2})[–-](\d{1,2})\s+([A-Za-zé]+)\.?\s+(\d{4})/);
+    var arrival = '', departure = '';
+    if (dm) {
+      var mo = MON[dm[3].toLowerCase()];
+      if (mo) {
+        arrival = dm[4] + '-' + pad2(mo) + '-' + pad2(parseInt(dm[1], 10));
+        departure = dm[4] + '-' + pad2(mo) + '-' + pad2(parseInt(dm[2], 10));
+      }
+    }
+
+    // No code parsed: fall back to name+arrival — never dedup on name alone.
+    if (!code && name && arrival && clients.some(function(c) { return c.name === name && c.arrival === arrival; })) {
+      continue;
+    }
+
+    var gm = body.match(/GUESTS\s+(\d+)\s+adult[s]?(?:,\s*(\d+)\s+child)?/i);
+    var adults = gm ? parseInt(gm[1], 10) : null;
+    var children = (gm && gm[2]) ? parseInt(gm[2], 10) : null;
+    var guests = (adults != null) ? (adults + (children || 0)) : 0;
+
+    var pm = body.match(/potential payout for this reservation is\s*(?:€|â¬)?\s*([\d,]+)/i);
+    var payout = pm ? parseInt(pm[1].replace(/,/g, ''), 10) : null;
+
+    var rm = body.match(/rate of\s*(?:€|â¬)?\s*([\d,]+)\s*per night/i);
+    var ratePerNight = rm ? parseInt(rm[1].replace(/,/g, ''), 10) : null;
+
+    var om = body.match(/review[s]?\s+([\w\s,\-À-ÿ]+?)\s+(?:Hi|Bonjour|Hello)\b/i);
+    var origin = om ? om[1].trim() : '';
+
+    var lm = subject.match(/Reservation Request at (.+?) for \d/i);
+    var listing = lm ? lm[1].trim() : '';
+
+    var msgM = body.match(/Original message follows:\s*(.+?)(?:\s+Messages from guest|$)/i);
+    var guestMessage = msgM ? msgM[1].trim() : '';
+
+    var id = Date.now().toString();
+    var client = {
+      id: id, name: name, nat: '', email: '', phone: '',
+      arrival: arrival, departure: departure,
+      guests: guests, price: payout || 0, commission: 0,
+      commMode: 'percent', source: 'Airbnb',
+      notes: '', payStatus: '',
+      bookingStatus: 'inquiry',
+      contact_type: 'client',
+      createdAt: new Date().toISOString(),
+      details: {
+        reservation_code: code, adults: adults, children: children,
+        rate_per_night_eur: ratePerNight, payout_eur: payout,
+        origin: origin, guest_message: guestMessage, listing: listing,
+        pending: 'true', source_email_id: em.id
+      }
+    };
+    clients.push(client);
+    saveLocal();
+    await pushToSupabase(client);
+
+    try {
+      await fetch(cfg.sbUrl + '/rest/v1/email_inbox?id=eq.' + encodeURIComponent(em.id), {
+        method: 'PATCH',
+        headers: Object.assign({}, hdr, { 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({ client_id: id, status: 'processed' })
+      });
+    } catch(e) {}
+
+    integrated++;
+  }
+
+  if (integrated > 0) {
+    renderAll();
+    if (typeof toast === 'function') {
+      toast(integrated + ' demande' + (integrated > 1 ? 's' : '') + ' intégrée' + (integrated > 1 ? 's' : ''));
+    }
+  }
+  return { integrated: integrated };
+}
+window.integrateReservationRequests = integrateReservationRequests;
+
 function saveLocal() {
   if (isDemoMode()) return;
   // Strip _demo:true clients (authenticated-user overlay via ?demo=1) so
@@ -27872,7 +28004,7 @@ window.addEventListener('DOMContentLoaded', function() {
           <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">INBOX</div>
           <div style="font-family:'Cormorant Garamond',serif;font-size:17px;color:#fff;font-weight:300">Inbox</div>
         </div>
-        <button onclick="if(typeof reconcilePayouts==='function')reconcilePayouts();if(typeof reconcileConfirmationBreakdowns==='function')reconcileConfirmationBreakdowns()" title="Réconcilier les paiements Airbnb" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:0 10px;height:28px;border-radius:14px;font-size:11px;cursor:pointer;margin-right:6px">💸 Réconcilier</button>
+        <button onclick="if(typeof reconcilePayouts==='function')reconcilePayouts();if(typeof reconcileConfirmationBreakdowns==='function')reconcileConfirmationBreakdowns();if(typeof integrateReservationRequests==='function')integrateReservationRequests()" title="Réconcilier les paiements Airbnb" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:0 10px;height:28px;border-radius:14px;font-size:11px;cursor:pointer;margin-right:6px">💸 Réconcilier</button>
         <button onclick="closeInbox()" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
       </div>
       <div id="inboxModalTabs" style="display:flex;gap:6px;padding-bottom:12px;flex-wrap:wrap"></div>
