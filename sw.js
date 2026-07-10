@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v243 (bandeaux arrondis + icônes bottom-nav agrandies)
-const CACHE = 'stafflo-v243';
+// Stafflo Service Worker — v244 (logo A unifié : favicon, touch-icon, manifest, login, magic-link)
+const CACHE = 'stafflo-v244';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
