@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v244 (logo A unifié : favicon, touch-icon, manifest, login, magic-link)
-const CACHE = 'stafflo-v244';
+// Stafflo Service Worker — v245 (ARIA : templates de réponse bilingues FR/EN + météo selon la date)
+const CACHE = 'stafflo-v245';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
