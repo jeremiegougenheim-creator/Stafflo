@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v249 (onboarding : support 5 langues ar/th/zh + RTL)
-const CACHE = 'stafflo-v249';
+// Stafflo Service Worker — v250 (analytics : 4 événements funnel PostHog, clé en attente)
+const CACHE = 'stafflo-v250';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

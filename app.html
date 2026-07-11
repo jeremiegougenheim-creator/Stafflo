@@ -6711,6 +6711,7 @@ async function handleAuthSignup() {
     var data = await authSignUp(email, pass, { villa_name: name || 'Ma Villa', bedrooms: 5, base_price: 750 });
     if (data.access_token) {
       // Auto-confirmed signup — go straight to app
+      posthog.capture('signup_completed');
       setAuthMsg(fr?'✓ Compte créé · chargement...':'✓ Account created · loading...', 'ok');
       setTimeout(function(){ location.reload(); }, 600);
     } else {
@@ -13124,6 +13125,7 @@ async function chatSend() {
   if (!inp) return;
   var text = inp.value.trim();
   if (!text) return;
+  posthog.capture('aria_message_sent');
 
   inp.value = '';
   inp.style.height = 'auto';
@@ -23635,6 +23637,7 @@ function sendAriaModal() {
   var text = (input && input.value || '').trim();
   var attach = window._ariaAttachment || null;
   if (!text && !attach) return;
+  posthog.capture('aria_message_sent');
 
   // Track last user question for contextual ARIA actions
   try { if (text) window._lastAriaQuestion = text; } catch(e){}
@@ -28474,6 +28477,7 @@ window.addEventListener('DOMContentLoaded', function() {
   /* ────── Completion ────── */
 
   function complete(connectGmail){
+    posthog.capture('onboarding_done');
     persistCfg();
     var cfg = safeCfg();
     cfg.onboarded = true;
@@ -28784,6 +28788,7 @@ window.addEventListener('DOMContentLoaded', function() {
         var hasName = !!(result.name && result.name.trim());
         var hasDate = !!(result.arrival || result.departure);
         if (!hasName && !hasDate) { throw new Error('empty'); }
+        posthog.capture('wow_extract_used');
         function fmtDate(iso, fallback) {
           if (!iso) return fallback || '';
           var parts = iso.split('-');
