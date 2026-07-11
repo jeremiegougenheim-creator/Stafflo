@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v268 (domain guard: redirect github.io to stafflo.app)
-const CACHE = 'stafflo-v268';
+// Stafflo Service Worker — v269 (onboarding sign-in link ignores demo mode)
+const CACHE = 'stafflo-v269';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
