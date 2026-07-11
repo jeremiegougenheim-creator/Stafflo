@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v252 (voyageurs : jamais un faux 0€, "— € à saisir" en terre cuite)
-const CACHE = 'stafflo-v252';
+// Stafflo Service Worker — v253 (réglages : Mistral EU précisé partout, privacy sentence enrichie)
+const CACHE = 'stafflo-v253';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
