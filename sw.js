@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v254 (onboarding : champ tarif actuel/visé → villa_settings.base_price)
-const CACHE = 'stafflo-v254';
+// Stafflo Service Worker — v255 (onboarding : sélecteur de langue 5 langues, écran splash)
+const CACHE = 'stafflo-v255';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
