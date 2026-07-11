@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v247 (auth : signup null-safe + fix boucle onboarding "déjà un compte")
-const CACHE = 'stafflo-v247';
+// Stafflo Service Worker — v248 (auth : langue login unifiée avec lang, plus navigator.language)
+const CACHE = 'stafflo-v248';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
