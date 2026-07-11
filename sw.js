@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v262 (carnet v1 sur #todayV3 réel — .v3-prio/.v3-stat-num, flag stafflo_carnet_v1)
-const CACHE = 'stafflo-v262';
+// Stafflo Service Worker — v263 (maison v1 : #v3DemoMonth branché sur maison_charges réel, flag stafflo_maison_v1)
+const CACHE = 'stafflo-v263';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

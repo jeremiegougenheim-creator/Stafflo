@@ -37462,6 +37462,118 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeFich
     return r;
   };
 })();
+
+/* ── maison v1 : lecture des charges du mois (stafflo_maison_v1) ── */
+function maisonV1On(){ try { return localStorage.getItem('stafflo_maison_v1') !== 'off'; } catch(e){ return true; } }
+
+async function loadMaisonCharges() {
+  if (!maisonV1On()) return null;
+  try {
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var token = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token)
+              ? _stafflo_session.access_token : null;
+    if (!token || !cfg.sbUrl || !cfg.sbKey) return null;
+    var period = new Date().toISOString().slice(0,7) + '-01';   // 1er du mois courant, ex '2026-07-01'
+    var url = cfg.sbUrl + '/rest/v1/maison_charges?period_month=eq.' + period
+            + '&select=id,label,category,payee,amount,currency,status&order=category';
+    var r = await fetch(url, { headers: { apikey: cfg.sbKey, Authorization: 'Bearer ' + token } });
+    if (!r.ok) return null;
+    var rows = await r.json();
+    window._maisonCharges = Array.isArray(rows) ? rows : [];
+    return window._maisonCharges;
+  } catch (e) { console.warn('[loadMaisonCharges]', e); return null; }
+}
+window.loadMaisonCharges = loadMaisonCharges;
+
+/* Rendu réel — clone visuel de renderDemoMonthCard, nourri par la base. Multi-devise
+   sans conversion : totaux séparés par devise, jamais un total unique inventé. */
+function renderMaisonReal() {
+  if (!maisonV1On()) return;
+  var host = document.getElementById('v3DemoMonth');
+  if (!host) return;
+  // ne jamais écraser la carte démo si on est en démo
+  if (typeof isDemo === 'function' && isDemo()) return;
+  var rows = window._maisonCharges;
+  if (!rows || !rows.length) { host.innerHTML = ''; return; }
+
+  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+  var GOLD = '#C9963A', GREEN_MID = '#1d4d3a', GREEN_DARK = '#0F2318';
+  var ICON = { salaire:'👤', prestataire:'🧹', facture:'🧾', entretien:'🔧' };
+  function money(a, c){ return (a==null || a==='') ? (fr?'— à renseigner':'— to set')
+    : (Math.round(a).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' ' + (c||'')); }
+
+  var due = {}, paid = {};
+  var rowsHtml = rows.map(function(x){
+    var isPaid = x.status === 'paye';
+    var cur = x.currency || 'EUR';
+    if (x.amount != null && x.amount !== '') {
+      var bucket = isPaid ? paid : due;
+      bucket[cur] = (bucket[cur] || 0) + Number(x.amount);
+    }
+    var pill = isPaid
+      ? '<span style="font-size:10px;font-weight:600;color:'+GREEN_MID+';background:rgba(29,77,58,.10);border-radius:9px;padding:3px 9px">'+(fr?'payé':'paid')+'</span>'
+      : '<span style="font-size:10px;font-weight:600;color:#8a6420;background:#FBF3DC;border:1px solid rgba(201,150,58,.35);border-radius:9px;padding:3px 9px">'+(fr?'à régler':'to settle')+'</span>';
+    return '<div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--border)">'
+      + '<span style="flex-shrink:0;width:30px;height:30px;border-radius:8px;background:#F4EFE3;display:inline-flex;align-items:center;justify-content:center;font-size:15px">'+(ICON[x.category]||'•')+'</span>'
+      + '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#1A1208">'+(x.label||'')+'</div>'
+      + (x.payee && x.payee!=='—' ? '<div style="font-size:11px;color:#7a7567">'+x.payee+'</div>' : '')+'</div>'
+      + '<div style="text-align:right;white-space:nowrap"><div style="font-family:Cormorant Garamond,serif;font-size:16px;color:'+GREEN_MID+'">'+money(x.amount,x.currency)+'</div>'+pill+'</div>'
+      + '</div>';
+  }).join('');
+
+  function totalStr(obj){
+    var keys = Object.keys(obj); if(!keys.length) return '—';
+    return keys.map(function(c){ return money(obj[c], c); }).join(' · ');
+  }
+  var dueCount = rows.filter(function(x){ return x.status !== 'paye'; }).length;
+  var synth = '<div style="display:flex;justify-content:space-between;font-size:12px;color:'+GREEN_MID+';margin-top:12px">'
+    + '<span>'+(fr?'À régler ce mois':'Due this month')+' — <b>'+totalStr(due)+'</b></span>'
+    + (Object.keys(paid).length ? '<span>'+(fr?'Payé':'Paid')+' — '+totalStr(paid)+'</span>' : '')
+    + '</div>';
+
+  var ariaTxt = fr ? ('Aria : '+dueCount+' paiement(s) à valider ce mois. Je prépare les rappels ?')
+                   : ('Aria: '+dueCount+' payment(s) to confirm this month. Shall I prepare the reminders?');
+  var aria = '<div style="margin-top:13px;padding:11px 12px;background:rgba(29,77,58,.07);border:1px solid rgba(29,77,58,.12);border-radius:12px;display:flex;align-items:flex-start;gap:9px">'
+    + '<span style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:'+GREEN_DARK+';color:#FAF6EE;display:inline-flex;align-items:center;justify-content:center;font-family:Cormorant Garamond,serif;font-size:13px;font-weight:600">A</span>'
+    + '<div style="font-size:12.5px;line-height:1.45;color:'+GREEN_DARK+'">'+ariaTxt+'</div></div>';
+
+  host.innerHTML = '<div style="background:#FAF6EE;border:1px solid var(--border);border-radius:16px;padding:18px;box-shadow:var(--shadow);margin-bottom:12px">'
+    + '<div style="font-family:Cormorant Garamond,serif;font-size:19px;color:'+GREEN_DARK+';line-height:1.2">'+(fr?'Ce mois · votre maison':'This month · your home')+'</div>'
+    + '<div style="font-size:12.5px;color:'+GREEN_MID+';margin:3px 0 6px">'+(fr?'Tout est suivi. Rien ne vous échappe.':'Everything tracked. Nothing slips by.')+'</div>'
+    + rowsHtml + synth + aria + '</div>';
+}
+window.renderMaisonReal = renderMaisonReal;
+
+/* ── Trigger : wrap renderTodayV3All (pas goTab) — la fonction originale écrase
+   #v3DemoMonth à '' en mode non-démo à CHAQUE appel (ligne ~3644), y compris via les
+   refreshers wrappés (loadHomeData/renderAll/loadMorningBrief/syncNow/af1ApplyGate).
+   Un simple hook dans goTab('today') se ferait donc écraser par le prochain de ces
+   appels. On raccroche après l'original à chaque fois, pour que le contenu réel
+   gagne toujours la course. Un flag "in-flight" (pas "déjà tenté") : si le tout
+   premier appel automatique (à l'init, avant que la session soit hydratée) échoue,
+   le prochain appel réessaie au lieu de rester bloqué sans données pour toujours. ── */
+(function(){
+  if (typeof window.renderTodayV3All !== 'function') return;
+  var _origRenderTodayV3All = window.renderTodayV3All;
+  var _maisonFetchInFlight = false;
+  window.renderTodayV3All = function(){
+    var r = _origRenderTodayV3All.apply(this, arguments);
+    try {
+      if (maisonV1On() && !(typeof isDemo === 'function' && isDemo())) {
+        if (window._maisonCharges) {
+          renderMaisonReal();
+        } else if (!_maisonFetchInFlight) {
+          _maisonFetchInFlight = true;
+          loadMaisonCharges().then(function(rows){
+            _maisonFetchInFlight = false;
+            if (rows) renderMaisonReal();
+          });
+        }
+      }
+    } catch(e){ console.warn('[carnet maison hook]', e); }
+    return r;
+  };
+})();
 </script>
 </body>
 </html>
