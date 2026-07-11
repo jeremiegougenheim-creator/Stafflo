@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v253 (réglages : Mistral EU précisé partout, privacy sentence enrichie)
-const CACHE = 'stafflo-v253';
+// Stafflo Service Worker — v254 (onboarding : champ tarif actuel/visé → villa_settings.base_price)
+const CACHE = 'stafflo-v254';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
