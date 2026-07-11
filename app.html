@@ -2653,6 +2653,27 @@ body.profile-solo #soloTurnoverCard { display: block; }
   .bk2-net{text-align:left}
   .bk2-tiles{grid-template-columns:1fr 1fr}
 }
+
+/* ══ fiche de provenance v1 (stafflo_fiche_v1) ══ */
+.fiche-scrim{position:fixed;inset:0;background:rgba(15,35,24,.45);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10040}
+.fiche-scrim.open{opacity:1;pointer-events:auto}
+.fiche-v1{position:fixed;top:0;right:0;bottom:0;width:min(420px,100%);background:var(--cream,#FAF6EE);z-index:10050;transform:translateX(105%);transition:transform .25s cubic-bezier(.25,.8,.3,1);box-shadow:-16px 0 50px rgba(15,35,24,.22);display:flex;flex-direction:column;border-left:1px solid rgba(201,150,58,.4)}
+.fiche-v1.open{transform:translateX(0)}
+@media(max-width:640px){.fiche-v1{top:auto;left:0;width:100%;max-height:82vh;transform:translateY(105%);border-left:none;border-top:1px solid rgba(201,150,58,.4);border-radius:18px 18px 0 0}.fiche-v1.open{transform:translateY(0)}}
+.fiche-v1 .fh{background:#0F2318;padding:18px 22px 15px;position:relative}
+.fiche-v1 .fh .fk{font-size:9.5px;letter-spacing:2.5px;text-transform:uppercase;color:#C9963A;font-weight:700;margin-bottom:4px}
+.fiche-v1 .fh h2{font-family:'Cormorant Garamond',serif;font-size:23px;font-weight:500;color:#fff;margin:0;line-height:1.2}
+.fiche-v1 .fx{position:absolute;top:13px;right:13px;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;border:none;font-size:15px;cursor:pointer}
+.fiche-v1 .fb{padding:19px 22px 26px;overflow-y:auto;font-size:13px;line-height:1.6;color:#3d3930}
+.fiche-v1 .fsec{margin-bottom:18px}
+.fiche-v1 .fsec .ft{display:flex;align-items:center;gap:10px;font-family:'Cormorant Garamond',serif;font-size:11.5px;letter-spacing:2.5px;text-transform:uppercase;color:#1D4D3A;font-weight:600;margin-bottom:8px}
+.fiche-v1 .fsec .ft::after{content:"";flex:1;height:1px;background:rgba(15,35,24,.1)}
+.fiche-v1 .fkv{display:grid;grid-template-columns:auto 1fr;gap:5px 16px}
+.fiche-v1 .fkv .k{color:#7a7567;font-size:11px;letter-spacing:.4px;text-transform:uppercase;padding-top:2px}
+.fiche-v1 .fkv .v{font-weight:600}
+.fiche-v1 .fsrc{background:#F4EFE3;border:1px solid rgba(15,35,24,.1);border-radius:10px;padding:12px 14px;font-size:12.5px;color:#5a564b}
+.fiche-v1 .fact{display:block;width:100%;text-align:center;background:#0F2318;color:#E9D7A8;font-size:12.5px;font-weight:600;padding:12px;border-radius:10px;border:none;cursor:pointer;margin-top:4px}
+.fiche-v1 .fnote{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#7a7567;text-align:center;margin-top:14px}
 </style>
 </head>
 <body>
@@ -37307,5 +37328,66 @@ function stopAriaMic(btn) {
 })();
 </script>
 </div><!-- /#staffloShell -->
+
+<div class="fiche-scrim" id="ficheScrimV1" onclick="closeFicheV1()"></div>
+<aside class="fiche-v1" id="ficheV1" role="dialog" aria-modal="true">
+  <div class="fh"><div class="fk" id="ficheV1K"></div><h2 id="ficheV1T"></h2><button class="fx" onclick="closeFicheV1()" aria-label="Fermer">✕</button></div>
+  <div class="fb" id="ficheV1B"></div>
+</aside>
+<script>
+/* ── fiche de provenance v1 — composant générique (stafflo_fiche_v1) ── */
+function ficheV1On(){ try { return localStorage.getItem('stafflo_fiche_v1') !== 'off'; } catch(e){ return true; } }
+function openFicheV1(p){
+  if (!ficheV1On() || !p) return;
+  var fr = (typeof lang === 'undefined') || lang === 'fr';
+  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+  document.getElementById('ficheV1K').textContent = p.kicker || '';
+  document.getElementById('ficheV1T').textContent = p.title || '';
+  var h = '';
+  if (p.rows && p.rows.length){
+    h += '<div class="fsec"><div class="ft">' + (fr?'Le fait':'The fact') + '</div><div class="fkv">';
+    p.rows.forEach(function(r){ h += '<div class="k">'+esc(r[0])+'</div><div class="v">'+esc(r[1])+'</div>'; });
+    h += '</div></div>';
+  }
+  if (p.source) h += '<div class="fsec"><div class="ft">'+(fr?'La source':'The source')+'</div><div class="fsrc">'+esc(p.source)+'</div></div>';
+  if (p.action) h += '<button class="fact" id="ficheV1Act">'+esc(p.action)+' →</button>';
+  h += '<div class="fnote">'+(fr?"Rien d'inventé — chaque chiffre a une origine.":'Nothing invented — every number has an origin.')+'</div>';
+  document.getElementById('ficheV1B').innerHTML = h;
+  var a = document.getElementById('ficheV1Act');
+  if (a && typeof p.onAction === 'function') a.onclick = function(){ closeFicheV1(); p.onAction(); };
+  document.getElementById('ficheV1').classList.add('open');
+  document.getElementById('ficheScrimV1').classList.add('open');
+}
+function closeFicheV1(){
+  var f=document.getElementById('ficheV1'), s=document.getElementById('ficheScrimV1');
+  if(f) f.classList.remove('open'); if(s) s.classList.remove('open');
+}
+window.openFicheV1 = openFicheV1; window.closeFicheV1 = closeFicheV1;
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeFicheV1(); });
+
+/* branchement v1 : la bande villa s'ouvre sur sa fiche */
+(function(){
+  var sh = document.getElementById('v3SubHdr');
+  if (!sh || !ficheV1On()) return;
+  sh.style.cursor = 'pointer';
+  sh.addEventListener('click', function(){
+    var c = (typeof getCfg === 'function') ? getCfg() : {};
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    openFicheV1({
+      kicker: fr ? 'Votre maison' : 'Your house',
+      title: c.villa || 'Villa',
+      rows: [
+        [fr ? 'Ville' : 'City', c.city || '—'],
+        [fr ? 'Photo' : 'Photo', c.coverPhoto ? '✓' : (fr ? '— à ajouter' : '— to add')]
+      ],
+      source: fr
+        ? 'La règle photo du carnet : les vraies photos vivent à trois endroits — la landing, cette bande (assombrie), la fiche voyageur. Jamais de stock : chaque propriétaire voit SA maison.'
+        : "The notebook's photo rule: real photos live in three places — the landing, this band (darkened), the guest file. Never stock: every owner sees THEIR house.",
+      action: fr ? 'Ouvrir les réglages' : 'Open settings',
+      onAction: function(){ if (typeof openSettings === 'function') openSettings(); }
+    });
+  });
+})();
+</script>
 </body>
 </html>

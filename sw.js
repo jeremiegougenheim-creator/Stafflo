@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v259 (bande villa : emblème A doré + fix padding-left mort)
-const CACHE = 'stafflo-v259';
+// Stafflo Service Worker — v260 (fiche de provenance v1, flag stafflo_fiche_v1, branchement bande villa)
+const CACHE = 'stafflo-v260';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
