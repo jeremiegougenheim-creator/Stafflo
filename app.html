@@ -2717,7 +2717,7 @@ window.addEventListener('keydown', function(e){
       <section class="onbV3-screen" data-step="wow">
         <h2 class="onbV3-h2" data-fr="Le test en 5 secondes" data-en="The 5-second test">Le test en 5 secondes</h2>
         <p class="onbV3-sub" data-fr="Aucune saisie. Aucun compte." data-en="No typing. No account.">Aucune saisie. Aucun compte.</p>
-        <textarea class="onbV3-wow-input" id="onbV3WowInput" placeholder="Collez un email de réservation…" rows="3"></textarea>
+        <textarea class="onbV3-wow-input" id="onbV3WowInput" placeholder="Paste a reservation email…" data-placeholder-fr="Collez un email de réservation…" data-placeholder-en="Paste a reservation email…" rows="3"></textarea>
         <button type="button" id="onbV3WowAnalyze" class="onbV3-wow-sample" style="display:none;margin-top:8px;width:100%" data-fr="Analyser" data-en="Analyze">Analyser</button>
         <button type="button" id="onbV3WowSample" class="onbV3-wow-sample" data-fr="Voir un exemple" data-en="See an example">Voir un exemple</button>
         <div id="onbV3WowResult" style="display:none"></div>
@@ -2731,7 +2731,7 @@ window.addEventListener('keydown', function(e){
         <input type="text" class="onbV3-input" id="onbV3VillaName" placeholder="Villa Santi" data-placeholder-fr="Villa DarJ" data-placeholder-en="Villa Santi">
         <label class="onbV3-label" data-fr="Ville" data-en="City">City</label>
         <div class="onbV3-input-row">
-          <input type="text" class="onbV3-input" id="onbV3City" placeholder="Marrakech, Maroc">
+          <input type="text" class="onbV3-input" id="onbV3City" placeholder="Marrakech, Morocco" data-placeholder-fr="Marrakech, Maroc" data-placeholder-en="Marrakech, Morocco">
           <button class="onbV3-loc-btn" id="onbV3LocBtn" type="button" title="Use my location" aria-label="Use my location">📍</button>
         </div>
         <!-- v179 graveyard : steppers déplacés en Réglages (DOM conservé, strangler-fig) -->
@@ -6022,11 +6022,11 @@ const MAX_FREE_STAYS = 3;
 // CONFIG & STATE
 // ════════════════════════════════════════════
 let lang = (function(){
-  // URL param `?lang=en|fr` wins for this session only (no localStorage write)
+  // URL param `?lang=en|fr|ar|th|zh` wins for this session only (no localStorage write)
   // so a returning user reload without the param goes back to their prior pick.
   try {
     var u = new URLSearchParams(location.search).get('lang');
-    if (u === 'fr' || u === 'en') return u;
+    if (u === 'fr' || u === 'en' || u === 'ar' || u === 'th' || u === 'zh') return u;
   } catch(e){}
   return localStorage.getItem('stafflo_lang') || 'fr';
 })();
@@ -12204,6 +12204,66 @@ function setLang(l) {
 
 function toggleLang() { setLang(lang === 'fr' ? 'en' : 'fr'); }
 
+// Onboarding-only translations, keyed by the FR string already present in data-fr.
+// ar/th/zh look up here; anything missing (i.e. most of the rest of the app) falls
+// back to the existing EN string, then FR — bounded scope, not a full i18n system.
+var ONB_I18N = {
+  "La mémoire vive de votre villa": { ar:"ذاكرة فيلّتك الحيّة", th:"ความทรงจำที่มีชีวิตของวิลล่าคุณ", zh:"您别墅的鲜活记忆" },
+  "J'ai déjà un compte": { ar:"لديّ حساب بالفعل", th:"ฉันมีบัญชีอยู่แล้ว", zh:"我已有账户" },
+  "Le test en 5 secondes": { ar:"اختبار في 5 ثوانٍ", th:"ทดสอบใน 5 วินาที", zh:"5 秒测试" },
+  "Aucune saisie. Aucun compte.": { ar:"بلا كتابة. بلا حساب.", th:"ไม่ต้องพิมพ์ ไม่ต้องสมัคร", zh:"无需输入，无需账户。" },
+  "Analyser": { ar:"تحليل", th:"วิเคราะห์", zh:"分析" },
+  "Voir un exemple": { ar:"عرض مثال", th:"ดูตัวอย่าง", zh:"查看示例" },
+  "Votre villa": { ar:"فيلّتك", th:"วิลล่าของคุณ", zh:"您的别墅" },
+  "Commençons par les essentiels.": { ar:"لنبدأ بالأساسيات.", th:"เริ่มจากข้อมูลสำคัญกันก่อน", zh:"我们从基本信息开始。" },
+  "Nom": { ar:"الاسم", th:"ชื่อ", zh:"名称" },
+  "Ville": { ar:"المدينة", th:"เมือง", zh:"城市" },
+  "Chambres": { ar:"غرف النوم", th:"ห้องนอน", zh:"卧室" },
+  "Capacité max": { ar:"السعة القصوى", th:"จำนวนผู้เข้าพักสูงสุด", zh:"最大容纳" },
+  "Type de propriété": { ar:"نوع العقار", th:"ประเภทที่พัก", zh:"物业类型" },
+  "ARIA adaptera son ton et ses suggestions.": { ar:"ستكيّف ARIA أسلوبها واقتراحاتها.", th:"ARIA จะปรับโทนและคำแนะนำให้เหมาะสม", zh:"ARIA 将据此调整语气与建议。" },
+  "Villa indépendante": { ar:"فيلا مستقلة", th:"วิลล่าเดี่ยว", zh:"独栋别墅" },
+  "Riad": { ar:"رياض", th:"ริยาด", zh:"里亚德庭院" },
+  "Boutique guesthouse": { ar:"نزل بوتيك", th:"เกสต์เฮาส์บูทีค", zh:"精品民宿" },
+  "Chalet": { ar:"شاليه", th:"ชาเลต์", zh:"木屋" },
+  "Beach villa": { ar:"فيلا شاطئية", th:"วิลล่าริมหาด", zh:"海滨别墅" },
+  "Appartement": { ar:"شقة", th:"อพาร์ตเมนต์", zh:"公寓" },
+  "Maison de campagne": { ar:"بيت ريفي", th:"บ้านชนบท", zh:"乡间别墅" },
+  "Piscine": { ar:"مسبح", th:"สระว่ายน้ำ", zh:"泳池" },
+  "Spa": { ar:"سبا", th:"สปา", zh:"水疗" },
+  "Hammam": { ar:"حمّام", th:"ฮัมมัม", zh:"蒸汽浴" },
+  "Tennis": { ar:"تنس", th:"เทนนิส", zh:"网球" },
+  "Transferts": { ar:"خدمة النقل", th:"บริการรับส่ง", zh:"接送服务" },
+  "Courses": { ar:"التسوّق", th:"จัดซื้อของ", zh:"采购" },
+  "Dîner d'accueil": { ar:"عشاء الترحيب", th:"มื้อค่ำต้อนรับ", zh:"迎宾晚餐" },
+  "Matériel enfants": { ar:"مستلزمات الأطفال", th:"อุปกรณ์สำหรับเด็ก", zh:"儿童用品" },
+  "Canaux + Équipe": { ar:"القنوات + الفريق", th:"ช่องทาง + ทีมงาน", zh:"渠道 + 团队" },
+  "Activez vos canaux et les rôles présents.": { ar:"فعّل قنواتك والأدوار المتوفّرة.", th:"เปิดใช้ช่องทางและบทบาททีมของคุณ", zh:"启用您的渠道和团队角色。" },
+  "Direct": { ar:"حجز مباشر", th:"จองตรง", zh:"直接预订" },
+  "Votre équipe": { ar:"فريقك", th:"ทีมของคุณ", zh:"您的团队" },
+  "Majordome": { ar:"كبير الخدم", th:"บัตเลอร์", zh:"管家" },
+  "Chef": { ar:"طاهٍ", th:"เชฟ", zh:"主厨" },
+  "Housekeeping": { ar:"التدبير المنزلي", th:"แม่บ้าน", zh:"客房管家" },
+  "Chauffeur": { ar:"سائق", th:"คนขับรถ", zh:"司机" },
+  "Pool man": { ar:"عامل المسبح", th:"ช่างดูแลสระ", zh:"泳池管理员" },
+  "Jardinier": { ar:"بستاني", th:"คนสวน", zh:"园丁" },
+  "Solo": { ar:"بمفردي", th:"คนเดียว", zh:"单人" },
+  "Plus tard": { ar:"لاحقًا", th:"ไว้ทีหลัง", zh:"稍后" },
+  "Configurer ma villa →": { ar:"إعداد فيلتي ←", th:"ตั้งค่าวิลล่าของฉัน →", zh:"设置我的别墅 →" },
+  "C'est ma villa →": { ar:"هذه فيلتي ←", th:"นี่คือวิลล่าของฉัน →", zh:"这就是我的别墅 →" },
+  "Continuer →": { ar:"متابعة ←", th:"ดำเนินการต่อ →", zh:"继续 →" },
+  "Créer ma villa": { ar:"إنشاء فيلتي", th:"สร้างวิลล่าของฉัน", zh:"创建我的别墅" },
+  "Collez un email de réservation…": { ar:"الصق بريد حجز…", th:"วางอีเมลการจอง…", zh:"粘贴一封预订邮件…" },
+  "Marrakech, Maroc": { ar:"مراكش، المغرب", th:"มาร์ราเกช, โมร็อกโก", zh:"马拉喀什，摩洛哥" }
+};
+
+function _onbTr(frTxt, enTxt) {
+  if (lang === 'fr') return frTxt;
+  if (lang === 'en') return enTxt || frTxt;
+  var row = ONB_I18N[frTxt];
+  return (row && row[lang]) || enTxt || frTxt;
+}
+
 function applyLang() {
   const fr = lang === 'fr';
   // Solo profile may override individual labels via data-fr-solo / data-en-solo.
@@ -12215,12 +12275,12 @@ function applyLang() {
       if (solo && (soloFr || soloEn)) {
         el.textContent = fr ? (soloFr || el.dataset.fr) : (soloEn || el.dataset.en || el.dataset.fr);
       } else {
-        el.textContent = fr ? el.dataset.fr : (el.dataset.en || el.dataset.fr);
+        el.textContent = _onbTr(el.dataset.fr, el.dataset.en);
       }
     }
   });
   document.querySelectorAll('[data-placeholder-fr]').forEach(el => {
-    el.placeholder = fr ? el.dataset.placeholderFr : el.dataset.placeholderEn;
+    el.placeholder = _onbTr(el.dataset.placeholderFr, el.dataset.placeholderEn);
   });
   document.querySelectorAll('[data-title-fr]').forEach(el => {
     el.title = fr ? el.dataset.titleFr : el.dataset.titleEn;
@@ -12230,6 +12290,9 @@ function applyLang() {
   });
   // ARIA hero input: smart rotating placeholder (uses staff names + clients)
   try { if (typeof _ariaSetSmartPlaceholder === 'function') _ariaSetSmartPlaceholder(); } catch(_){}
+  // Onboarding RTL for Arabic
+  var _onb = document.getElementById('onboardingV3');
+  if (_onb) _onb.dir = (lang === 'ar') ? 'rtl' : 'ltr';
   // Lang segmented control (active = on)
   var _segFr = document.getElementById('langSegFr');
   var _segEn = document.getElementById('langSegEn');
@@ -28323,13 +28386,13 @@ window.addEventListener('DOMContentLoaded', function() {
     var primary = $('onbV3Next');
     if (primary) {
       var labels = {
-        0: { fr:'Configurer ma villa →',  en:'Set up my villa →' },
-        1: { fr:'C\'est ma villa →',      en:'This is my villa →' },
-        2: { fr:'Continuer →',            en:'Continue →' },
-        3: { fr:'Créer ma villa',         en:'Create my villa' }
+        0: { fr:'Configurer ma villa →', en:'Set up my villa →', ar:'إعداد فيلتي ←', th:'ตั้งค่าวิลล่าของฉัน →', zh:'设置我的别墅 →' },
+        1: { fr:'C\'est ma villa →',     en:'This is my villa →', ar:'هذه فيلتي ←', th:'นี่คือวิลล่าของฉัน →', zh:'这就是我的别墅 →' },
+        2: { fr:'Continuer →',           en:'Continue →', ar:'متابعة ←', th:'ดำเนินการต่อ →', zh:'继续 →' },
+        3: { fr:'Créer ma villa',        en:'Create my villa', ar:'إنشاء فيلتي', th:'สร้างวิลล่าของฉัน', zh:'创建我的别墅' }
       };
       var L = labels[state.step] || labels[1];
-      primary.textContent = fr() ? L.fr : L.en;
+      primary.textContent = L[lang] || L.en || L.fr;
       primary.disabled = !isStepValid(state.step);
     }
     // Focus first input on step 2 (villa+type, v179)

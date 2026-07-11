@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v248 (auth : langue login unifiée avec lang, plus navigator.language)
-const CACHE = 'stafflo-v248';
+// Stafflo Service Worker — v249 (onboarding : support 5 langues ar/th/zh + RTL)
+const CACHE = 'stafflo-v249';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
