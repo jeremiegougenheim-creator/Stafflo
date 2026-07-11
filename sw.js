@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v260 (fiche de provenance v1, flag stafflo_fiche_v1, branchement bande villa)
-const CACHE = 'stafflo-v260';
+// Stafflo Service Worker — v261 (nav opaque fixe en mode no-frame, spécificité corrigée)
+const CACHE = 'stafflo-v261';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
