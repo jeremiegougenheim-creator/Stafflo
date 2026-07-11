@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v255 (onboarding : sélecteur de langue 5 langues, écran splash)
-const CACHE = 'stafflo-v255';
+// Stafflo Service Worker — v256 (inbox : auto-intégration des demandes de résa au sync, sans bouton manuel)
+const CACHE = 'stafflo-v256';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
