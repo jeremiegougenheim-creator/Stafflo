@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v251 (crédibilité RGPD : Groq+Gemini → Mistral·UE partout)
-const CACHE = 'stafflo-v251';
+// Stafflo Service Worker — v252 (voyageurs : jamais un faux 0€, "— € à saisir" en terre cuite)
+const CACHE = 'stafflo-v252';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
