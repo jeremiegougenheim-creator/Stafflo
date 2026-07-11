@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v264 (fix header band refresh on settings save)
-const CACHE = 'stafflo-v264';
+// Stafflo Service Worker — v265 (fix sheet backdrop 350ms open guard)
+const CACHE = 'stafflo-v265';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
