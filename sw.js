@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v261 (nav opaque fixe en mode no-frame, spécificité corrigée)
-const CACHE = 'stafflo-v261';
+// Stafflo Service Worker — v262 (carnet v1 sur #todayV3 réel — .v3-prio/.v3-stat-num, flag stafflo_carnet_v1)
+const CACHE = 'stafflo-v262';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -2690,6 +2690,19 @@ body.profile-solo #soloTurnoverCard { display: block; }
 .fiche-v1 .fsrc{background:#F4EFE3;border:1px solid rgba(15,35,24,.1);border-radius:10px;padding:12px 14px;font-size:12.5px;color:#5a564b}
 .fiche-v1 .fact{display:block;width:100%;text-align:center;background:#0F2318;color:#E9D7A8;font-size:12.5px;font-weight:600;padding:12px;border-radius:10px;border:none;cursor:pointer;margin-top:4px}
 .fiche-v1 .fnote{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#7a7567;text-align:center;margin-top:14px}
+
+/* ══ Carnet v1 — surface 1 réelle : cartes "Ce qui compte" + registre villa (gated .carnet-v1) ══
+   Cible #todayV3 (.v3-prio / .v3-stat-num), la surface visible par défaut (stafflo_aria_first_v1
+   ON) — PAS .qv-inhouse/.qv-upcoming, cachés en permanence par body.v2-active. Ne touche pas
+   border-left (shorthand évité) : .is-p1/.is-p2/.is-opp gardent leur code couleur priorité. */
+.carnet-v1 .v3-prio{
+  border-top:1px solid rgba(15,35,24,.08) !important;
+  border-right:1px solid rgba(15,35,24,.08) !important;
+  border-bottom:1px solid rgba(15,35,24,.08) !important;
+  box-shadow:0 6px 18px rgba(15,35,24,.06) !important;
+}
+.carnet-v1 .v3-prio-title{font-family:'Cormorant Garamond',serif !important;font-size:15px !important;font-weight:500 !important;color:#1A1208 !important}
+.carnet-v1 .v3-stat-num{font-family:'Cormorant Garamond',serif !important;font-weight:500 !important}
 </style>
 </head>
 <body>
@@ -37403,6 +37416,51 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeFich
       onAction: function(){ if (typeof openSettings === 'function') openSettings(); }
     });
   });
+})();
+
+/* ── carnet v1 : classe racine si flag ON (défaut ON, kill-switch) ── */
+(function(){
+  try { if (localStorage.getItem('stafflo_carnet_v1') !== 'off') document.documentElement.classList.add('carnet-v1'); }
+  catch(e){ document.documentElement.classList.add('carnet-v1'); }
+})();
+
+/* ── carnet : le NET du registre villa (#v3VillaStats) ouvre sa fiche de provenance.
+   Wrap plutôt que modifier renderTodayV3All (strangler fig) — renderV3VillaStats
+   est une closure interne non exposée sur window, donc on raccroche ici. ── */
+(function(){
+  if (typeof window.renderTodayV3All !== 'function') return;
+  var _origRenderTodayV3All = window.renderTodayV3All;
+  window.renderTodayV3All = function(){
+    var r = _origRenderTodayV3All.apply(this, arguments);
+    try {
+      if (typeof openFicheV1 === 'function') {
+        var host = document.getElementById('v3VillaStats');
+        var cell = host ? host.querySelector('.v3-stat-num') : null;
+        if (cell) {
+          cell.style.cursor = 'pointer';
+          cell.onclick = function(){
+            var fr = (typeof lang === 'undefined') || lang === 'fr';
+            var list = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+            var firmCount = list.filter(function(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : true; }).length;
+            openFicheV1({
+              kicker: fr ? 'Le registre' : 'The ledger',
+              title: fr ? 'Revenu net confirmé' : 'Confirmed net revenue',
+              rows: [
+                [fr?'Séjours fermes':'Firm stays', String(firmCount)],
+                [fr?'Formule':'Formula', fr?'Prix × (1 − commission)':'Price × (1 − commission)']
+              ],
+              source: fr
+                ? 'Somme des séjours confirmés/en attente, net de commission — jamais les demandes (leads). Recalculé à chaque synchronisation.'
+                : 'Sum of confirmed/pending stays, net of commission — never leads. Recalculated on every sync.',
+              action: fr ? 'Voir les voyageurs' : 'View guests',
+              onAction: function(){ if (typeof goTab === 'function') goTab('clients'); }
+            });
+          };
+        }
+      }
+    } catch(e){ console.warn('[carnet netstat]', e); }
+    return r;
+  };
 })();
 </script>
 </body>
