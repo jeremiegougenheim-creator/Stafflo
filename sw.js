@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v250 (analytics : 4 événements funnel PostHog, clé en attente)
-const CACHE = 'stafflo-v250';
+// Stafflo Service Worker — v251 (crédibilité RGPD : Groq+Gemini → Mistral·UE partout)
+const CACHE = 'stafflo-v251';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
