@@ -9244,8 +9244,16 @@ async function integrateReservationRequests() {
       }
     }
 
-    // No code parsed: fall back to name+arrival — never dedup on name alone.
-    if (!code && name && arrival && clients.some(function(c) { return c.name === name && c.arrival === arrival; })) {
+    // No code parsed: fall back to name+dates — prefix match (parsed short name like "Helen"
+    // vs a confirmed client's full name "Helen Twelvetrees") and date-range overlap, not
+    // exact-string equality (which silently missed exactly this case). Never dedup on name alone.
+    if (!code && name && arrival && clients.some(function(c) {
+      if (!c.name || !c.arrival || !c.departure) return false;
+      var cn = c.name.toLowerCase(), nLow = name.toLowerCase();
+      var nameHit = cn.indexOf(nLow) === 0 || nLow.indexOf(cn) === 0;
+      var overlap = c.arrival <= (departure || arrival) && c.departure >= arrival;
+      return nameHit && overlap;
+    })) {
       continue;
     }
 

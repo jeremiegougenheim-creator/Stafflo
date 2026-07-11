@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v257 (villa : photo de la maison sur la bande, assombrie 40%)
-const CACHE = 'stafflo-v257';
+// Stafflo Service Worker — v258 (inbox : dédup nom+dates par préfixe/chevauchement, plus d'égalité stricte)
+const CACHE = 'stafflo-v258';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
