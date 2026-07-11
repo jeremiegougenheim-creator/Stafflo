@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v258 (inbox : dédup nom+dates par préfixe/chevauchement, plus d'égalité stricte)
-const CACHE = 'stafflo-v258';
+// Stafflo Service Worker — v259 (bande villa : emblème A doré + fix padding-left mort)
+const CACHE = 'stafflo-v259';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
