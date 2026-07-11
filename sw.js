@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v246 (inbox : auto-intégration des demandes de réservation Airbnb)
-const CACHE = 'stafflo-v246';
+// Stafflo Service Worker — v247 (auth : signup null-safe + fix boucle onboarding "déjà un compte")
+const CACHE = 'stafflo-v247';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

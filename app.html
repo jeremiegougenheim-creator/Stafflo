@@ -6699,13 +6699,14 @@ window.handleAuthLogin = handleAuthLogin;
 
 async function handleAuthSignup() {
   var fr = (typeof lang !== 'undefined' && lang === 'fr');
-  var name = (document.getElementById('authSuName').value || '').trim();
-  var email = (document.getElementById('authSuEmail').value || '').trim();
-  var pass = document.getElementById('authSuPassword').value || '';
+  var _v = function(id){ var el=document.getElementById(id); return el ? (el.value||'') : ''; };
+  var name = _v('authSuName').trim();
+  var email = _v('authSuEmail').trim();
+  var pass = _v('authSuPassword');
   if (!email || !pass) { setAuthMsg(fr?'Email et mot de passe requis':'Email and password required', 'err'); return; }
   if (pass.length < 8) { setAuthMsg(fr?'Mot de passe min 8 caractères':'Password 8+ characters', 'err'); return; }
   var btn = document.getElementById('authSignupBtn');
-  btn.disabled = true; btn.textContent = fr?'Création...':'Creating...';
+  if (btn) { btn.disabled = true; btn.textContent = fr?'Création...':'Creating...'; }
   setAuthMsg(fr?'Création du compte...':'Creating account...');
   try {
     var data = await authSignUp(email, pass, { villa_name: name || 'Ma Villa', bedrooms: 5, base_price: 750 });
@@ -17561,15 +17562,16 @@ async function doSignIn() {
 async function doSignUp() {
   var fr = lang === 'fr';
   var signupBtnLabel = fr ? 'Créer mon compte · Essai 14 jours gratuits' : 'Create my account · 14-day free trial';
-  var name = document.getElementById('authSignupName').value.trim();
-  var email = document.getElementById('authSignupEmail').value.trim();
-  var password = document.getElementById('authSignupPassword').value;
-  var villa = document.getElementById('authSignupVilla').value.trim();
+  var _v = function(id){ var el=document.getElementById(id); return el ? (el.value||'') : ''; };
+  var name = _v('authSignupName').trim();
+  var email = _v('authSignupEmail').trim();
+  var password = _v('authSignupPassword');
+  var villa = _v('authSignupVilla').trim();
   if (!email || !password) return showAuthMessage('error', fr ? 'Email et mot de passe requis' : 'Email and password required');
   if (password.length < 8) return showAuthMessage('error', fr ? 'Mot de passe : min 8 caractères' : 'Password: min 8 characters');
 
   var btn = document.getElementById('btnSignup');
-  btn.disabled = true; btn.textContent = fr ? 'Création...' : 'Creating account...';
+  if (btn) { btn.disabled = true; btn.textContent = fr ? 'Création...' : 'Creating account...'; }
 
   try {
     var r = await fetch(SB_AUTH_URL + '/signup', {
@@ -28454,8 +28456,11 @@ window.addEventListener('DOMContentLoaded', function() {
     // Splash sign-in
     var signIn = $('onbV3SignInLink');
     if (signIn) signIn.addEventListener('click', function(){
-      // Hide v3, surface the auth screen if present
-      r.style.display = 'none';
+      // Clear the ?onboarding=1 force-flag first — sinon l'onboarding se relance en boucle
+      try { history.replaceState({}, '', location.pathname); } catch(e){}
+      var authed = !!window._stafflo_session || (typeof authMode === 'function' && authMode() !== 'guest');
+      if (authed) { location.replace(location.pathname); return; }  // déjà connecté → recharge propre dans l'app
+      r.style.display = 'none'; r.setAttribute('aria-hidden','true');
       if (typeof window.showAuthGate === 'function') { window.showAuthGate(); return; }
       var auth = $('authScreen');
       if (auth) auth.style.display = 'flex';
