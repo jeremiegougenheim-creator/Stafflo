@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v266 (themed staffloPrompt replaces native prompt/alert in settings)
-const CACHE = 'stafflo-v266';
+// Stafflo Service Worker — v267 (full-width opaque bottom nav across all desktop cases)
+const CACHE = 'stafflo-v267';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
