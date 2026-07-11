@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v263 (maison v1 : #v3DemoMonth branché sur maison_charges réel, flag stafflo_maison_v1)
-const CACHE = 'stafflo-v263';
+// Stafflo Service Worker — v264 (fix header band refresh on settings save)
+const CACHE = 'stafflo-v264';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
