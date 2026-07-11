@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v265 (fix sheet backdrop 350ms open guard)
-const CACHE = 'stafflo-v265';
+// Stafflo Service Worker — v266 (themed staffloPrompt replaces native prompt/alert in settings)
+const CACHE = 'stafflo-v266';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

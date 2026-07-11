@@ -7894,9 +7894,9 @@ function removeMealCategory(id) {
   saveMealCategories(cats);
   renderMealPricingSettings();
 }
-function addMealCategoryRow() {
+async function addMealCategoryRow() {
   var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
-  var name = prompt(fr?'Nom de la catégorie ?':'Category name?');
+  var name = await staffloPrompt(fr?'Nom de la catégorie ?':'Category name?');
   if (!name) return;
   name = name.trim();
   if (!name) return;
@@ -8095,15 +8095,15 @@ function removeExchangeRate(code) {
   saveExchangeRates(rates);
   renderExchangeRatesSettings();
 }
-function addExchangeRateRow() {
+async function addExchangeRateRow() {
   var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
-  var code = prompt(fr?'Code devise (3 lettres, ex: JPY) ?':'Currency code (3 letters, e.g. JPY)?');
+  var code = await staffloPrompt(fr?'Code devise (3 lettres, ex: JPY) ?':'Currency code (3 letters, e.g. JPY)?');
   if (!code) return;
   code = code.trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(code)) { alert(fr?'Code invalide (3 lettres)':'Invalid code (3 letters)'); return; }
-  var v = prompt(fr?'Taux pour 1 EUR ?':'Rate for 1 EUR?');
+  if (!/^[A-Z]{3}$/.test(code)) { if(typeof toast==='function') toast(fr?'Code invalide (3 lettres)':'Invalid code (3 letters)'); return; }
+  var v = await staffloPrompt({ title: fr?'Taux pour 1 EUR ?':'Rate for 1 EUR?', type:'number' });
   var rate = parseFloat(v);
-  if (isNaN(rate) || rate <= 0) { alert(fr?'Taux invalide':'Invalid rate'); return; }
+  if (isNaN(rate) || rate <= 0) { if(typeof toast==='function') toast(fr?'Taux invalide':'Invalid rate'); return; }
   var rates = getExchangeRates();
   rates[code] = rate;
   saveExchangeRates(rates);
@@ -37578,6 +37578,34 @@ window.renderMaisonReal = renderMaisonReal;
     return r;
   };
 })();
+
+/* ── staffloPrompt : modal input thémé, réutilisable, renvoie une Promise ── */
+function staffloPrompt(opts){
+  opts = (typeof opts === 'string') ? { title: opts } : (opts || {});
+  return new Promise(function(resolve){
+    var esc = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); };
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(15,35,24,.5);z-index:10060;display:flex;align-items:center;justify-content:center;padding:20px';
+    wrap.innerHTML =
+      '<div style="background:#FAF6EE;border-radius:16px;max-width:380px;width:100%;padding:22px 22px 18px;box-shadow:0 20px 60px rgba(15,35,24,.3)">'
+      + '<div style="font-family:\'Cormorant Garamond\',serif;font-size:20px;font-weight:600;color:#0F2318;margin-bottom:12px">' + esc(opts.title || (fr?'Saisir':'Enter')) + '</div>'
+      + '<input id="_sp_input" type="' + (opts.type==='number'?'number':'text') + '" placeholder="' + esc(opts.placeholder||'') + '" style="width:100%;border:1px solid rgba(15,35,24,.15);border-radius:10px;padding:12px 14px;font-size:14px;outline:none;box-sizing:border-box" />'
+      + '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">'
+      +   '<button id="_sp_cancel" style="background:#F4EFE3;color:#1D4D3A;border:1px solid rgba(15,35,24,.1);border-radius:10px;padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer">' + (fr?'Annuler':'Cancel') + '</button>'
+      +   '<button id="_sp_ok" style="background:#0F2318;color:#E9D7A8;border:none;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer">' + (fr?'OK':'OK') + '</button>'
+      + '</div></div>';
+    document.body.appendChild(wrap);
+    var inp = wrap.querySelector('#_sp_input');
+    var done = function(val){ try { document.body.removeChild(wrap); } catch(e){} resolve(val); };
+    wrap.querySelector('#_sp_ok').onclick = function(){ done(inp.value); };
+    wrap.querySelector('#_sp_cancel').onclick = function(){ done(null); };
+    wrap.addEventListener('click', function(e){ if (e.target === wrap) done(null); });
+    inp.addEventListener('keydown', function(e){ if (e.key==='Enter') done(inp.value); if (e.key==='Escape') done(null); });
+    setTimeout(function(){ inp.focus(); }, 30);
+  });
+}
+window.staffloPrompt = staffloPrompt;
 </script>
 </body>
 </html>
