@@ -1682,6 +1682,8 @@ body.is-v3-on #todayV3 { display: flex !important; }
 .v3-stat-num { font-weight:600; color:#0F2318; }
 .v3-stat-accent { color:#C9963A; }
 .v3-stat-sep { color:#6B6760; opacity:.55; padding:0 2px; }
+.v3-stat-clk{transition:color .15s,text-decoration-color .15s;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:3px}
+.v3-stat-clk:hover{color:#C9963A !important;text-decoration-color:rgba(201,150,58,.6)}
 .v3-inbox-chip { flex-shrink:0; display:flex; align-items:center; gap:7px; padding:9px 12px; background:#FAF6EE; border:1px solid #E5DCC8; border-radius:10px; font-family:'DM Sans','Inter',sans-serif; font-size:12.5px; color:#6B6760; cursor:pointer; transition:border-color .15s, background .15s; }
 .v3-inbox-chip:hover { background:#fff; border-color:#C9963A; color:#0F2318; }
 .v3-inbox-dot { width:8px; height:8px; border-radius:50%; background:#639922; flex-shrink:0; }
@@ -3320,11 +3322,38 @@ window.renderSoloTurnoverCard = function(){
     var pipeline = clients.filter(function(c){ var bs=c.bookingStatus; return bs==='lead'||bs==='inquiry'||bs==='quoted'; }).length;
     var next = upcoming[0];
     var nextLbl = next ? (relDate(next.arrival, FR) + ' · ' + firstName(next.name)) : (FR?'aucun':'none');
+    var _clk = (function(){ try { return localStorage.getItem('stafflo_clickstats_v1') !== 'off'; } catch(e){ return true; } })();
+    var _cls = _clk ? ' v3-stat-clk' : '';
+    var _cur = _clk ? 'cursor:pointer;' : '';
     host.innerHTML =
-      '<span class="v3-stat-num">' + net.toLocaleString(FR?'fr-FR':'en-US') + '€</span><span class="v3-stat-sep">·</span>' +
-      '<span class="v3-stat-num">' + upcoming.length + ' ' + (FR?'à venir':'upcoming') + '</span><span class="v3-stat-sep">·</span>' +
-      '<span class="v3-stat-num">' + pipeline + ' ' + (FR?'pipeline':'pipeline') + '</span><span class="v3-stat-sep">·</span>' +
-      '<span class="v3-stat-num v3-stat-accent">' + nextLbl + '</span>';
+      '<span class="v3-stat-num'+_cls+'" data-stat="net" style="'+_cur+'">' + net.toLocaleString(FR?'fr-FR':'en-US') + '€</span><span class="v3-stat-sep">·</span>' +
+      '<span class="v3-stat-num'+_cls+'" data-stat="upcoming" style="'+_cur+'">' + upcoming.length + ' ' + (FR?'à venir':'upcoming') + '</span><span class="v3-stat-sep">·</span>' +
+      '<span class="v3-stat-num'+_cls+'" data-stat="pipeline" style="'+_cur+'">' + pipeline + ' ' + (FR?'pipeline':'pipeline') + '</span><span class="v3-stat-sep">·</span>' +
+      '<span class="v3-stat-num v3-stat-accent'+_cls+'" data-stat="next" style="'+_cur+'">' + nextLbl + '</span>';
+
+    if (_clk) {
+      var _go = function(sel, fn){ var el = host.querySelector(sel); if (el) el.addEventListener('click', fn); };
+      _go('[data-stat="net"]', function(){
+        if (typeof openFicheV1 === 'function') openFicheV1({
+          kicker: FR?'Revenu net':'Net revenue',
+          title: net.toLocaleString(FR?'fr-FR':'en-US')+'€',
+          rows: [
+            [FR?'Séjours fermes':'Firm stays', String(firmList.filter(function(c){return !c.is_comp;}).length)],
+            [FR?'À venir':'Upcoming', String(upcoming.length)]
+          ],
+          source: FR?'Somme des payouts nets des séjours fermes (hors gratuités). Jamais une estimation.':'Sum of net payouts of firm stays (excl. comps). Never an estimate.',
+          action: FR?'Voir la location':'Open rentals',
+          onAction: function(){ if (typeof goTab === 'function') goTab('clients'); }
+        });
+        else if (typeof goTab === 'function') goTab('clients');
+      });
+      _go('[data-stat="upcoming"]', function(){ if (typeof goTab === 'function') goTab('clients'); });
+      _go('[data-stat="pipeline"]', function(){ if (typeof goTab === 'function') goTab('clients'); });
+      _go('[data-stat="next"]', function(){
+        if (next && next.id && typeof openDetail === 'function') openDetail(next.id);
+        else if (typeof goTab === 'function') goTab('calendar');
+      });
+    }
   }
 
   /* ── Card: Inbox compact chip ── */

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v270 (header+villa band read as one continuous block)
-const CACHE = 'stafflo-v270';
+// Stafflo Service Worker — v271 (Today stats strip clickable to fiches & tabs, flag stafflo_clickstats_v1)
+const CACHE = 'stafflo-v271';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
