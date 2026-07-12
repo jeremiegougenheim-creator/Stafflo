@@ -37564,7 +37564,7 @@ function renderMaisonReal() {
     var pill = isPaid
       ? '<span style="font-size:10px;font-weight:600;color:'+GREEN_MID+';background:rgba(29,77,58,.10);border-radius:9px;padding:3px 9px">'+(fr?'payé':'paid')+'</span>'
       : '<span style="font-size:10px;font-weight:600;color:#8a6420;background:#FBF3DC;border:1px solid rgba(201,150,58,.35);border-radius:9px;padding:3px 9px">'+(fr?'à régler':'to settle')+'</span>';
-    return '<div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--border)">'
+    return '<div class="mc-row" data-charge-id="'+(x.id||'')+'" style="display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer">'
       + '<span style="flex-shrink:0;width:30px;height:30px;border-radius:8px;background:#F4EFE3;display:inline-flex;align-items:center;justify-content:center;font-size:15px">'+(ICON[x.category]||'•')+'</span>'
       + '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#1A1208">'+(x.label||'')+'</div>'
       + (x.payee && x.payee!=='—' ? '<div style="font-size:11px;color:#7a7567">'+x.payee+'</div>' : '')+'</div>'
@@ -37592,7 +37592,52 @@ function renderMaisonReal() {
     + '<div style="font-family:Cormorant Garamond,serif;font-size:19px;color:'+GREEN_DARK+';line-height:1.2">'+(fr?'Ce mois · votre maison':'This month · your home')+'</div>'
     + '<div style="font-size:12.5px;color:'+GREEN_MID+';margin:3px 0 6px">'+(fr?'Tout est suivi. Rien ne vous échappe.':'Everything tracked. Nothing slips by.')+'</div>'
     + rowsHtml + synth + aria + '</div>';
+
+  /* charge actionnable : clic ligne → fiche + « Marquer payé » */
+  try {
+    if (localStorage.getItem('stafflo_charge_action_v1') !== 'off' && typeof openFicheV1 === 'function') {
+      host.querySelectorAll('[data-charge-id]').forEach(function(el){
+        el.addEventListener('click', function(){
+          var cid = el.getAttribute('data-charge-id');
+          var x = rows.find(function(r){ return String(r.id) === cid; });
+          if (!x) return;
+          var isPaid = x.status === 'paye';
+          openFicheV1({
+            kicker: fr ? 'Charge maison' : 'House charge',
+            title: x.label || (fr?'Charge':'Charge'),
+            rows: [
+              [fr?'Montant':'Amount', money(x.amount, x.currency)],
+              [fr?'Bénéficiaire':'Payee', x.payee || '—'],
+              [fr?'Statut':'Status', isPaid ? (fr?'Payé':'Paid') : (fr?'À régler':'To settle')]
+            ],
+            source: fr
+              ? 'Charge récurrente générée depuis vos réglages maison — jamais un montant inventé.'
+              : 'Recurring charge generated from your house settings — never an invented amount.',
+            action: isPaid ? null : (fr ? 'Marquer payé' : 'Mark paid'),
+            onAction: isPaid ? null : function(){ markChargePaid(x.id); }
+          });
+        });
+      });
+    }
+  } catch(e){ console.warn('[mc-rows]', e); }
 }
+
+async function markChargePaid(id){
+  try {
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    if (!cfg.sbUrl || !cfg.sbKey || !id) return;
+    var url = cfg.sbUrl + '/rest/v1/maison_charges?id=eq.' + encodeURIComponent(id);
+    var r = await fetch(url, {
+      method: 'PATCH',
+      headers: sbHdrs(cfg.sbKey),
+      body: JSON.stringify({ status: 'paye', paid_at: new Date().toISOString() })
+    });
+    if (!r.ok) { console.warn('[markChargePaid] HTTP', r.status); return; }
+    if (typeof loadMaisonCharges === 'function') { await loadMaisonCharges(); }
+    if (typeof renderMaisonReal === 'function') { renderMaisonReal(); }
+  } catch(e){ console.warn('[markChargePaid]', e); }
+}
+window.markChargePaid = markChargePaid;
 window.renderMaisonReal = renderMaisonReal;
 
 /* ── Trigger : wrap renderTodayV3All (pas goTab) — la fonction originale écrase
