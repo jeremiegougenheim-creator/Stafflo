@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v269 (onboarding sign-in link ignores demo mode)
-const CACHE = 'stafflo-v269';
+// Stafflo Service Worker — v270 (header+villa band read as one continuous block)
+const CACHE = 'stafflo-v270';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
