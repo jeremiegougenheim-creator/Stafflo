@@ -7154,9 +7154,11 @@ function renderDemoMonthCard() {
       '<span>' + (fr ? 'Reste à régler' : 'Left to settle') + ' <b style="color:' + GOLD + ';font-weight:700">' + fmt(dueSum) + '</b></span>' +
     '</div>';
 
-  var ariaTxt = fr
-    ? 'Aria : ' + dueCount + ' paiements à valider ce mois. Je prépare les rappels ?'
-    : 'Aria: ' + dueCount + ' payments to confirm this month. Shall I prepare the reminders?';
+  var ariaTxt = dueCount === 0
+    ? (fr ? 'Aria : tout est réglé ce mois-ci. Je veille.' : 'Aria: everything settled this month. I\'m watching.')
+    : (fr
+      ? 'Aria : ' + dueCount + ' paiements à valider ce mois. Je prépare les rappels ?'
+      : 'Aria: ' + dueCount + ' payments to confirm this month. Shall I prepare the reminders?');
   var prefill  = fr ? 'Montre-moi le détail des paiements du mois' : 'Show me the payments for this month';
   var laterMsg = fr ? 'Rappels reportés — Aria vous relancera plus tard' : 'Reminders postponed — Aria will follow up later';
   // Compact Aria band — echoes the app's green hero: soft green field, "A" badge,
@@ -37840,13 +37842,18 @@ function renderMaisonReal() {
     return keys.map(function(c){ return money(obj[c], c); }).join(' · ');
   }
   var dueCount = rows.filter(function(x){ return x.status !== 'paye'; }).length;
+  var dueLabel = Object.keys(due).length
+    ? '<span>'+(fr?'À régler ce mois':'Due this month')+' — <b>'+totalStr(due)+'</b></span>'
+    : '<span style="color:#1D4D3A;font-weight:600">'+(fr?'Tout est payé ✓':'All paid ✓')+'</span>';
   var synth = '<div style="display:flex;justify-content:space-between;font-size:12px;color:'+GREEN_MID+';margin-top:12px">'
-    + '<span>'+(fr?'À régler ce mois':'Due this month')+' — <b>'+totalStr(due)+'</b></span>'
+    + dueLabel
     + (Object.keys(paid).length ? '<span>'+(fr?'Payé':'Paid')+' — '+totalStr(paid)+'</span>' : '')
     + '</div>';
 
-  var ariaTxt = fr ? ('Aria : '+dueCount+' paiement(s) à valider ce mois. Je prépare les rappels ?')
-                   : ('Aria: '+dueCount+' payment(s) to confirm this month. Shall I prepare the reminders?');
+  var ariaTxt = dueCount === 0
+    ? (fr ? 'Aria : tout est réglé ce mois-ci. Je veille.' : 'Aria: everything settled this month. I\'m watching.')
+    : (fr ? ('Aria : '+dueCount+' paiement(s) à valider ce mois. Je prépare les rappels ?')
+          : ('Aria: '+dueCount+' payment(s) to confirm this month. Shall I prepare the reminders?'));
   var aria = '<div style="margin-top:13px;padding:11px 12px;background:rgba(29,77,58,.07);border:1px solid rgba(29,77,58,.12);border-radius:12px;display:flex;align-items:flex-start;gap:9px">'
     + '<span style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:'+GREEN_DARK+';color:#FAF6EE;display:inline-flex;align-items:center;justify-content:center;font-family:Cormorant Garamond,serif;font-size:13px;font-weight:600">A</span>'
     + '<div style="font-size:12.5px;line-height:1.45;color:'+GREEN_DARK+'">'+ariaTxt+'</div></div>';
