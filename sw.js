@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v282 (feat: wow demo shown upfront in 5-second test, no AI call)
-const CACHE = 'stafflo-v282';
+// Stafflo Service Worker — v283 (feat: nav_v2 flag + Location tab skeleton, step A)
+const CACHE = 'stafflo-v283';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
