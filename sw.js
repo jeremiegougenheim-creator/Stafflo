@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v277 (feat: onboarding role mini-cards feed maison_recurring)
-const CACHE = 'stafflo-v277';
+// Stafflo Service Worker — v278 (feat: call generate_month() after onboarding signup)
+const CACHE = 'stafflo-v278';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

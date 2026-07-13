@@ -28848,7 +28848,24 @@ window.addEventListener('DOMContentLoaded', function() {
     if (typeof window.pushVillaSettings === 'function') {
       try { window.pushVillaSettings(cfg).catch(function(){}); } catch(e){}
     }
-    try { persistStaffToMaison().catch(function(){}); } catch(e){}
+    try {
+      persistStaffToMaison().then(function(){
+        // Génère immédiatement les charges du mois courant depuis les récurrences
+        // qu'on vient de créer, pour que "Ce mois · votre maison" ne soit pas vide
+        // en sortant de l'onboarding (le cron mensuel prend ensuite le relais).
+        if (_stafflo_session && _stafflo_session.access_token) {
+          fetch(SB_URL + '/rest/v1/rpc/generate_month', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': SB_ANON,
+              'Authorization': 'Bearer ' + _stafflo_session.access_token
+            },
+            body: JSON.stringify({})
+          }).catch(function(){});
+        }
+      }).catch(function(){});
+    } catch(e){}
     // Replace history to clear ?onboarding=1
     try {
       var path = location.pathname;
