@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v278 (feat: call generate_month() after onboarding signup)
-const CACHE = 'stafflo-v278';
+// Stafflo Service Worker — v279 (fix: null-check analyzeBtn crash in handleSendCommand)
+const CACHE = 'stafflo-v279';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
