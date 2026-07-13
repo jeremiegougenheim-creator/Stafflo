@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v275 (feat: ARIA answers guest thread point-by-point using house facts)
-const CACHE = 'stafflo-v275';
+// Stafflo Service Worker — v276 (fix: onboarding channels+team screen — copy, commission label, Tabler icons)
+const CACHE = 'stafflo-v276';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
