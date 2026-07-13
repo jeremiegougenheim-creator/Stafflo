@@ -2737,6 +2737,13 @@ body.profile-solo #soloTurnoverCard { display: block; }
 .onbV3-rc-amount{width:90px}
 .onbV3-rc-currency,.onbV3-rc-period{font-size:12px;border-radius:8px}
 .onbV3-rc-note{font-size:11.5px;color:#8A8678;margin-top:10px;font-style:italic}
+.onbV3-demo-email{background:#fff;border:.5px solid rgba(15,35,24,.1);border-radius:12px;padding:13px 14px;margin-top:14px}
+.onbV3-demo-lbl{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#8A8678;margin-bottom:7px}
+.onbV3-demo-body{font-size:12px;color:#4a463c;line-height:1.5;font-style:italic}
+.onbV3-demo-arrow{text-align:center;margin:10px 0;color:#C9963A;font-size:18px}
+.onbV3-demo-own{margin-top:16px}
+.onbV3-demo-own summary{font-size:13px;color:#6B6760;cursor:pointer;text-decoration:underline;text-underline-offset:3px;list-style:none}
+.onbV3-demo-own summary::-webkit-details-marker{display:none}
 </style>
 </head>
 <body>
@@ -2816,12 +2823,19 @@ window.addEventListener('keydown', function(e){
 
       <!-- STEP 1 — WOW (v179 — C3 câblera la démo live ; placeholder statique ici) -->
       <section class="onbV3-screen" data-step="wow">
-        <h2 class="onbV3-h2" data-fr="Le test en 5 secondes" data-en="The 5-second test">Le test en 5 secondes</h2>
-        <p class="onbV3-sub" data-fr="Aucune saisie. Aucun compte." data-en="No typing. No account.">Aucune saisie. Aucun compte.</p>
-        <textarea class="onbV3-wow-input" id="onbV3WowInput" placeholder="Paste a reservation email…" data-placeholder-fr="Collez un email de réservation…" data-placeholder-en="Paste a reservation email…" rows="3"></textarea>
-        <button type="button" id="onbV3WowAnalyze" class="onbV3-wow-sample" style="display:none;margin-top:8px;width:100%" data-fr="Analyser" data-en="Analyze">Analyser</button>
-        <button type="button" id="onbV3WowSample" class="onbV3-wow-sample" data-fr="Voir un exemple" data-en="See an example">Voir un exemple</button>
-        <div id="onbV3WowResult" style="display:none"></div>
+        <h2 class="onbV3-h2" data-fr="Ce qu'ARIA fait pour vous" data-en="What ARIA does for you">Ce qu'ARIA fait pour vous</h2>
+        <p class="onbV3-sub" data-fr="Un simple email de réservation devient une fiche complète. Automatiquement." data-en="A simple booking email becomes a full guest card. Automatically.">Un simple email de réservation devient une fiche complète. Automatiquement.</p>
+        <div class="onbV3-demo-email">
+          <div class="onbV3-demo-lbl" data-fr="Email reçu" data-en="Email received">Email reçu</div>
+          <div class="onbV3-demo-body" id="onbV3DemoEmailBody"></div>
+        </div>
+        <div class="onbV3-demo-arrow"><i class="ti ti-arrow-down"></i></div>
+        <div id="onbV3WowResult"></div>
+        <details class="onbV3-demo-own">
+          <summary data-fr="Ou collez votre propre email" data-en="Or paste your own email">Ou collez votre propre email</summary>
+          <textarea class="onbV3-wow-input" id="onbV3WowInput" placeholder="Paste a reservation email…" data-placeholder-fr="Collez un email de réservation…" data-placeholder-en="Paste a reservation email…" rows="3"></textarea>
+          <button type="button" id="onbV3WowAnalyze" class="onbV3-wow-sample" style="display:none;margin-top:8px;width:100%" data-fr="Analyser" data-en="Analyze">Analyser</button>
+        </details>
       </section>
 
       <!-- STEP 2 — Villa identity + Type (v179 fusion ; steppers en graveyard) -->
@@ -28656,6 +28670,10 @@ window.addEventListener('DOMContentLoaded', function() {
     if (state.step === 2) {
       setTimeout(function(){ var i=$('onbV3VillaName'); if (i && !i.value) i.focus(); }, 280);
     }
+    // Auto-show the wow demo (sample email → extracted card) on step 1, no AI call
+    if (state.step === 1 && typeof window.renderWowDemo === 'function') {
+      window.renderWowDemo();
+    }
   }
 
   function isStepValid(step){
@@ -29025,12 +29043,13 @@ window.addEventListener('DOMContentLoaded', function() {
     // WOW screen — step 1 (v180)
     var wowInput   = $('onbV3WowInput');
     var wowAnalyze = $('onbV3WowAnalyze');
-    var wowSample  = $('onbV3WowSample');
     var wowResult  = $('onbV3WowResult');
     var _wowBusy   = false;
     var _lastWowResult = null;
 
-    var SAMPLE = { guest:'Sophie Bissuel', checkin:'01/05/2026', checkout:'09/05/2026', nights:8, amount:'3 170 €', channel:'Airbnb' };
+    var SAMPLE = { guest:'Sophie Bissuel', checkin:'01/05/2026', checkout:'09/05/2026', nights:8, amount:'3 170 €', channel:'Airbnb', guests:5, country:'France',
+      email_fr:'« Bonjour, réservation confirmée pour Sophie Bissuel, arrivée le 1er mai pour 8 nuits, 5 personnes. Total 3 170 €. À bientôt ! »',
+      email_en:'"Hi, booking confirmed for Sophie Bissuel, arriving May 1st for 8 nights, 5 guests. Total 3,170€. See you soon!"' };
 
     function renderWowCard(data) {
       if (!wowResult) return;
@@ -29233,9 +29252,13 @@ window.addEventListener('DOMContentLoaded', function() {
       });
     }
 
-    if (wowSample) {
-      wowSample.addEventListener('click', function() { renderWowCard(SAMPLE); });
+    function renderWowDemo() {
+      var isFr = fr();
+      var body = document.getElementById('onbV3DemoEmailBody');
+      if (body) body.textContent = isFr ? SAMPLE.email_fr : SAMPLE.email_en;
+      renderWowCard(SAMPLE);
     }
+    window.renderWowDemo = renderWowDemo;
     if (wowInput) {
       wowInput.addEventListener('paste', function() { setTimeout(wowExtract, 120); });
       wowInput.addEventListener('input', function() {
