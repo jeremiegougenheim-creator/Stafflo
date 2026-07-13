@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v279 (fix: null-check analyzeBtn crash in handleSendCommand)
-const CACHE = 'stafflo-v279';
+// Stafflo Service Worker — v280 (style: restyle stayStatusCard to carnet design system)
+const CACHE = 'stafflo-v280';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
