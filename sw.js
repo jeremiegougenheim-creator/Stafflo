@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v281 (polish: 6 copy/logic quick wins from 2026-07-14 review)
-const CACHE = 'stafflo-v281';
+// Stafflo Service Worker — v282 (feat: wow demo shown upfront in 5-second test, no AI call)
+const CACHE = 'stafflo-v282';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
