@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v274 (fix: ?onboarding=1 no longer traps already-onboarded accounts)
-const CACHE = 'stafflo-v274';
+// Stafflo Service Worker — v275 (feat: ARIA answers guest thread point-by-point using house facts)
+const CACHE = 'stafflo-v275';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
