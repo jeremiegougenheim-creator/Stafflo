@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v273 (ARIA context enrichment: real thread + house/guest facts, flag stafflo_aria_context_v1)
-const CACHE = 'stafflo-v273';
+// Stafflo Service Worker — v274 (fix: ?onboarding=1 no longer traps already-onboarded accounts)
+const CACHE = 'stafflo-v274';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
