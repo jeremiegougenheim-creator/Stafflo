@@ -2379,6 +2379,7 @@ body.no-frame #staffloShell .bot-nav{
   background:none !important;border:none !important;
 }
 .bot-nav .nav-item.on{color:var(--s-gold) !important}
+.bot-nav .nav-item.nb-hidden{display:none !important}
 .bot-nav .nav-item i{font-size:24px !important}
 .bot-nav .nav-item-aria{flex:0 0 auto !important;position:relative !important;transform:translateY(-22px) !important}
 .bot-nav .aria-fab-btn{
@@ -3244,7 +3245,11 @@ window.renderSoloTurnoverCard = function(){
   </button>
   <button class="nav-item nav-btn" id="nb-home" type="button">
     <i class="ti ti-home"></i>
-    <span data-fr="Villa" data-en="Villa" data-fr-solo="Logement" data-en-solo="Home">Villa</span>
+    <span class="nb-home-lbl" data-fr="Villa" data-en="Villa" data-fr-solo="Logement" data-en-solo="Home">Villa</span>
+  </button>
+  <button class="nav-item nav-btn nb-hidden" id="nb-location" type="button">
+    <i class="ti ti-key"></i>
+    <span data-fr="Location" data-en="Rentals">Location</span>
   </button>
   <button class="nav-item nav-btn" id="nb-calendar" type="button" aria-label="Calendar">
     <i class="ti ti-calendar"></i>
@@ -5530,6 +5535,8 @@ window.renderSetupOneLiner = function(){
 
 </div><!-- /home -->
 
+
+<div class="tab" id="tab-location" style="display:none"></div>
 
 <!-- ═══ CALENDAR TAB (v3) — 14-day strip + month grid + upcoming list ═══ -->
 <div class="tab" id="tab-calendar" style="display:none">
@@ -12644,8 +12651,15 @@ function applyHdrCover(tab) {
   var url = (cfg2 && cfg2.coverPhoto) ? cfg2.coverPhoto : (VILLA_COVERS[tab] || VILLA_COVERS.today);
   el.style.backgroundImage = scrim + ",url('" + url + "')";
 }
+function navV2On(){
+  try {
+    if (new URLSearchParams(location.search).get('nav2') === '1') { localStorage.setItem('stafflo_nav_v2','on'); return true; }
+    if (new URLSearchParams(location.search).get('nav2') === '0') { localStorage.setItem('stafflo_nav_v2','off'); return false; }
+    return localStorage.getItem('stafflo_nav_v2') === 'on';
+  } catch(e){ return false; }
+}
 function goTab(t) {
-  ['today','clients','home','calendar'].forEach(id => {
+  ['today','clients','home','location','calendar'].forEach(id => {
     const tab = document.getElementById('tab-'+id);
     const btn = document.getElementById('nb-'+id);
     if (tab) {
@@ -18123,6 +18137,17 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('nb-today').addEventListener('click', function(){ goTab('today'); });
   document.getElementById('nb-clients').addEventListener('click', function(){ goTab('clients'); });
   document.getElementById('nb-home').addEventListener('click', function(){ goTab('home'); });
+  var _nbLoc = document.getElementById('nb-location');
+  if (_nbLoc) _nbLoc.addEventListener('click', function(){ goTab('location'); });
+  // Applique la nav v2 si le flag est on : Guests masqué, Location visible, label Maison.
+  (function applyNavV2(){
+    if (typeof navV2On !== 'function' || !navV2On()) return;
+    var g = document.getElementById('nb-clients'); if (g) g.classList.add('nb-hidden');
+    var l = document.getElementById('nb-location'); if (l) l.classList.remove('nb-hidden');
+    var hl = document.querySelector('#nb-home .nb-home-lbl');
+    if (hl) { hl.setAttribute('data-fr','Maison'); hl.setAttribute('data-en','Maison'); hl.textContent = 'Maison'; }
+    if (typeof applyLang === 'function') { try { applyLang(); } catch(e){} }
+  })();
   var _nbCal = document.getElementById('nb-calendar');
   if (_nbCal) _nbCal.addEventListener('click', function(){ goTab('calendar'); });
   var _gear = document.querySelector('.hdr-btn[data-title-en="Settings"]');
