@@ -2729,6 +2729,14 @@ body.profile-solo #soloTurnoverCard { display: block; }
 .onbV3-pf-i{width:30px;height:30px;border-radius:8px;background:rgba(29,77,58,.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#1D4D3A;font-size:16px}
 .onbV3-pf-t{font-size:14px;font-weight:600;color:#0F2318}
 .onbV3-pf-s{font-size:12.5px;color:#6B6760;line-height:1.4}
+.onbV3-role-card{background:#fff;border:1px solid rgba(201,150,58,.45);border-left:3px solid #C9963A;border-radius:12px;padding:14px 16px;margin-top:10px}
+.onbV3-rc-hdr{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px;font-weight:600;color:#0F2318}
+.onbV3-rc-opt{margin-left:auto;font-size:11px;color:#8A8678;font-weight:400}
+.onbV3-rc-name{width:100%;margin-bottom:10px}
+.onbV3-rc-row{display:flex;gap:8px;align-items:center}
+.onbV3-rc-amount{width:90px}
+.onbV3-rc-currency,.onbV3-rc-period{font-size:12px;border-radius:8px}
+.onbV3-rc-note{font-size:11.5px;color:#8A8678;margin-top:10px;font-style:italic}
 </style>
 </head>
 <body>
@@ -2943,6 +2951,7 @@ window.addEventListener('keydown', function(e){
           <button class="onbV3-chip" data-value="gardener"     type="button"><i class="ti ti-plant-2"></i> <span data-fr="Jardinier" data-en="Gardener">Gardener</span></button>
           <button class="onbV3-chip onbV3-chip-solo" data-value="solo" type="button"><i class="ti ti-user"></i> <span data-fr="Je gère seul" data-en="I manage solo">I manage solo</span></button>
         </div>
+        <div id="onbV3RoleCardsHost"></div>
       </section>
 
       <!-- v179 strangler-fig : Meet ARIA/Gmail → option Réglages, remplacé par WOW step 1. DOM conservé. -->
@@ -28521,19 +28530,35 @@ window.addEventListener('DOMContentLoaded', function() {
     };
   }
 
+  // v202 — staff_config used to be an array of role strings; now an array of
+  // {role,name,amount,currency,period} objects. Normalize old persisted strings
+  // so in-progress onboarding sessions saved before this change don't crash.
+  function normalizeStaffConfig(arr){
+    if (!Array.isArray(arr)) return [];
+    return arr.map(function(x){
+      if (typeof x === 'string') return { role:x, name:'', amount:'', currency:'MAD', period:'month' };
+      return x;
+    });
+  }
+
   function loadState(){
     // Priority: localStorage in-progress state > cfg.onboarding (edit mode) > defaults
     try {
       var raw = localStorage.getItem(LS_KEY);
       if (raw) {
         var parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.step === 'number') return parsed;
+        if (parsed && typeof parsed.step === 'number') {
+          if (parsed.data) parsed.data.staff_config = normalizeStaffConfig(parsed.data.staff_config);
+          return parsed;
+        }
       }
     } catch(e){}
     var cfg = safeCfg();
     if (cfg && cfg.onboarding && typeof cfg.onboarding === 'object') {
       var d = defaultState().data;
-      return { step: 0, data: Object.assign(d, cfg.onboarding) };
+      var merged = Object.assign(d, cfg.onboarding);
+      merged.staff_config = normalizeStaffConfig(merged.staff_config);
+      return { step: 0, data: merged };
     }
     // Bootstrap from existing flat cfg fields if any (re-edit after legacy onboarding)
     var s = defaultState();
@@ -28567,7 +28592,7 @@ window.addEventListener('DOMContentLoaded', function() {
       if (d.bedrooms)    cfg.bedrooms = d.bedrooms;
       if (d.max_guests)  cfg.maxGuests = d.max_guests;
       if (Array.isArray(d.staff_config)) {
-        cfg.soloOperator = d.staff_config.indexOf('solo') !== -1;
+        cfg.soloOperator = d.staff_config.some(function(x){ return x.role === 'solo'; });
       }
       // Commissions: keep the lowest-friction shape — { airbnb:3.6, booking:15, ... }
       if (d.channels && typeof d.channels === 'object') {
@@ -28649,9 +28674,25 @@ window.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('#onbV3PropTypeCards .onbV3-card').forEach(function(c){
       c.classList.toggle('is-selected', c.getAttribute('data-value') === d.property_type);
     });
-    // Staff chips
+    // Staff chips + role mini-cards
     document.querySelectorAll('#onbV3StaffChips .onbV3-chip').forEach(function(c){
-      c.classList.toggle('is-selected', d.staff_config.indexOf(c.getAttribute('data-value')) !== -1);
+      var v = c.getAttribute('data-value');
+      c.classList.toggle('is-selected', (d.staff_config || []).some(function(x){ return x.role === v; }));
+    });
+    document.querySelectorAll('.onbV3-role-card').forEach(function(x){ x.remove(); });
+    (d.staff_config || []).forEach(function(item){
+      if (item.role === 'solo') return;
+      renderRoleCard(item.role);
+      var card = $('onbV3RoleCard-' + item.role);
+      if (!card) return;
+      var nameEl = card.querySelector('.onbV3-rc-name');
+      var amtEl  = card.querySelector('.onbV3-rc-amount');
+      var curEl  = card.querySelector('.onbV3-rc-currency');
+      var perEl  = card.querySelector('.onbV3-rc-period');
+      if (nameEl) nameEl.value = item.name || '';
+      if (amtEl)  amtEl.value  = item.amount || '';
+      if (curEl)  curEl.value  = item.currency || 'MAD';
+      if (perEl)  perEl.value  = item.period || 'month';
     });
     // Services chips
     document.querySelectorAll('#onbV3ServicesChips .onbV3-chip').forEach(function(c){
@@ -28664,6 +28705,53 @@ window.addEventListener('DOMContentLoaded', function() {
       if (toggle) toggle.checked = !!d.channels[k].enabled;
       if (pct)    pct.value = d.channels[k].commission;
     });
+  }
+
+  var ROLE_LABELS = {
+    butler:       { fr:'Majordome',    en:'Butler',       icon:'ti-user-check' },
+    chef:         { fr:'Cuisinier',    en:'Chef',         icon:'ti-tools-kitchen-2' },
+    housekeeping: { fr:'Housekeeping', en:'Housekeeping', icon:'ti-spray' },
+    gardener:     { fr:'Jardinier',    en:'Gardener',     icon:'ti-plant-2' },
+    driver:       { fr:'Chauffeur',    en:'Driver',       icon:'ti-car' },
+    pool:         { fr:'Pisciniste',   en:'Pool man',      icon:'ti-swimming' }
+  };
+  function roleLabel(v){
+    var l = ROLE_LABELS[v] || { fr:v, en:v, icon:'ti-user' };
+    return [ fr() ? l.fr : l.en, l.icon ];
+  }
+
+  function renderRoleCard(v){
+    var host = $('onbV3RoleCardsHost');
+    if (!host || $('onbV3RoleCard-' + v)) return;
+    var lbl = roleLabel(v);
+    var card = document.createElement('div');
+    card.className = 'onbV3-role-card';
+    card.id = 'onbV3RoleCard-' + v;
+    card.innerHTML =
+      '<div class="onbV3-rc-hdr"><i class="ti ' + lbl[1] + '"></i><span>' + lbl[0] + '</span>' +
+      '<span class="onbV3-rc-opt">' + (fr() ? 'optionnel — passez si besoin' : 'optional — skip if needed') + '</span></div>' +
+      '<input type="text" class="onbV3-rc-name" placeholder="' + (fr() ? 'Prénom (ex. Saïd)' : 'First name (e.g. Said)') + '">' +
+      '<div class="onbV3-rc-row">' +
+        '<input type="number" class="onbV3-rc-amount" placeholder="' + (fr() ? 'Montant' : 'Amount') + '">' +
+        '<select class="onbV3-rc-currency"><option value="MAD">MAD</option><option value="EUR">EUR</option><option value="USD">USD</option></select>' +
+        '<select class="onbV3-rc-period"><option value="month">' + (fr() ? '/ mois' : '/ month') + '</option><option value="session">' + (fr() ? '/ session' : '/ session') + '</option></select>' +
+      '</div>' +
+      '<div class="onbV3-rc-note">' + (fr() ? '→ apparaîtra dans « Ce mois · votre maison » comme charge à régler.' : "→ will appear in 'This month · your home' as a charge to settle.") + '</div>';
+    host.appendChild(card);
+    var upd = function(){
+      var arr = state.data.staff_config || [];
+      var item = arr.find(function(x){ return x.role === v; });
+      if (!item) return;
+      item.name     = card.querySelector('.onbV3-rc-name').value.trim();
+      item.amount   = card.querySelector('.onbV3-rc-amount').value.trim();
+      item.currency = card.querySelector('.onbV3-rc-currency').value;
+      item.period   = card.querySelector('.onbV3-rc-period').value;
+      debouncedPersist();
+    };
+    card.querySelector('.onbV3-rc-name').addEventListener('input', upd);
+    card.querySelector('.onbV3-rc-amount').addEventListener('input', upd);
+    card.querySelector('.onbV3-rc-currency').addEventListener('change', upd);
+    card.querySelector('.onbV3-rc-period').addEventListener('change', upd);
   }
 
   /* ────── Step transitions ────── */
@@ -28700,6 +28788,52 @@ window.addEventListener('DOMContentLoaded', function() {
 
   /* ────── Completion ────── */
 
+  // v202 — role chips checked at onboarding create no charge anywhere (maison_recurring
+  // was never referenced from app.html). Roles with a filled amount become recurring
+  // charges so "Ce mois · votre maison" isn't empty after onboarding.
+  // category/frequency here mirror the real maison_recurring rows already in prod for
+  // Villa DarJ (in-house staff = 'salaire', external providers = 'prestataire';
+  // 'month' → 'mensuel', 'session' (no fixed monthly cycle) → 'ponctuel') — the enum
+  // does NOT accept 'staff' or 'month'/'session' literally, so this mapping is required,
+  // not stylistic.
+  var ROLE_CATEGORY = { butler:'salaire', chef:'salaire', housekeeping:'salaire', gardener:'prestataire', driver:'prestataire', pool:'prestataire' };
+  var PERIOD_TO_FREQUENCY = { month:'mensuel', session:'ponctuel' };
+
+  async function persistStaffToMaison(){
+    if (!_stafflo_session || !_stafflo_user) return;
+    var arr = (state.data.staff_config || []).filter(function(x){
+      return x.role !== 'solo' && x.amount && parseFloat(x.amount) > 0;
+    });
+    if (!arr.length) return;
+    var rows = arr.map(function(x){
+      var lbl = roleLabel(x.role)[0];
+      var category = ROLE_CATEGORY[x.role] || 'prestataire';
+      var label = category === 'salaire'
+        ? 'Salaire ' + (x.name ? x.name + ' (' + lbl.toLowerCase() + ')' : '(' + lbl + ')')
+        : lbl;
+      return {
+        label: label,
+        category: category,
+        payee: x.name || '—',
+        amount: parseFloat(x.amount),
+        currency: x.currency || 'MAD',
+        frequency: PERIOD_TO_FREQUENCY[x.period] || 'mensuel'
+      };
+    });
+    try {
+      await fetch(SB_URL + '/rest/v1/maison_recurring', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SB_ANON,
+          'Authorization': 'Bearer ' + _stafflo_session.access_token,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(rows)
+      });
+    } catch(e) { console.warn('[onbV3] persistStaffToMaison', e); }
+  }
+
   function complete(connectGmail){
     posthog.capture('onboarding_done');
     persistCfg();
@@ -28714,6 +28848,7 @@ window.addEventListener('DOMContentLoaded', function() {
     if (typeof window.pushVillaSettings === 'function') {
       try { window.pushVillaSettings(cfg).catch(function(){}); } catch(e){}
     }
+    try { persistStaffToMaison().catch(function(){}); } catch(e){}
     // Replace history to clear ?onboarding=1
     try {
       var path = location.pathname;
@@ -28800,22 +28935,34 @@ window.addEventListener('DOMContentLoaded', function() {
       });
     });
 
-    // Staff chips (multi, Solo is exclusive)
+    // Staff chips (multi, Solo is exclusive) — non-solo roles open an inline mini-card
     document.querySelectorAll('#onbV3StaffChips .onbV3-chip').forEach(function(c){
       c.addEventListener('click', function(){
         var v = c.getAttribute('data-value');
         var arr = state.data.staff_config || [];
         if (v === 'solo') {
-          arr = arr.indexOf('solo') !== -1 ? [] : ['solo'];
+          arr = arr.some(function(x){ return x.role === 'solo'; }) ? [] : [{ role:'solo' }];
+          state.data.staff_config = arr;
+          document.querySelectorAll('#onbV3StaffChips .onbV3-chip').forEach(function(x){
+            x.classList.toggle('is-selected', arr.some(function(a){ return a.role === x.getAttribute('data-value'); }));
+          });
+          document.querySelectorAll('.onbV3-role-card').forEach(function(x){ x.remove(); });
+          debouncedPersist(); applyStep(true);
+          return;
+        }
+        arr = arr.filter(function(x){ return x.role !== 'solo'; });
+        var existing = arr.find(function(x){ return x.role === v; });
+        if (existing) {
+          arr = arr.filter(function(x){ return x.role !== v; });
+          c.classList.remove('is-selected');
+          var card = $('onbV3RoleCard-' + v);
+          if (card) card.remove();
         } else {
-          if (arr.indexOf('solo') !== -1) arr = arr.filter(function(x){return x !== 'solo';});
-          if (arr.indexOf(v) === -1) arr.push(v);
-          else arr = arr.filter(function(x){return x !== v;});
+          arr.push({ role:v, name:'', amount:'', currency:'MAD', period:'month' });
+          c.classList.add('is-selected');
+          renderRoleCard(v);
         }
         state.data.staff_config = arr;
-        document.querySelectorAll('#onbV3StaffChips .onbV3-chip').forEach(function(x){
-          x.classList.toggle('is-selected', arr.indexOf(x.getAttribute('data-value')) !== -1);
-        });
         debouncedPersist(); applyStep(true);
       });
     });

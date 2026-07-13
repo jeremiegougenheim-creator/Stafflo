@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v276 (fix: onboarding channels+team screen — copy, commission label, Tabler icons)
-const CACHE = 'stafflo-v276';
+// Stafflo Service Worker — v277 (feat: onboarding role mini-cards feed maison_recurring)
+const CACHE = 'stafflo-v277';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
