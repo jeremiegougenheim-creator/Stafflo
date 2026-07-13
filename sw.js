@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v272 (maison charges clickable, mark-paid, flag stafflo_charge_action_v1)
-const CACHE = 'stafflo-v272';
+// Stafflo Service Worker — v273 (ARIA context enrichment: real thread + house/guest facts, flag stafflo_aria_context_v1)
+const CACHE = 'stafflo-v273';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -13842,6 +13842,7 @@ async function handleChatQuestion(text) {
       '- Combler un trou par une valeur plausible est une faute grave.',
       '- Ne DÉDUIS jamais un chiffre d\'un autre : N personnes ≠ N chambres ; frais de séjour ≠ prix total ; n\'additionne pas des montants pour inventer un total.',
       '- Ceci vaut pour TOUT intervenant — employé résident OU prestataire occasionnel (plombier, électricien, jardinier, gardien, femme de ménage) : ne JAMAIS inventer leur date d\'intervention, leur tarif, leur fréquence ou leur statut de paiement.',
+      '- RIB, coordonnées bancaires ou montant à payer : n\'écris ces valeurs QUE si elles apparaissent littéralement dans FAITS MAISON ou CE VOYAGEUR ci-dessous. Absent → écris « [RIB à insérer] » ou « [montant à préciser] », jamais une valeur inventée.',
       'Exemple : si aucun tarif chauffeur/jour n\'est fourni, dis « tarif/jour non renseigné » — ne sors PAS un chiffre inventé.',
       '═══ FIN RÈGLE ═══',
       '',
@@ -13872,6 +13873,7 @@ async function handleChatQuestion(text) {
       '- Filling a gap with a plausible value is a serious error.',
       '- Never DEDUCE a figure from another: N guests ≠ N rooms; stay fees ≠ total price; do not add amounts to invent a total.',
       '- This applies to ALL persons — resident staff OR occasional contractors (plumber, electrician, gardener, caretaker, cleaner): NEVER invent their date, rate, frequency or payment status.',
+      '- Bank details or amounts due: only write these if they literally appear in HOUSE FACTS or THIS GUEST below. Missing → write "[bank details to add]" or "[amount to confirm]", never an invented value.',
       'Example: if no driver day-rate is given, say "day rate not specified" — do NOT output an invented figure.',
       '═══ END RULE ═══',
       '',
@@ -13946,8 +13948,26 @@ async function handleChatQuestion(text) {
           ? '═══ GUEST ACTUELLEMENT OUVERT : ' + _chatActiveClient.name + ' (référence — ' + ownerName + ' peut parler d\'une autre personne) ═══'
           : '═══ CURRENTLY OPEN GUEST: ' + _chatActiveClient.name + ' (reference — ' + ownerName + ' may be talking about someone else) ═══')
       : '';
+
+    // ── ARIA context enrichment (Levers A+C) — real thread + house/guest facts ──
+    var _ariaCtxOn = (function(){ try { return localStorage.getItem('stafflo_aria_context_v1') !== 'off'; } catch(e){ return true; } })();
+    var _houseFactsBlock = '', _guestFactsBlock = '', _guestThreadBlock = '';
+    if (_ariaCtxOn) {
+      try { _houseFactsBlock = await buildHouseFactsBlock(fr); } catch(e){}
+      var _activeClientObj = (typeof _chatActiveClient !== 'undefined' && _chatActiveClient && _chatActiveClient.id)
+        ? clients.find(function(c){ return c.id === _chatActiveClient.id; })
+        : null;
+      if (_activeClientObj && typeof isFirmBooking === 'function' && isFirmBooking(_activeClientObj)) {
+        try { _guestFactsBlock = await buildGuestFactsBlock(_activeClientObj, fr); } catch(e){}
+        try { _guestThreadBlock = await buildGuestThreadBlock(_activeClientObj, fr); } catch(e){}
+      }
+    }
+
     var _ctxParts = [(fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman, '', _dataHdr];
     if (_focusedGuest) _ctxParts.push(_focusedGuest);
+    if (_houseFactsBlock) { _ctxParts.push(''); _ctxParts.push(_houseFactsBlock); }
+    if (_guestFactsBlock) { _ctxParts.push(''); _ctxParts.push(_guestFactsBlock); }
+    if (_guestThreadBlock) { _ctxParts.push(''); _ctxParts.push(_guestThreadBlock); }
     _ctxParts.push(crmCtx);
     if (_evBlock) { _ctxParts.push(''); _ctxParts.push(_evBlock); }
     if (_prestaBlock) { _ctxParts.push(''); _ctxParts.push(_prestaBlock); }
@@ -14995,6 +15015,62 @@ async function loadClientContext(clientId) {
     if (!r.ok) return [];
     return await r.json();
   } catch(e) { return []; }
+}
+
+// ── ARIA context enrichment (Levers A+C) — house facts / guest facts / real thread ──
+// House-level facts live in client_context under the sentinel client_id '__maison__'.
+async function buildHouseFactsBlock(fr) {
+  var rows = [];
+  try { rows = await loadClientContext('__maison__'); } catch(e){}
+  if (!rows || !rows.length) return '';
+  var lines = [fr ? '═══ FAITS MAISON (vérifiés) ═══' : '═══ HOUSE FACTS (verified) ═══'];
+  rows.forEach(function(r){ lines.push('- ' + (r.key||'') + ': ' + (r.value||'')); });
+  lines.push(fr ? '═══ FIN FAITS MAISON ═══' : '═══ END HOUSE FACTS ═══');
+  return lines.join('\n');
+}
+
+async function buildGuestFactsBlock(client, fr) {
+  if (!client || !client.id) return '';
+  var rows = [];
+  try { rows = await loadClientContext(client.id); } catch(e){}
+  if (!rows || !rows.length) return '';
+  var lines = [(fr ? '═══ CE VOYAGEUR — ' : '═══ THIS GUEST — ') + (client.name||'').toUpperCase() + ' ═══'];
+  rows.forEach(function(r){ lines.push('- ' + (r.key||'') + ': ' + (r.value||'')); });
+  lines.push(fr ? '═══ FIN CE VOYAGEUR ═══' : '═══ END THIS GUEST ═══');
+  return lines.join('\n');
+}
+
+// email_inbox matched by client_id OR from_email/from_name, + chat_history for this
+// guest — truncated (600 char/email, ~6 emails, 10 chat turns) to avoid token bloat.
+async function buildGuestThreadBlock(client, fr) {
+  if (!client || !client.id) return '';
+  var cfg = getCfg();
+  var key = cfg.sbKey || SB_ANON;
+  var hdr = { apikey: key, Authorization: 'Bearer ' + key };
+  var emailRows = [];
+  try {
+    var firstName = (client.name || '').trim().split(/\s+/)[0];
+    var orParts = ['client_id.eq.' + client.id];
+    if (client.email) orParts.push('from_email.eq.' + client.email);
+    if (firstName) orParts.push('from_name.ilike.*' + firstName + '*');
+    var url = SB_URL + '/rest/v1/email_inbox?or=(' + orParts.join(',') + ')&select=subject,body,from_name,received_at&order=received_at.desc&limit=6';
+    var r = await fetch(url, { headers: hdr });
+    if (r.ok) emailRows = await r.json();
+  } catch(e){}
+  var chatRows = [];
+  try { chatRows = await loadChatHistory({ clientId: client.id, limit: 10 }); } catch(e){}
+  if (!emailRows.length && !chatRows.length) return '';
+  var lines = [(fr ? '═══ FIL DE CONVERSATION RÉEL — ' : '═══ REAL CONVERSATION THREAD — ') + (client.name||'').toUpperCase() + ' ═══'];
+  emailRows.slice().reverse().forEach(function(m){
+    var body = (m.body || '').replace(/\s+/g,' ').trim().slice(0, 600);
+    lines.push('[email] ' + (m.from_name || client.name || '') + ': ' + (m.subject ? m.subject + ' — ' : '') + body);
+  });
+  chatRows.forEach(function(row){
+    var who = row.role === 'user' ? (cfg.owner || 'Owner') : 'ARIA';
+    lines.push('[chat] ' + who + ': ' + (row.content || '').slice(0, 300));
+  });
+  lines.push(fr ? '═══ FIN FIL ═══' : '═══ END THREAD ═══');
+  return lines.join('\n');
 }
 
 async function saveClientContext(clientId, items) {
