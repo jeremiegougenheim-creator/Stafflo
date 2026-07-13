@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v280 (style: restyle stayStatusCard to carnet design system)
-const CACHE = 'stafflo-v280';
+// Stafflo Service Worker — v281 (polish: 6 copy/logic quick wins from 2026-07-14 review)
+const CACHE = 'stafflo-v281';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
