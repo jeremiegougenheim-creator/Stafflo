@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v288 (feat: nav_v2 step E — Guests absorbed into Rentals)
-const CACHE = 'stafflo-v288';
+// Stafflo Service Worker — v289 (style: center .modal-bg on desktop, keep bottom-sheet on mobile)
+const CACHE = 'stafflo-v289';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
