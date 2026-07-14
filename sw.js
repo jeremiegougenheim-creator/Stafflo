@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v297 (fix: #guestDetailV5 centered 720px column on desktop ≥900px, same treatment as v175 modals)
-const CACHE = 'stafflo-v297';
+// Stafflo Service Worker — v298 (fix: callBestAI now handles 503 all_providers_failed with a user-facing toast instead of failing silently)
+const CACHE = 'stafflo-v298';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
