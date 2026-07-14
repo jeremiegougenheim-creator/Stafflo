@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v289 (style: center .modal-bg on desktop, keep bottom-sheet on mobile)
-const CACHE = 'stafflo-v289';
+// Stafflo Service Worker — v290 (fix: center ARIA in nav_v2 bottom nav)
+const CACHE = 'stafflo-v290';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
