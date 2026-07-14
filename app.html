@@ -5781,7 +5781,7 @@ window.renderSetupOneLiner = function(){
   </div>
 
   <div class="settings-section" style="padding:10px 0;text-align:center">
-    <button onclick="closeSettings();setTimeout(function(){if(typeof launchOnboardingV3==='function')launchOnboardingV3();},180);" style="font-size:12px;padding:8px 16px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);cursor:pointer;font-family:inherit;width:100%" data-fr="📋 Revoir l'onboarding" data-en="📋 Review onboarding">📋 Revoir l'onboarding</button>
+    <button onclick="closeSettings();setTimeout(function(){if(typeof launchOnboardingV3==='function')launchOnboardingV3({review:true});},180);" style="font-size:12px;padding:8px 16px;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--muted);cursor:pointer;font-family:inherit;width:100%" data-fr="📋 Revoir l'onboarding" data-en="📋 Review onboarding">📋 Revoir l'onboarding</button>
   </div>
 
   <div class="settings-section" style="text-align:center;padding:12px 0 6px">
@@ -28778,6 +28778,7 @@ window.addEventListener('DOMContentLoaded', function() {
       if (cfg.country)  s.data.country = cfg.country;
       if (cfg.bedrooms) s.data.bedrooms = cfg.bedrooms;
       if (cfg.maxGuests) s.data.max_guests = cfg.maxGuests;
+      if (cfg.basePrice) s.data.base_price = cfg.basePrice;
     }
     return s;
   }
@@ -29592,10 +29593,19 @@ window.addEventListener('DOMContentLoaded', function() {
     return true;
   }
 
-  window.launchOnboardingV3 = function(){
+  window.launchOnboardingV3 = function(opts){
     var r = root();
     if (!r) return;
+    // Ré-édition volontaire depuis les réglages (opts.review) : ignorer tout état de
+    // test en cours dans localStorage et repartir des VRAIES données (cfg), directement
+    // sur l'écran « Your villa » (step 2 — splash/wow n'ont pas de sens pour un compte
+    // déjà onboardé). Sans ça, un onboarding de test abandonné en cours de route écrase
+    // la relecture des vraies données de la villa.
+    if (opts && opts.review) {
+      try { localStorage.removeItem(LS_KEY); } catch(e){}
+    }
     state = loadState();
+    if (opts && opts.review) state.step = 2;
     wireOnce();
     syncFormFromState();
     r.style.display = 'flex';
