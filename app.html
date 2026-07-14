@@ -32546,12 +32546,39 @@ function startTour(){
         var clientLine = buildClientLines(text, isOrchestrator ? 5 : 12);
         var clientCount = clientList.length;
 
+        // ── Enrichment (ported from dead handleChatQuestion@13893) — house facts + guest prefs + real thread ──
+        var _enrichBlock = '';
+        try {
+          var _ariaCtxOn = (function(){ try { return localStorage.getItem('stafflo_aria_context_v1') !== 'off'; } catch(e){ return true; } })();
+          if (_ariaCtxOn) {
+            var _parts = [];
+            try { var _hf = await buildHouseFactsBlock(fr); if (_hf) _parts.push(_hf); } catch(e){}
+            // Resolution order: (1) client already resolved this turn by the ARIA_FIX text-enrichment
+            // wrapper upstream (window._ariaLastClient), (2) explicit "à/pour/for NAME" mention in this
+            // message, (3) guest currently open in the UI (_chatActiveClient) as last resort.
+            var _tgt = (window._ariaLastClient && typeof isFirmBooking === 'function' && isFirmBooking(window._ariaLastClient)) ? window._ariaLastClient : null;
+            if (!_tgt && typeof findClientByName === 'function') {
+              var _m = text.match(/(?:à|a|pour|de|for|to|reply to|réponds?\s+à)\s+([A-Za-zÀ-ÿ][\wÀ-ÿ'’-]{1,30})/i);
+              if (_m && _m[1]) { var _c = findClientByName(_m[1]); if (_c && (typeof isFirmBooking !== 'function' || isFirmBooking(_c))) _tgt = _c; }
+            }
+            if (!_tgt && typeof _chatActiveClient !== 'undefined' && _chatActiveClient && _chatActiveClient.id) {
+              var _act = clientList.find(function(c){ return c.id === _chatActiveClient.id; });
+              if (_act && typeof isFirmBooking === 'function' && isFirmBooking(_act)) _tgt = _act;
+            }
+            if (_tgt) {
+              try { var _gf = await buildGuestFactsBlock(_tgt, fr); if (_gf) _parts.push(_gf); } catch(e){}
+              try { var _gt = await buildGuestThreadBlock(_tgt, fr); if (_gt) _parts.push(_gt); } catch(e){}
+            }
+            if (_parts.length) _enrichBlock = '\n' + _parts.join('\n') + '\n';
+          }
+        } catch(e){}
+
         var userCtx;
         if (isOrchestrator) {
           userCtx = [
             (fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman,
             (fr ? 'Clients confirmés' : 'Confirmed') + ' (' + clientCount + '): ' + clientLine,
-            '',
+            _enrichBlock,
             'Situation: ' + text,
             '',
             (fr ? 'Exemple' : 'Example') + ':',
@@ -32561,7 +32588,7 @@ function startTour(){
           userCtx = [
             (fr ? 'Aujourd\'hui' : 'Today') + ': ' + todayHuman,
             'Clients (' + clientCount + '): ' + clientLine,
-            '',
+            _enrichBlock,
             historyBlock,
             '',
             ownerName + ': "' + text + '"'

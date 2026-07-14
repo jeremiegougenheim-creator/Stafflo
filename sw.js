@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v294 (fix: buildGuestThreadBlock reliably fetches guest email thread)
-const CACHE = 'stafflo-v294';
+// Stafflo Service Worker — v295 (fix: ARIA context enrichment ported into active handleChatQuestion layer, was dead code)
+const CACHE = 'stafflo-v295';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
