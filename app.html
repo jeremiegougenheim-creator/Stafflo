@@ -2745,6 +2745,10 @@ body.profile-solo #soloTurnoverCard { display: block; }
 .onbV3-demo-own{margin-top:16px}
 .onbV3-demo-own summary{font-size:13px;color:#6B6760;cursor:pointer;text-decoration:underline;text-underline-offset:3px;list-style:none}
 .onbV3-demo-own summary::-webkit-details-marker{display:none}
+.onbV3-city-sug{position:absolute;top:100%;left:0;right:0;z-index:50;margin:4px 0 0;padding:4px;list-style:none;background:#fff;border:.5px solid rgba(15,35,24,.15);border-radius:12px;box-shadow:0 12px 32px rgba(15,35,24,.15);max-height:220px;overflow-y:auto}
+.onbV3-city-sug li{padding:10px 12px;border-radius:8px;font-size:13.5px;color:#0F2318;cursor:pointer;line-height:1.35}
+.onbV3-city-sug li:hover,.onbV3-city-sug li.active{background:#F4EFE3}
+.onbV3-city-sug .sug-sub{font-size:11.5px;color:#8A8678}
 </style>
 </head>
 <body>
@@ -2846,9 +2850,12 @@ window.addEventListener('keydown', function(e){
         <label class="onbV3-label" data-fr="Nom" data-en="Name">Name</label>
         <input type="text" class="onbV3-input" id="onbV3VillaName" placeholder="Villa Santi" data-placeholder-fr="Villa DarJ" data-placeholder-en="Villa Santi">
         <label class="onbV3-label" data-fr="Ville" data-en="City">City</label>
-        <div class="onbV3-input-row">
-          <input type="text" class="onbV3-input" id="onbV3City" placeholder="Marrakech, Morocco" data-placeholder-fr="Marrakech, Maroc" data-placeholder-en="Marrakech, Morocco">
-          <button class="onbV3-loc-btn" id="onbV3LocBtn" type="button" title="Use my location" aria-label="Use my location">📍</button>
+        <div class="onbV3-city-wrap" style="position:relative">
+          <div class="onbV3-input-row">
+            <input type="text" class="onbV3-input" id="onbV3City" placeholder="Marrakech, Morocco" data-placeholder-fr="Marrakech, Maroc" data-placeholder-en="Marrakech, Morocco" autocomplete="off">
+            <button class="onbV3-loc-btn" id="onbV3LocBtn" type="button" title="Use my location" aria-label="Use my location">📍</button>
+          </div>
+          <ul class="onbV3-city-sug" id="onbV3CitySug" style="display:none"></ul>
         </div>
         <label class="onbV3-label" data-fr="Vous louez / visez ~ ? €/nuit" data-en="You rent / target ~ ? €/night">You rent / target ~ ? €/night</label>
         <input type="number" inputmode="numeric" min="0" class="onbV3-input" id="onbV3BasePrice" placeholder="750" data-placeholder-fr="750" data-placeholder-en="750">
@@ -28989,6 +28996,7 @@ window.addEventListener('DOMContentLoaded', function() {
     // Geolocation
     var loc = $('onbV3LocBtn');
     if (loc) loc.addEventListener('click', detectCity);
+    try { wireCityAutocomplete(); } catch(e){}
 
     // Property type cards (single select)
     document.querySelectorAll('#onbV3PropTypeCards .onbV3-card').forEach(function(c){
@@ -29370,6 +29378,47 @@ window.addEventListener('DOMContentLoaded', function() {
         }
       }).catch(function(){ btn.classList.remove('is-loading'); });
     }, function(){ btn.classList.remove('is-loading'); }, { enableHighAccuracy:false, timeout:8000, maximumAge:600000 });
+  }
+
+  /* ────── Nominatim forward search (autocomplete par frappe) ────── */
+  var _citySugTimer = null;
+  function wireCityAutocomplete(){
+    var inp = $('onbV3City');
+    var box = $('onbV3CitySug');
+    if (!inp || !box) return;
+    function hide(){ box.style.display = 'none'; box.innerHTML = ''; }
+    function pick(label, country){
+      inp.value = label;
+      state.data.city = label;
+      if (country) state.data.country = country;
+      try { debouncedPersist(); } catch(e){}
+      hide();
+    }
+    inp.addEventListener('input', function(){
+      var q = inp.value.trim();
+      if (_citySugTimer) clearTimeout(_citySugTimer);
+      if (q.length < 3) { hide(); return; }
+      // Débounce 400ms : respecte la limite Nominatim (max ~1 req/s)
+      _citySugTimer = setTimeout(function(){
+        var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&accept-language=' + (fr() ? 'fr' : 'en') + '&q=' + encodeURIComponent(q);
+        fetch(url).then(function(r){ return r.json(); }).then(function(list){
+          if (!Array.isArray(list) || !list.length) { hide(); return; }
+          box.innerHTML = '';
+          list.forEach(function(item){
+            var a = item.address || {};
+            var main = a.city || a.town || a.village || a.county || a.state || item.name || (item.display_name||'').split(',')[0];
+            var country = a.country || '';
+            var label = country ? (main + ', ' + country) : main;
+            var li = document.createElement('li');
+            li.innerHTML = '<div>' + (main||'') + '</div>' + (country ? '<div class="sug-sub">' + country + '</div>' : '');
+            li.addEventListener('mousedown', function(e){ e.preventDefault(); pick(label, country); });
+            box.appendChild(li);
+          });
+          box.style.display = '';
+        }).catch(function(){ hide(); });
+      }, 400);
+    });
+    inp.addEventListener('blur', function(){ setTimeout(hide, 150); });  // laisse le mousedown passer
   }
 
   /* ────── Launch + autodetect ────── */
