@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v290 (fix: center ARIA in nav_v2 bottom nav)
-const CACHE = 'stafflo-v290';
+// Stafflo Service Worker — v291 (fix: t is not defined in detectCommandIntentEnhanced)
+const CACHE = 'stafflo-v291';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
