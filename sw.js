@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v283 (feat: nav_v2 flag + Location tab skeleton, step A)
-const CACHE = 'stafflo-v283';
+// Stafflo Service Worker — v284 (feat: Nominatim autocomplete on onboarding city field)
+const CACHE = 'stafflo-v284';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
