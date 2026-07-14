@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v295 (fix: ARIA context enrichment ported into active handleChatQuestion layer, was dead code)
-const CACHE = 'stafflo-v295';
+// Stafflo Service Worker — v296 (fix: robust guest name resolution — word-scan replaces fragile single-preposition regex)
+const CACHE = 'stafflo-v296';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

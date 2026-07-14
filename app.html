@@ -32553,18 +32553,28 @@ function startTour(){
           if (_ariaCtxOn) {
             var _parts = [];
             try { var _hf = await buildHouseFactsBlock(fr); if (_hf) _parts.push(_hf); } catch(e){}
-            // Resolution order: (1) client already resolved this turn by the ARIA_FIX text-enrichment
-            // wrapper upstream (window._ariaLastClient), (2) explicit "à/pour/for NAME" mention in this
-            // message, (3) guest currently open in the UI (_chatActiveClient) as last resort.
-            var _tgt = (window._ariaLastClient && typeof isFirmBooking === 'function' && isFirmBooking(window._ariaLastClient)) ? window._ariaLastClient : null;
-            if (!_tgt && typeof findClientByName === 'function') {
-              var _m = text.match(/(?:à|a|pour|de|for|to|reply to|réponds?\s+à)\s+([A-Za-zÀ-ÿ][\wÀ-ÿ'’-]{1,30})/i);
-              if (_m && _m[1]) { var _c = findClientByName(_m[1]); if (_c && (typeof isFirmBooking !== 'function' || isFirmBooking(_c))) _tgt = _c; }
+            // Resolution order: (1) guest currently open in the UI (_chatActiveClient) wins if set —
+            // deliberate navigation beats text guessing, (2) a known client whose name (or any word of
+            // it, e.g. "lorren" inside "Nico (Lorren Bargain)") appears anywhere in the message — robust
+            // to phrasing, unlike a single-preposition regex which mis-captures on sentences like
+            // "réponds à toutes les questions de lorren", (3) window._ariaLastClient (resolved by the
+            // ARIA_FIX wrapper upstream, possibly from an earlier turn) as last resort.
+            var _tgt = null;
+            try {
+              if (typeof _chatActiveClient !== 'undefined' && _chatActiveClient && _chatActiveClient.id) {
+                var _act = (clientList || []).find(function(c){ return c.id === _chatActiveClient.id; });
+                if (_act && (typeof isFirmBooking !== 'function' || isFirmBooking(_act))) _tgt = _act;
+              }
+            } catch(e){}
+            if (!_tgt) {
+              var _lc = ' ' + text.toLowerCase() + ' ';
+              var _firm = (clientList || []).filter(function(c){ return typeof isFirmBooking !== 'function' || isFirmBooking(c); });
+              _tgt = _firm.find(function(c){
+                var _words = (c.name || '').toLowerCase().split(/[\s()]+/).filter(function(w){ return w.length >= 3; });
+                return _words.some(function(w){ return _lc.indexOf(' ' + w) !== -1 || _lc.indexOf(w + ' ') !== -1; });
+              }) || null;
             }
-            if (!_tgt && typeof _chatActiveClient !== 'undefined' && _chatActiveClient && _chatActiveClient.id) {
-              var _act = clientList.find(function(c){ return c.id === _chatActiveClient.id; });
-              if (_act && typeof isFirmBooking === 'function' && isFirmBooking(_act)) _tgt = _act;
-            }
+            if (!_tgt && window._ariaLastClient && (typeof isFirmBooking !== 'function' || isFirmBooking(window._ariaLastClient))) _tgt = window._ariaLastClient;
             if (_tgt) {
               try { var _gf = await buildGuestFactsBlock(_tgt, fr); if (_gf) _parts.push(_gf); } catch(e){}
               try { var _gt = await buildGuestThreadBlock(_tgt, fr); if (_gt) _parts.push(_gt); } catch(e){}
