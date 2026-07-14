@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v299 (fix: escape XSS in inbox email subject/preview — sender-controlled data was injected raw into the DOM)
-const CACHE = 'stafflo-v299';
+// Stafflo Service Worker — v300 (onboarding: property-type screen hidden from step 1 — moves to Réglages, strangler-fig, DOM kept)
+const CACHE = 'stafflo-v300';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
