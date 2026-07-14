@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v286 (feat: nav_v2 step C — Maison tab: charges, prestataires, tasks)
-const CACHE = 'stafflo-v286';
+// Stafflo Service Worker — v287 (feat: nav_v2 step D — Today lightened to a Maison summary card)
+const CACHE = 'stafflo-v287';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
