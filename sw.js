@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v285 (feat: nav_v2 step B — pricing moved to Location tab)
-const CACHE = 'stafflo-v285';
+// Stafflo Service Worker — v286 (feat: nav_v2 step C — Maison tab: charges, prestataires, tasks)
+const CACHE = 'stafflo-v286';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
