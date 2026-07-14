@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v298 (fix: callBestAI now handles 503 all_providers_failed with a user-facing toast instead of failing silently)
-const CACHE = 'stafflo-v298';
+// Stafflo Service Worker — v299 (fix: escape XSS in inbox email subject/preview — sender-controlled data was injected raw into the DOM)
+const CACHE = 'stafflo-v299';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

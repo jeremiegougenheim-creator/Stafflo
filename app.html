@@ -14700,6 +14700,8 @@ async function fetchInboxEmails() {
 window.fetchInboxEmails = fetchInboxEmails;
 
 async function loadInboxEmails() {
+  // escapeHtml not in scope here (existing copies are IIFE-local elsewhere) — local copy, sender-controlled subject/preview must never hit the DOM raw.
+  function escapeHtml(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
   // Dual-write: inline dashboard card (#inboxList) + modal (#inboxListLegacy)
   var els = Array.from(document.querySelectorAll('#inboxList, #inboxListLegacy'));
   if (!els.length) return;
@@ -14802,8 +14804,8 @@ async function loadInboxEmails() {
       html += '<div class="ic-row">';
       html += '<div class="ic-avatar '+src+'" title="'+srcLabel+'">'+srcLetter+'</div>';
       html += '<div class="ic-content">';
-      html += '<div class="ic-subject">' + (row.subject||'No subject') + '</div>';
-      if (preview) html += '<div class="ic-preview">' + preview + '</div>';
+      html += '<div class="ic-subject">' + escapeHtml(row.subject||'No subject') + '</div>';
+      if (preview) html += '<div class="ic-preview">' + escapeHtml(preview) + '</div>';
       html += '<div class="ic-meta">';
       html += '<span>' + dateStr + '</span>';
       if (typeChip || guestChip) html += '<span style="opacity:.4">·</span>';
@@ -24404,6 +24406,8 @@ function toggleInboxRow(rowId, evt) {
 }
 // Global rich inbox card renderer (shared by Today inline + modal)
 window.renderInboxCard = function(row) {
+  // escapeHtml not in scope here (existing copies are IIFE-local elsewhere) — local copy, sender-controlled subject/preview must never hit the DOM raw.
+  function escapeHtml(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
   var fr = lang === 'fr';
   var d = new Date(row.received_at);
   var now = new Date();
@@ -24442,8 +24446,8 @@ window.renderInboxCard = function(row) {
   html += '<div class="ic-row">';
   html += '<div class="ic-avatar '+src+'" title="'+srcLabel+'">'+srcLetter+'</div>';
   html += '<div class="ic-content">';
-  html += '<div class="ic-subject">' + (row.subject||'No subject') + '</div>';
-  if (preview) html += '<div class="ic-preview">' + preview + '</div>';
+  html += '<div class="ic-subject">' + escapeHtml(row.subject||'No subject') + '</div>';
+  if (preview) html += '<div class="ic-preview">' + escapeHtml(preview) + '</div>';
   html += '<div class="ic-meta"><span>' + dateStr + '</span>';
   if (typeChip || guestChip || pendingChip) html += '<span style="opacity:.4">·</span>';
   if (typeChip) html += typeChip;
