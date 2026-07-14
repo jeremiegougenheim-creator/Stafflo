@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v291 (fix: t is not defined in detectCommandIntentEnhanced)
-const CACHE = 'stafflo-v291';
+// Stafflo Service Worker — v292 (feat: hover/active affordance on clickable Today calendar rows)
+const CACHE = 'stafflo-v292';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
