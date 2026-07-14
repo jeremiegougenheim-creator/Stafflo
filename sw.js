@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v293 (fix: ARIA auto-resolves guest named in message when none locked)
-const CACHE = 'stafflo-v293';
+// Stafflo Service Worker — v294 (fix: buildGuestThreadBlock reliably fetches guest email thread)
+const CACHE = 'stafflo-v294';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
