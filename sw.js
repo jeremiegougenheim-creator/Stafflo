@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v296 (fix: robust guest name resolution — word-scan replaces fragile single-preposition regex)
-const CACHE = 'stafflo-v296';
+// Stafflo Service Worker — v297 (fix: #guestDetailV5 centered 720px column on desktop ≥900px, same treatment as v175 modals)
+const CACHE = 'stafflo-v297';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
