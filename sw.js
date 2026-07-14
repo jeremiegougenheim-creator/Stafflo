@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v292 (feat: hover/active affordance on clickable Today calendar rows)
-const CACHE = 'stafflo-v292';
+// Stafflo Service Worker — v293 (fix: ARIA auto-resolves guest named in message when none locked)
+const CACHE = 'stafflo-v293';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -14097,6 +14097,15 @@ async function handleChatQuestion(text) {
       var _activeClientObj = (typeof _chatActiveClient !== 'undefined' && _chatActiveClient && _chatActiveClient.id)
         ? clients.find(function(c){ return c.id === _chatActiveClient.id; })
         : null;
+      // Fallback: no active client locked → try resolving a guest named in the message
+      // so "réponds à Lorren…" typed in the generic field still enriches with their thread.
+      if (!_activeClientObj && typeof findClientByName === 'function') {
+        var _nameMatch = text.match(/(?:à|a|pour|de|for|to|reply to|réponds? à)\s+([A-Za-zÀ-ÿ][\wÀ-ÿ'’-]{1,30})/i);
+        if (_nameMatch && _nameMatch[1]) {
+          var _cand = findClientByName(_nameMatch[1]);
+          if (_cand && typeof isFirmBooking === 'function' && isFirmBooking(_cand)) _activeClientObj = _cand;
+        }
+      }
       if (_activeClientObj && typeof isFirmBooking === 'function' && isFirmBooking(_activeClientObj)) {
         try { _guestFactsBlock = await buildGuestFactsBlock(_activeClientObj, fr); } catch(e){}
         try { _guestThreadBlock = await buildGuestThreadBlock(_activeClientObj, fr); } catch(e){}
