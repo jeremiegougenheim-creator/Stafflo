@@ -2753,6 +2753,15 @@ body.profile-solo #soloTurnoverCard { display: block; }
 /* Same specificity as the v86 #tab-home > *:not(#villaV3) rule (line ~2543), later in
    source order → wins. Only takes effect once JS adds .nav-v2-on under the nav_v2 flag. */
 #staffloShell #tab-home > #maisonV2.nav-v2-on{display:block !important}
+#todayMaisonSummary .tms-card{background:#fff;border:.5px solid rgba(15,35,24,.1);border-left:3px solid #C9963A;border-radius:12px;padding:14px 15px;cursor:pointer;display:flex;align-items:center;gap:10px}
+#todayMaisonSummary .tms-card.paid{border-left-color:#1D4D3A}
+#todayMaisonSummary .tms-ic{width:30px;height:30px;border-radius:9px;background:#F4EFE3;display:flex;align-items:center;justify-content:center;color:#1D4D3A;flex-shrink:0;font-size:16px}
+#todayMaisonSummary .tms-card.paid .tms-ic{background:rgba(29,77,58,.08)}
+#todayMaisonSummary .tms-t{font-size:13.5px;font-weight:600;color:#0F2318}
+#todayMaisonSummary .tms-s{font-size:12px;color:#8A8678}
+#todayMaisonSummary .tms-due{color:#C9963A;font-weight:600}
+#todayMaisonSummary .tms-paid{color:#1D4D3A;display:inline-flex;align-items:center;gap:4px}
+#todayMaisonSummary .tms-go{margin-left:auto;font-size:12px;color:#C9963A;display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -4148,6 +4157,10 @@ window.renderSoloTurnoverCard = function(){
   <!-- DEMO-ONLY: "Ce mois · votre maison" house-ops card — filled by renderTodayV3All
        (gated isDemo()). Empty/cleared outside demo. Top of brief, just under hero. -->
   <div id="v3DemoMonth"></div>
+
+  <!-- nav_v2 étape D : résumé maison cliquable (remplace le détail sur le Today,
+       qui vit dans l'onglet Maison depuis l'étape C). Caché par défaut. -->
+  <div id="todayMaisonSummary" style="display:none"></div>
 
   <!-- STATS ROW: Villa & Pipeline + Inbox chip — thin line under hero -->
   <div class="v3-stats-row">
@@ -12707,6 +12720,12 @@ function goTab(t) {
   }
   if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
   if (t === 'today') {
+    // Nav v2 étape D : resynchronise le résumé à chaque visite du Today — ne pas
+    // dépendre uniquement du wrap sur renderMaisonReal(), qui ne se redéclenche pas
+    // sur un simple goTab('today') (renderTodayV3All n'est pas rappelé ici).
+    if (typeof navV2On === 'function' && navV2On() && typeof window.renderTodayMaisonSummary === 'function') {
+      try { window.renderTodayMaisonSummary(); } catch(e){}
+    }
     try { renderTodayQV(); } catch(e) { console.error('renderTodayQV error:', e); }
     // Auto-load inbox into the inline dashboard card (#inboxList)
     if (typeof loadInboxEmails === 'function') { try { loadInboxEmails(); } catch(e) { console.warn('loadInboxEmails on tab switch:', e); } }
@@ -18192,7 +18211,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!host) return;
     host.classList.add('nav-v2-on');
     var charges = document.getElementById('v3DemoMonth');
-    if (charges && charges.parentNode !== host) host.appendChild(charges);
+    if (charges) {
+      if (charges.parentNode !== host) host.appendChild(charges);
+      // Étape D peut avoir mis display:none dessus tant qu'il vivait dans Today
+      // (résumé cliquable à la place) — une fois ici, dans Maison, il doit rester visible.
+      charges.style.display = '';
+    }
     try {
       if (typeof loadMaisonCharges === 'function') {
         loadMaisonCharges().then(function(rows){ if (rows && typeof renderMaisonReal === 'function') renderMaisonReal(); });
@@ -18206,6 +18230,48 @@ document.addEventListener('DOMContentLoaded', function() {
     try { if (typeof renderMaisonTasks === 'function') renderMaisonTasks(); } catch(e){}
   }
   window.renderMaisonInto = renderMaisonInto;
+  // Nav v2 étape D : carte résumé cliquable sur le Today, à la place du détail complet
+  // des charges (qui vit dans l'onglet Maison depuis l'étape C). Mêmes chiffres que la
+  // carte détaillée — dérivés de getMaisonTotals(), qui lit la même source que
+  // renderMaisonReal() (computeMaisonTotals). Marche que #v3DemoMonth ait déjà été
+  // déplacé vers Maison (l'user y est allé) ou pas encore (encore dans le Today) :
+  // dans les deux cas on le cache s'il est dans tab-today et on affiche le résumé.
+  function renderTodayMaisonSummary(){
+    if (typeof navV2On !== 'function' || !navV2On()) return;
+    // Démo : la carte démo (#v3DemoMonth) est un sandbox à part, jamais nourri par
+    // window._maisonCharges (voir renderMaisonReal()'s "ne jamais écraser la carte
+    // démo"). Le résumé nav_v2 ne doit pas la masquer sans rien pour la remplacer.
+    if (typeof isDemo === 'function' && isDemo()) return;
+    var host = document.getElementById('todayMaisonSummary');
+    if (!host) return;
+    var dm = document.getElementById('v3DemoMonth');
+    // v3DemoMonth vit sous #todayV3 (pas directement #tab-today) tant qu'il n'a pas
+    // été déplacé vers #maisonV2 par renderMaisonInto() (étape C). On le cache partout
+    // SAUF s'il est déjà dans Maison, où il doit rester le détail visible.
+    if (dm && (!dm.parentNode || dm.parentNode.id !== 'maisonV2')) dm.style.display = 'none';
+    var t = (typeof getMaisonTotals === 'function') ? getMaisonTotals() : null;
+    if (!t) { host.style.display = 'none'; host.innerHTML = ''; return; }
+    var fr = (typeof lang !== 'undefined' && lang === 'fr');
+    var title = fr ? 'Ce mois · votre maison' : 'This month · your home';
+    var go = fr ? 'Voir' : 'View';
+    var inner;
+    if (t.hasDue) {
+      inner = '<div class="tms-card" onclick="goTab(\'home\')">' +
+        '<span class="tms-ic"><i class="ti ti-home"></i></span>' +
+        '<div style="flex:1;min-width:0"><div class="tms-t">'+title+'</div>' +
+        '<div class="tms-s"><span class="tms-due">'+t.dueStr+' '+(fr?'à régler':'due')+'</span>'+(t.paidStr?(' · '+t.paidStr+' '+(fr?'payé':'paid')):'')+'</div></div>' +
+        '<span class="tms-go">'+go+' <i class="ti ti-chevron-right"></i></span></div>';
+    } else {
+      inner = '<div class="tms-card paid" onclick="goTab(\'home\')">' +
+        '<span class="tms-ic"><i class="ti ti-home"></i></span>' +
+        '<div style="flex:1;min-width:0"><div class="tms-t">'+title+'</div>' +
+        '<div class="tms-s tms-paid"><i class="ti ti-circle-check"></i> '+(fr?'Tout est payé':'All paid')+(t.paidStr?(' · '+t.paidStr):'')+'</div></div>' +
+        '<span class="tms-go" style="color:#8A8678">'+go+' <i class="ti ti-chevron-right"></i></span></div>';
+    }
+    host.innerHTML = inner;
+    host.style.display = '';
+  }
+  window.renderTodayMaisonSummary = renderTodayMaisonSummary;
   // Applique la nav v2 si le flag est on : Guests masqué, Location visible, label Maison.
   (function applyNavV2(){
     if (typeof navV2On !== 'function' || !navV2On()) return;
@@ -37968,6 +38034,39 @@ window.loadMaisonCharges = loadMaisonCharges;
 
 /* Rendu réel — clone visuel de renderDemoMonthCard, nourri par la base. Multi-devise
    sans conversion : totaux séparés par devise, jamais un total unique inventé. */
+/* Totaux dus/payés par devise depuis window._maisonCharges — source unique, réutilisée
+   par renderMaisonReal() (détail, Today/Maison) et getMaisonTotals() (résumé, étape D)
+   pour ne jamais diverger. */
+function computeMaisonTotals(){
+  var rows = window._maisonCharges;
+  if (!rows || !rows.length) return null;
+  var due = {}, paid = {};
+  rows.forEach(function(x){
+    if (x.amount == null || x.amount === '') return;
+    var cur = x.currency || 'EUR';
+    var bucket = (x.status === 'paye') ? paid : due;
+    bucket[cur] = (bucket[cur] || 0) + Number(x.amount);
+  });
+  var dueCount = rows.filter(function(x){ return x.status !== 'paye'; }).length;
+  return { due: due, paid: paid, dueCount: dueCount };
+}
+window.computeMaisonTotals = computeMaisonTotals;
+
+/* Version formatée pour la carte résumé du Today (nav_v2 étape D). */
+function getMaisonTotals(){
+  var t = computeMaisonTotals();
+  if (!t) return null;
+  function fmt(obj){
+    var keys = Object.keys(obj);
+    if (!keys.length) return '';
+    return keys.map(function(c){
+      return Math.round(obj[c]).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' ' + c;
+    }).join(' · ');
+  }
+  return { hasDue: Object.keys(t.due).length > 0, dueStr: fmt(t.due), paidStr: fmt(t.paid), dueCount: t.dueCount };
+}
+window.getMaisonTotals = getMaisonTotals;
+
 function renderMaisonReal() {
   if (!maisonV1On()) return;
   var host = document.getElementById('v3DemoMonth');
@@ -37983,14 +38082,10 @@ function renderMaisonReal() {
   function money(a, c){ return (a==null || a==='') ? (fr?'— à renseigner':'— to set')
     : (Math.round(a).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' ' + (c||'')); }
 
-  var due = {}, paid = {};
+  var _totals = computeMaisonTotals() || { due:{}, paid:{}, dueCount:0 };
+  var due = _totals.due, paid = _totals.paid;
   var rowsHtml = rows.map(function(x){
     var isPaid = x.status === 'paye';
-    var cur = x.currency || 'EUR';
-    if (x.amount != null && x.amount !== '') {
-      var bucket = isPaid ? paid : due;
-      bucket[cur] = (bucket[cur] || 0) + Number(x.amount);
-    }
     var pill = isPaid
       ? '<span style="font-size:10px;font-weight:600;color:'+GREEN_MID+';background:rgba(29,77,58,.10);border-radius:9px;padding:3px 9px">'+(fr?'payé':'paid')+'</span>'
       : '<span style="font-size:10px;font-weight:600;color:#8a6420;background:#FBF3DC;border:1px solid rgba(201,150,58,.35);border-radius:9px;padding:3px 9px">'+(fr?'à régler':'to settle')+'</span>';
@@ -38006,7 +38101,7 @@ function renderMaisonReal() {
     var keys = Object.keys(obj); if(!keys.length) return '—';
     return keys.map(function(c){ return money(obj[c], c); }).join(' · ');
   }
-  var dueCount = rows.filter(function(x){ return x.status !== 'paye'; }).length;
+  var dueCount = _totals.dueCount;
   var dueLabel = Object.keys(due).length
     ? '<span>'+(fr?'À régler ce mois':'Due this month')+' — <b>'+totalStr(due)+'</b></span>'
     : '<span style="color:#1D4D3A;font-weight:600">'+(fr?'Tout est payé ✓':'All paid ✓')+'</span>';
@@ -38074,6 +38169,25 @@ async function markChargePaid(id){
 }
 window.markChargePaid = markChargePaid;
 window.renderMaisonReal = renderMaisonReal;
+
+/* Nav v2 étape D : chaque fois que le détail (renderMaisonReal) est (re)rendu — boot,
+   markChargePaid, ou visite de Maison à l'étape C — le résumé du Today se resynchronise
+   sur les mêmes données fraîches. Pas de fetch dupliqué, pas de course : on raccroche
+   au même point d'entrée que le détail plutôt qu'à renderTodayV3All (cf. commentaire
+   ci-dessous sur pourquoi ce dernier ne suffit pas seul). */
+(function(){
+  if (typeof window.renderMaisonReal !== 'function') return;
+  var _origRenderMaisonRealD = window.renderMaisonReal;
+  window.renderMaisonReal = function(){
+    var r = _origRenderMaisonRealD.apply(this, arguments);
+    try {
+      if (typeof navV2On === 'function' && navV2On() && typeof window.renderTodayMaisonSummary === 'function') {
+        window.renderTodayMaisonSummary();
+      }
+    } catch(e){ console.warn('[nav-v2 today maison summary]', e); }
+    return r;
+  };
+})();
 
 /* ── Trigger : wrap renderTodayV3All (pas goTab) — la fonction originale écrase
    #v3DemoMonth à '' en mode non-démo à CHAQUE appel (ligne ~3644), y compris via les
