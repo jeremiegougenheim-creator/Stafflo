@@ -12680,6 +12680,12 @@ function goTab(t) {
 
   if (t === 'clients') { try { renderClients(); } catch(e) { console.error('renderClients error:', e); } }
   if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); if (typeof renderPrestataires === 'function') setTimeout(renderPrestataires, 100); if (typeof renderMaisonTasks === 'function') setTimeout(renderMaisonTasks, 150); } catch(e) { console.error('loadHomeData error:', e); } }
+  // Nav v2 étape B : le pricing (#villaV3) vit désormais dans Location, pas Maison.
+  if (typeof navV2On === 'function' && navV2On() && t === 'location') {
+    try { if (typeof window.applyNavV2Content === 'function') window.applyNavV2Content(); } catch(e){}
+    try { if (typeof loadHomeData === 'function') loadHomeData(); } catch(e){}
+    try { if (typeof renderVillaOpsExtra === 'function') setTimeout(renderVillaOpsExtra, 200); } catch(e){}
+  }
   if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
   if (t === 'today') {
     try { renderTodayQV(); } catch(e) { console.error('renderTodayQV error:', e); }
@@ -18146,6 +18152,17 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('nb-home').addEventListener('click', function(){ goTab('home'); });
   var _nbLoc = document.getElementById('nb-location');
   if (_nbLoc) _nbLoc.addEventListener('click', function(){ goTab('location'); });
+  // Nav v2 étape B : déplace le bloc pricing (#villaV3) de Maison vers Location.
+  // Idempotent — no-op si déjà déplacé. Exposé sur window pour goTab().
+  function applyNavV2Content(){
+    if (typeof navV2On !== 'function' || !navV2On()) return;
+    var pricing = document.getElementById('villaV3');
+    var locTab = document.getElementById('tab-location');
+    if (pricing && locTab && pricing.parentNode !== locTab) {
+      locTab.appendChild(pricing);   // déplace tout le bloc pricing dans Location
+    }
+  }
+  window.applyNavV2Content = applyNavV2Content;
   // Applique la nav v2 si le flag est on : Guests masqué, Location visible, label Maison.
   (function applyNavV2(){
     if (typeof navV2On !== 'function' || !navV2On()) return;
@@ -18155,6 +18172,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (hl) { hl.setAttribute('data-fr','Maison'); hl.setAttribute('data-en','Maison'); hl.textContent = 'Maison'; }
     if (typeof applyLang === 'function') { try { applyLang(); } catch(e){} }
   })();
+  applyNavV2Content();
   var _nbCal = document.getElementById('nb-calendar');
   if (_nbCal) _nbCal.addEventListener('click', function(){ goTab('calendar'); });
   var _gear = document.querySelector('.hdr-btn[data-title-en="Settings"]');
@@ -29966,13 +29984,14 @@ function startTour(){
     setTimeout(updatePrimaryLabel, 30);
   }
 
-  /* ── Apply v3 mode on #tab-home (mirrors Today v3 logic) ── */
+  /* ── Apply v3 mode on villaV3's current parent (mirrors Today v3 logic).
+     Reads v4.parentNode instead of hardcoding #tab-home so this still works
+     after nav_v2 (step B) relocates #villaV3 into #tab-location. ── */
   function applyV4Mode(){
-    var tab = document.getElementById('tab-home');
     var v4 = document.getElementById('villaV3');
     var on = flagOn();
-    if (!tab || !v4) return;
-    Array.prototype.forEach.call(tab.children, function(child){
+    if (!v4 || !v4.parentNode) return;
+    Array.prototype.forEach.call(v4.parentNode.children, function(child){
       if (!on) {
         if (child === v4) child.style.display = 'none';
         return;
