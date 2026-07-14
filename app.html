@@ -12689,6 +12689,11 @@ function navV2On(){
   } catch(e){ return false; }
 }
 function goTab(t) {
+  // Nav v2 étape E : l'onglet Guests est fondu dans Rentals/Location. Toute demande
+  // 'clients' y est redirigée (bouton nav masqué depuis l'étape A, mais ~8 liens
+  // internes appellent encore goTab('clients') — un seul point de redirection ici
+  // évite d'éditer chacun). Flag off = comportement inchangé.
+  if (t === 'clients' && typeof navV2On === 'function' && navV2On()) t = 'location';
   ['today','clients','home','location','calendar'].forEach(id => {
     const tab = document.getElementById('tab-'+id);
     const btn = document.getElementById('nb-'+id);
@@ -12717,6 +12722,8 @@ function goTab(t) {
     try { if (typeof window.applyNavV2Content === 'function') window.applyNavV2Content(); } catch(e){}
     try { if (typeof loadHomeData === 'function') loadHomeData(); } catch(e){}
     try { if (typeof renderVillaOpsExtra === 'function') setTimeout(renderVillaOpsExtra, 200); } catch(e){}
+    // Nav v2 étape E : Guests vit désormais dans Location, sous le pricing.
+    try { if (typeof renderClients === 'function') setTimeout(renderClients, 120); } catch(e){}
   }
   if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
   if (t === 'today') {
@@ -18198,6 +18205,21 @@ document.addEventListener('DOMContentLoaded', function() {
     var locTab = document.getElementById('tab-location');
     if (pricing && locTab && pricing.parentNode !== locTab) {
       locTab.appendChild(pricing);   // déplace tout le bloc pricing dans Location
+    }
+    // Nav v2 étape E : Guests absorbé dans Rentals, sous le pricing.
+    var guests = document.getElementById('guestsV5');
+    if (guests && locTab && guests.parentNode !== locTab) {
+      locTab.appendChild(guests);   // après #villaV3 → apparaît sous le pricing
+      guests.style.display = '';     // #guestsV5 est display:none par défaut → le montrer
+    }
+    // #guestDetailV5 est position:fixed (overlay plein écran) mais reste un enfant DOM
+    // de #tab-clients tant qu'on ne le déplace pas — un ancêtre display:none le cache
+    // quand même. Sous nav_v2, #tab-clients n'est jamais l'onglet actif (goTab('clients')
+    // redirige vers 'location', étape E fix 3), donc la fiche détail resterait invisible
+    // si elle n'était pas déplacée avec la grille.
+    var guestDetail = document.getElementById('guestDetailV5');
+    if (guestDetail && locTab && guestDetail.parentNode !== locTab) {
+      locTab.appendChild(guestDetail);
     }
   }
   window.applyNavV2Content = applyNavV2Content;
@@ -30101,6 +30123,10 @@ function startTour(){
     var on = flagOn();
     if (!v4 || !v4.parentNode) return;
     Array.prototype.forEach.call(v4.parentNode.children, function(child){
+      // Nav v2 étape E : #guestsV5/#guestDetailV5 sont devenus des frères de
+      // #villaV3 sous #tab-location (Rentals). Ils ont leur propre contrôleur
+      // de visibilité (guestsV5ListController) — ne pas y toucher ici.
+      if (child && (child.id === 'guestsV5' || child.id === 'guestDetailV5')) return;
       if (!on) {
         if (child === v4) child.style.display = 'none';
         return;

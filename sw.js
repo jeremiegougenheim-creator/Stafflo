@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v287 (feat: nav_v2 step D — Today lightened to a Maison summary card)
-const CACHE = 'stafflo-v287';
+// Stafflo Service Worker — v288 (feat: nav_v2 step E — Guests absorbed into Rentals)
+const CACHE = 'stafflo-v288';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
