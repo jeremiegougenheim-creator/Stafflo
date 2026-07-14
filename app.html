@@ -2749,6 +2749,10 @@ body.profile-solo #soloTurnoverCard { display: block; }
 .onbV3-city-sug li{padding:10px 12px;border-radius:8px;font-size:13.5px;color:#0F2318;cursor:pointer;line-height:1.35}
 .onbV3-city-sug li:hover,.onbV3-city-sug li.active{background:#F4EFE3}
 .onbV3-city-sug .sug-sub{font-size:11.5px;color:#8A8678}
+#maisonV2{padding:0 16px 90px}
+/* Same specificity as the v86 #tab-home > *:not(#villaV3) rule (line ~2543), later in
+   source order → wins. Only takes effect once JS adds .nav-v2-on under the nav_v2 flag. */
+#staffloShell #tab-home > #maisonV2.nav-v2-on{display:block !important}
 </style>
 </head>
 <body>
@@ -5168,6 +5172,12 @@ window.renderSetupOneLiner = function(){
 
 <!-- ═══ MY HOME AI ═══════════════════════════════════════ -->
 <div class="tab" id="tab-home">
+
+<!-- nav_v2 étape C : contenu MAISON (charges · prestataires · tâches), déplacés ici
+     sous flag depuis Today (#v3DemoMonth) et depuis leurs emplacements légacy
+     dans ce même tab-home (#maisonCard, #prestaCard — déjà masqués par la règle
+     v86 ci-dessous puisqu'ils ne sont pas #villaV3). Vide/caché par défaut. -->
+<div id="maisonV2" style="display:none"></div>
 
 <!-- === Villa v3 hi-fi (Lot 4 — gated by stafflo_aria_first_v1, supersedes v2 villa when flag ON) === -->
 <div id="villaV3" style="display:none">
@@ -12679,7 +12689,16 @@ function goTab(t) {
   if (typeof renderAlertsForTab==='function') renderAlertsForTab(t);
 
   if (t === 'clients') { try { renderClients(); } catch(e) { console.error('renderClients error:', e); } }
-  if (t === 'home') { try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); if (typeof renderPrestataires === 'function') setTimeout(renderPrestataires, 100); if (typeof renderMaisonTasks === 'function') setTimeout(renderMaisonTasks, 150); } catch(e) { console.error('loadHomeData error:', e); } }
+  if (t === 'home') {
+    var _navv2Home = (typeof navV2On === 'function' && navV2On());
+    if (_navv2Home) {
+      // Nav v2 : #tab-home = MAISON (le pricing est parti dans Location, étape B).
+      var vv3 = document.getElementById('villaV3'); if (vv3 && vv3.parentNode && vv3.parentNode.id === 'tab-home') vv3.style.display = 'none';
+      try { if (typeof window.renderMaisonInto === 'function') window.renderMaisonInto(); } catch(e){}
+    } else {
+      try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); if (typeof renderPrestataires === 'function') setTimeout(renderPrestataires, 100); if (typeof renderMaisonTasks === 'function') setTimeout(renderMaisonTasks, 150); } catch(e) { console.error('loadHomeData error:', e); }
+    }
+  }
   // Nav v2 étape B : le pricing (#villaV3) vit désormais dans Location, pas Maison.
   if (typeof navV2On === 'function' && navV2On() && t === 'location') {
     try { if (typeof window.applyNavV2Content === 'function') window.applyNavV2Content(); } catch(e){}
@@ -18163,6 +18182,30 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   }
   window.applyNavV2Content = applyNavV2Content;
+  // Nav v2 étape C : peuple #maisonV2 avec charges (#v3DemoMonth, vit dans Today)
+  // + prestataires (#prestaCard) + tâches (#maisonCard) — ces deux derniers vivent déjà
+  // dans #tab-home mais sont masqués par la règle v86 (#tab-home > *:not(#villaV3)).
+  // Déplacement DOM idempotent, comme applyNavV2Content pour le pricing.
+  function renderMaisonInto(){
+    if (typeof navV2On !== 'function' || !navV2On()) return;
+    var host = document.getElementById('maisonV2');
+    if (!host) return;
+    host.classList.add('nav-v2-on');
+    var charges = document.getElementById('v3DemoMonth');
+    if (charges && charges.parentNode !== host) host.appendChild(charges);
+    try {
+      if (typeof loadMaisonCharges === 'function') {
+        loadMaisonCharges().then(function(rows){ if (rows && typeof renderMaisonReal === 'function') renderMaisonReal(); });
+      }
+    } catch(e){}
+    var presta = document.getElementById('prestaCard');
+    if (presta && presta.parentNode !== host) host.appendChild(presta);
+    try { if (typeof renderPrestataires === 'function') renderPrestataires(); } catch(e){}
+    var tasks = document.getElementById('maisonCard');
+    if (tasks && tasks.parentNode !== host) host.appendChild(tasks);
+    try { if (typeof renderMaisonTasks === 'function') renderMaisonTasks(); } catch(e){}
+  }
+  window.renderMaisonInto = renderMaisonInto;
   // Applique la nav v2 si le flag est on : Guests masqué, Location visible, label Maison.
   (function applyNavV2(){
     if (typeof navV2On !== 'function' || !navV2On()) return;
