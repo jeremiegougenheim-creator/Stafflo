@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v307 (v-onbpurge: purge stale onboarding state on signup)
-const CACHE = 'stafflo-v307';
+// Stafflo Service Worker — v308 (v-onbvalid: Continue button never re-enabled on city/price/pin/pick)
+const CACHE = 'stafflo-v308';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

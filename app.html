@@ -29243,10 +29243,13 @@ window.addEventListener('DOMContentLoaded', function() {
     // Step 1 — inputs
     var vn = $('onbV3VillaName');
     if (vn) vn.addEventListener('input', function(){ state.data.villa_name = vn.value; debouncedPersist(); applyStep(true); });
+    // v-onbvalid : applyStep() est la seule fonction à recalculer primary.disabled.
+    // Seul le champ nom l'appelait → saisir la ville ne réactivait jamais « Continuer »,
+    // et l'onboarding était infranchissable. Même correctif sur les 4 chemins.
     var city = $('onbV3City');
-    if (city) city.addEventListener('input', function(){ state.data.city = city.value; debouncedPersist(); });
+    if (city) city.addEventListener('input', function(){ state.data.city = city.value; debouncedPersist(); applyStep(true); });
     var bp = $('onbV3BasePrice');
-    if (bp) bp.addEventListener('input', function(){ state.data.base_price = parseInt(bp.value, 10) || 0; debouncedPersist(); });
+    if (bp) bp.addEventListener('input', function(){ state.data.base_price = parseInt(bp.value, 10) || 0; debouncedPersist(); applyStep(true); });
 
     // Steppers
     document.querySelectorAll('[data-stepper]').forEach(function(btn){
@@ -29647,6 +29650,9 @@ window.addEventListener('DOMContentLoaded', function() {
           state.data.city = label;
           state.data.country = country;
           debouncedPersist();
+          // v-onbvalid : une écriture programmatique ne déclenche pas d'événement 'input' —
+          // le bouton restait désactivé alors que la ville était bien renseignée.
+          try { applyStep(true); } catch(e){}
         }
       }).catch(function(){ btn.classList.remove('is-loading'); });
     }, function(){ btn.classList.remove('is-loading'); }, { enableHighAccuracy:false, timeout:8000, maximumAge:600000 });
@@ -29664,6 +29670,8 @@ window.addEventListener('DOMContentLoaded', function() {
       state.data.city = label;
       if (country) state.data.country = country;
       try { debouncedPersist(); } catch(e){}
+      // v-onbvalid : idem — écriture programmatique, aucun 'input', bouton jamais réactivé.
+      try { applyStep(true); } catch(e){}
       hide();
     }
     inp.addEventListener('input', function(){
