@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v302 (fix: loadMorningBrief called 3x on boot — 10s dedup guard, cuts redundant paid Mistral calls)
-const CACHE = 'stafflo-v302';
+// Stafflo Service Worker — v303 (onboarding: hide commission % + team roster on channels step, moved to Réglages)
+const CACHE = 'stafflo-v303';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
