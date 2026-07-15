@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v306 (v-onb3a: WOW screen copy + button label desync fix)
-const CACHE = 'stafflo-v306';
+// Stafflo Service Worker — v307 (v-onbpurge: purge stale onboarding state on signup)
+const CACHE = 'stafflo-v307';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
