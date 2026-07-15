@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v365 (phone-frame désactivé par défaut, opt-in via ?frame=1)
-const CACHE = 'stafflo-v365';
+// Stafflo Service Worker — v367 (fix: boot-order race — bootstrapAuth's showAuthGate clobbered onboarding-first guest UX)
+const CACHE = 'stafflo-v367';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

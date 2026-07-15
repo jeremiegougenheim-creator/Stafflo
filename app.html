@@ -30219,6 +30219,10 @@ window.addEventListener('DOMContentLoaded', function() {
   window.launchOnboardingV3 = function(opts){
     var r = root();
     if (!r) return;
+    // v-boot1 : posé synchrone, avant tout await, pour que bootstrapAuth() (script plus
+    // bas, listener DOMContentLoaded distinct) sache que l'onboarding est déjà affiché
+    // et n'aille pas poser #staffloAuthGate par-dessus (race de boot, cf. commit v-boot1).
+    window._staffloOnboardingLive = true;
     // Ré-édition volontaire depuis les réglages (opts.review) : ignorer tout état de
     // test en cours dans localStorage et repartir des VRAIES données (cfg), directement
     // sur l'écran « Your villa » (step 2 — splash/wow n'ont pas de sens pour un compte
@@ -33300,6 +33304,13 @@ function startTour(){
             } else if (STAFFLO_AUTH.mode === 'demo') {
               console.log('[stafflo] demo mode');
               hideAuthGate && hideAuthGate();
+            } else if (window._staffloOnboardingLive) {
+              // v-boot1 : un autre boot listener (DOMContentLoaded, plus haut dans le
+              // fichier) a déjà lancé launchOnboardingV3() pour ce guest sans session —
+              // ne pas poser #staffloAuthGate par-dessus (race de boot, deux listeners
+              // DOMContentLoaded indépendants). Le lien "Sign in" de l'écran splash
+              // appelle showAuthGate() lui-même si l'utilisateur en a besoin.
+              console.log('[stafflo] not authenticated — onboarding already live, skipping gate');
             } else {
               console.log('[stafflo] not authenticated — showing gate');
               showAuthGate();
