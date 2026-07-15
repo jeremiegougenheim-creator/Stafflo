@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v305 (fix: Cormorant Garamond font-stack order — 25 rules had Georgia first, luxury font never rendered)
-const CACHE = 'stafflo-v305';
+// Stafflo Service Worker — v306 (v-onb3a: WOW screen copy + button label desync fix)
+const CACHE = 'stafflo-v306';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
