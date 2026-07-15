@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v304 (fix: openDetail silent no-op on firm bookings — modal never opened)
-const CACHE = 'stafflo-v304';
+// Stafflo Service Worker — v305 (fix: Cormorant Garamond font-stack order — 25 rules had Georgia first, luxury font never rendered)
+const CACHE = 'stafflo-v305';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
