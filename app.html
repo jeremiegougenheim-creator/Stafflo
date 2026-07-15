@@ -11873,6 +11873,20 @@ function openDetail(id) {
   window._openDetailClientId = id;
   if (isFirmBooking(cl) && isAriaFirstV1Enabled()) {
     document.getElementById('detailBody').innerHTML = renderBookingCardV2(cl);
+    // v-detail1 : cette branche remplissait #detailBody puis sortait sans jamais ouvrir
+    // #detailModal → tout clic sur une réservation FERME (Prochaines arrivées, calendrier,
+    // carte guest du jour) était un no-op silencieux. On reproduit exactement le geste
+    // d'ouverture du chemin normal (~12061). #detailActions est vidé car il n'est rempli
+    // que par le chemin normal : sans ça, les boutons du guest précédent resteraient
+    // affichés, rattachés au mauvais client.
+    var _da = document.getElementById('detailActions');
+    if (_da) _da.innerHTML = '';
+    var _dm = document.getElementById('detailModal');
+    if (_dm) {
+      _dm.classList.add('on');
+      document.body.style.overflow = 'hidden';
+      setTimeout(function(){ var _m = _dm.querySelector('.modal'); if (_m) _m.scrollTop = 0; }, 50);
+    }
     return;
   }
   const fr = lang === 'fr';

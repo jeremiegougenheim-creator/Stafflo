@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v303 (onboarding: hide commission % + team roster on channels step, moved to Réglages)
-const CACHE = 'stafflo-v303';
+// Stafflo Service Worker — v304 (fix: openDetail silent no-op on firm bookings — modal never opened)
+const CACHE = 'stafflo-v304';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
