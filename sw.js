@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v308 (v-onbvalid: Continue button never re-enabled on city/price/pin/pick)
-const CACHE = 'stafflo-v308';
+// Stafflo Service Worker — v309 (v-nav2default: nav v2 default flipped to ON, ?nav2=0 kill-switch)
+const CACHE = 'stafflo-v309';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
