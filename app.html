@@ -18084,12 +18084,40 @@ async function doSignOut() {
   location.reload();
 }
 
+// v-authtab : unifiée + null-safe. Deux écrans auth coexistent (strangler-fig) :
+// le gate généré (showAuthGate → authLoginForm/authSignupForm/authMsg, tabs .auth-tab[data-tab],
+// appelle 'login') et l'écran statique legacy #authScreen (authTabSignin/authFormSignin/authMessage,
+// appelle 'signin'). Cette déclaration écrase celle de la ligne ~6885 (hoisting), donc elle doit
+// gérer les deux. Tout est gardé null-safe : chaque écran ignore les IDs de l'autre.
 function switchAuthTab(tab) {
-  document.getElementById('authTabSignin').classList.toggle('active', tab === 'signin');
-  document.getElementById('authTabSignup').classList.toggle('active', tab === 'signup');
-  document.getElementById('authFormSignin').style.display = tab === 'signin' ? 'block' : 'none';
-  document.getElementById('authFormSignup').style.display = tab === 'signup' ? 'block' : 'none';
-  document.getElementById('authMessage').style.display = 'none';
+  var isSignup = (tab === 'signup');
+
+  // --- Auth gate courant ---
+  var gLogin  = document.getElementById('authLoginForm');
+  var gSignup = document.getElementById('authSignupForm');
+  if (gLogin && gSignup) {
+    document.querySelectorAll('.auth-tab').forEach(function(t){
+      var active = !!(t.dataset && t.dataset.tab === tab);
+      t.style.color = active ? '#1a3a1a' : '#8A8070';
+      t.style.borderBottom = active ? '2px solid #C9963A' : 'none';
+    });
+    gLogin.style.display  = isSignup ? 'none' : 'block';
+    gSignup.style.display = isSignup ? 'block' : 'none';
+    var gMsg = document.getElementById('authMsg');
+    if (gMsg) gMsg.textContent = '';
+  }
+
+  // --- Écran statique legacy #authScreen ---
+  var lTabIn  = document.getElementById('authTabSignin');
+  var lTabUp  = document.getElementById('authTabSignup');
+  var lFormIn = document.getElementById('authFormSignin');
+  var lFormUp = document.getElementById('authFormSignup');
+  if (lTabIn)  lTabIn.classList.toggle('active', !isSignup);
+  if (lTabUp)  lTabUp.classList.toggle('active', isSignup);
+  if (lFormIn) lFormIn.style.display = isSignup ? 'none' : 'block';
+  if (lFormUp) lFormUp.style.display = isSignup ? 'block' : 'none';
+  var lMsg = document.getElementById('authMessage');
+  if (lMsg) lMsg.style.display = 'none';
 }
 
 function showAuthMessage(type, msg) {
