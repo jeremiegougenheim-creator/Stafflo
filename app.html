@@ -21299,6 +21299,17 @@ async function loadMorningBrief(forceRefresh = false) {
   const cardsEl = document.getElementById('briefCards');
   if (!briefEl || !cardsEl) return;
 
+  // v-brief1 : la séquence de boot appelle cette fonction 3x en ~1s (re-render ~6745,
+  // setLang ~12444, timer ~18477). Chaque appel lançait son propre appel Mistral payant
+  // pour le MÊME brief. On fusionne : le premier gagne, les suivants dans les 10s sont
+  // ignorés. Le bouton ↻ (action utilisateur, bien plus tard) n'est pas affecté.
+  // NB: ce garde doit rester APRÈS le test DOM ci-dessus — sinon un appel précoce, alors
+  // que #morningBrief n'existe pas encore, consommerait le verrou sans rien faire et
+  // bloquerait le vrai appel → aucun brief affiché.
+  var _briefNow = Date.now();
+  if (_briefNow - (window._briefLastStart || 0) < 10000) return;
+  window._briefLastStart = _briefNow;
+
   // Show loading
   briefEl.style.display = 'block';
   // Update time

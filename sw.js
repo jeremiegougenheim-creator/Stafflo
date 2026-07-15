@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v301 (fix: switchAuthTab duplicate declaration — unified + null-safe for both auth gate and legacy #authScreen)
-const CACHE = 'stafflo-v301';
+// Stafflo Service Worker — v302 (fix: loadMorningBrief called 3x on boot — 10s dedup guard, cuts redundant paid Mistral calls)
+const CACHE = 'stafflo-v302';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
