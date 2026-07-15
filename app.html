@@ -6943,6 +6943,13 @@ async function handleAuthSignup() {
   setAuthMsg(fr?'Création du compte...':'Creating account...');
   try {
     var data = await authSignUp(email, pass, { villa_name: name || 'Ma Villa', bedrooms: 5, base_price: 750 });
+    // v-onbpurge : un compte neuf héritait de l'onboarding laissé par un autre compte dans
+    // ce navigateur. loadState() (~28857) donne la priorité absolue à cette clé, et le reload
+    // ci-dessous la conservait → le nouvel utilisateur voyait la villa/ville d'un autre, puis
+    // complete() les poussait dans SON villa_settings. C'est ce qui a écrit un résidu de test
+    // thaïlandais en base de prod. Purge dès que le compte existe, dans les deux branches
+    // (auto-confirmé ET confirmation par email).
+    try { localStorage.removeItem('stafflo_onboarding_state'); } catch(_) {}
     if (data.access_token) {
       // Auto-confirmed signup — go straight to app
       posthog.capture('signup_completed');
