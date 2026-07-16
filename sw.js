@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v320 (v-item37: live fx-rates wired, manual-edit marker)
-const CACHE = 'stafflo-v320';
+// Stafflo Service Worker — v321 (v-item56: onboarding V2 becomes default, kill-switch '0')
+const CACHE = 'stafflo-v321';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

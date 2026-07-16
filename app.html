@@ -29666,7 +29666,11 @@ window.addEventListener('DOMContentLoaded', function() {
       if (_wowBusy) return;
       if (!wowInput || !wowResult) return;
       var text = wowInput.value.trim();
-      var _V2 = localStorage.getItem('stafflo_onboarding_v2') === '1';
+      // v-item56 : V2 devient le défaut. Le flag reste un kill-switch :
+      // localStorage.setItem('stafflo_onboarding_v2','0') + reload → retour V1.
+      // ⚠️ Les DEUX lectures (wowExtract l.29669 + copy gate l.29972) doivent rester
+      // identiques : copy V2 + prompt V1 serait pire que les deux en V1.
+      var _V2 = localStorage.getItem('stafflo_onboarding_v2') !== '0';
       if (text.length < 12) {
         wowResult.innerHTML = '<div style="padding:14px;font-size:13px;color:#6B6760;font-style:italic">' +
           (_V2
@@ -29965,11 +29969,15 @@ window.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <script>
-/* ── Onboarding V2 copy gate (default OFF — strangler fig) ─────────────────
-   Activation : localStorage.setItem('stafflo_onboarding_v2','1') + reload.
+/* ── Onboarding V2 copy gate (default ON depuis item 56 — strangler fig) ────
+   Désactivation : localStorage.setItem('stafflo_onboarding_v2','0') + reload.
    Patche uniquement le copy du WOW screen ; structure HTML et logique AI intacts. */
 (function() {
-  var ONBOARDING_V2 = localStorage.getItem('stafflo_onboarding_v2') === '1';
+  // v-item56 : V2 devient le défaut. Le flag reste un kill-switch :
+  // localStorage.setItem('stafflo_onboarding_v2','0') + reload → retour V1.
+  // ⚠️ Les DEUX lectures (wowExtract l.29669 + copy gate l.29972) doivent rester
+  // identiques : copy V2 + prompt V1 serait pire que les deux en V1.
+  var ONBOARDING_V2 = localStorage.getItem('stafflo_onboarding_v2') !== '0';
   if (!ONBOARDING_V2) return;
 
   function patchWowCopy() {
@@ -29988,7 +29996,11 @@ window.addEventListener('DOMContentLoaded', function() {
       var t = document.createElement('p');
       t.className = 'onbV3-trust';
       t.style.cssText = 'margin-top:auto;padding-top:20px;font-size:11px;color:#9B978E;text-align:center;line-height:1.5';
-      t.textContent = 'Sans installation · 29€/villa · Données en Europe';
+      // v-item56 : le prix sort du tunnel. L'ancien montant affiché ici ne correspond
+      // plus aux tarifs actuels (Solo, founding) depuis des mois — afficher un chiffre
+      // ici risque d'être faux pour le premier client qui signe. Le prix vit sur la
+      // landing, pas au milieu de l'onboarding.
+      t.textContent = 'Sans installation · Sans carte bancaire · Données en Europe';
       wow.appendChild(t);
     }
   }
