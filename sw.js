@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v316 (v-item55: meal recap arithmetic moves to JS, LLM formats only)
-const CACHE = 'stafflo-v316';
+// Stafflo Service Worker — v317 (v-item50: pullVillaSettings restores cfg.commissions)
+const CACHE = 'stafflo-v317';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
