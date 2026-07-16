@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v309 (v-nav2default: nav v2 default flipped to ON, ?nav2=0 kill-switch)
-const CACHE = 'stafflo-v309';
+// Stafflo Service Worker — v310 (items 43+44: real <form> on auth gate + stafflo_cfg/onboarding_state purge on signout)
+const CACHE = 'stafflo-v310';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

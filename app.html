@@ -6831,13 +6831,15 @@ function showAuthGate() {
       '</div>' +
       '<div id="authForms">' +
         '<div id="authLoginForm">' +
-          '<input id="authEmail" type="email" placeholder="' + (fr?'Votre email':'Your email') + '" autocomplete="email" style="width:100%;padding:13px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit;box-sizing:border-box">' +
-          '<button onclick="handleAuthMagicLink()" id="authMagicBtn" style="width:100%;background:#C9963A;color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' + (fr?'✉ Recevoir un lien magique':'✉ Send me a magic link') + '</button>' +
+          '<form id="authLoginFormEl" autocomplete="on" onsubmit="event.preventDefault();handleAuthLogin()">' +
+          '<input id="authEmail" name="email" type="email" placeholder="' + (fr?'Votre email':'Your email') + '" autocomplete="email" style="width:100%;padding:13px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit;box-sizing:border-box">' +
+          '<button type="button" onclick="handleAuthMagicLink()" id="authMagicBtn" style="width:100%;background:#C9963A;color:#fff;border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' + (fr?'✉ Recevoir un lien magique':'✉ Send me a magic link') + '</button>' +
           '<div style="font-size:11px;color:#8A8070;text-align:center;margin-top:8px;line-height:1.4">' + (fr?'Connexion sécurisée sans mot de passe':'Secure passwordless login') + '</div>' +
           '<div style="margin:18px 0;display:flex;align-items:center;gap:10px;font-size:11px;color:#B5AC9C"><div style="flex:1;height:1px;background:#E8E2D8"></div><span>' + (fr?'OU':'OR') + '</span><div style="flex:1;height:1px;background:#E8E2D8"></div></div>' +
-          '<input id="authPassword" type="password" placeholder="' + (fr?'Mot de passe':'Password') + '" autocomplete="current-password" style="width:100%;padding:12px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit;box-sizing:border-box;color:#1a3a1a">' +
-          '<button onclick="handleAuthLogin()" id="authLoginBtn" style="width:100%;background:transparent;color:#1d4d3a;border:1.5px solid #1d4d3a;border-radius:10px;padding:12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' + (fr?'Se connecter':'Sign in') + '</button>' +
+          '<input id="authPassword" name="password" type="password" placeholder="' + (fr?'Mot de passe':'Password') + '" autocomplete="current-password" style="width:100%;padding:12px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit;box-sizing:border-box;color:#1a3a1a">' +
+          '<button type="submit" id="authLoginBtn" style="width:100%;background:transparent;color:#1d4d3a;border:1.5px solid #1d4d3a;border-radius:10px;padding:12px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.3px">' + (fr?'Se connecter':'Sign in') + '</button>' +
           '<div style="text-align:center;margin-top:10px"><a href="#" onclick="event.preventDefault();handleAuthReset()" style="font-size:11px;color:#8A8070;text-decoration:none">' + (fr?'Mot de passe oublié ?':'Forgot password?') + '</a></div>' +
+          '</form>' +
         '</div>' +
         '<div id="authSignupForm" style="display:none">' +
           '<input id="authSuName" type="text" placeholder="' + (fr?'Nom de votre villa':'Your villa name') + '" style="width:100%;padding:13px 14px;border:1.5px solid #E8E2D8;border-radius:10px;font-size:14px;margin-bottom:10px;font-family:inherit;box-sizing:border-box">' +
@@ -18113,6 +18115,12 @@ async function doSignOut() {
   localStorage.removeItem('stafflo_clients');
   localStorage.removeItem('stafflo_onboarded');
   localStorage.removeItem('stafflo_demo');
+  // v-cfgpurge (item 44) : ces deux clés sont GLOBALES au navigateur, jamais scopées par
+  // compte. Sans purge, le compte suivant hérite de la villa/ville du précédent, et le garde
+  // temporel de pullVillaSettings (~22768 : local.onboardedAt >= row.onboarded_at → return)
+  // REFUSE ensuite de corriger depuis la base. Prouvé en prod le 16/07.
+  localStorage.removeItem('stafflo_cfg');
+  localStorage.removeItem('stafflo_onboarding_state');
   delete window._demoMode;
   location.reload();
 }
