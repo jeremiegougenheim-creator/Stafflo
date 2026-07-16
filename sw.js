@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v311 (v-settingsorphan: bedrooms/maxGuests/basePrice/commissions editable in Settings)
-const CACHE = 'stafflo-v311';
+// Stafflo Service Worker — v312 (v-onbreview: remove "Revoir l'onboarding" button, items 40/46)
+const CACHE = 'stafflo-v312';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
