@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>ops · stafflo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0B1710;        /* salle des machines : plus profond que le vert produit */
+    --panel:#12211A;
+    --line:#1F3529;
+    --dim:#6B8578;
+    --text:#DCE5DF;
+    --gold:#C9963A;       /* RÉSERVÉ à l'écart. Nulle part ailleurs. */
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--ink);color:var(--text);
+    font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--dim)}
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px 80px}
+
+  /* ── en-tête ─────────────────────────────────────────── */
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+         padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:28px}
+  .mark{font-family:"Cormorant Garamond",serif;font-size:30px;font-weight:600;letter-spacing:-.5px}
+  .mark em{font-style:italic;color:var(--gold)}
+  .tag{font-size:10px;letter-spacing:2.4px;text-transform:uppercase;color:var(--dim)}
+  .who{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .who b{color:var(--text);font-weight:500}
+
+  h2{font-family:"Cormorant Garamond",serif;font-weight:600;font-size:21px;
+     margin:34px 0 4px;letter-spacing:.2px}
+  .sub{font-size:12px;color:var(--dim);margin-bottom:14px}
+
+  /* ── login ───────────────────────────────────────────── */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px}
+  .login{max-width:360px}
+  label{display:block;font-size:10px;letter-spacing:1.6px;text-transform:uppercase;
+        color:var(--dim);margin:0 0 6px}
+  input[type=email],input[type=password],textarea{
+    width:100%;background:#0A140F;border:1px solid var(--line);border-radius:6px;
+    padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:13px;
+    margin-bottom:14px;
+  }
+  input:focus-visible,textarea:focus-visible,button:focus-visible{
+    outline:2px solid var(--gold);outline-offset:2px;
+  }
+  textarea{min-height:90px;resize:vertical;line-height:1.4}
+  button{
+    font-family:Inter,sans-serif;font-size:13px;font-weight:500;cursor:pointer;
+    background:transparent;color:var(--text);border:1px solid var(--line);
+    border-radius:6px;padding:9px 14px;
+  }
+  button:hover{border-color:var(--dim)}
+  button.primary{background:var(--text);color:var(--ink);border-color:var(--text);font-weight:600}
+  button.primary:hover{background:#fff}
+  button[disabled]{opacity:.45;cursor:default}
+  .msg{font-family:var(--mono);font-size:12px;min-height:18px;color:var(--dim)}
+  .msg.err{color:var(--gold)}
+
+  /* ── LA SIGNATURE : la colonne vertébrale ────────────── */
+  .spine{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+  .srow{display:grid;grid-template-columns:1fr 12px 1fr;align-items:stretch;
+        border-bottom:1px solid var(--line)}
+  .srow:last-child{border-bottom:0}
+  .srow .k{grid-column:1/-1;padding:9px 14px 0;font-size:10px;letter-spacing:1.6px;
+           text-transform:uppercase;color:var(--dim)}
+  .cell{padding:4px 14px 11px;font-family:var(--mono);font-size:13px;word-break:break-word}
+  .cell.right{text-align:right}
+  .bar{background:var(--line)}                      /* accord : la vertèbre dort */
+  .srow.diff .bar{background:var(--gold)}           /* écart : elle s'allume */
+  .srow.diff .cell{color:var(--gold)}
+  .srow.diff .k{color:var(--gold)}
+  .none{color:var(--dim);font-style:italic}
+  .heads{display:grid;grid-template-columns:1fr 12px 1fr;
+         font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);
+         padding:0 14px 8px}
+  .heads span:last-child{text-align:right}
+  .verdict{font-family:var(--mono);font-size:12px;margin:12px 0 0;color:var(--dim)}
+  .verdict.bad{color:var(--gold)}
+
+  /* ── tables ──────────────────────────────────────────── */
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12.5px}
+  th{font-family:Inter,sans-serif;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;
+     color:var(--dim);text-align:left;font-weight:500;padding:0 10px 8px;border-bottom:1px solid var(--line)}
+  td{padding:8px 10px;border-bottom:1px solid rgba(31,53,41,.5)}
+  tr:last-child td{border-bottom:0}
+  td.num{text-align:right}
+  .pill{font-family:Inter,sans-serif;font-size:10px;padding:2px 7px;border-radius:20px;
+        border:1px solid var(--line);color:var(--dim)}
+
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .hint{font-size:12px;color:var(--dim);margin-top:10px;line-height:1.6}
+  .hidden{display:none}
+  @media (max-width:620px){
+    .srow,.heads{grid-template-columns:1fr 8px 1fr}
+    .cell{font-size:12px}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .srow.diff .bar{animation:pulse 2.4s ease-in-out infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <div class="mark">ops<em>.</em></div>
+      <div class="tag">Stafflo · salle des machines</div>
+    </div>
+    <div class="who" id="who">non connecté</div>
+  </header>
+
+  <!-- ── LOGIN ─────────────────────────────────────────── -->
+  <section id="loginSec">
+    <h2>Entrer</h2>
+    <p class="sub">Votre compte Stafflo. La RLS décide de ce que vous voyez — vos lignes, rien d'autre.</p>
+    <div class="card login">
+      <!-- un vrai <form> : c'est exactement ce qui manque à app.html (item 43) -->
+      <form id="loginForm" autocomplete="on">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="email" required>
+        <label for="pw">Mot de passe</label>
+        <input type="password" id="pw" name="password" autocomplete="current-password" required>
+        <button type="submit" class="primary" id="loginBtn">Ouvrir la console</button>
+      </form>
+      <p class="msg" id="loginMsg"></p>
+    </div>
+  </section>
+
+  <!-- ── CONSOLE ───────────────────────────────────────── -->
+  <main id="console" class="hidden">
+
+    <h2>Ce que dit la base, ce que dit le navigateur</h2>
+    <p class="sub">La vertèbre s'allume là où les deux divergent. C'est le seul endroit où l'or apparaît.</p>
+    <div class="heads"><span>Base · villa_settings</span><span></span><span>Navigateur · stafflo_cfg</span></div>
+    <div class="spine" id="spine"></div>
+    <p class="verdict" id="verdict"></p>
+    <div class="actions">
+      <button id="purgeBtn">Purger stafflo_cfg + stafflo_onboarding_state</button>
+      <button id="copyBtn">Copier le tout en JSON</button>
+      <button id="reloadBtn">Relire</button>
+    </div>
+    <p class="hint" id="lsHint"></p>
+    <div id="pasteBox" class="card hidden" style="margin-top:14px">
+      <label for="pasteCfg">Coller <span style="font-family:var(--mono)">stafflo_cfg</span> (console de l'app : <span style="font-family:var(--mono)">localStorage.stafflo_cfg</span>)</label>
+      <textarea id="pasteCfg" placeholder='{"villa":"…","city":"…"}'></textarea>
+      <button id="pasteBtn">Comparer</button>
+    </div>
+
+    <h2>La maison</h2>
+    <p class="sub">Récurrences actives et charges du mois. Un montant vide n'est pas un trou : les lignes par séjour se calculent depuis <span style="font-family:var(--mono)">rate_rules</span>.</p>
+    <div class="card"><table id="recTable"></table></div>
+
+    <h2>Le mois en cours</h2>
+    <p class="sub" id="monthSub"></p>
+    <div class="card"><table id="chgTable"></table></div>
+
+    <h2>Volumes</h2>
+    <p class="sub">Ce que porte réellement le compte.</p>
+    <div class="card"><table id="volTable"></table></div>
+
+  </main>
+</div>
+
+<script>
+const SB   = 'https://rcjhgilpmojohmrqzokx.supabase.co';
+const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
+
+let JWT = null, UID = null, DB = null, CFG = null, PASTED = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function api(path, extraHeaders) {
+  const h = Object.assign({ apikey: ANON, Authorization: 'Bearer ' + JWT }, extraHeaders || {});
+  const r = await fetch(SB + '/rest/v1/' + path, { headers: h });
+  if (!r.ok) throw new Error(path.split('?')[0] + ' → ' + r.status);
+  return { rows: await r.json(), range: r.headers.get('content-range') };
+}
+
+async function count(table) {
+  try {
+    const r = await fetch(SB + '/rest/v1/' + table + '?select=id', {
+      headers: { apikey: ANON, Authorization: 'Bearer ' + JWT, Prefer: 'count=exact', Range: '0-0' }
+    });
+    const cr = r.headers.get('content-range') || '';
+    return cr.split('/')[1] || '?';
+  } catch (e) { return '?'; }
+}
+
+/* ── localStorage : ne marche qu'en même origine que l'app ── */
+function readCfg() {
+  if (PASTED) return PASTED;
+  try {
+    const raw = localStorage.getItem('stafflo_cfg');
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+/* ── login ─────────────────────────────────────────────── */
+$('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('loginBtn'), msg = $('loginMsg');
+  btn.disabled = true; msg.className = 'msg'; msg.textContent = 'Connexion…';
+  try {
+    const r = await fetch(SB + '/auth/v1/token?grant_type=password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: ANON },
+      body: JSON.stringify({ email: $('email').value.trim(), password: $('pw').value })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error_description || d.msg || d.error || 'échec');
+    JWT = d.access_token; UID = d.user && d.user.id;
+    $('who').innerHTML = '<b>' + esc(d.user.email) + '</b> · ' + esc((UID || '').slice(0, 8));
+    $('loginSec').classList.add('hidden');
+    $('console').classList.remove('hidden');
+    msg.textContent = '';
+    load();
+  } catch (err) {
+    msg.className = 'msg err';
+    msg.textContent = '✗ ' + err.message;
+    btn.disabled = false;
+  }
+});
+
+/* ── la vertèbre ───────────────────────────────────────── */
+const MAP = [
+  ['villa_name',   'villa',        'Nom'],
+  ['city',         'city',         'Ville'],
+  ['country',      'country',      'Pays'],
+  ['bedrooms',     'bedrooms',     'Chambres'],
+  ['max_guests',   'maxGuests',    'Capacité'],
+  ['base_price',   'basePrice',    'Prix de base'],
+  ['onboarded',    'onboarded',    'Onboardé'],
+  ['onboarded_at', 'onboardedAt',  'Onboardé le'],
+];
+
+const norm = v => {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v).trim();
+};
+const same = (a, b) => {
+  if (a === null && b === null) return true;
+  if (a === null || b === null) return false;
+  if (!isNaN(a) && !isNaN(b)) return Number(a) === Number(b);
+  if (/^\d{4}-\d{2}-\d{2}T?/.test(a) && /^\d{4}-\d{2}-\d{2}T?/.test(b)) {
+    return Math.abs(new Date(a) - new Date(b)) < 1000;
+  }
+  return a === b;
+};
+const show = v => v === null ? '<span class="none">absent</span>' : esc(v);
+
+function renderSpine() {
+  const spine = $('spine');
+  if (!DB) { spine.innerHTML = '<div class="srow"><div class="k">base</div><div class="cell">aucune ligne villa_settings</div></div>'; return; }
+  let html = '', diffs = 0;
+
+  MAP.forEach(([dbKey, cfgKey, label]) => {
+    const a = norm(DB[dbKey]);
+    const b = CFG ? norm(CFG[cfgKey]) : null;
+    const ok = CFG ? same(a, b) : true;
+    if (CFG && !ok) diffs++;
+    html += '<div class="srow' + (CFG && !ok ? ' diff' : '') + '">' +
+              '<div class="k">' + label + '</div>' +
+              '<div class="cell">' + show(a) + '</div>' +
+              '<div class="bar"></div>' +
+              '<div class="cell right">' + (CFG ? show(b) : '<span class="none">—</span>') + '</div>' +
+            '</div>';
+  });
+
+  // commissions : vit UNIQUEMENT dans le navigateur. Aucune colonne en base.
+  // Ce n'est pas un écart, c'est une absence de synchronisation (item 40).
+  const comm = CFG && CFG.commissions ? JSON.stringify(CFG.commissions) : null;
+  html += '<div class="srow' + (comm ? ' diff' : '') + '">' +
+            '<div class="k">Commissions · aucune colonne en base</div>' +
+            '<div class="cell"><span class="none">n\'existe pas</span></div>' +
+            '<div class="bar"></div>' +
+            '<div class="cell right">' + show(comm) + '</div>' +
+          '</div>';
+  if (comm) diffs++;
+
+  spine.innerHTML = html;
+
+  const v = $('verdict');
+  if (!CFG) {
+    v.className = 'verdict';
+    v.textContent = 'Navigateur non lu — comparaison impossible.';
+  } else if (diffs === 0) {
+    v.className = 'verdict';
+    v.textContent = '✓ Les deux sources disent la même chose.';
+  } else {
+    v.className = 'verdict bad';
+    v.textContent = '⚠ ' + diffs + ' écart' + (diffs > 1 ? 's' : '') +
+      '. Le navigateur gagne à l\'écran, et repart en base à la première écriture.';
+  }
+}
+
+/* ── tables ────────────────────────────────────────────── */
+function renderRec(rows) {
+  let h = '<tr><th>Ligne</th><th>Bénéficiaire</th><th>Fréquence</th><th class="num">Montant</th></tr>';
+  if (!rows.length) h += '<tr><td colspan="4" class="none">aucune récurrence</td></tr>';
+  rows.forEach(r => {
+    const rr = r.rate_rules;
+    const amt = r.amount !== null ? esc(r.amount) + ' ' + esc(r.currency || '')
+      : (rr && rr.present_rate ? esc(rr.present_rate) + ' ' + esc(rr.currency || r.currency || '') + ' / ' + esc(rr.unit || 'unité')
+        : '<span class="none">vide</span>');
+    h += '<tr><td>' + esc(r.label) + '</td><td>' + esc(r.payee || '—') + '</td>' +
+         '<td><span class="pill">' + esc(r.frequency) + '</span></td>' +
+         '<td class="num">' + amt + '</td></tr>';
+  });
+  $('recTable').innerHTML = h;
+}
+
+function renderChg(rows) {
+  let h = '<tr><th>Charge</th><th>Bénéficiaire</th><th>État</th><th class="num">Montant</th></tr>';
+  if (!rows.length) h += '<tr><td colspan="4" class="none">aucune charge ce mois</td></tr>';
+  const tot = {};
+  rows.forEach(r => {
+    const paid = r.status === 'paye';
+    h += '<tr><td>' + esc(r.label) + '</td><td>' + esc(r.payee || '—') + '</td>' +
+         '<td><span class="pill">' + (paid ? 'payé' : esc(r.status)) + '</span></td>' +
+         '<td class="num">' + esc(r.amount) + ' ' + esc(r.currency) + '</td></tr>';
+    if (!paid) tot[r.currency] = (tot[r.currency] || 0) + Number(r.amount || 0);
+  });
+  const due = Object.keys(tot).map(c => tot[c] + ' ' + c).join(' · ');
+  $('monthSub').textContent = due ? 'Reste à régler : ' + due : 'Tout est payé.';
+  $('chgTable').innerHTML = h;
+}
+
+function renderVol(v) {
+  let h = '<tr><th>Table</th><th class="num">Lignes</th></tr>';
+  Object.keys(v).forEach(k => {
+    h += '<tr><td>' + esc(k) + '</td><td class="num">' + esc(v[k]) + '</td></tr>';
+  });
+  $('volTable').innerHTML = h;
+}
+
+/* ── chargement ────────────────────────────────────────── */
+async function load() {
+  CFG = readCfg();
+  const hint = $('lsHint');
+  if (!CFG) {
+    $('pasteBox').classList.remove('hidden');
+    hint.innerHTML = 'Le navigateur n\'a pas de <span style="font-family:var(--mono)">stafflo_cfg</span> — normal si cette page n\'est pas servie depuis <span style="font-family:var(--mono)">stafflo.app</span> (le localStorage est cloisonné par origine). Déployez-la en <span style="font-family:var(--mono)">stafflo.app/ops.html</span> pour la lecture automatique, ou collez-le ci-dessous.';
+  } else {
+    $('pasteBox').classList.add('hidden');
+    hint.textContent = '';
+  }
+
+  try {
+    const vs = await api('villa_settings?select=*');
+    DB = vs.rows[0] || null;
+  } catch (e) { DB = null; $('verdict').textContent = 'Base injoignable : ' + e.message; }
+  renderSpine();
+
+  try {
+    const rec = await api('maison_recurring?select=*&order=label');
+    renderRec(rec.rows);
+  } catch (e) { $('recTable').innerHTML = '<tr><td class="none">' + esc(e.message) + '</td></tr>'; }
+
+  const m = new Date().toISOString().slice(0, 7) + '-01';
+  try {
+    const chg = await api('maison_charges?select=*&period_month=eq.' + m + '&order=label');
+    renderChg(chg.rows);
+  } catch (e) { $('chgTable').innerHTML = '<tr><td class="none">' + esc(e.message) + '</td></tr>'; }
+
+  renderVol({
+    crm_clients: await count('crm_clients'),
+    sejours: await count('sejours'),
+    email_inbox: await count('email_inbox'),
+    maison_recurring: await count('maison_recurring'),
+    maison_charges: await count('maison_charges'),
+    villa_photos: await count('villa_photos')
+  });
+}
+
+/* ── actions ───────────────────────────────────────────── */
+$('purgeBtn').addEventListener('click', () => {
+  try {
+    localStorage.removeItem('stafflo_cfg');
+    localStorage.removeItem('stafflo_onboarding_state');
+    PASTED = null;
+    $('purgeBtn').textContent = '✓ Purgé — rouvrez l\'app';
+    load();
+  } catch (e) { $('purgeBtn').textContent = '✗ localStorage inaccessible ici'; }
+});
+
+$('copyBtn').addEventListener('click', async () => {
+  const blob = JSON.stringify({ base: DB, navigateur: CFG, lu_le: new Date().toISOString() }, null, 1);
+  try { await navigator.clipboard.writeText(blob); $('copyBtn').textContent = '✓ Copié'; }
+  catch (e) { $('copyBtn').textContent = '✗ presse-papier refusé'; }
+  setTimeout(() => { $('copyBtn').textContent = 'Copier le tout en JSON'; }, 1800);
+});
+
+$('reloadBtn').addEventListener('click', load);
+
+$('pasteBtn').addEventListener('click', () => {
+  try {
+    PASTED = JSON.parse($('pasteCfg').value);
+    load();
+  } catch (e) { $('pasteCfg').value = '// JSON invalide\n' + $('pasteCfg').value; }
+});
+</script>
+</body>
+</html>
