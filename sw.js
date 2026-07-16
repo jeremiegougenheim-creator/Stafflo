@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v317 (v-item50: pullVillaSettings restores cfg.commissions)
-const CACHE = 'stafflo-v317';
+// Stafflo Service Worker — v318 (v-item54: baseCapacity/extraGuestFee reachable in Settings)
+const CACHE = 'stafflo-v318';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
