@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v310 (items 43+44: real <form> on auth gate + stafflo_cfg/onboarding_state purge on signout)
-const CACHE = 'stafflo-v310';
+// Stafflo Service Worker — v311 (v-settingsorphan: bedrooms/maxGuests/basePrice/commissions editable in Settings)
+const CACHE = 'stafflo-v311';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

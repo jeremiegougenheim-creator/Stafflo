@@ -5702,6 +5702,11 @@ window.renderSetupOneLiner = function(){
     <div class="field"><label data-fr="Photo de la maison (URL)" data-en="House photo (URL)">Photo de la maison (URL)</label><input id="cfgCoverPhoto" placeholder="https://…jpg"></div>
     <div class="field"><label data-fr="Votre prénom" data-en="Your first name">Votre prénom</label><input id="cfgOwner" placeholder="Jérémie"></div>
     <div class="field"><label data-fr="Ville" data-en="City">Ville</label><input id="cfgCity" placeholder="Marrakech"></div>
+    <!-- v-settingsorphan : ces 3 champs ne se saisissaient qu'une fois, dans l'onboarding
+         (#onboardWizard, inatteignable après coup). Aucun autre moyen de les corriger. -->
+    <div class="field"><label data-fr="Chambres" data-en="Bedrooms">Chambres</label><input id="cfgBedrooms" type="number" min="1" max="20" placeholder="4"></div>
+    <div class="field"><label data-fr="Capacité max (invités)" data-en="Max guests">Capacité max (invités)</label><input id="cfgMaxGuests" type="number" min="1" max="30" placeholder="8"></div>
+    <div class="field"><label data-fr="Prix de base (par nuit)" data-en="Base price (per night)">Prix de base (par nuit)</label><input id="cfgBasePrice" type="number" min="0" step="10" placeholder="750"></div>
     <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
     <div class="field" id="cfgWiseDetailsField" style="display:none"><label data-fr="Coordonnées Wise / virement (affichées sur le décompte)" data-en="Wise / bank transfer details (shown on the bill)">Coordonnées Wise / virement (affichées sur le décompte)</label><textarea id="cfgWiseDetails" rows="3" placeholder="Bénéficiaire, IBAN / lien Wise… (laissez vide pour ne pas l'afficher sur le décompte)"></textarea></div>
     <!-- Cleaner contact (v82) — used by the Solo profile turnover card -->
@@ -5729,6 +5734,37 @@ window.renderSetupOneLiner = function(){
         <option value="full" data-fr="Maison — staff complet" data-en="Full — full staff">Maison — staff complet</option>
       </select>
       <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.4" data-fr="Détermine quelles cartes (brief staff, scénarios, etc.) s'affichent. Aucun effet UI tant que l'option n'est pas branchée." data-en="Determines which cards (staff brief, scenarios, etc.) appear. No UI effect until wired.">Détermine quelles cartes (brief staff, scénarios, etc.) s'affichent. Aucun effet UI tant que l'option n'est pas branchée.</div>
+    </div>
+  </div>
+
+  <!-- v-settingsorphan : idem, seul canal éditable avant ce commit était Direct (implicite).
+       Défaut Airbnb = 15.5 (host fee depuis août 2025, cf. info-bulle ~6313) — PAS le 3.6
+       de l'ancien modèle split-fee que l'onboarding utilise encore en interne (~28856). -->
+  <div class="settings-section">
+    <div class="settings-title" data-fr="CANAUX &amp; COMMISSIONS" data-en="CHANNELS &amp; COMMISSIONS">CANAUX &amp; COMMISSIONS</div>
+    <div class="field" style="display:flex;align-items:center;gap:10px">
+      <input type="checkbox" id="cfgCommAirbnbOn" style="cursor:pointer">
+      <label for="cfgCommAirbnbOn" style="flex:1;margin:0">Airbnb</label>
+      <input type="number" id="cfgCommAirbnb" min="0" max="50" step="0.1" value="15.5" style="width:70px">
+      <span style="font-size:12px;color:var(--muted)">%</span>
+    </div>
+    <div class="field" style="display:flex;align-items:center;gap:10px">
+      <input type="checkbox" id="cfgCommBookingOn" style="cursor:pointer">
+      <label for="cfgCommBookingOn" style="flex:1;margin:0">Booking.com</label>
+      <input type="number" id="cfgCommBooking" min="0" max="50" step="0.1" value="15" style="width:70px">
+      <span style="font-size:12px;color:var(--muted)">%</span>
+    </div>
+    <div class="field" style="display:flex;align-items:center;gap:10px">
+      <input type="checkbox" id="cfgCommVillanovoOn" style="cursor:pointer">
+      <label for="cfgCommVillanovoOn" style="flex:1;margin:0">Villanovo</label>
+      <input type="number" id="cfgCommVillanovo" min="0" max="50" step="0.1" value="25" style="width:70px">
+      <span style="font-size:12px;color:var(--muted)">%</span>
+    </div>
+    <div class="field" style="display:flex;align-items:center;gap:10px">
+      <input type="checkbox" id="cfgCommDirectOn" checked style="cursor:pointer">
+      <label for="cfgCommDirectOn" style="flex:1;margin:0" data-fr="Direct" data-en="Direct">Direct</label>
+      <input type="number" id="cfgCommDirect" min="0" max="50" step="0.1" value="0" style="width:70px">
+      <span style="font-size:12px;color:var(--muted)">%</span>
     </div>
   </div>
 
@@ -8813,6 +8849,26 @@ function autoSaveField(inputId, opts) {
   }, delay);
 }
 
+// v-settingsorphan : bedrooms/maxGuests/basePrice/commissions ne rentrent pas dans le
+// modèle 1-champ-1-colonne de SETTINGS_FIELD_MAP (commissions est composite : plusieurs
+// lignes canal+%). Écrits dans cfg puis poussés via pushVillaSettings(cfg), le même
+// pipeline que l'onboarding (persistCfg, ~28940) plutôt qu'un PATCH par champ.
+var SETTINGS_COMMISSION_CHANNELS = [
+  { key:'airbnb',    onId:'cfgCommAirbnbOn',    pctId:'cfgCommAirbnb',    defaultPct:15.5, defaultOn:false },
+  { key:'booking',   onId:'cfgCommBookingOn',   pctId:'cfgCommBooking',   defaultPct:15,   defaultOn:false },
+  { key:'villanovo', onId:'cfgCommVillanovoOn', pctId:'cfgCommVillanovo', defaultPct:25,   defaultOn:false },
+  { key:'direct',    onId:'cfgCommDirectOn',    pctId:'cfgCommDirect',    defaultPct:0,    defaultOn:true  }
+];
+function collectCommissionsFromUI() {
+  var out = {};
+  SETTINGS_COMMISSION_CHANNELS.forEach(function(c) {
+    var onEl = document.getElementById(c.onId);
+    var pctEl = document.getElementById(c.pctId);
+    if (onEl && onEl.checked) out[c.key] = pctEl ? (parseFloat(pctEl.value) || 0) : 0;
+  });
+  return out;
+}
+
 // Force-save every field at once (used by "Tout enregistrer" button)
 async function autoSaveAll(force) {
   var ids = Object.keys(SETTINGS_FIELD_MAP);
@@ -8821,6 +8877,16 @@ async function autoSaveAll(force) {
     var el = document.getElementById(ids[i]);
     if (el && el.value !== undefined) autoSaveField(ids[i], { immediate: true });
   }
+  var cfg2 = getCfg();
+  var bdEl = document.getElementById('cfgBedrooms');
+  var mgEl = document.getElementById('cfgMaxGuests');
+  var bpEl = document.getElementById('cfgBasePrice');
+  if (bdEl && bdEl.value !== '') cfg2.bedrooms  = parseInt(bdEl.value, 10) || undefined;
+  if (mgEl && mgEl.value !== '') cfg2.maxGuests = parseInt(mgEl.value, 10) || undefined;
+  if (bpEl && bpEl.value !== '') cfg2.basePrice = parseFloat(bpEl.value) || undefined;
+  cfg2.commissions = collectCommissionsFromUI();
+  setCfg(cfg2);
+  if (typeof pushVillaSettings === 'function') pushVillaSettings(cfg2).catch(function(){});
   // Wait a tick for the parallel saves to settle (best-effort UX)
   setTimeout(function(){ _setSavebarSavedRelative(); }, 800);
   if (typeof window.setHdr === 'function') { try { window.setHdr(); } catch(e){} }
@@ -12328,6 +12394,21 @@ function loadSettingsUI() {
   set('cfgVilla', cfg.villa);   set('cfgOwner', cfg.owner);
   set('cfgCoverPhoto', cfg.coverPhoto);
   set('cfgCity',  cfg.city);    set('cfgStaff', cfg.staff);
+  set('cfgBedrooms',  cfg.bedrooms);
+  set('cfgMaxGuests', cfg.maxGuests);
+  set('cfgBasePrice',  cfg.basePrice);
+  // Canaux & commissions : cfg.commissions n'a que les canaux actifs (v-settingsorphan) ;
+  // sans entrée, garder le défaut d'affichage plutôt que 0/décoché.
+  (function(){
+    var comm = cfg.commissions || {};
+    SETTINGS_COMMISSION_CHANNELS.forEach(function(c){
+      var onEl = document.getElementById(c.onId);
+      var pctEl = document.getElementById(c.pctId);
+      var has = Object.prototype.hasOwnProperty.call(comm, c.key);
+      if (onEl) onEl.checked = has ? true : c.defaultOn;
+      if (pctEl) pctEl.value = has ? comm[c.key] : c.defaultPct;
+    });
+  })();
   set('cfgWa',    cfg.wa);      set('cfgGps',   cfg.gps);
   set('cfgAddress',      cfg.address);
   set('cfgDoorCode',     cfg.doorCode);
@@ -22733,6 +22814,10 @@ async function pushVillaSettings(cfg) {
       base_capacity: cfg.baseCapacity || undefined,
       extra_guest_fee: cfg.extraGuestFee != null ? cfg.extraGuestFee : undefined,
       platform: cfg.platform || undefined,
+      // v-settingsorphan (item 44 follow-up) : commissions (jsonb) vient d'être créée en
+      // base, commission_rate en dérive par trigger — ne jamais écrire commission_rate ici,
+      // ce serait une seconde source.
+      commissions: (cfg.commissions && Object.keys(cfg.commissions).length) ? cfg.commissions : undefined,
       staff_members: (staffMembers && staffMembers.length) ? staffMembers : undefined,
       onboarded: !!cfg.onboarded,
       onboarded_at: cfg.onboardedAt || undefined
