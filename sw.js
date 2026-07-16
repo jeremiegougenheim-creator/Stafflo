@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v319 (v-item52-sync: meal_categories synced with Supabase)
-const CACHE = 'stafflo-v319';
+// Stafflo Service Worker — v320 (v-item37: live fx-rates wired, manual-edit marker)
+const CACHE = 'stafflo-v320';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

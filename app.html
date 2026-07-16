@@ -8029,6 +8029,33 @@ function getExchangeRates() {
 function saveExchangeRates(obj) {
   try { var cfg = getCfg(); cfg.exchange_rates = obj; setCfg(cfg); } catch(e){}
 }
+// v-item37 : fx-rates est déployée depuis 3 mois, jamais appelée — les taux figés
+// de DEFAULT_EXCHANGE_RATES avaient dérivé de 5-8%. Fetch non bloquant, jamais
+// await : si ça échoue, l'app démarre normalement (voir call site au boot).
+// Fusionne uniquement les devises déjà présentes et non éditées à la main
+// (cfg.exchange_rates_manual) ; n'ajoute jamais une devise absente (supprimée
+// par le propriétaire) ; n'écrit rien si stale===true (fournisseurs tombés).
+function fetchAndMergeExchangeRates() {
+  try {
+    if (!_stafflo_session || !SB_URL) return;
+    fetch(SB_URL + '/functions/v1/fx-rates', {
+      headers: { 'apikey': SB_ANON, 'Authorization': 'Bearer ' + _stafflo_session.access_token }
+    }).then(function(r){ return r.ok ? r.json() : null; }).then(function(data){
+      if (!data || data.stale === true || !data.rates) return;
+      var cfg = getCfg();
+      cfg.exchange_rates = cfg.exchange_rates || Object.assign({}, DEFAULT_EXCHANGE_RATES);
+      cfg.exchange_rates_manual = cfg.exchange_rates_manual || {};
+      Object.keys(data.rates).forEach(function(code){
+        if (!(code in cfg.exchange_rates)) return;      // devise absente = retirée par owner, ne pas ressusciter
+        if (cfg.exchange_rates_manual[code]) return;     // édition manuelle = jamais écrasée
+        cfg.exchange_rates[code] = data.rates[code];
+      });
+      cfg.exchange_rates_fetched_at = data.date;
+      setCfg(cfg);
+      if (typeof renderExchangeRatesSettings === 'function') renderExchangeRatesSettings();
+    }).catch(function(){});
+  } catch(e){}
+}
 
 function renderMealPricingSettings() {
   var host = document.getElementById('mealCategoriesList');
@@ -8282,6 +8309,19 @@ function renderExchangeRatesSettings() {
   var rates = getExchangeRates();
   var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
   host.innerHTML = '';
+  // v-item37 : fraîcheur du dernier fetch fx-rates — pas le nom du fournisseur,
+  // juste "à jour" ou "date d'hier ou plus vieille" (le propriétaire veut savoir
+  // si le chiffre date d'aujourd'hui, pas d'où il vient).
+  var fetchedAt = (getCfg().exchange_rates_fetched_at) || null;
+  if (fetchedAt) {
+    var ageMs = new Date() - new Date(fetchedAt);
+    var stale24h = ageMs > 24 * 3600 * 1000;
+    var fresh = document.createElement('div');
+    fresh.style.cssText = 'font-size:11px;margin-bottom:8px;color:' + (stale24h ? 'var(--danger,#c0392b)' : 'var(--muted)');
+    fresh.textContent = (fr ? 'Taux mis à jour le ' : 'Rates updated on ') + fetchedAt +
+      (stale24h ? (fr ? ' — plus de 24h, à vérifier' : ' — over 24h old, check') : '');
+    host.appendChild(fresh);
+  }
   Object.keys(rates).forEach(function(code){
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)';
@@ -8320,15 +8360,23 @@ function renderExchangeRatesSettings() {
   });
 }
 
+function markExchangeRateManual(code) {
+  try { var cfg = getCfg(); cfg.exchange_rates_manual = cfg.exchange_rates_manual || {}; cfg.exchange_rates_manual[code] = true; setCfg(cfg); } catch(e){}
+}
+function unmarkExchangeRateManual(code) {
+  try { var cfg = getCfg(); if (cfg.exchange_rates_manual) delete cfg.exchange_rates_manual[code]; setCfg(cfg); } catch(e){}
+}
 function updateExchangeRate(code, value) {
   var rates = getExchangeRates();
   rates[code] = value;
   saveExchangeRates(rates);
+  markExchangeRateManual(code);          // v-item37 : édition manuelle, ne jamais écraser au fetch live
 }
 function removeExchangeRate(code) {
   var rates = getExchangeRates();
   delete rates[code];
   saveExchangeRates(rates);
+  unmarkExchangeRateManual(code);        // v-item37 : nettoyage, évite un marqueur orphelin
   renderExchangeRatesSettings();
 }
 async function addExchangeRateRow() {
@@ -8343,6 +8391,7 @@ async function addExchangeRateRow() {
   var rates = getExchangeRates();
   rates[code] = rate;
   saveExchangeRates(rates);
+  markExchangeRateManual(code);          // v-item37 : devise ajoutée à la main = manuelle par définition
   renderExchangeRatesSettings();
 }
 
@@ -18585,6 +18634,8 @@ document.addEventListener('DOMContentLoaded', function() {
         var cfg = getCfg();
         if (!cfg.onboarded) setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
       });
+      // v-item37 : taux de change live, non bloquant — n'attend pas pullVillaSettings
+      if (typeof fetchAndMergeExchangeRates === 'function') fetchAndMergeExchangeRates();
     } else {
       // No session — landing brandée (splash V3 : Set up my villa / Sign in / démo)
       applyLang();
