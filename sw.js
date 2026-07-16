@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v314 (v-jsonshape: explicit json_shape:'array' for dashboard brief, item 47)
-const CACHE = 'stafflo-v314';
+// Stafflo Service Worker — v315 (v-mealunit: unit/currency on meal_categories, forfait vs personne, item 52 localStorage-only)
+const CACHE = 'stafflo-v315';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -7985,19 +7985,19 @@ function setCfg(c) { localStorage.setItem('stafflo_cfg', JSON.stringify(c)); }
 // Categories + exchange rates live on cfg, persisted via setCfg (localStorage).
 // Supabase sync deferred until a JSON column is added to villa_settings.
 var DEFAULT_MEAL_CATEGORIES = [
-  { id: 'petit_dejeuner', label: 'Petit-déjeuner',         defaultPrice: 0,  enabled: true,  included: true  },
-  { id: 'brunch',         label: 'Brunch',                 defaultPrice: 25, enabled: true,  included: false },
-  { id: 'dejeuner',       label: 'Déjeuner',               defaultPrice: 20, enabled: true,  included: false },
-  { id: 'diner',          label: 'Dîner',                  defaultPrice: 30, enabled: true,  included: false },
-  { id: 'afternoon_tea',  label: 'Thé / Goûter',           defaultPrice: 10, enabled: true,  included: false },
-  { id: 'cocktail_hour',  label: 'Cocktail / Apéritif',    defaultPrice: 15, enabled: true,  included: false },
-  { id: 'snack',          label: 'Snack / En-cas',         defaultPrice: 5,  enabled: false, included: false },
-  { id: 'special_dinner', label: 'Dîner spécial / Gala',   defaultPrice: 50, enabled: false, included: false },
-  { id: 'bbq',            label: 'BBQ / Grillades',        defaultPrice: 25, enabled: false, included: false },
-  { id: 'picnic',         label: 'Panier pique-nique',     defaultPrice: 15, enabled: false, included: false },
-  { id: 'cooking_class',  label: 'Cours de cuisine',       defaultPrice: 40, enabled: false, included: false },
-  { id: 'room_service',   label: 'Room service / Plateau', defaultPrice: 10, enabled: false, included: false },
-  { id: 'kids_meal',      label: 'Repas enfant',           defaultPrice: 10, enabled: false, included: false }
+  { id: 'petit_dejeuner', label: 'Petit-déjeuner',         defaultPrice: 0,  enabled: true,  included: true,  unit: 'personne', currency: 'EUR' },
+  { id: 'brunch',         label: 'Brunch',                 defaultPrice: 25, enabled: true,  included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'dejeuner',       label: 'Déjeuner',               defaultPrice: 20, enabled: true,  included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'diner',          label: 'Dîner',                  defaultPrice: 30, enabled: true,  included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'afternoon_tea',  label: 'Thé / Goûter',           defaultPrice: 10, enabled: true,  included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'cocktail_hour',  label: 'Cocktail / Apéritif',    defaultPrice: 15, enabled: true,  included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'snack',          label: 'Snack / En-cas',         defaultPrice: 5,  enabled: false, included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'special_dinner', label: 'Dîner spécial / Gala',   defaultPrice: 50, enabled: false, included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'bbq',            label: 'BBQ / Grillades',        defaultPrice: 25, enabled: false, included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'picnic',         label: 'Panier pique-nique',     defaultPrice: 15, enabled: false, included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'cooking_class',  label: 'Cours de cuisine',       defaultPrice: 40, enabled: false, included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'room_service',   label: 'Room service / Plateau', defaultPrice: 10, enabled: false, included: false, unit: 'personne', currency: 'EUR' },
+  { id: 'kids_meal',      label: 'Repas enfant',           defaultPrice: 10, enabled: false, included: false, unit: 'personne', currency: 'EUR' }
 ];
 
 var DEFAULT_EXCHANGE_RATES = {
@@ -8010,7 +8010,7 @@ function getMealCategories() {
     var cfg = getCfg();
     var arr = cfg.meal_categories;
     if (!Array.isArray(arr) || !arr.length) return JSON.parse(JSON.stringify(DEFAULT_MEAL_CATEGORIES));
-    return arr;
+    return arr.map(function(c){ return Object.assign({ unit:'personne', currency:'EUR' }, c); });
   } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_MEAL_CATEGORIES)); }
 }
 function saveMealCategories(arr) {
@@ -8066,10 +8066,29 @@ function renderMealPricingSettings() {
     });
     row.appendChild(price);
 
-    var eur = document.createElement('span');
-    eur.textContent = '€';
-    eur.style.cssText = 'font-size:13px;color:var(--muted);flex-shrink:0';
-    row.appendChild(eur);
+    var curSel = document.createElement('select');
+    curSel.style.cssText = 'padding:6px 4px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink);font-size:13px;font-family:inherit;flex-shrink:0';
+    ['MAD','EUR','USD','GBP'].forEach(function(cur){
+      var opt = document.createElement('option');
+      opt.value = cur;
+      opt.textContent = cur;
+      if ((cat.currency || 'EUR') === cur) opt.selected = true;
+      curSel.appendChild(opt);
+    });
+    curSel.addEventListener('change', function(){ updateMealCategory(cat.id, 'currency', curSel.value); });
+    row.appendChild(curSel);
+
+    var unitSel = document.createElement('select');
+    unitSel.style.cssText = 'padding:6px 4px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--ink);font-size:13px;font-family:inherit;flex-shrink:0';
+    [{ v:'personne', fr:'/ personne', en:'/ person' }, { v:'groupe', fr:'/ groupe', en:'/ group' }].forEach(function(u){
+      var opt = document.createElement('option');
+      opt.value = u.v;
+      opt.textContent = fr ? u.fr : u.en;
+      if ((cat.unit || 'personne') === u.v) opt.selected = true;
+      unitSel.appendChild(opt);
+    });
+    unitSel.addEventListener('change', function(){ updateMealCategory(cat.id, 'unit', unitSel.value); });
+    row.appendChild(unitSel);
 
     var incLbl = document.createElement('label');
     incLbl.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);cursor:pointer;flex-shrink:0';
@@ -8109,17 +8128,17 @@ function removeMealCategory(id) {
   saveMealCategories(cats);
   renderMealPricingSettings();
 }
-async function addMealCategoryRow() {
-  var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
-  var name = await staffloPrompt(fr?'Nom de la catégorie ?':'Category name?');
-  if (!name) return;
-  name = name.trim();
-  if (!name) return;
-  var id = 'custom_' + name.toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,30) + '_' + Date.now().toString(36);
+function addMealCategoryRow() {
+  var id = 'custom_' + Date.now().toString(36);
   var cats = getMealCategories();
-  cats.push({ id: id, label: name, defaultPrice: 0, enabled: true, included: false });
+  cats.push({ id: id, label: '', defaultPrice: 0, unit: 'personne', currency: 'EUR', enabled: true, included: false });
   saveMealCategories(cats);
   renderMealPricingSettings();
+  var host = document.getElementById('mealCategoriesList');
+  if (host && host.lastElementChild) {
+    var input = host.lastElementChild.querySelector('input[type="text"]');
+    if (input) input.focus();
+  }
 }
 
 // ─── CATALOGUE DE PRESTATIONS (SLICE 1) — gaté stafflo_billing_form_v1 ───────────
@@ -13859,8 +13878,8 @@ async function handleMealRecap(parts, chefName) {
     'CONVERSATION :',
     parts.contextBlock,
     '',
-    'CATÉGORIES DE REPAS DISPONIBLES (avec prix par personne) :',
-    JSON.stringify(enabledCats.map(function(c){ return { id:c.id, label:c.label, defaultPrice:c.defaultPrice, included:!!c.included }; }), null, 2),
+    'CATÉGORIES DE REPAS DISPONIBLES (prix, unité — personne ou groupe/forfait —, devise) :',
+    JSON.stringify(enabledCats.map(function(c){ return { id:c.id, label:c.label, defaultPrice:c.defaultPrice, unit:c.unit||'personne', currency:c.currency||'EUR', included:!!c.included }; }), null, 2),
     '',
     'Réponds UNIQUEMENT en JSON valide :',
     '{',
@@ -13901,8 +13920,10 @@ async function handleMealRecap(parts, chefName) {
     'Tu rédiges un message WhatsApp de fin de séjour, envoyé au guest, au nom de ' + ownerName + '.',
     'Règles :',
     '- Ton chaleureux et professionnel, en français',
-    '- Lister chaque catégorie de repas EXTRAS (exclure tout repas marqué "included") : quantité × prix par personne = sous-total en € (et ~devise locale entre parenthèses si applicable)',
-    '- Afficher le total des extras repas en € (et ~devise locale si applicable)',
+    '- Lister chaque catégorie de repas EXTRAS (exclure tout repas marqué "included")',
+    '- Si unit=="personne" : sous-total = nombre de personnes × prix. Si unit=="groupe" (forfait) : sous-total = prix, INDÉPENDANT du nombre de personnes — ne JAMAIS multiplier un forfait groupe par le nombre de guests',
+    '- Chaque prix est dans la devise de sa catégorie (currency). Afficher chaque sous-total dans SA devise, et le total en additionnant par devise (ne pas mélanger des devises différentes dans un seul total)',
+    '- Si une devise différente de celle du guest est utilisée, ajouter la contre-valeur ~devise guest entre parenthèses en utilisant le taux de change fourni',
     '- Proposer un mode de paiement (espèces ou virement)',
     '- Remercier et inviter à revenir',
     '- Ne PAS mentionner la commission plateforme ni le net propriétaire (info interne uniquement, sert juste à te contextualiser)',
@@ -13923,8 +13944,8 @@ async function handleMealRecap(parts, chefName) {
     'SUMMARY (totaux par catégorie) :',
     JSON.stringify(extracted.summary || {}, null, 2),
     '',
-    'TARIFS RÉFÉRENCE (prix par personne ; included:true = ne pas facturer) :',
-    JSON.stringify(enabledCats.map(function(c){ return { id:c.id, label:c.label, price:c.defaultPrice, included:!!c.included }; }), null, 2),
+    'TARIFS RÉFÉRENCE (unit:"personne" = prix × nb guests ; unit:"groupe" = prix forfaitaire fixe ; included:true = ne pas facturer) :',
+    JSON.stringify(enabledCats.map(function(c){ return { id:c.id, label:c.label, price:c.defaultPrice, unit:c.unit||'personne', currency:c.currency||'EUR', included:!!c.included }; }), null, 2),
     '',
     'INFO INTERNE (ne PAS surface dans le message) :',
     'TOTAL SÉJOUR : ' + (client && client.price ? client.price + '€' : 'N/A'),
