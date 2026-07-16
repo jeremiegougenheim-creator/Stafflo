@@ -245,12 +245,20 @@ const MAP = [
   ['base_price',   'basePrice',    'Prix de base'],
   ['onboarded',    'onboarded',    'Onboardé'],
   ['onboarded_at', 'onboardedAt',  'Onboardé le'],
+  ['commissions',  'commissions',  'Commissions (%/canal)'],
 ];
 
 const norm = v => {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'boolean') return v ? 'true' : 'false';
-  if (typeof v === 'object') return JSON.stringify(v);
+  // Objets (commissions) : clés triées, sinon {a,b} et {b,a} s'afficheraient
+  // en or alors qu'ils disent la même chose.
+  if (typeof v === 'object') {
+    if (Array.isArray(v)) return JSON.stringify(v);
+    const keys = Object.keys(v).sort();
+    if (!keys.length) return null;
+    return '{' + keys.map(k => JSON.stringify(k) + ':' + JSON.stringify(v[k])).join(',') + '}';
+  }
   return String(v).trim();
 };
 const same = (a, b) => {
@@ -282,16 +290,16 @@ function renderSpine() {
             '</div>';
   });
 
-  // commissions : vit UNIQUEMENT dans le navigateur. Aucune colonne en base.
-  // Ce n'est pas un écart, c'est une absence de synchronisation (item 40).
-  const comm = CFG && CFG.commissions ? JSON.stringify(CFG.commissions) : null;
-  html += '<div class="srow' + (comm ? ' diff' : '') + '">' +
-            '<div class="k">Commissions · aucune colonne en base</div>' +
-            '<div class="cell"><span class="none">n\'existe pas</span></div>' +
-            '<div class="bar"></div>' +
-            '<div class="cell right">' + show(comm) + '</div>' +
-          '</div>';
-  if (comm) diffs++;
+  // commission_rate : dérivé de commissions.airbnb par trigger DB (sync_commission_rate).
+  // Lecture seule, jamais en or : c'est une dérivation, pas un écart.
+  if (DB.commission_rate != null) {
+    html += '<div class="srow">' +
+              '<div class="k">commission_rate · dérivé par trigger, lu par price-intelligence</div>' +
+              '<div class="cell">' + esc(DB.commission_rate) + '</div>' +
+              '<div class="bar"></div>' +
+              '<div class="cell right"><span class="none">—</span></div>' +
+            '</div>';
+  }
 
   spine.innerHTML = html;
 
