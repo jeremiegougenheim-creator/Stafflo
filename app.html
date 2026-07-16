@@ -21524,7 +21524,7 @@ async function loadMorningBrief(forceRefresh = false) {
       const r = await __aiRun(() => fetch(STAFFLO_PROXY, {
         method: 'POST',
         headers: proxyHeaders(),
-        body: JSON.stringify({ task: 'brief', system: briefSystem, user: prompt, max_tokens: 700 })
+        body: JSON.stringify({ task: 'brief', system: briefSystem, user: prompt, max_tokens: 700, json_shape: 'array' })
       }));
       const d = await r.json();
       if (!r.ok || d.error) {
@@ -21547,7 +21547,7 @@ async function loadMorningBrief(forceRefresh = false) {
       const nk2 = document.getElementById('briefNoKey');
       if (nk2) nk2.style.display = 'none';
       // Auto-route: Gemini (quality reasoning), fallback Groq
-      raw = await callBestAI('brief', briefSystem, prompt, 700);
+      raw = await callBestAI('brief', briefSystem, prompt, 700, 'array');
     }
 
     const cleaned = raw.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
@@ -21586,7 +21586,7 @@ async function loadMorningBrief(forceRefresh = false) {
 // ════════════════════════════════════════════════════════
 // AI PROVIDERS — routing, calling
 // ════════════════════════════════════════════════════════
-async function callBestAI(task, systemPrompt, userContent, maxTokens) {
+async function callBestAI(task, systemPrompt, userContent, maxTokens, jsonShape) {
   // ── Try proxy first (no client key needed) ──────────
   if (STAFFLO_PROXY) {
     try {
@@ -21605,6 +21605,7 @@ async function callBestAI(task, systemPrompt, userContent, maxTokens) {
           system: systemPrompt || '',
           user: userContent,
           max_tokens: maxTokens || 1000,
+          json_shape: jsonShape || undefined,
           session_key: getSessionKeyFromUrl() || getCfg().publicSessionKey || '',
           client_mode: getCfg().clientMode || 'public',
         })

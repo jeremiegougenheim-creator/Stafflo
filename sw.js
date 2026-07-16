@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v312 (v-onbreview: remove "Revoir l'onboarding" button, items 40/46)
-const CACHE = 'stafflo-v312';
+// Stafflo Service Worker — v314 (v-jsonshape: explicit json_shape:'array' for dashboard brief, item 47)
+const CACHE = 'stafflo-v314';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
