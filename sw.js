@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v315 (v-mealunit: unit/currency on meal_categories, forfait vs personne, item 52 localStorage-only)
-const CACHE = 'stafflo-v315';
+// Stafflo Service Worker — v316 (v-item55: meal recap arithmetic moves to JS, LLM formats only)
+const CACHE = 'stafflo-v316';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

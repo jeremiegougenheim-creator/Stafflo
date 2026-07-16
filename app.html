@@ -13910,6 +13910,20 @@ async function handleMealRecap(parts, chefName) {
     return;
   }
 
+  // v-item55 : l'arithmétique quitte l'IA. Un LLM ne calcule pas une facture client.
+  // Il lit la conversation (extract, plus haut) ; ici on compte, en JS, auditable.
+  var lines = [], totals = {};
+  (extracted.meals || []).forEach(function(m){
+    var cat = enabledCats.filter(function(c){ return c.id === m.category_id; })[0];
+    if (!cat || cat.included) return;                       // 'included' = jamais facturé
+    var qty  = (cat.unit === 'groupe') ? 1 : (m.count_persons || guestCount);
+    var sub  = cat.defaultPrice * qty;
+    var cur  = cat.currency || 'EUR';
+    lines.push({ date:m.date, label:cat.label, unit:cat.unit, qty:qty,
+                 unitPrice:cat.defaultPrice, currency:cur, subtotal:sub, note:m.note||'' });
+    totals[cur] = (totals[cur] || 0) + sub;
+  });
+
   // ── Step 2: generate guest message (Mistral, FR) ──
   var guestCurrency = guessGuestCurrency(client);
   var rates = getExchangeRates();
@@ -13920,10 +13934,10 @@ async function handleMealRecap(parts, chefName) {
     'Tu rédiges un message WhatsApp de fin de séjour, envoyé au guest, au nom de ' + ownerName + '.',
     'Règles :',
     '- Ton chaleureux et professionnel, en français',
-    '- Lister chaque catégorie de repas EXTRAS (exclure tout repas marqué "included")',
-    '- Si unit=="personne" : sous-total = nombre de personnes × prix. Si unit=="groupe" (forfait) : sous-total = prix, INDÉPENDANT du nombre de personnes — ne JAMAIS multiplier un forfait groupe par le nombre de guests',
-    '- Chaque prix est dans la devise de sa catégorie (currency). Afficher chaque sous-total dans SA devise, et le total en additionnant par devise (ne pas mélanger des devises différentes dans un seul total)',
-    '- Si une devise différente de celle du guest est utilisée, ajouter la contre-valeur ~devise guest entre parenthèses en utilisant le taux de change fourni',
+    '- Une ligne fournie ci-dessous = un extra à facturer (les repas "included" ont déjà été exclus, ne les réintroduis pas)',
+    '- Ces montants sont déjà calculés. Ne les recalcule pas, ne les modifie pas, ne les arrondis pas. Mets-les en forme dans un message clair au propriétaire.',
+    '- Afficher chaque total fourni par devise séparément — ne jamais additionner deux devises ensemble',
+    '- Si une devise différente de celle du guest est utilisée, ajouter la contre-valeur ~devise guest entre parenthèses en utilisant le taux de change fourni (affichage uniquement, ne remplace pas le montant réel)',
     '- Proposer un mode de paiement (espèces ou virement)',
     '- Remercier et inviter à revenir',
     '- Ne PAS mentionner la commission plateforme ni le net propriétaire (info interne uniquement, sert juste à te contextualiser)',
@@ -13938,14 +13952,11 @@ async function handleMealRecap(parts, chefName) {
     'DEVISE GUEST : ' + guestCurrency,
     rate ? ('TAUX DE CHANGE : 1 EUR = ' + rate + ' ' + guestCurrency + ' (indicatif, préfixer "~")') : 'TAUX DE CHANGE : N/A (guest en €)',
     '',
-    'RÉCAP REPAS (extraction WhatsApp) :',
-    JSON.stringify(extracted.meals || [], null, 2),
+    'LIGNES DE FACTURE (déjà calculées, ne pas recalculer) :',
+    JSON.stringify(lines, null, 2),
     '',
-    'SUMMARY (totaux par catégorie) :',
-    JSON.stringify(extracted.summary || {}, null, 2),
-    '',
-    'TARIFS RÉFÉRENCE (unit:"personne" = prix × nb guests ; unit:"groupe" = prix forfaitaire fixe ; included:true = ne pas facturer) :',
-    JSON.stringify(enabledCats.map(function(c){ return { id:c.id, label:c.label, price:c.defaultPrice, unit:c.unit||'personne', currency:c.currency||'EUR', included:!!c.included }; }), null, 2),
+    'TOTAUX PAR DEVISE (déjà calculés, ne pas recalculer, ne pas convertir entre devises) :',
+    JSON.stringify(totals, null, 2),
     '',
     'INFO INTERNE (ne PAS surface dans le message) :',
     'TOTAL SÉJOUR : ' + (client && client.price ? client.price + '€' : 'N/A'),
