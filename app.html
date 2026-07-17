@@ -31017,12 +31017,75 @@ function startTour(){
   }
 
   /* ── Stay pane ── */
+  // v-item79 : « Le fait · La source · L'action ». Aucune valeur n'est inventée :
+  // quand la base ne sait pas, on le dit au lieu de combler.
+  function _openStayFiche(k, c, net, estime, fin, nights, FR){
+    if (typeof openFicheV1 !== 'function') return;
+    var P = {
+      arrival: {
+        kicker: FR?'Le séjour':'The stay', title: FR?'Date d’arrivée':'Arrival date',
+        rows: [[FR?'Arrivée':'Arrival', c.arrival||'—'], [FR?'Nuits':'Nights', nights||'—']],
+        source: fin.bookingRef ? ((FR?'Confirmation ':'Confirmation ') + (c.source||'') + ' · ' + fin.bookingRef)
+                               : (FR?'Saisie manuelle — aucune confirmation rattachée.':'Manual entry — no confirmation attached.'),
+        action: FR?'Voir dans le calendrier':'See in calendar',
+        onAction: function(){ if (typeof goTab === 'function') goTab('calendar'); }
+      },
+      departure: {
+        kicker: FR?'Le séjour':'The stay', title: FR?'Date de départ':'Departure date',
+        rows: [[FR?'Départ':'Departure', c.departure||'—'], [FR?'Nuits':'Nights', nights||'—']],
+        source: fin.bookingRef ? ((FR?'Confirmation ':'Confirmation ') + (c.source||'') + ' · ' + fin.bookingRef)
+                               : (FR?'Saisie manuelle.':'Manual entry.'),
+        action: FR?'Voir dans le calendrier':'See in calendar',
+        onAction: function(){ if (typeof goTab === 'function') goTab('calendar'); }
+      },
+      guests: {
+        kicker: FR?'Le groupe':'The group', title: FR?'Nombre de personnes':'Party size',
+        rows: [[FR?'Total':'Total', c.guests||'—'],
+               [FR?'Répartition':'Breakdown', (c.details && c.details.has_children)
+                  ? (FR?'avec enfants — nombre non renseigné':'with children — count unknown')
+                  : (FR?'non renseignée':'not recorded')]],
+        source: FR?'La base ne stocke qu’un total. Adultes, enfants et bébés ne sont pas distingués — et un bébé change la logistique (lit, chaise haute).'
+                  :'The database only stores a total. Adults, children and infants are not distinguished — and an infant changes logistics.'
+      },
+      net: estime ? {
+        kicker: FR?'L’argent':'Money', title: FR?'Net estimé':'Estimated net',
+        rows: [[FR?'Prix séjour':'Stay price', (c.price||0) + '€'],
+               [FR?'Commission':'Commission', (c.commission||0) + ' %'],
+               [FR?'Net estimé':'Estimated net', net + '€']],
+        source: FR?'Estimation : prix × (1 − commission). Aucune confirmation de plateforme n’est rattachée à ce séjour — le net réel peut différer.'
+                  :'Estimate: price × (1 − commission). No platform confirmation attached — the real net may differ.',
+        action: FR?'Ouvrir les commissions':'Open commissions',
+        onAction: function(){ if (typeof openSettings === 'function') openSettings(); }
+      } : {
+        kicker: FR?'L’argent':'Money', title: FR?'Net réellement versé':'Net actually paid',
+        rows: [[FR?'Total guest':'Guest total', (fin.guestTotal||0) + '€'],
+               [FR?'Frais plateforme':'Platform fee', (fin.hostFee||0) + '€'],
+               [FR?'Net versé':'Net paid', net + '€'],
+               [FR?'Référence':'Reference', fin.bookingRef || '—']],
+        source: FR?('Extrait de l’email de confirmation. Ce montant prime sur l’estimation prix × (1 − ' + (c.commission||0) + ' %), qui donnerait ' + (c.price ? Math.round(c.price*(1-(c.commission||0)/100)) : 0) + '€.')
+                  :('Extracted from the confirmation email. This figure overrides the estimate.'),
+        action: FR?'Voir l’email':'See the email',
+        onAction: function(){ if (typeof showInbox === 'function') showInbox(); }
+      }
+    };
+    if (P[k]) openFicheV1(P[k]);
+  }
+
   function renderStay(c){
     var FR = fr();
     var grid = $('v5dStayGrid');
     if (grid) {
       var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
-      var net = c.price ? Math.round(c.price * (1 - (c.commission||0)/100)) : 0; /* v129: price = total séjour, pas /nuit — jamais * nights */
+      // v-item79 : le net était TOUJOURS recalculé (price × (1 − commission)), même
+      // quand la confirmation de la plateforme donne le net réellement versé.
+      // Fuji : 3150,9 × (1 − 15,5 %) = 2663 € affiché, alors qu'Airbnb a prélevé
+      // 18,6 % et versé 2564,83 €. Un fait extrait bat une estimation paramétrée.
+      var _fin = (c.details && c.details.financial) || {};
+      var _netReal = (_fin.net != null && !isNaN(parseFloat(_fin.net))) ? parseFloat(_fin.net) : null;
+      var net = (_netReal != null)
+        ? Math.round(_netReal)
+        : (c.price ? Math.round(c.price * (1 - (c.commission||0)/100)) : 0);
+      var _netEstime = (_netReal == null);
       var locale = FR ? 'fr-FR' : 'en-GB';
       var fmtDate = function(iso){
         if (!iso) return '—';
@@ -31030,14 +31093,26 @@ function startTour(){
         if (isNaN(d)) return iso;
         return d.toLocaleDateString(locale, { weekday:'short', day:'numeric', month:'long', year:'numeric' });
       };
-      grid.innerHTML = [
-        [FR?'ARRIVÉE':'ARRIVAL',    fmtDate(c.arrival)],
-        [FR?'DÉPART':'DEPARTURE',   fmtDate(c.departure)],
-        [FR?'INVITÉS':'GUESTS',     c.guests || '—'],
-        ['NET',        net ? (net + '€') : '—']
-      ].map(function(row){
-        return '<div class="v5d-stay-cell"><div class="v5d-stay-lbl">' + row[0] + '</div><div class="v5d-stay-val">' + escapeHtml(String(row[1])) + '</div></div>';
+      // v-item79 : chaque valeur affichée doit mener à l'endroit où elle se décide.
+      // Le composant openFicheV1 (fiche de provenance, ON par défaut) existe déjà et
+      // n'était branché que 4 fois dans toute l'app.
+      var _rows = [
+        ['arrival',   FR?'ARRIVÉE':'ARRIVAL',   fmtDate(c.arrival)],
+        ['departure', FR?'DÉPART':'DEPARTURE',  fmtDate(c.departure)],
+        ['guests',    FR?'INVITÉS':'GUESTS',    c.guests || '—'],
+        ['net',       'NET', net ? (net + '€' + (_netEstime ? ' ~' : '')) : '—']
+      ];
+      grid.innerHTML = _rows.map(function(row){
+        return '<div class="v5d-stay-cell" data-fiche="' + row[0] + '" role="button" tabindex="0" style="cursor:pointer">' +
+                 '<div class="v5d-stay-lbl">' + row[1] + '</div>' +
+                 '<div class="v5d-stay-val">' + escapeHtml(String(row[2])) + '</div>' +
+               '</div>';
       }).join('');
+      grid.querySelectorAll('[data-fiche]').forEach(function(cell){
+        var open = function(){ _openStayFiche(cell.getAttribute('data-fiche'), c, net, _netEstime, _fin, nights, FR); };
+        cell.addEventListener('click', open);
+        cell.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } });
+      });
     }
     // Checklists — reuse the v3_ops storage from Today v3
     function renderChecklist(hostId, phase, items){
