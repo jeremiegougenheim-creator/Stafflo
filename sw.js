@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v344 (v-item84: hero header shows stay phase + dates on a dark green band; badge colors scoped to .v5d-hero only, guest grid untouched)
-const CACHE = 'stafflo-v344';
+// Stafflo Service Worker — v345 (v-item81c: Payment cell stops reading empty pay_status as unpaid; distinguishes paid/pending/via-platform/unknown)
+const CACHE = 'stafflo-v345';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

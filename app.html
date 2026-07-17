@@ -31263,10 +31263,6 @@ function startTour(){
     var host = document.getElementById('v5dMoney');
     if (!host) return;
     var FR = fr();
-    var pay = { paid:  FR?'Payé':'Paid',
-                pending: FR?'En attente':'Pending',
-                partial: FR?'Partiel':'Partial' }[c.payStatus] ||
-              (c.payStatus ? c.payStatus : (FR?'—':'—'));
     var brut = (fin && fin.guestTotal != null) ? fin.guestTotal : c.price;
     var cells = [
       [FR?'Source':'Source', c.source || '—', '', ''],
@@ -31274,8 +31270,19 @@ function startTour(){
        (fin && fin.guestTotal != null) ? (FR?'confirmé':'confirmed') : (FR?'saisi à la main':'entered manually')],
       [FR?'Commission':'Commission', (c.commission != null && c.commission !== '') ? (c.commission + ' %') : '—', '',
        (c.source && /airbnb/i.test(c.source)) ? (FR?'+ TVA côté Airbnb':'+ VAT on Airbnb side') : ''],
-      [FR?'Paiement':'Payment', pay, '',
-       (c.payStatus === 'paid') ? '' : (FR?'à relancer':'to chase')],
+      // v-item81c : « à relancer » s'affichait des que pay_status n'etait pas 'paid'
+      // — or il est vide sur 33 fiches sur 34, dont 11 avec une confirmation Airbnb
+      // (donc versees) et des sejours clos depuis mai. Un champ vide dit « on ne sait
+      // pas », jamais « impaye ». Et sur Airbnb, la plateforme encaisse : il n'y a
+      // personne a relancer.
+      (function(){
+        var viaPlateforme = (fin && fin.net != null) && c.source && /airbnb/i.test(c.source);
+        if (c.payStatus === 'paid')    return [FR?'Paiement':'Payment', FR?'Payé':'Paid', '', ''];
+        if (c.payStatus === 'pending') return [FR?'Paiement':'Payment', FR?'En attente':'Pending', '', FR?'à relancer':'to chase'];
+        if (c.payStatus)               return [FR?'Paiement':'Payment', c.payStatus, '', ''];
+        if (viaPlateforme)             return [FR?'Paiement':'Payment', FR?'Via Airbnb':'Via Airbnb', '', FR?'versé par la plateforme':'paid out by platform'];
+        return [FR?'Paiement':'Payment', '—', '', FR?'non renseigné':'not recorded'];
+      })(),
       [FR?'Net':'Net', net ? (Math.round(net) + '€' + (estime ? ' ~' : '')) : '—', 'is-strong',
        (nights ? (Math.round(net/nights) + '€' + (FR?'/nuit':'/night')) : '')]
     ];
