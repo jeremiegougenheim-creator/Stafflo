@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v326 (v-item71: staff_brief_template MENU prefers details.meal_plan so it stops repeating alerts_block)
-const CACHE = 'stafflo-v326';
+// Stafflo Service Worker — v327 (v-item72: bottom nav active tab no longer inherits old top-bar .nav-btn styling)
+const CACHE = 'stafflo-v327';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
