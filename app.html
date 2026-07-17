@@ -12621,6 +12621,15 @@ function setLang(l) {
   localStorage.setItem('stafflo_lang', l);
   applyLang();
   renderAll();
+  // v-item59 : renderAll() ne connaît que 4 fonctions legacy — les surfaces v3/v4/v5
+  // gardent la langue peinte au boot, alors que leurs chaînes EN existent déjà
+  // (ex. l.30120 'CE SOIR' / 'TONIGHT'). applyLang() ne traduit que les [data-fr].
+  // renderTodayV3All et renderDashV2 exclus ici : le premier déclenche
+  // loadMaisonCharges() (fetch Supabase) si le cache maison n'est pas encore chaud,
+  // le second appelle l'edge fn price-intelligence sans garde de cache — un
+  // changement de langue ne doit pas coûter une requête.
+  ['renderV4All','renderGuestsV5All','renderCalendarTab','renderMaisonReal']
+    .forEach(function(n){ try { if (typeof window[n] === 'function') window[n](); } catch(e){} });
   // Re-generate alerts + brief in new language so user-visible strings inside
   // those AI-generated surfaces (titles, sub-lines, brief cards) switch too.
   // applyLang() only swaps [data-fr]/[data-en] static nodes; dynamic content

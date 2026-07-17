@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v321 (v-item56: onboarding V2 becomes default, kill-switch '0')
-const CACHE = 'stafflo-v321';
+// Stafflo Service Worker — v322 (v-item59: setLang replays v3/v4/v5 renderers so language switch repaints modern surfaces)
+const CACHE = 'stafflo-v322';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
