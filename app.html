@@ -12008,9 +12008,6 @@ function renderBookingCardV2(cl) {
   if (arrTime) rotaTasks.push({label: fr?'Transfert':'Driver', text: (fr?'Récupérer ':'Pick up ')+firstName+' — '+arrTime, done:true});
   rotaTasks.push({label: fr?'Vous':'You', text: fr?'Envoyer le message de bienvenue':'Send welcome message', done:false});
 
-  var clPhone = (cl.phone||'').replace(/[\s\-+()]/g,'');
-  var briefMsg = (fr?'Brief villa — ':'Villa brief — ')+(cl.name||'')+'\n'+rotaTasks.map(function(t){return '• ['+t.label+'] '+t.text;}).join('\n');
-  var waUrl = 'https://wa.me/'+(clPhone||'')+'?text='+encodeURIComponent(briefMsg);
   var payLabel = cl.payStatus || (cl.source==='Airbnb'?'Airbnb':(cl.source==='Direct'||cl.source==='WhatsApp')?'Direct':(fr?'En attente':'Pending'));
   var fmtMoney = function(v){ return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' '); };
 
@@ -12076,7 +12073,12 @@ function renderBookingCardV2(cl) {
     '</section>' +
     '<footer class="bk2-actions">' +
       '<button class="bk2-btn primary" type="button" onclick="openAriaModal(\'send welcome message to ' + nameEsc + '\')"><i class="ti ti-send" aria-hidden="true"></i>' + (fr?'Envoyer le message de bienvenue':'Send welcome message') + '</button>' +
-      '<a class="bk2-btn ghost" href="' + waUrl + '" target="_blank">' + (fr?'Briefer staff':'Brief staff') + '</a>' +
+      // v-item83 : ce bouton construisait wa.me/<cl.phone> — le telephone du GUEST — et
+      // y collait le brief interne de l'equipe. Aucun membre du staff n'a de numero en
+      // base (les 3 wa sont vides) : il n'existait aucun destinataire correct, seulement
+      // le client. On passe par ariaOpenWithStaffBrief (item 70), qui prepare la note
+      // depuis le template et laisse le proprietaire choisir a qui l'envoyer.
+      '<button class="bk2-btn ghost" type="button" onclick="var _c=(typeof clients!==\'undefined\')?clients.find(function(x){return x.id===' + JSON.stringify(cl.id) + ';}):null; if(typeof ariaOpenWithStaffBrief===\'function\'&&_c)ariaOpenWithStaffBrief(_c);">' + (fr?'Préparer le brief staff':'Prepare staff brief') + '</button>' +
     '</footer>' +
   '</article>';
 }
@@ -12173,8 +12175,6 @@ function openDetail(id) {
     vous:'background:#D8F3DC;color:#1B4332'
   };
   var clPhone = (cl.phone||'').replace(/[\s\-+()]/g,'');
-  var briefMsg = (fr?'Brief villa — ':'Villa brief — ')+(cl.name||'')+'\n'+tasks.map(function(t){return '• ['+t.label+'] '+t.text;}).join('\n');
-  var waUrl = 'https://wa.me/'+(clPhone||'')+'?text='+encodeURIComponent(briefMsg);
 
   // Tasks HTML
   var tasksHTML = '';
@@ -12187,7 +12187,12 @@ function openDetail(id) {
           '<span style="font-size:12px;color:var(--ink);flex:1">'+t.text+'</span>' +
         '</div>';
       }).join('') +
-      (clPhone ? '<a href="'+waUrl+'" target="_blank" style="display:block;margin:10px 0;padding:10px;background:#25D366;color:#fff;border-radius:8px;font-size:12px;font-weight:600;text-align:center;text-decoration:none;font-family:DM Sans,sans-serif">📲 '+(fr?'Envoyer brief staff':'Send staff brief')+'</a>' : '') +
+      // v-item83 : ce bouton construisait wa.me/<cl.phone> — le telephone du GUEST — et
+      // y collait le brief interne de l'equipe. Aucun membre du staff n'a de numero en
+      // base (les 3 wa sont vides) : il n'existait aucun destinataire correct, seulement
+      // le client. On passe par ariaOpenWithStaffBrief (item 70), qui prepare la note
+      // depuis le template et laisse le proprietaire choisir a qui l'envoyer.
+      '<button type="button" onclick="var _c=(typeof clients!==\'undefined\')?clients.find(function(x){return x.id===' + JSON.stringify(cl.id) + ';}):null; if(typeof ariaOpenWithStaffBrief===\'function\'&&_c)ariaOpenWithStaffBrief(_c);" style="display:block;width:100%;margin:10px 0;padding:10px;background:#1B4332;color:#fff;border:0;border-radius:8px;font-size:12px;font-weight:600;text-align:center;cursor:pointer;font-family:DM Sans,sans-serif">📋 ' + (fr?'Préparer le brief staff':'Prepare staff brief') + '</button>' +
     '</div>';
   }
 
@@ -21230,7 +21235,9 @@ function renderTodayQV() {
           '</div>' +
         '</div>';
       }).join('') +
-      (actionGuest.phone ? '<a href="https://wa.me/'+(actionGuest.phone||'').replace(/[\s\-+()]/g,'')+'?text='+encodeURIComponent((fr?'Brief villa — ':'Villa brief — ')+actionGuest.name+'\n'+boardTasks.map(t=>'• ['+t.label+'] '+t.text).join('\n'))+'" target="_blank" style="display:block;margin:8px 0 4px;padding:9px;background:#25D366;color:#fff;border-radius:8px;font-size:12px;font-weight:600;text-align:center;text-decoration:none">📲 '+(fr?'Envoyer brief staff':'Send staff brief')+'</a>' : '') +
+      // v-item83 : meme correction que renderBookingCardV2/openDetail — ce bouton
+      // envoyait le brief interne au telephone du GUEST, faute de numero staff en base.
+      '<button type="button" onclick="var _c=(typeof clients!==\'undefined\')?clients.find(function(x){return x.id===' + JSON.stringify(actionGuest.id) + ';}):null; if(typeof ariaOpenWithStaffBrief===\'function\'&&_c)ariaOpenWithStaffBrief(_c);" style="display:block;width:100%;margin:8px 0 4px;padding:9px;background:#1B4332;color:#fff;border:0;border-radius:8px;font-size:12px;font-weight:600;text-align:center;cursor:pointer;font-family:inherit">📋 '+(fr?'Préparer le brief staff':'Prepare staff brief')+'</button>' +
       '</div>';
 
     const qvEl = document.getElementById('todayQV');
@@ -21316,7 +21323,9 @@ function renderTodayQV() {
               '</div>' +
             '</div>';
           }).join('') +
-          (nextUp.phone ? '<a href="https://wa.me/'+(nextUp.phone||'').replace(/[\s\-+()]/g,'')+'?text='+encodeURIComponent((fr?'Brief villa — ':'Villa brief — ')+nextUp.name+'\n'+staffTasks.map(t=>'• ['+t.label+'] '+t.text).join('\n'))+'" target="_blank" style="display:block;margin:10px 0 2px;padding:9px;background:#25D366;color:#fff;border-radius:8px;font-size:12px;font-weight:600;text-align:center;text-decoration:none">📲 '+(fr?'Envoyer brief staff':'Send staff brief')+'</a>' : '') +
+          // v-item83 : meme correction que renderBookingCardV2/openDetail — ce bouton
+          // envoyait le brief interne au telephone du GUEST, faute de numero staff en base.
+          '<button type="button" onclick="var _c=(typeof clients!==\'undefined\')?clients.find(function(x){return x.id===' + JSON.stringify(nextUp.id) + ';}):null; if(typeof ariaOpenWithStaffBrief===\'function\'&&_c)ariaOpenWithStaffBrief(_c);" style="display:block;width:100%;margin:10px 0 2px;padding:9px;background:#1B4332;color:#fff;border:0;border-radius:8px;font-size:12px;font-weight:600;text-align:center;cursor:pointer;font-family:inherit">📋 '+(fr?'Préparer le brief staff':'Prepare staff brief')+'</button>' +
         '</div>';
 
       const qvEl = document.getElementById('todayQV');

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v342 (v-item82: readiness Briefed check reads staff_briefed_at instead of guessing a keyword in notes, 3 sites + pull/push; also lands the item81b Payment cell + CSS fix that v341 missed)
-const CACHE = 'stafflo-v342';
+// Stafflo Service Worker — v343 (v-item83: staff-brief WhatsApp buttons no longer send internal notes to the guest phone; all 4 sites route through ariaOpenWithStaffBrief instead)
+const CACHE = 'stafflo-v343';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
