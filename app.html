@@ -2103,6 +2103,14 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 
 .v5d-aria-summary { background:#fff; border:1px solid #E5DCC8; border-left:3px solid #C9963A; border-radius:10px; padding:12px 14px; font-family:'DM Sans','Inter',sans-serif; font-size:13px; color:#0F2318; line-height:1.55; }
 
+.v5d-points { background:#fdf6e8; border:1px dashed rgba(201,150,58,.55); border-radius:11px; padding:12px 14px; margin:14px 0 4px; }
+.v5d-points-h { font-size:9px; letter-spacing:.13em; text-transform:uppercase; color:#C9963A; font-weight:700; margin-bottom:9px; }
+.v5d-pt { display:flex; align-items:center; gap:9px; padding:7px 0; font-size:13px; line-height:1.4; }
+.v5d-pt + .v5d-pt { border-top:1px solid rgba(201,150,58,.2); }
+.v5d-pt-t { flex:1; }
+.v5d-pt-c { font-size:9px; font-weight:700; color:#a33; background:#fdf0f0; border-radius:99px; padding:2px 7px; white-space:nowrap; }
+.v5d-pt-b { font-size:9px; font-weight:700; color:#8a8578; background:rgba(15,35,24,.06); border-radius:99px; padding:2px 7px; white-space:nowrap; }
+
 .v5d-cta-row { flex-shrink:0; display:flex; gap:10px; padding:12px 14px; padding-bottom:max(12px, env(safe-area-inset-bottom,12px)); background:#fff; border-top:1px solid #E5DCC8; }
 .v5d-cta-row .v5-btn { flex:1; }
 
@@ -5064,6 +5072,7 @@ window.renderSetupOneLiner = function(){
     <div class="v5d-stage" id="v5dStage">
       <section class="v5d-pane" data-tab="stay">
         <div class="v5d-stay-grid" id="v5dStayGrid"></div>
+        <div class="v5d-points" id="v5dPoints" hidden></div>
         <h4 class="v5d-h4" data-fr="Résumé ARIA" data-en="ARIA summary">ARIA summary</h4>
         <div class="v5d-aria-summary" id="v5dAriaSummary">
           <div class="v5d-skel" style="height:80px"></div>
@@ -31166,6 +31175,40 @@ function startTour(){
     if (P[k]) openFicheV1(P[k]);
   }
 
+  // v-item89 : les points a trancher vivent en base (table decisions, RPC open_decisions).
+  // Un trou signale ce qu'on ignore ; on ne le comble jamais a la place du proprietaire.
+  // Nico porte « courses par eux ou deleguees ? » depuis des jours — ARIA a invente un
+  // acompte de 300 EUR pour combler ce vide. Un point ouvert et visible vaut mieux.
+  async function renderOpenPoints(c){
+    var host = document.getElementById('v5dPoints');
+    if (!host || !c || !c.id) return;
+    host.hidden = true; host.innerHTML = '';
+    var FR = fr();
+    try {
+      var r = await fetch(SB_URL + '/rest/v1/rpc/open_decisions', {
+        method: 'POST',
+        headers: { 'apikey': SB_ANON, 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      if (!r.ok) return;
+      var rows = await r.json();
+      if (!Array.isArray(rows)) return;
+      var mine = rows.filter(function(p){ return p.client_id === c.id; });
+      if (!mine.length) return;   // fiche complete = bandeau silencieux
+      host.innerHTML =
+        '<div class="v5d-points-h">' + (FR ? 'À trancher sur ce séjour' : 'To decide on this stay') + '</div>' +
+        mine.map(function(p){
+          return '<div class="v5d-pt">' +
+                   '<span>' + (p.kind === 'conflict' ? '≠' : '❓') + '</span>' +
+                   '<span class="v5d-pt-t">' + escapeHtml(p.title || '') + '</span>' +
+                   (p.is_blocked ? '<span class="v5d-pt-b">' + (FR?'bloqué':'blocked') + '</span>'
+                                 : (p.cost_label ? '<span class="v5d-pt-c">' + escapeHtml(p.cost_label) + '</span>' : '')) +
+                 '</div>';
+        }).join('');
+      host.hidden = false;
+    } catch(e) { /* silencieux : un bandeau absent vaut mieux qu'un bandeau faux */ }
+  }
+
   function renderStay(c){
     var FR = fr();
     var grid = $('v5dStayGrid');
@@ -31209,6 +31252,7 @@ function startTour(){
         cell.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); open(); } });
       });
     }
+    renderOpenPoints(c);
     // Checklists — reuse the v3_ops storage from Today v3
     function renderChecklist(hostId, phase, items){
       var host = $(hostId);

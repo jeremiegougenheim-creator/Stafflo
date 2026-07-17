@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v339 (v-item88: closeGuestDetailV5 blurs focus before aria-hidden to stop Chrome's "descendant retained focus" block)
-const CACHE = 'stafflo-v339';
+// Stafflo Service Worker — v340 (v-item89: stay pane shows open decisions.decisions points via open_decisions RPC, read-only, silent when none)
+const CACHE = 'stafflo-v340';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
