@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v332 (v-item79: stay NET prefers the real platform-confirmed net over a recalculated estimate; stay tiles open their provenance)
-const CACHE = 'stafflo-v332';
+// Stafflo Service Worker — v333 (v-item85: adults/children/infants carried through the crm_clients pull and both push sites, NULL preserved)
+const CACHE = 'stafflo-v333';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
