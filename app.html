@@ -37297,11 +37297,10 @@ function startTour(){
         + (D.has_children ? (lang==='fr' ? ' · avec enfants' : ' · with children') : '');
     }
 
-    // menus : crm_clients.meals EST le contenu du slot (texte déjà rédigé).
-    // Repli sur details.meal_plan (structuré) seulement si meals est vide.
-    if (client.meals && String(client.meals).trim()) {
-      ctx.menus_per_day = String(client.meals).trim();
-    } else if (D.meal_plan && typeof D.meal_plan === 'object') {
+    // v-item71 : details.meal_plan d'abord — il ne contient QUE les repas. client.meals
+    // est un texte libre qui répète déjà les exclusions/desserts/extras/question portés
+    // par alerts_block : l'utiliser en premier faisait sortir la note en double.
+    if (D.meal_plan && typeof D.meal_plan === 'object' && Object.keys(D.meal_plan).length) {
       var _mp = [];
       Object.keys(D.meal_plan).forEach(function(k){
         if (k === 'remaining_to_pick') return;
@@ -37309,6 +37308,8 @@ function startTour(){
       });
       if (D.meal_plan.remaining_to_pick) _mp.push('→ ' + D.meal_plan.remaining_to_pick + (lang==='fr' ? ' repas à choisir sur place' : ' meals to pick on site'));
       if (_mp.length) ctx.menus_per_day = _mp.join('\n');
+    } else if (client.meals && String(client.meals).trim()) {
+      ctx.menus_per_day = String(client.meals).trim();   // repli : pas de plan structuré
     }
 
     // alertes : exclusions, extras à acheter, et question non tranchée. Une question

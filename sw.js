@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v325 (v-item69: staff_brief_template fills 6 more slots from crm_clients/meals/staff_members)
-const CACHE = 'stafflo-v325';
+// Stafflo Service Worker — v326 (v-item71: staff_brief_template MENU prefers details.meal_plan so it stops repeating alerts_block)
+const CACHE = 'stafflo-v326';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
