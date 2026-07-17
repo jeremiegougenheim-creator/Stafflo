@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v345 (v-item81c: Payment cell stops reading empty pay_status as unpaid; distinguishes paid/pending/via-platform/unknown)
-const CACHE = 'stafflo-v345';
+// Stafflo Service Worker — v346 (v-item85: fiche gains a "what to do now" banner, deduced from arrival/departure dates + staffBriefedAt, silent when nothing is certain)
+const CACHE = 'stafflo-v346';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

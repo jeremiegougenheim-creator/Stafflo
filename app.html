@@ -2066,6 +2066,14 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5d-phase.is-live { background:#7ec8a0; color:#0b2b1c; }
 .v5d-phase.is-past { background:rgba(250,246,238,.15); color:rgba(250,246,238,.7); }
 
+.v5d-now { flex-shrink:0; display:flex; align-items:center; gap:12px; padding:13px 16px; background:rgba(201,150,58,.13); border-bottom:1px solid rgba(201,150,58,.28); }
+.v5d-now-txt { flex:1; min-width:0; }
+.v5d-now-l { font-family:'DM Sans','Inter',sans-serif; font-size:9px; letter-spacing:.11em; text-transform:uppercase; color:#C9963A; font-weight:700; }
+.v5d-now-w { font-size:12.5px; line-height:1.45; color:#0F2318; margin-top:2px; }
+.v5d-now-b { flex-shrink:0; background:#C9963A; color:#0F2318; border:0; border-radius:9px; padding:11px 18px; font-family:'DM Sans','Inter',sans-serif; font-size:13px; font-weight:700; cursor:pointer; }
+.v5d-now-b:hover { filter:brightness(1.08); }
+@media (max-width:520px){ .v5d-now { flex-direction:column; align-items:stretch; gap:10px; } .v5d-now-b { width:100%; } }
+
 .v5d-tabs { flex-shrink:0; display:flex; gap:0; padding:0 14px; background:#fff; border-bottom:1px solid #E5DCC8; overflow-x:auto; scrollbar-width:none; }
 .v5d-tabs::-webkit-scrollbar { display:none; }
 .v5d-tab { flex-shrink:0; background:none; border:none; padding:11px 14px; font-family:'DM Sans','Inter',sans-serif; font-size:13px; font-weight:600; color:#6B6760; cursor:pointer; border-bottom:2px solid transparent; transition:color .15s, border-color .15s; white-space:nowrap; }
@@ -5086,6 +5094,8 @@ window.renderSetupOneLiner = function(){
       <div class="v5d-hero-when" id="v5dWhen"></div>
     </div>
   </div>
+
+  <div class="v5d-now" id="v5dNow" hidden></div>
 
   <nav class="v5d-tabs" id="v5dTabs" role="tablist">
     <button class="v5d-tab is-on" data-tab="stay"    type="button" data-fr="Séjour"  data-en="Stay">Stay</button>
@@ -31295,6 +31305,41 @@ function startTour(){
     }).join('');
   }
 
+  // v-item85 : la fiche montrait des faits sans jamais dire quoi faire. Cette action
+  // se DEDUIT de faits verifiables (dates + staffBriefedAt, item 82) — jamais devinee.
+  // Si aucune condition n'est certaine, le bandeau ne s'affiche pas : une fiche sans
+  // urgence reste silencieuse.
+  function renderNowAction(c){
+    var host = document.getElementById('v5dNow');
+    if (!host) return;
+    host.hidden = true; host.innerHTML = '';
+    var FR = fr();
+    if (!c.arrival) return;
+    var today = new Date(); today.setHours(0,0,0,0);
+    var dArr = Math.round((new Date(c.arrival + 'T12:00:00') - today) / 86400000);
+    var dDep = c.departure ? Math.round((new Date(c.departure + 'T12:00:00') - today) / 86400000) : null;
+    if (dDep != null && dDep < 0) return;          // sejour termine : rien a faire
+    var why = '', label = '', act = null;
+    if (dArr >= 0 && dArr <= 3 && !c.staffBriefedAt) {
+      why = FR ? ('Personne n’a été briefé, et ils arrivent ' + (dArr === 0 ? 'aujourd’hui' : dArr === 1 ? 'demain' : 'dans ' + dArr + ' jours') + '.')
+               : ('Nobody has been briefed, and they arrive ' + (dArr === 0 ? 'today' : dArr === 1 ? 'tomorrow' : 'in ' + dArr + ' days') + '.');
+      label = FR ? 'Briefer l’équipe' : 'Brief the team';
+      act = function(){ if (typeof ariaOpenWithStaffBrief === 'function') ariaOpenWithStaffBrief(c); };
+    } else if (dArr < 0 && dDep != null && dDep >= 0 && dDep <= 1) {
+      why = FR ? ('Ils partent ' + (dDep === 0 ? 'aujourd’hui' : 'demain') + '. Le décompte se prépare maintenant.')
+               : ('They leave ' + (dDep === 0 ? 'today' : 'tomorrow') + '. Time to prepare the final count.');
+      label = FR ? 'Préparer le décompte' : 'Prepare the count';
+      act = function(){ if (typeof ariaOpenWithMealRecapPrompt === 'function') ariaOpenWithMealRecapPrompt(c); };
+    } else { return; }
+    host.innerHTML =
+      '<div class="v5d-now-txt"><div class="v5d-now-l">' + (FR?'La chose à faire maintenant':'What to do now') + '</div>' +
+      '<div class="v5d-now-w">' + escapeHtml(why) + '</div></div>' +
+      '<button class="v5d-now-b" type="button" id="v5dNowBtn">' + escapeHtml(label) + '</button>';
+    var b = document.getElementById('v5dNowBtn');
+    if (b && act) b.onclick = act;
+    host.hidden = false;
+  }
+
   function renderStay(c){
     var FR = fr();
     var grid = $('v5dStayGrid');
@@ -31341,6 +31386,7 @@ function startTour(){
     renderOpenPoints(c);
     renderMoney(c, net, _netEstime, _fin, nights);
     renderHeroWhen(c);
+    renderNowAction(c);
     // Checklists — reuse the v3_ops storage from Today v3
     function renderChecklist(hostId, phase, items){
       var host = $(hostId);
