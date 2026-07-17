@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v330 (v-item62: autoSaveGuest dup-match accepts stay overlap instead of requiring exact arrival date)
-const CACHE = 'stafflo-v330';
+// Stafflo Service Worker — v331 (v-item78: autoSaveGuest dup-match accepts a bounded name prefix, e.g. Nicolas ~ Nico)
+const CACHE = 'stafflo-v331';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -27345,8 +27345,19 @@ window.addEventListener('DOMContentLoaded', function() {
     };
     var existing = (!g.arrival || !_newTok.length) ? null : ((clients||[]).find(function(c){
       if (!_sameStay(c)) return false;
+      // v-item78 : égalité exacte de token exigée — « Nicolas » (signature d'email) ne
+      // matchait pas « Nico (Lorren Bargain) », d'où une fiche vide en double sur le
+      // même séjour. On accepte le préfixe (≥ 4 car.) dans un sens comme dans l'autre.
+      // Le risque de faux positif est borné par _sameStay : la villa n'accueille qu'un
+      // groupe à la fois, donc deux séjours qui se chevauchent SONT le même séjour.
       return _dn(c.name).split(/\s+/).filter(function(t){ return t.length >= 2; })
-        .some(function(t){ return _newTok.indexOf(t) >= 0; });
+        .some(function(t){
+          return _newTok.some(function(n){
+            if (n === t) return true;
+            if (n.length >= 4 && t.length >= 4) return n.indexOf(t) === 0 || t.indexOf(n) === 0;
+            return false;
+          });
+        });
     }) || null);
 
     if (existing){
