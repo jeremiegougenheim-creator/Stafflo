@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v340 (v-item89: stay pane shows open decisions.decisions points via open_decisions RPC, read-only, silent when none)
-const CACHE = 'stafflo-v340';
+// Stafflo Service Worker — v341 (v-item81: stay pane gains a Money block — source/gross/commission/net — first step of the calendar-card merge, card untouched)
+const CACHE = 'stafflo-v341';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
