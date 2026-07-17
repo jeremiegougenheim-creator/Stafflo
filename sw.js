@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v338 (v-item87: reconcileConfirmationBreakdowns adds a 4th match level — unique Airbnb name when the email has no parsable date)
-const CACHE = 'stafflo-v338';
+// Stafflo Service Worker — v339 (v-item88: closeGuestDetailV5 blurs focus before aria-hidden to stop Chrome's "descendant retained focus" block)
+const CACHE = 'stafflo-v339';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
