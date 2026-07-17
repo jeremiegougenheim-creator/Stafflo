@@ -31912,7 +31912,29 @@ function startTour(){
         var res = await fetch(url, { headers: sbHdrs(cfg.sbKey) });
         if (!res.ok) return null;
         var rows = await res.json();
-        return (rows && rows[0]) ? rows[0] : null;
+        if (rows && rows[0]) return rows[0];
+        // v-item63 : la table `sejours` ne contient qu'un jeu de test (Emma, juin) — les
+        // séjours réels vivent dans crm_clients. Repli, mappé vers la forme attendue par
+        // prefillFromSejour. On ne renseigne QUE ce que la base sait réellement :
+        // pas de devise, pas d'avances, pas de répartition adultes/enfants inventée.
+        var url2 = cfg.sbUrl + '/rest/v1/crm_clients?select=name,arrival,departure,guests'
+          + '&deleted_at=is.null'
+          + '&name=ilike.' + encodeURIComponent('%' + guestName + '%')
+          + '&arrival=not.is.null&order=arrival.desc&limit=1';
+        var res2 = await fetch(url2, { headers: sbHdrs(cfg.sbKey) });
+        if (!res2.ok) return null;
+        var rows2 = await res2.json();
+        var c = (rows2 && rows2[0]) ? rows2[0] : null;
+        if (!c) return null;
+        var g = parseInt(c.guests, 10) || 0;
+        return {
+          guest_name: c.name || '',
+          checkin_date: c.arrival || null,
+          checkout_date: c.departure || null,
+          nb_adults: g, nb_children: 0,   // la base ne sépare pas — voir _fromCrm
+          devise: null, avances: null,
+          _fromCrm: true
+        };
       } catch(e){ try{console.warn('[billing] fetchSejourForGuest', e);}catch(_){} return null; }
     }
 
@@ -31967,16 +31989,20 @@ function startTour(){
           s._sejourAvances = sej.avances.map(function(a){ return { amount:(+((a&&a.amount))||0), currency:((a&&a.currency)||'MAD'), note:((a&&a.note)||'') }; });
           resolvePendingAvances(s);
         }
-        s._prefill = { name: st.guest_first_name, dates: st.stay_dates, nbAdults:(parseInt(sej.nb_adults,10)||0), nbChildren:(parseInt(sej.nb_children,10)||0), avances:(s._sejourAvances||[]) };
+        s._prefill = { name: st.guest_first_name, dates: st.stay_dates, nbAdults:(parseInt(sej.nb_adults,10)||0), nbChildren:(parseInt(sej.nb_children,10)||0), avances:(s._sejourAvances||[]), fromCrm: !!sej._fromCrm };
       } catch(e){ try{console.warn('[billing] prefillFromSejour', e);}catch(_){} }
     }
 
     function buildPrefillSummary(s){
       var p = s._prefill; if (!p) return '';
       var ad = p.nbAdults, ch = p.nbChildren;
-      var who = fr()
-        ? (ad + (ad>1?' adultes':' adulte') + (ch>0 ? (' · ' + ch + (ch>1?' enfants':' enfant')) : ''))
-        : (ad + (ad>1?' adults':' adult') + (ch>0 ? (' · ' + ch + (ch>1?' children':' child')) : ''));
+      // v-item63 : crm_clients.guests est un total, pas une répartition — dire
+      // « N adultes » serait inventer une répartition que la base ne connaît pas.
+      var who = p.fromCrm
+        ? (fr() ? (ad + (ad>1?' personnes':' personne')) : (ad + (ad>1?' people':' person')))
+        : (fr()
+            ? (ad + (ad>1?' adultes':' adulte') + (ch>0 ? (' · ' + ch + (ch>1?' enfants':' enfant')) : ''))
+            : (ad + (ad>1?' adults':' adult') + (ch>0 ? (' · ' + ch + (ch>1?' children':' child')) : '')));
       var av = (p.avances||[]).map(function(a){ return (a.amount + ' ' + (a.currency||'MAD')); }).join(' + ');
       var bits = [];
       if (p.dates) bits.push(p.dates);

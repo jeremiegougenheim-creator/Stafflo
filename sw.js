@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v322 (v-item59: setLang replays v3/v4/v5 renderers so language switch repaints modern surfaces)
-const CACHE = 'stafflo-v322';
+// Stafflo Service Worker — v323 (v-item63: end-of-stay billing prefill falls back to crm_clients when sejours has no row)
+const CACHE = 'stafflo-v323';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
