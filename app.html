@@ -1991,6 +1991,16 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5-badge.is-tag      { background:rgba(15,35,24,.06); color:#0F2318; border:1px solid #E5DCC8; }
 .v5-badge.is-baby     { background:#C9963A; color:#0F2318; }
 .v5-badge.is-kids     { background:rgba(201,150,58,.16); color:#7A5A1A; border:1px solid rgba(201,150,58,.4); }
+
+/* v-item84 : le hero passe en vert foncé — ces badges avaient un fond teinté de
+   la couleur de fond et un texte de cette même couleur (is-tag : #0F2318 sur
+   rgba(15,35,24,.06)), donc invisibles dès que le fond devient #0F2318. On scope
+   au hero : les mêmes classes servent dans la grille des guests sur fond clair
+   (l.30790, l.30926) et ne doivent pas bouger là-bas. */
+.v5d-hero .v5-badge.is-tag     { background:rgba(250,246,238,.10); color:#FAF6EE; border-color:rgba(250,246,238,.28); }
+.v5d-hero .v5-badge.is-kids    { background:rgba(201,150,58,.22); color:#F4D99B; border-color:rgba(201,150,58,.5); }
+.v5d-hero .v5-badge.is-diet    { background:rgba(250,246,238,.92); color:#4A463F; border-color:transparent; }
+.v5d-hero .v5-badge.is-current { background:#7ec8a0; color:#0b2b1c; }
 .v5-hero-meta { font-family:'DM Sans','Inter',sans-serif; font-size:12.5px; color:#6B6760; margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .v5-hero-ctas { display:flex; gap:10px; }
 
@@ -2047,10 +2057,14 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5d-back:hover, .v5d-more:hover { background:#FAF6EE; }
 .v5d-topbar-title { flex:1; min-width:0; font-family:'Cormorant Garamond',Georgia,serif; font-size:14px; font-weight:600; color:#0F2318; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-.v5d-hero { flex-shrink:0; display:flex; align-items:center; gap:14px; padding:14px 16px; background:#fff; border-bottom:1px solid #E5DCC8; }
+.v5d-hero { flex-shrink:0; display:flex; align-items:center; gap:14px; padding:16px; background:#0F2318; border-bottom:1px solid rgba(201,150,58,.25); }
 .v5d-hero-body { flex:1; min-width:0; }
-.v5d-hero-name { font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:600; color:#0F2318; line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.v5d-hero-name { font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:600; color:#FAF6EE; line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .v5d-hero-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+.v5d-hero-when { font-family:'Cormorant Garamond',Georgia,serif; font-size:13px; font-style:italic; color:#C9963A; margin-top:5px; }
+.v5d-phase { display:inline-block; font-family:'DM Sans','Inter',sans-serif; font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 8px; border-radius:99px; background:#C9963A; color:#0F2318; margin-left:8px; vertical-align:middle; }
+.v5d-phase.is-live { background:#7ec8a0; color:#0b2b1c; }
+.v5d-phase.is-past { background:rgba(250,246,238,.15); color:rgba(250,246,238,.7); }
 
 .v5d-tabs { flex-shrink:0; display:flex; gap:0; padding:0 14px; background:#fff; border-bottom:1px solid #E5DCC8; overflow-x:auto; scrollbar-width:none; }
 .v5d-tabs::-webkit-scrollbar { display:none; }
@@ -5069,6 +5083,7 @@ window.renderSetupOneLiner = function(){
     <div class="v5d-hero-body">
       <div class="v5d-hero-name" id="v5dName">—</div>
       <div class="v5d-hero-tags" id="v5dTags"></div>
+      <div class="v5d-hero-when" id="v5dWhen"></div>
     </div>
   </div>
 
@@ -31318,6 +31333,7 @@ function startTour(){
     }
     renderOpenPoints(c);
     renderMoney(c, net, _netEstime, _fin, nights);
+    renderHeroWhen(c);
     // Checklists — reuse the v3_ops storage from Today v3
     function renderChecklist(hostId, phase, items){
       var host = $(hostId);
@@ -31428,6 +31444,38 @@ function startTour(){
         });
       });
     }
+  }
+
+  // v-item84 : le header ne disait pas ou en est le sejour. La phase se calcule
+  // depuis les dates — jamais devinee, et absente si les dates manquent.
+  function renderHeroWhen(c){
+    var host = document.getElementById('v5dWhen');
+    if (!host) return;
+    var FR = fr();
+    if (!c.arrival) { host.textContent = ''; return; }
+    var today = new Date(); today.setHours(0,0,0,0);
+    var arr = new Date(c.arrival + 'T12:00:00');
+    var dep = c.departure ? new Date(c.departure + 'T12:00:00') : null;
+    var dArr = Math.round((arr - today) / 86400000);
+    var dDep = dep ? Math.round((dep - today) / 86400000) : null;
+    var lbl = '', cls = '';
+    if (dDep != null && dDep < 0)      { lbl = FR?'Terminé':'Past';        cls = 'is-past'; }
+    else if (dArr > 0)                 { lbl = 'J−' + dArr;                cls = ''; }
+    else if (dArr === 0)               { lbl = FR?'Arrive aujourd’hui':'Arrives today'; cls = 'is-live'; }
+    else if (dDep === 0)               { lbl = FR?'Part aujourd’hui':'Leaves today';    cls = 'is-live'; }
+    else if (dDep === 1)               { lbl = FR?'Part demain':'Leaves tomorrow';      cls = 'is-live'; }
+    else                               { lbl = FR?'En cours':'In house';   cls = 'is-live'; }
+    var nm = document.getElementById('v5dName');
+    if (nm && !nm.querySelector('.v5d-phase')) {
+      nm.insertAdjacentHTML('beforeend', '<span class="v5d-phase ' + cls + '">' + lbl + '</span>');
+    } else if (nm) {
+      var p = nm.querySelector('.v5d-phase');
+      p.className = 'v5d-phase ' + cls; p.textContent = lbl;
+    }
+    var loc = FR ? 'fr-FR' : 'en-GB';
+    var f = function(iso){ var d = new Date(iso + 'T12:00:00');
+      return isNaN(d) ? iso : d.toLocaleDateString(loc, { weekday:'short', day:'numeric', month:'long' }); };
+    host.textContent = f(c.arrival) + (c.departure ? ' → ' + f(c.departure) : '');
   }
 
   function renderHeroTags(c){

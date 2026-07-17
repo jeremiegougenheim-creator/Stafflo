@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v343 (v-item83: staff-brief WhatsApp buttons no longer send internal notes to the guest phone; all 4 sites route through ariaOpenWithStaffBrief instead)
-const CACHE = 'stafflo-v343';
+// Stafflo Service Worker — v344 (v-item84: hero header shows stay phase + dates on a dark green band; badge colors scoped to .v5d-hero only, guest grid untouched)
+const CACHE = 'stafflo-v344';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
