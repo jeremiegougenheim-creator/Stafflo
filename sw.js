@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v335 (v-item70: staff_brief action bypasses the free-writing LLM and seeds /template staff_brief_template, same short-circuit pattern as meal_recap)
-const CACHE = 'stafflo-v335';
+// Stafflo Service Worker — v336 (v-item80: hero header shows baby/kids badges from the adults/children/infants split when known)
+const CACHE = 'stafflo-v336';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
