@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v327 (v-item72: bottom nav active tab no longer inherits old top-bar .nav-btn styling)
-const CACHE = 'stafflo-v327';
+// Stafflo Service Worker — v328 (v-item73: Maison tab Expenses section reads maison_charges instead of the empty tasks table)
+const CACHE = 'stafflo-v328';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

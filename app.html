@@ -19029,6 +19029,29 @@ async function fetchTasks() {
   } catch(e) { return []; }
 }
 
+// v-item73 : la section Dépenses lisait la table `tasks` (vide, 0 ligne) pendant que
+// la compta réelle vit dans maison_charges — d'où « Aucune dépense » à côté d'une
+// carte affichant 8 750 MAD, sur le même écran. On lit la même source que la carte.
+// Les charges sont datées par period_month (due_date est null en base) : c'est lui
+// qui fait foi.
+var _chargesCache = null, _chargesCacheTs = 0;
+async function fetchMaisonCharges(periodMonth) {
+  var nowMs = Date.now();
+  if (_chargesCache && (nowMs - _chargesCacheTs) < 120000) return _chargesCache;
+  try {
+    var r = await fetch(
+      SB_URL + '/rest/v1/maison_charges?select=id,label,payee,amount,currency,period_month,status,paid_at'
+        + '&period_month=eq.' + encodeURIComponent(periodMonth)
+        + '&order=label.asc',
+      { headers: authHeaders() }
+    );
+    if (!r.ok) return [];
+    var data = await r.json();
+    _chargesCache = data; _chargesCacheTs = nowMs;
+    return data;
+  } catch(e) { return []; }
+}
+
 function formatTasksForPrompt(tasks, fr2) {
   if (!tasks || !tasks.length) return '';
   var today = new Date(); today.setHours(0,0,0,0);
@@ -19120,13 +19143,10 @@ async function renderMaisonTasks() {
     return d >= today && d <= in7;
   }).sort(function(a, b) { return a._due < b._due ? -1 : 1; });
   var noDate = active2.filter(function(t2) { return !t2._due; });
-  var depenses = tasks.filter(function(t2) {
-    if (t2.category !== 'depense' || !t2.amount || t2.status === 'cancelled') return false;
-    if (!t2.due_date) return false;
-    var d = new Date(t2.due_date + 'T12:00:00');
-    return d >= monthStart && d < monthEnd;
-  });
-  var totalDep = depenses.reduce(function(s, t2) { return s + (parseFloat(t2.amount) || 0); }, 0);
+  // v-item73 : period_month, pas due_date (null en base sur les charges réelles).
+  var _pm = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-01';
+  var depenses = (await fetchMaisonCharges(_pm)).filter(function(c){ return c.status !== 'cancelled' && c.amount; });
+  var totalDep = depenses.reduce(function(s, c) { return s + (parseFloat(c.amount) || 0); }, 0);
   var secLbl = function(txt) { return '<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin:8px 0 5px">' + txt + '</div>'; };
   var html = '';
   if (thisWeek.length === 0 && noDate.length === 0) {
@@ -19141,11 +19161,22 @@ async function renderMaisonTasks() {
       noDate.forEach(function(t2) { html += _renderTaskRow(t2, fr2); });
     }
   }
-  html += secLbl('💸 ' + (fr2 ? 'Dépenses ce mois' : 'Expenses this month') + (totalDep > 0 ? ' — ' + Math.round(totalDep) + ' MAD' : ''));
+  // v-item73 : devise réelle, pas 'MAD' en dur. Plusieurs devises dans le mois →
+  // aucun total affiché (il serait faux) ; les lignes parlent pour elles-mêmes.
+  var _depCurs = depenses.reduce(function(a, c){ var cu = c.currency || 'MAD'; if (a.indexOf(cu) === -1) a.push(cu); return a; }, []);
+  var _depCur = depenses[0] && depenses[0].currency ? depenses[0].currency : 'MAD';
+  html += secLbl('💸 ' + (fr2 ? 'Dépenses ce mois' : 'Expenses this month') + (totalDep > 0 && _depCurs.length <= 1 ? ' — ' + Math.round(totalDep) + ' ' + _depCur : ''));
   if (!depenses.length) {
     html += '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">' + (fr2 ? 'Aucune dépense ce mois' : 'No expenses this month') + '</div>';
   } else {
-    depenses.forEach(function(t2) { html += _renderTaskRow(t2, fr2); });
+    depenses.forEach(function(c){
+      var paid = (c.status === 'paye' || c.status === 'paid');
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:12px">'
+        + '<span>' + (c.label || '') + (c.payee ? ' <span style="color:var(--muted)">· ' + c.payee + '</span>' : '') + '</span>'
+        + '<span style="white-space:nowrap">' + Math.round(parseFloat(c.amount)||0) + ' ' + (c.currency || 'MAD')
+        + ' <span style="font-size:10px;color:' + (paid ? 'var(--muted)' : 'var(--gold)') + '">' + (paid ? (fr2?'payé':'paid') : (fr2?'à régler':'due')) + '</span></span>'
+        + '</div>';
+    });
   }
   el.innerHTML = html;
 }
