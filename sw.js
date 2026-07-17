@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v329 (v-item75: dashboard inbox chip reads the same exact-count badge as the ARIA banner)
-const CACHE = 'stafflo-v329';
+// Stafflo Service Worker — v330 (v-item62: autoSaveGuest dup-match accepts stay overlap instead of requiring exact arrival date)
+const CACHE = 'stafflo-v330';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

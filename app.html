@@ -27328,8 +27328,23 @@ window.addEventListener('DOMContentLoaded', function() {
     // findDuplicate — match fort : même date d'arrivée (exacte) + ≥1 token de nom commun
     var _dn = function(s){ return (s||''). toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,' ').trim(); };
     var _newTok = _dn(g.name).split(/\s+/).filter(function(t){ return t.length >= 2; });
+    // v-item62 : la date d'arrivée exacte était exigée — « dimanche 12 juillet » dans
+    // un message vs 11/07 sur la fiche Airbnb suffisait à créer un doublon vide, et
+    // ARIA refusait ensuite de facturer (2 séjours contradictoires). Deux séjours d'un
+    // même client ne se chevauchent jamais : on accepte le chevauchement, ou ±3 jours
+    // sur l'arrivée quand une des périodes est incomplète.
+    var _d = function(s){ var t = Date.parse((s||'').slice(0,10)); return isNaN(t) ? null : t; };
+    var _DAY = 86400000;
+    var _sameStay = function(c){
+      var ca = _d(c.arrival), ga = _d(g.arrival);
+      if (ca == null || ga == null) return false;
+      if (ca === ga) return true;
+      var cd = _d(c.departure), gd = _d(g.departure);
+      if (cd != null && gd != null) return (ga <= cd && gd >= ca);   // chevauchement
+      return Math.abs(ca - ga) <= 3 * _DAY;                          // repli : ±3 jours
+    };
     var existing = (!g.arrival || !_newTok.length) ? null : ((clients||[]).find(function(c){
-      if (!c.arrival || c.arrival.slice(0,10) !== (g.arrival||'').slice(0,10)) return false;
+      if (!_sameStay(c)) return false;
       return _dn(c.name).split(/\s+/).filter(function(t){ return t.length >= 2; })
         .some(function(t){ return _newTok.indexOf(t) >= 0; });
     }) || null);
