@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v336 (v-item80: hero header shows baby/kids badges from the adults/children/infants split when known)
-const CACHE = 'stafflo-v336';
+// Stafflo Service Worker — v337 (v-item74: ARIA's maison context reads fetchMaisonCharges (real 8750 MAD) instead of the empty tasks table)
+const CACHE = 'stafflo-v337';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

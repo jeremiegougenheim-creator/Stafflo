@@ -14325,7 +14325,7 @@ async function handleChatQuestion(text) {
     var _prestaRows = []; try { _prestaRows = await fetchPrestataires(); } catch(e){}
     var _prestaBlock = formatPrestaForPrompt(_prestaRows, fr);
     var _taskRows2 = []; try { _taskRows2 = await fetchTasks(); } catch(e){}
-    var _maisonBlock = (typeof formatTasksForPrompt === 'function') ? formatTasksForPrompt(_taskRows2, fr) : '';
+    var _maisonBlock = (typeof formatTasksForPrompt === 'function') ? await formatTasksForPrompt(_taskRows2, fr) : '';
 
     var _dataHdr = fr ? '═══ DONNÉES FOURNIES (seule source de vérité) ═══' : '═══ PROVIDED DATA (sole source of truth) ═══';
     var _dataFtr = fr ? '═══ FIN DES DONNÉES ═══' : '═══ END OF DATA ═══';
@@ -19069,30 +19069,45 @@ async function fetchMaisonCharges(periodMonth) {
   } catch(e) { return []; }
 }
 
-function formatTasksForPrompt(tasks, fr2) {
+async function formatTasksForPrompt(tasks, fr2) {
   if (!tasks || !tasks.length) return '';
   var today = new Date(); today.setHours(0,0,0,0);
   var in7 = new Date(today.getTime() + 7 * 86400000);
-  var monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  var monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
   var week = tasks.filter(function(t2) {
     if (t2.status === 'done' || t2.status === 'cancelled' || !t2.due_date) return false;
     var d = new Date(t2.due_date + 'T12:00:00');
     return d >= today && d <= in7;
   });
-  var depenses = tasks.filter(function(t2) {
-    if (t2.category !== 'depense' || !t2.amount || t2.status === 'cancelled') return false;
-    if (!t2.due_date) return false;
-    var d = new Date(t2.due_date + 'T12:00:00');
-    return d >= monthStart && d < monthEnd;
-  });
-  var totalDep = depenses.reduce(function(s, t2) { return s + (parseFloat(t2.amount) || 0); }, 0);
+  // v-item74 : ce bloc lisait la table `tasks` (vide, 0 ligne) et filtrait sur due_date
+  // (null sur les charges réelles) — ARIA recevait « Dépenses ce mois : 0 MAD » sous
+  // l'en-tête « seule source de vérité », alors que maison_charges porte 8 750 MAD.
+  // Même source que l'onglet Maison (item 73) et que la carte du dashboard.
+  var _pm = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-01';
+  var depenses = [];
+  try { depenses = (await fetchMaisonCharges(_pm)).filter(function(c){ return c.status !== 'cancelled' && c.amount; }); } catch(e){}
+  var totalDep = depenses.reduce(function(s, c) { return s + (parseFloat(c.amount) || 0); }, 0);
   var lines = ['═══ MAISON (tâches & entretien) ═══'];
   var weekStr = week.length
     ? week.map(function(t2) { var a = Array.isArray(t2.assigned_to) && t2.assigned_to.length ? (' — ' + t2.assigned_to.join(', ')) : ''; return '· ' + t2.title + a + (t2.due_date ? ' (' + t2.due_date + ')' : ''); }).join('\n')
     : (fr2 ? 'Aucune tâche cette semaine' : 'No tasks this week');
   lines.push((fr2 ? 'À venir 7j :' : 'Next 7 days:') + '\n' + weekStr);
-  lines.push((fr2 ? 'Dépenses ce mois :' : 'Expenses this month:') + ' ' + Math.round(totalDep) + ' MAD' + (depenses.length ? ' (' + depenses.length + ' ligne' + (depenses.length > 1 ? 's' : '') + ')' : ''));
+  // Le détail, pas juste un total : ARIA doit pouvoir citer une ligne au lieu de
+  // résumer un chiffre. Un total seul invite à broder autour.
+  var _cur = (depenses[0] && depenses[0].currency) ? depenses[0].currency : 'MAD';
+  var _multi = depenses.some(function(c){ return (c.currency||'MAD') !== _cur; });
+  if (!depenses.length) {
+    lines.push((fr2 ? 'Dépenses ce mois : aucune charge enregistrée' : 'Expenses this month: no charge recorded'));
+  } else {
+    lines.push((fr2 ? 'Dépenses ce mois :' : 'Expenses this month:') +
+      (_multi ? '' : ' ' + Math.round(totalDep) + ' ' + _cur) +
+      ' (' + depenses.length + ' ligne' + (depenses.length > 1 ? 's' : '') + ')');
+    depenses.forEach(function(c){
+      var paid = (c.status === 'paye' || c.status === 'paid');
+      lines.push('· ' + (c.label||'') + (c.payee ? ' — ' + c.payee : '') + ' : ' +
+        Math.round(parseFloat(c.amount)||0) + ' ' + (c.currency||'MAD') +
+        ' (' + (paid ? (fr2?'payé':'paid') : (fr2?'à régler':'due')) + ')');
+    });
+  }
   lines.push('═══ FIN MAISON ═══');
   return lines.join('\n');
 }
