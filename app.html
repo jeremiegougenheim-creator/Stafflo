@@ -9523,6 +9523,23 @@ async function reconcileConfirmationBreakdowns() {
       var overlap = cArrival && cDeparture && sigArrival && sigDeparture && cArrival <= sigDeparture && cDeparture >= sigArrival;
       return nameMatches && overlap;
     });
+    // v-item87 : quand l'email ne livre pas de date parsable (sigArrival null), les 3
+    // niveaux ci-dessus échouent tous — même avec un nom sans ambiguïté. Esther Bell
+    // existe au CRM et sa confirmation était jetée à chaque boot. On accepte le nom
+    // SEUL, et seulement s'il ne désigne qu'une fiche : « guillaume » en désigne deux
+    // (Guillaume Bastard 28/06 et Guillaume sans date), et dans ce cas on ne devine pas.
+    if (!matches.length && !sigArrival && sigFirstName && sigFirstName.length >= 3) {
+      var byName = clientsRows.filter(function(c) {
+        return c.source && /airbnb/i.test(c.source) && c.name &&
+               c.name.toLowerCase().indexOf(sigFirstName) !== -1;
+      });
+      if (byName.length === 1) {
+        matches = byName;
+        console.log('[financial] ' + financial.bookingRef + ' : apparié par nom unique (« ' + sigFirstName + ' ») — aucune date dans l\'email.');
+      } else if (byName.length > 1) {
+        console.warn('[financial] ' + financial.bookingRef + ' : « ' + sigFirstName + ' » désigne ' + byName.length + ' fiches Airbnb et l\'email n\'a pas de date — non apparié (ambigu).');
+      }
+    }
     if (!matches.length) {
       console.warn('[financial] ' + financial.bookingRef + ' (' + (sig.name || '?') + ', arrival ' + (sigArrival || '?') + '): parsed OK but no matching Airbnb-sourced CRM record — nothing to write.');
       continue;

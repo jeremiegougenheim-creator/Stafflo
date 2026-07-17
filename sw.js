@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v337 (v-item74: ARIA's maison context reads fetchMaisonCharges (real 8750 MAD) instead of the empty tasks table)
-const CACHE = 'stafflo-v337';
+// Stafflo Service Worker — v338 (v-item87: reconcileConfirmationBreakdowns adds a 4th match level — unique Airbnb name when the email has no parsable date)
+const CACHE = 'stafflo-v338';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
