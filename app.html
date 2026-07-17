@@ -9147,7 +9147,7 @@ async function loadFromSupabase() {
         arrival: r.arrival||'', departure: r.departure||'',
         guests: r.guests||0, price: r.price||0, commission: r.commission||0,
         commMode: r.comm_mode||'percent', source: r.source||'Airbnb',
-        notes: r.notes||'', payStatus: r.pay_status||'',
+        notes: r.notes||'', meals: r.meals||'', payStatus: r.pay_status||'',
         bookingStatus: r.booking_status||'confirmed',
         contact_type: r.contact_type || null,
         messages: r.messages ? (typeof r.messages==='string' ? JSON.parse(r.messages) : r.messages) : null,
@@ -37283,6 +37283,58 @@ function startTour(){
       ctx.nights = Math.round((dep - arr) / 86400000);
     }
     if (client.guests) ctx.group_size = client.guests;
+
+    // v-item69 : staff_brief_template (actif, 11 slots) n'était alimenté qu'à 5/11 —
+    // les 6 slots qui font la valeur de la note sortaient en {slot} littéral. On remplit
+    // ce que la base sait, on ne comble jamais ce qu'elle ignore.
+    var D = client.details || {};
+    ctx.group_name = client.name || '';
+
+    // composition : la base ne stocke PAS la répartition adultes/enfants. has_children
+    // est le seul fait disponible — on ne déduit aucun nombre.
+    if (client.guests) {
+      ctx.group_composition = client.guests + (lang==='fr' ? ' personnes' : ' people')
+        + (D.has_children ? (lang==='fr' ? ' · avec enfants' : ' · with children') : '');
+    }
+
+    // menus : crm_clients.meals EST le contenu du slot (texte déjà rédigé).
+    // Repli sur details.meal_plan (structuré) seulement si meals est vide.
+    if (client.meals && String(client.meals).trim()) {
+      ctx.menus_per_day = String(client.meals).trim();
+    } else if (D.meal_plan && typeof D.meal_plan === 'object') {
+      var _mp = [];
+      Object.keys(D.meal_plan).forEach(function(k){
+        if (k === 'remaining_to_pick') return;
+        _mp.push('• ' + k.replace(/_/g, ' ') + ' : ' + D.meal_plan[k]);
+      });
+      if (D.meal_plan.remaining_to_pick) _mp.push('→ ' + D.meal_plan.remaining_to_pick + (lang==='fr' ? ' repas à choisir sur place' : ' meals to pick on site'));
+      if (_mp.length) ctx.menus_per_day = _mp.join('\n');
+    }
+
+    // alertes : exclusions, extras à acheter, et question non tranchée. Une question
+    // ouverte affichée est utile ; une réponse inventée serait dangereuse.
+    var _al = [];
+    if (Array.isArray(D.diet_exclusions) && D.diet_exclusions.length)
+      _al.push('⚠️ ' + (lang==='fr' ? 'Exclusions : ' : 'Exclusions: ') + D.diet_exclusions.join(', '));
+    if (D.desserts) _al.push('🍨 ' + D.desserts);
+    if (Array.isArray(D.extras) && D.extras.length)
+      _al.push('🛒 ' + (lang==='fr' ? 'À prévoir : ' : 'To buy: ') + D.extras.join(', '));
+    if (D.open_question)
+      _al.push('❓ ' + (lang==='fr' ? 'À trancher : ' : 'To decide: ') + D.open_question);
+    if (_al.length) ctx.alerts_block = _al.join('\n');
+
+    // contacts : staff_members porte name/role ; les champs `wa` sont vides en base —
+    // on liste ce qu'on a, on ne fabrique aucun numéro.
+    try {
+      var _c = (typeof getCfg === 'function') ? getCfg() : {};
+      var _sm = _c.staff_members || _c.staffMembers || [];
+      if (Array.isArray(_sm) && _sm.length) {
+        ctx.phone_contacts = _sm.map(function(s){
+          return (s.name||'') + (s.role ? ' (' + s.role + ')' : '') + (s.wa ? ' ' + s.wa : '');
+        }).filter(Boolean).join(' · ');
+      }
+    } catch(e){}
+
     return ctx;
   }
   

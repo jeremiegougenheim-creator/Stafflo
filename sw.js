@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v324 (v-item65: billing state survives finalize() so retouches recalc instead of regenerating from memory)
-const CACHE = 'stafflo-v324';
+// Stafflo Service Worker — v325 (v-item69: staff_brief_template fills 6 more slots from crm_clients/meals/staff_members)
+const CACHE = 'stafflo-v325';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
