@@ -27818,6 +27818,24 @@ window.addEventListener('DOMContentLoaded', function() {
     try { inp.focus(); } catch(e){}
   }
 
+  // v-item70 : le brief staff partait en rédaction libre (ai_task write_staff) et
+  // comblait les trous : « 8 chambres » (la villa en a 5, 8 est le nb de personnes),
+  // « acompte de 300 € » (aucune source), « courses déléguées » alors que
+  // details.open_question dit que ce n'est PAS tranché. Le template staff_brief_template
+  // (actif) construit la note depuis la fiche et signale ses trous au lieu de les combler.
+  function ariaOpenWithStaffBrief(guest){
+    if (!guest) return;
+    var firstName = ((guest.name||'').split(' ')[0]) || '';
+    var seed = '/template staff_brief_template' + (firstName ? ' ' + firstName : '');
+    var inp = document.getElementById('chatInput');
+    if (!inp){ alert('Ouvre ARIA et tape :\n\n' + seed); return; }
+    inp.value = seed;
+    try { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, 220) + 'px'; } catch(e){}
+    try { var sb = document.getElementById('chatSendBtn'); if (sb) sb.disabled = false; } catch(e){}
+    try { inp.scrollIntoView({ block:'center', behavior:'smooth' }); } catch(e){}
+    try { inp.focus(); } catch(e){}
+  }
+
   // Génère le contenu d'une action via LLM puis montre les boutons d'envoi
   window.ariaSmartActionGenerate = async function(groupId, idx, btn){
     var actions = (window._ariaPendingActions||{})[groupId];
@@ -27829,6 +27847,8 @@ window.addEventListener('DOMContentLoaded', function() {
       ariaOpenWithMealRecapPrompt(a.guest);
       return;
     }
+    // v-item70 : même principe que meal_recap — le déterministe passe avant le LLM.
+    if (a.purpose === 'staff_brief'){ ariaOpenWithStaffBrief(a.guest); return; }
     btn.disabled = true; btn.textContent = '⏳ ' + (f?'Génération...':'Generating...');
     try {
       var p = buildAiPrompt(a);

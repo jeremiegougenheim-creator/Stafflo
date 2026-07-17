@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v334 (v-item86: guests fiche now reads the adults/children/infants split instead of claiming only a total is stored)
-const CACHE = 'stafflo-v334';
+// Stafflo Service Worker — v335 (v-item70: staff_brief action bypasses the free-writing LLM and seeds /template staff_brief_template, same short-circuit pattern as meal_recap)
+const CACHE = 'stafflo-v335';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
