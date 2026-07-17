@@ -2132,6 +2132,16 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5d-pt-t { flex:1; }
 .v5d-pt-c { font-size:9px; font-weight:700; color:#a33; background:#fdf0f0; border-radius:99px; padding:2px 7px; white-space:nowrap; }
 .v5d-pt-b { font-size:9px; font-weight:700; color:#8a8578; background:rgba(15,35,24,.06); border-radius:99px; padding:2px 7px; white-space:nowrap; }
+.v5d-pt-go { border:1px solid #E5DCC8; background:#fff; border-radius:7px; padding:4px 10px; font-family:'DM Sans','Inter',sans-serif; font-size:11px; font-weight:600; color:#1d4d3a; cursor:pointer; white-space:nowrap; }
+.v5d-pt-go:hover { background:#1d4d3a; color:#FAF6EE; border-color:#1d4d3a; }
+.v5d-opt { display:block; width:100%; text-align:left; border:1px solid #E5DCC8; border-radius:11px; padding:12px 13px; background:#FAF6EE; margin-bottom:8px; cursor:pointer; font-family:'DM Sans','Inter',sans-serif; }
+.v5d-opt:hover { border-color:#C9963A; background:#fdf6e8; }
+.v5d-opt.is-picked { border-color:#2f7a52; background:#f2f7f4; box-shadow:0 0 0 1px #2f7a52; }
+.v5d-opt-v { font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:600; color:#0F2318; }
+.v5d-opt-s { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#8a8578; font-weight:700; margin-top:5px; }
+.v5d-opt-d { font-size:11.5px; color:#6B6760; margin-top:4px; line-height:1.45; }
+.v5d-why { font-size:12.5px; line-height:1.6; color:#6B6760; margin-bottom:14px; }
+.v5d-blocked { display:flex; gap:8px; background:rgba(15,35,24,.05); border-radius:9px; padding:10px 12px; font-size:12px; color:#6B6760; }
 
 .v5d-money { display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:8px; }
 .v5d-money-c { border:1px solid #E5DCC8; border-radius:10px; padding:10px 12px; background:#fff; }
@@ -31236,6 +31246,81 @@ function startTour(){
   // Un trou signale ce qu'on ignore ; on ne le comble jamais a la place du proprietaire.
   // Nico porte « courses par eux ou deleguees ? » depuis des jours — ARIA a invente un
   // acompte de 300 EUR pour combler ce vide. Un point ouvert et visible vaut mieux.
+  // v-item86 : les points etaient visibles mais pas actionnables. On reutilise
+  // StaffloSheet (composant existant) et la RPC decide(), qui empile l'ancienne
+  // valeur dans history — une decision reste toujours reversible.
+  var _decidePick = null;
+  function openDecisionSheet(p, c){
+    var FR = fr();
+    if (typeof StaffloSheet === 'undefined' || !StaffloSheet.open) return;
+    _decidePick = null;
+    var html = '<div class="v5d-why">' + escapeHtml(p.why || p.question || '') + '</div>';
+    if (p.is_blocked) {
+      html += '<div class="v5d-blocked">⛔ <span>' +
+        (FR ? 'Un autre point doit être tranché avant celui-ci.' : 'Another point must be decided first.') +
+        '</span></div>';
+      StaffloSheet.open({ title: p.title || '', body: html, secondaryCTA: FR?'Fermer':'Close' });
+      return;
+    }
+    var cands = Array.isArray(p.candidates) ? p.candidates : null;
+    if (cands && cands.length) {
+      html += cands.map(function(o, i){
+        return '<button class="v5d-opt" type="button" data-i="' + i + '">' +
+                 '<div class="v5d-opt-v">' + escapeHtml(o.value || '') + '</div>' +
+                 '<div class="v5d-opt-s">' + escapeHtml(o.source || '') + '</div>' +
+                 (o.detail ? '<div class="v5d-opt-d">' + escapeHtml(o.detail) + '</div>' : '') +
+               '</button>';
+      }).join('');
+    } else {
+      html += '<input class="v5d-answer" id="v5dAnswer" placeholder="' +
+              (FR?'La réponse, telle qu’elle est':'The answer, as it is') +
+              '" style="width:100%;padding:10px 12px;border:1.5px solid #E5DCC8;border-radius:9px;font-family:inherit;font-size:13px;background:#FAF6EE">';
+    }
+    StaffloSheet.open({
+      title: p.title || '',
+      body: html,
+      secondaryCTA: FR?'Plus tard':'Later',
+      primaryCTA: FR?'Enregistrer':'Save',
+      onConfirm: function(){ submitDecision(p, cands, c); }
+    });
+    document.querySelectorAll('.v5d-opt[data-i]').forEach(function(b){
+      b.addEventListener('click', function(){
+        document.querySelectorAll('.v5d-opt').forEach(function(x){ x.classList.remove('is-picked'); });
+        b.classList.add('is-picked');
+        _decidePick = parseInt(b.getAttribute('data-i'), 10);
+      });
+    });
+  }
+  async function submitDecision(p, cands, c){
+    var FR = fr();
+    var value = null, source = null;
+    if (cands && cands.length) {
+      if (_decidePick == null) return;   // rien de choisi : on n'invente pas
+      value = cands[_decidePick].value; source = cands[_decidePick].source;
+    } else {
+      var el = document.getElementById('v5dAnswer');
+      value = el && el.value ? el.value.trim() : '';
+      if (!value) return;
+      source = FR ? 'saisi par le propriétaire' : 'entered by owner';
+    }
+    try {
+      var r = await fetch(SB_URL + '/rest/v1/rpc/decide', {
+        method: 'POST',
+        headers: { 'apikey': SB_ANON, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_point_key: p.point_key, p_value: value, p_source: source })
+      });
+      var res = await r.json();
+      if (res && res.ok === false && res.reason === 'blocked_by') {
+        if (typeof toast === 'function') toast(FR ? 'Bloqué par un autre point.' : 'Blocked by another point.');
+        return;
+      }
+      if (typeof toast === 'function') toast(FR ? 'Tranché — réversible.' : 'Decided — reversible.');
+      renderOpenPoints(c);
+    } catch(e) {
+      if (typeof toast === 'function') toast(FR ? 'Échec — rien n’a été enregistré.' : 'Failed — nothing saved.');
+    }
+  }
+
   async function renderOpenPoints(c){
     var host = document.getElementById('v5dPoints');
     if (!host || !c || !c.id) return;
@@ -31260,8 +31345,16 @@ function startTour(){
                    '<span class="v5d-pt-t">' + escapeHtml(p.title || '') + '</span>' +
                    (p.is_blocked ? '<span class="v5d-pt-b">' + (FR?'bloqué':'blocked') + '</span>'
                                  : (p.cost_label ? '<span class="v5d-pt-c">' + escapeHtml(p.cost_label) + '</span>' : '')) +
+                   '<button class="v5d-pt-go" type="button" data-pt="' + escapeHtml(p.point_key) + '">' +
+                     (p.is_blocked ? (FR?'Voir':'View') : (FR?'Trancher':'Decide')) + '</button>' +
                  '</div>';
         }).join('');
+      host.querySelectorAll('[data-pt]').forEach(function(b){
+        b.addEventListener('click', function(){
+          var p = mine.find(function(x){ return x.point_key === b.getAttribute('data-pt'); });
+          if (p) openDecisionSheet(p, c);
+        });
+      });
       host.hidden = false;
     } catch(e) { /* silencieux : un bandeau absent vaut mieux qu'un bandeau faux */ }
   }

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v346 (v-item85: fiche gains a "what to do now" banner, deduced from arrival/departure dates + staffBriefedAt, silent when nothing is certain)
-const CACHE = 'stafflo-v346';
+// Stafflo Service Worker — v347 (v-item86: open-decisions banner becomes actionable via StaffloSheet + the decide() RPC; blocked points open read-only, no empty decision is ever saved)
+const CACHE = 'stafflo-v347';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
