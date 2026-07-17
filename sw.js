@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v328 (v-item73: Maison tab Expenses section reads maison_charges instead of the empty tasks table)
-const CACHE = 'stafflo-v328';
+// Stafflo Service Worker — v329 (v-item75: dashboard inbox chip reads the same exact-count badge as the ARIA banner)
+const CACHE = 'stafflo-v329';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

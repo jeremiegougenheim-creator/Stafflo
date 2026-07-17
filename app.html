@@ -3471,10 +3471,17 @@ window.renderSoloTurnoverCard = function(){
     var text = document.getElementById('v3InboxText');
     if (!host || !text) return;
     var FR = fr();
+    // v-item75 : ce bandeau comptait `read_at`, une colonne que rien n'écrit (199/246
+    // à null en base) et sur des lignes déjà en mémoire — d'où « 0 nouveaux » à côté
+    // du « 50+ » d'ARIA, qui a raison. Une seule source : status='new', comptée par
+    // loadInboxCount() côté base (count=exact). Un seul compteur, une seule vérité.
     var unread = 0;
     try {
-      var rows = window._inboxEmails || {};
-      Object.keys(rows).forEach(function(id){ if (!rows[id].read_at) unread++; });
+      var _b = document.getElementById('inboxBadge');
+      if (_b && _b.classList.contains('show')) {
+        var _m = (_b.textContent || '').match(/^(\d+)/);
+        if (_m) unread = +_m[1];
+      }
     } catch(e){}
     var lastSyncStr = '';
     try {
