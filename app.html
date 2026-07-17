@@ -31049,15 +31049,37 @@ function startTour(){
         action: FR?'Voir dans le calendrier':'See in calendar',
         onAction: function(){ if (typeof goTab === 'function') goTab('calendar'); }
       },
-      guests: {
-        kicker: FR?'Le groupe':'The group', title: FR?'Nombre de personnes':'Party size',
-        rows: [[FR?'Total':'Total', c.guests||'—'],
-               [FR?'Répartition':'Breakdown', (c.details && c.details.has_children)
-                  ? (FR?'avec enfants — nombre non renseigné':'with children — count unknown')
-                  : (FR?'non renseignée':'not recorded')]],
-        source: FR?'La base ne stocke qu’un total. Adultes, enfants et bébés ne sont pas distingués — et un bébé change la logistique (lit, chaise haute).'
-                  :'The database only stores a total. Adults, children and infants are not distinguished — and an infant changes logistics.'
-      },
+      guests: (function(){
+        // v-item86 : ce bloc datait d'avant les colonnes adults/children/infants
+        // (item 85). Il annonçait « la base ne stocke qu'un total » alors qu'elle
+        // stocke la répartition depuis la migration. NULL = inconnu, 0 = zéro connu :
+        // on ne les confond pas, et on n'affiche « 0 enfant » que si c'est un fait.
+        var _known = (c.adults != null);
+        var _parts = [];
+        if (_known) {
+          _parts.push(c.adults + ' ' + (FR ? (c.adults > 1 ? 'adultes' : 'adulte') : (c.adults > 1 ? 'adults' : 'adult')));
+          if (c.children) _parts.push(c.children + ' ' + (FR ? (c.children > 1 ? 'enfants' : 'enfant') : (c.children > 1 ? 'children' : 'child')));
+          if (c.infants)  _parts.push('🍼 ' + c.infants + ' ' + (FR ? (c.infants > 1 ? 'bébés' : 'bébé') : (c.infants > 1 ? 'infants' : 'infant')));
+        }
+        var _rows = [[FR?'Total':'Total', c.guests||'—'],
+                     [FR?'Répartition':'Breakdown', _known ? _parts.join(' · ')
+                       : ((c.details && c.details.has_children)
+                           ? (FR?'avec enfants — nombre non renseigné':'with children — count unknown')
+                           : (FR?'non renseignée':'not recorded'))]];
+        if (_known && c.infants) {
+          _rows.push([FR?'Matériel':'Equipment',
+            FR?'lit parapluie, chaise haute, barrière piscine':'travel cot, high chair, pool fence']);
+        }
+        var _src = (c.details && c.details.composition_source) || '';
+        return {
+          kicker: FR?'Le groupe':'The group', title: FR?'Nombre de personnes':'Party size',
+          rows: _rows,
+          source: _known
+            ? (_src ? ((FR?'Source : ':'Source: ') + _src) : (FR?'Renseigné à la main.':'Entered manually.'))
+            : (FR?'Seul le total est connu. Adultes, enfants et bébés ne sont pas encore distingués sur cette fiche — et un bébé change la logistique (lit parapluie, chaise haute).'
+                :'Only the total is known. Adults, children and infants are not yet split on this file — and an infant changes logistics.')
+        };
+      })(),
       net: estime ? {
         kicker: FR?'L’argent':'Money', title: FR?'Net estimé':'Estimated net',
         rows: [[FR?'Prix séjour':'Stay price', (c.price||0) + '€'],

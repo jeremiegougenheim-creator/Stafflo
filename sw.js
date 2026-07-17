@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v333 (v-item85: adults/children/infants carried through the crm_clients pull and both push sites, NULL preserved)
-const CACHE = 'stafflo-v333';
+// Stafflo Service Worker — v334 (v-item86: guests fiche now reads the adults/children/infants split instead of claiming only a total is stored)
+const CACHE = 'stafflo-v334';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
