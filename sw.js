@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v323 (v-item63: end-of-stay billing prefill falls back to crm_clients when sejours has no row)
-const CACHE = 'stafflo-v323';
+// Stafflo Service Worker — v324 (v-item65: billing state survives finalize() so retouches recalc instead of regenerating from memory)
+const CACHE = 'stafflo-v324';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -32050,7 +32050,12 @@ function startTour(){
         var r = B.buildMessage(s.input, body);
         if (!r.ok) { say(Q('Il me manque encore : ','Still missing: ') + (r.missing||[]).join(', ')); STATE=null; return; }
         say(r.message);
-        STATE = null;
+        // v-item65 : l'état survit au décompte. Avec STATE=null, toute retouche repartait
+        // dans le chat générique qui refabriquait la facture de mémoire (6 déjeuners →
+        // « 6 brunchs », total perdu). Les chiffres restent en mémoire : on recalcule, on
+        // n'improvise pas.
+        s.phase = 'done';
+        STATE = s;
       } catch(e){ try{console.warn('[billing-finalize]',e);}catch(_){} STATE=null; }
     }
 
@@ -32068,6 +32073,24 @@ function startTour(){
         if (STATE) {
           if (typing) { try { typing.style.display='none'; } catch(e){} }
           if (isCancel(text)) { STATE=null; say(Q('D\'accord, j\'annule le décompte.','Okay, cancelling the summary.')); return true; }
+
+          // v-item65 : après le décompte, deux issues seulement — corriger un chiffre
+          // (recalcul déterministe) ou passer à autre chose. Jamais de régénération.
+          if (STATE.phase === 'done') {
+            if (/^(termin[ée]|fini|c'est bon|ok merci|merci|voil[àa]|parfait|done|thanks?)\b/i.test(text)) {
+              STATE = null; return false;   // libère : le tour repart au flux ARIA normal
+            }
+            var _dPairs = [{key:'dinners',rx:/d[îi]ner|dinner/i},{key:'lunches',rx:/d[ée]jeuner|lunch/i},{key:'brunches',rx:/brunch/i},{key:'shopping_sessions',rx:/courses?|shopping/i}];
+            var _dKey = null, _dN = parseInt0(text);
+            for (var _di=0; !_dKey && _di<_dPairs.length; _di++){ if (_dPairs[_di].rx.test(text)) _dKey = _dPairs[_di].key; }
+            if (_dKey && _dN != null && _dN >= 0){
+              STATE.input.costs[_dKey] = _dN; STATE.done[_dKey] = true;
+              await finalize(STATE); return true;   // recalcul + re-rendu, mêmes règles
+            }
+            say(Q('Le décompte est calculé — je ne le réécris pas de mémoire, je risquerais de fausser un chiffre. Tu peux corriger une quantité (ex. « 4 dîners »), ou dire « terminé ». Pour ajouter un mode de paiement, renseigne le champ Wise/virement dans Réglages : il s\'insère tout seul quand il reste un solde dû.',
+                  'The summary is computed — I won\'t rewrite it from memory, I\'d risk getting a figure wrong. You can correct a quantity (e.g. "4 dinners"), or say "done". To add payment details, fill the Wise/transfer field in Settings: it inserts itself whenever a balance is due.'));
+            return true;
+          }
 
           if (STATE.phase === 'confirm') {
             if (isYes(text)) { await startCollection(STATE); return true; } // pré-fill fiche séjour puis collecte
