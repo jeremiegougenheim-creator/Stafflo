@@ -2111,7 +2111,7 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5d-pt-c { font-size:9px; font-weight:700; color:#a33; background:#fdf0f0; border-radius:99px; padding:2px 7px; white-space:nowrap; }
 .v5d-pt-b { font-size:9px; font-weight:700; color:#8a8578; background:rgba(15,35,24,.06); border-radius:99px; padding:2px 7px; white-space:nowrap; }
 
-.v5d-money { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.v5d-money { display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:8px; }
 .v5d-money-c { border:1px solid #E5DCC8; border-radius:10px; padding:10px 12px; background:#fff; }
 .v5d-money-c.is-strong { background:#0F2318; border-color:#0F2318; }
 .v5d-money-l { font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#8a8578; font-weight:700; }
@@ -2120,7 +2120,6 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5d-money-c.is-strong .v5d-money-v { color:#FAF6EE; }
 .v5d-money-s { font-size:10px; color:#8a8578; margin-top:2px; }
 .v5d-money-c.is-strong .v5d-money-s { color:rgba(250,246,238,.5); }
-@media (min-width:520px){ .v5d-money { grid-template-columns:repeat(4,1fr); } }
 
 .v5d-cta-row { flex-shrink:0; display:flex; gap:10px; padding:12px 14px; padding-bottom:max(12px, env(safe-area-inset-bottom,12px)); background:#fff; border-top:1px solid #E5DCC8; }
 .v5d-cta-row .v5-btn { flex:1; }
@@ -9187,6 +9186,9 @@ async function loadFromSupabase() {
         adults:   (r.adults   == null ? null : +r.adults),
         children: (r.children == null ? null : +r.children),
         infants:  (r.infants  == null ? null : +r.infants),
+        // v-item82 : sans cette ligne la colonne n'arrive jamais dans clients[] —
+        // meme liste blanche que commissions (item 50), meals (item 69), adults (item 85).
+        staffBriefedAt: r.staff_briefed_at || null,
         commMode: r.comm_mode||'percent', source: r.source||'Airbnb',
         notes: r.notes||'', meals: r.meals||'', payStatus: r.pay_status||'',
         bookingStatus: r.booking_status||'confirmed',
@@ -9232,6 +9234,7 @@ async function pushToSupabase(client) {
     adults:   (client.adults   == null || client.adults   === '' ? null : +client.adults),
     children: (client.children == null || client.children === '' ? null : +client.children),
     infants:  (client.infants  == null || client.infants  === '' ? null : +client.infants),
+    staff_briefed_at: client.staffBriefedAt || null,
     comm_mode:client.commMode||'percent', source:client.source||'Direct',
     notes:client.notes||'', pay_status:client.payStatus||'',
     booking_status:client.bookingStatus||'confirmed',
@@ -11988,7 +11991,9 @@ function renderBookingCardV2(cl) {
     {ok: !!(cl.notes && cl.notes.length > 10), label: fr?'Notes client saisies':'Guest notes captured', flag: fr?'à faire':'to do'},
     {ok: !!cl.arrival && !!cl.departure, label: fr?'Dates verrouillées':'Dates locked', flag: fr?'à faire':'to do'},
     {ok: !!cl.price, label: fr?'Prix & net renseignés':'Price & net set', flag: fr?'bloque le net':'blocks net'},
-    {ok: !!(cl.notes||'').toLowerCase().match(/passport|passeport|transfer|repas|meal/), label: fr?'Staff briefé':'Staff briefed', flag: fr?'à faire':'to do'}
+    // v-item82 : meme correction que getReadinessScore/renderReadinessBar — un mot-cle
+    // dans les notes ne prouve pas qu'un humain a recu un brief.
+    {ok: !!cl.staffBriefedAt, label: fr?'Staff briefé':'Staff briefed', flag: fr?'à faire':'to do'}
   ];
   var doneCount = checks.filter(function(c){ return c.ok; }).length;
 
@@ -22460,7 +22465,11 @@ function getReadinessScore(client) {
     !!(client.notes && client.notes.length > 10),
     !!client.arrival && !!client.departure,
     !!client.price,
-    !!(client.notes||'').toLowerCase().match(/passport|passeport|transfer|repas|meal/)
+    // v-item82 : ce critere cherchait « passport|transfer|repas|meal » dans les notes
+    // du client — un mot-cle dans une note ne prouve pas qu'un humain a recu un brief.
+    // 5 fiches sur 34 etaient declarees briefees a tort. NULL = non briefe, une date
+    // = quelqu'un l'a fait et on sait quand.
+    !!client.staffBriefedAt
   ];
   return checks.filter(Boolean).length;
 }
@@ -22475,7 +22484,7 @@ function renderReadinessBar(client, fr) {
     !!(client.notes && client.notes.length > 10),
     !!client.arrival && !!client.departure,
     !!client.price,
-    !!(client.notes||'').toLowerCase().match(/passport|passeport|transfer|repas|meal/)
+    !!client.staffBriefedAt   // v-item82 : voir getReadinessScore — plus de devinette par mot-cle
   ];
   return '<div style="margin-top:10px">' +
     '<div style="font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px">' + (fr?'PRÉPARATION':'READINESS') + ' ' + score + '/5</div>' +
@@ -27519,6 +27528,7 @@ window.addEventListener('DOMContentLoaded', function() {
         adults:   (client.adults   == null || client.adults   === '' ? null : +client.adults),
         children: (client.children == null || client.children === '' ? null : +client.children),
         infants:  (client.infants  == null || client.infants  === '' ? null : +client.infants),
+        staff_briefed_at: client.staffBriefedAt || null,
         comm_mode: client.commMode||'percent', source: client.source||'Direct',
         notes: client.notes||'', pay_status: client.payStatus||'',
         booking_status: client.bookingStatus||'confirmed',
@@ -31240,6 +31250,8 @@ function startTour(){
        (fin && fin.guestTotal != null) ? (FR?'confirmé':'confirmed') : (FR?'saisi à la main':'entered manually')],
       [FR?'Commission':'Commission', (c.commission != null && c.commission !== '') ? (c.commission + ' %') : '—', '',
        (c.source && /airbnb/i.test(c.source)) ? (FR?'+ TVA côté Airbnb':'+ VAT on Airbnb side') : ''],
+      [FR?'Paiement':'Payment', pay, '',
+       (c.payStatus === 'paid') ? '' : (FR?'à relancer':'to chase')],
       [FR?'Net':'Net', net ? (Math.round(net) + '€' + (estime ? ' ~' : '')) : '—', 'is-strong',
        (nights ? (Math.round(net/nights) + '€' + (FR?'/nuit':'/night')) : '')]
     ];

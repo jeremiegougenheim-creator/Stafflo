@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v341 (v-item81: stay pane gains a Money block — source/gross/commission/net — first step of the calendar-card merge, card untouched)
-const CACHE = 'stafflo-v341';
+// Stafflo Service Worker — v342 (v-item82: readiness Briefed check reads staff_briefed_at instead of guessing a keyword in notes, 3 sites + pull/push; also lands the item81b Payment cell + CSS fix that v341 missed)
+const CACHE = 'stafflo-v342';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
