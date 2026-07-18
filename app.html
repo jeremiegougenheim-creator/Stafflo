@@ -2153,6 +2153,10 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5d-money-s { font-size:10px; color:#8a8578; margin-top:2px; }
 .v5d-money-c.is-strong .v5d-money-s { color:rgba(250,246,238,.5); }
 
+.v5d-guest-note { background:#fdf9f0; border:1px solid rgba(201,150,58,.28); border-radius:11px; padding:12px 14px; margin:14px 0 4px; }
+.v5d-guest-note-h { font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:#8a8578; font-weight:700; margin-bottom:7px; display:flex; align-items:center; gap:6px; }
+.v5d-guest-note-b { font-size:13px; line-height:1.55; color:#0F2318; white-space:pre-wrap; word-break:break-word; }
+
 .v5d-cta-row { flex-shrink:0; display:flex; gap:10px; padding:12px 14px; padding-bottom:max(12px, env(safe-area-inset-bottom,12px)); background:#fff; border-top:1px solid #E5DCC8; }
 .v5d-cta-row .v5-btn { flex:1; }
 
@@ -5120,6 +5124,7 @@ window.renderSetupOneLiner = function(){
         <div class="v5d-points" id="v5dPoints" hidden></div>
         <h4 class="v5d-h4" data-fr="Argent" data-en="Money">Money</h4>
         <div class="v5d-money" id="v5dMoney"></div>
+        <div id="v5dGuestNote" hidden></div>
         <h4 class="v5d-h4" data-fr="Résumé ARIA" data-en="ARIA summary">ARIA summary</h4>
         <div class="v5d-aria-summary" id="v5dAriaSummary">
           <div class="v5d-skel" style="height:80px"></div>
@@ -5173,7 +5178,7 @@ window.renderSetupOneLiner = function(){
         <h4 class="v5d-h4" data-fr="Vos notes" data-en="Your notes">Your notes</h4>
         <textarea class="v5d-textarea" id="v5dNotes" rows="4" data-prefs-key="notes" placeholder="—"></textarea>
         <h4 class="v5d-h4" data-fr="Résumé ARIA" data-en="ARIA summary">ARIA summary</h4>
-        <div class="v5d-aria-summary" id="v5dAriaSummary">
+        <div class="v5d-aria-summary" id="v5dAriaSummaryJournal">
           <div class="v5d-skel" style="height:80px"></div>
         </div>
       </section>
@@ -31433,6 +31438,22 @@ function startTour(){
     host.hidden = false;
   }
 
+  // v-item92 : la note brute du proprietaire (c.notes) vivait dans la carte calendrier
+  // mais pas dans la fiche. La fiche avait le resume ARIA (genere) et pas la source.
+  // On l'affiche telle quelle — jamais reformulee, jamais tronquee.
+  function renderGuestNote(c){
+    var host = document.getElementById('v5dGuestNote');
+    if (!host) return;
+    var FR = fr();
+    var note = (c.notes || '').trim();
+    if (!note) { host.hidden = true; host.innerHTML = ''; return; }
+    host.className = 'v5d-guest-note';
+    host.innerHTML =
+      '<div class="v5d-guest-note-h">📝 ' + (FR ? 'Note client' : 'Guest note') + '</div>' +
+      '<div class="v5d-guest-note-b">' + escapeHtml(note) + '</div>';
+    host.hidden = false;
+  }
+
   function renderStay(c){
     var FR = fr();
     var grid = $('v5dStayGrid');
@@ -31478,6 +31499,7 @@ function startTour(){
     }
     renderOpenPoints(c);
     renderMoney(c, net, _netEstime, _fin, nights);
+    renderGuestNote(c);
     renderHeroWhen(c);
     renderNowAction(c);
     // Checklists — reuse the v3_ops storage from Today v3

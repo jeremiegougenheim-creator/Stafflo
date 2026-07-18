@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v347 (v-item86: open-decisions banner becomes actionable via StaffloSheet + the decide() RPC; blocked points open read-only, no empty decision is ever saved)
-const CACHE = 'stafflo-v347';
+// Stafflo Service Worker — v348 (v-item92: guest note (c.notes) merges into the fiche stay pane, below Money; duplicate v5dAriaSummary id resolved — journal pane copy renamed to v5dAriaSummaryJournal)
+const CACHE = 'stafflo-v348';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
