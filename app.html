@@ -17777,6 +17777,11 @@ function renderInboxConnectionStatus() {
   var conn = cfg.email_connection || {};
   var fr = lang === 'fr';
   var hasError = !!conn.last_error;
+  // « jamais connecté » = pas de token ET pas d'erreur : angle mort de la version
+  // précédente, qui ne couvrait que les tokens morts. Un provider présent sans
+  // token compte aussi comme non connecté (déconnexion nettoyée).
+  var notConnected = !conn.access_token && !conn.last_error;
+  var show = hasError || notConnected;
   var label = '';
   if (hasError) {
     if (conn.last_error === 'token_expired') {
@@ -17784,6 +17789,8 @@ function renderInboxConnectionStatus() {
     } else {
       label = fr ? '⚠ Erreur Gmail' : '⚠ Gmail error';
     }
+  } else if (notConnected) {
+    label = fr ? '✉ Connecter Gmail pour voir vos emails' : '✉ Connect Gmail to see your emails';
   }
 
   // Place a compact chip at the top of every visible inbox row body
@@ -17793,7 +17800,7 @@ function renderInboxConnectionStatus() {
     // Remove any existing status chip
     var existing = list.querySelector('.inbox-status-chip');
     if (existing) existing.remove();
-    if (!hasError) return;
+    if (!show) return;
     var chip = document.createElement('div');
     chip.className = 'inbox-status-chip';
     chip.style.cssText = 'background:rgba(192,57,43,.15);border:1px solid rgba(192,57,43,.4);color:#ff8a7a;border-radius:8px;padding:7px 11px;margin-bottom:8px;font-size:11px;font-weight:600;cursor:pointer;text-align:center;letter-spacing:.3px';

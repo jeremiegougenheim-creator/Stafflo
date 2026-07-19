@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v352 (.toast z-index 999 → 100000, was hidden under #inboxModal (9996) and the rest of the stack up to 99999)
-const CACHE = 'stafflo-v352';
+// Stafflo Service Worker — v353 (renderInboxConnectionStatus: never-connected state (no token, no error) now shows a "Connecter Gmail" chip — was blind-spotted, only token_expired/error was covered)
+const CACHE = 'stafflo-v353';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
