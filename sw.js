@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v354 (review-request emails now get a single "Avis hôte" card, no welcome template, no WhatsApp send button — was showing guest-facing template + WA buttons on a host review email by mistake)
-const CACHE = 'stafflo-v354';
+// Stafflo Service Worker — v355 (saveInboxSettings no longer PATCHes villa_settings.email_connection — was overwriting Gmail credentials with {auto_sync,interval_min} from an empty local cfg, silently wiping tokens; those two keys now live in localStorage only)
+const CACHE = 'stafflo-v355';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
