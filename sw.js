@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v353 (renderInboxConnectionStatus: never-connected state (no token, no error) now shows a "Connecter Gmail" chip — was blind-spotted, only token_expired/error was covered)
-const CACHE = 'stafflo-v353';
+// Stafflo Service Worker — v354 (review-request emails now get a single "Avis hôte" card, no welcome template, no WhatsApp send button — was showing guest-facing template + WA buttons on a host review email by mistake)
+const CACHE = 'stafflo-v354';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

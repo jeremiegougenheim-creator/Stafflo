@@ -35110,7 +35110,7 @@ function startTour(){
   }
 
   /* ── Build the analysis prompt (same as v5, kept stable) ── */
-  function buildEmailAnalysisPromptV6(row, owner, villa, fr) {
+  function buildEmailAnalysisPromptV6(row, owner, villa, fr, isReviewReq) {
     var memBlock = '';
     try {
       var memo = (typeof getCfg === 'function' ? (getCfg().ariaMemory || '') : '').trim();
@@ -35120,6 +35120,20 @@ function startTour(){
     if (typeof htmlToText === 'function') cleanBody = htmlToText(cleanBody);
     if (typeof cleanEmailBoilerplate === 'function') cleanBody = cleanEmailBoilerplate(cleanBody);
     cleanBody = cleanBody.replace(/\[?https?:\/\/[^\s\]\)]{40,}\]?/g, '').replace(/%\w+%/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 2500);
+    var responsesBlock = isReviewReq ? [
+      '  "responses": [',
+      '    {"label":"Avis hôte","tone":"warm","text":"AVIS PUBLIC que l\'HÔTE laisse sur le voyageur (Airbnb, visible par tous). 2-3 phrases, chaleureux + un détail spécifique du séjour si disponible. Voyageurs respectueux, communication fluide, les ré-accueillerait volontiers. AUCUNE salutation, AUCUNE signature, uniquement le texte de l\'avis. Si le nom vient de \'X\'s group\', retire le possessif (Fuji\'s → Fuji)."}',
+      '  ],'
+    ] : [
+      '  "responses": [',
+      '    {"label":"3-5 mots","tone":"...","text":"Message complet en ' + (fr ? 'français' : 'English') + ', signé ' + owner + '"},',
+      '    {"label":"...","tone":"...","text":"Variante angle différent"},',
+      '    {"label":"...","tone":"...","text":"Troisième angle"}',
+      '  ],'
+    ];
+    var responsesRule = isReviewReq
+      ? 'Règles responses : exactement 1 réponse (l\'avis hôte).'
+      : 'Règles responses : 3 angles distincts. Adapte langue à guest.lang. Signé ' + owner + '.';
     return [
       'Tu analyses un email reçu pour ' + villa + ' à Marrakech (propriétaire: ' + owner + ').',
       memBlock,
@@ -35140,19 +35154,15 @@ function startTour(){
       '  "key_facts": [{"label":"...","value":"..."}],',
       '  "guest": {"name":"","nat":"","arrival":"YYYY-MM-DD","departure":"YYYY-MM-DD","nights":0,"guests":0,"price":0,"phone":"","notes":"","lang":"fr|en"},',
       '  "context": [{"category":"flight|meals|transport|arrival|preferences|general","key":"...","value":"..."}],',
-      '  "responses": [',
-      '    {"label":"3-5 mots","tone":"...","text":"Message complet en ' + (fr ? 'français' : 'English') + ', signé ' + owner + '"},',
-      '    {"label":"...","tone":"...","text":"Variante angle différent"},',
-      '    {"label":"...","tone":"...","text":"Troisième angle"}',
-      '  ],',
+    ].concat(responsesBlock).concat([
       '  "missing": ["infos manquantes"],',
       '  "alerts": ["alertes critiques"]',
       '}',
       '',
       'Règles key_facts : JAMAIS date arrivée, départ, nuits, personnes, source, prix net, nom guest (déjà dans guest). Inclus UNIQUEMENT prix delta, deadlines, allergies, vols, paiement, raisons d\'annulation, demandes spéciales. max 5. Vide [] si rien.',
-      'Règles responses : 3 angles distincts. Adapte langue à guest.lang. Signé ' + owner + '.',
+      responsesRule,
       'Règles alerts : vide [] si rien de critique.'
-    ].join('\n');
+    ]).join('\n');
   }
 
   /* ════════════════════════════════════════════════════════════════════
@@ -35280,7 +35290,10 @@ function startTour(){
         cleanRow.subject = fixMojibake(row.subject || '');
         cleanRow.body    = fixMojibake(row.body || '');
 
-        var prompt = buildEmailAnalysisPromptV6(cleanRow, owner, villa, fr);
+        var _sig = (typeof parseEmailSignals === 'function') ? parseEmailSignals(row) : null;
+        var isReviewReq = !!(_sig && _sig.email_type === 'review_request');
+
+        var prompt = buildEmailAnalysisPromptV6(cleanRow, owner, villa, fr, isReviewReq);
         var raw = await callBestAI('extract', '', prompt, 1500);
 
         var typing = document.getElementById('chatTyping');
@@ -35557,17 +35570,19 @@ function startTour(){
             : "The weather is mild and pleasant, sunny days and cooler evenings; the villa has heating and AC as needed.");
         var _fn = (g.name||'there').split(' ')[0];
         var tmplText = '';
-        if (isDirect) {
-          tmplText = fr
-            ? 'Bonjour ' + _fn + ', merci de nous avoir contactés — nous serions ravis de vous accueillir à la Villa DarJ !\n\nLa villa est notre maison de famille au cœur de la Palmeraie, avec piscine privée, climatisation complète, et une équipe dédiée sur place : Said (votre majordome), Faiza (chef privée), et Bouchra (ménage).\n\nRésumé rapide de votre séjour :\n• Arrivée : ' + (g.arrival||'à confirmer') + '\n• Départ : ' + (g.departure||'à confirmer') + '\n• Durée : ' + (nights||'?') + ' nuits\n• Invités : ' + (g.guests||'?') + '\n• Tarif : ' + (g.price ? g.price+'€' : 'à confirmer') + '\n\nAvant de confirmer, pourriez-vous nous préciser :\n1. La composition du groupe — combien de couples et de célibataires ? (pour l\'attribution des chambres)\n2. Des besoins alimentaires ou allergies pour la chef ?\n3. Souhaitez-vous un transfert aéroport ? (~200 MAD par trajet)\n\nNotre service repas :\n• Brunch : 300 MAD pour le groupe\n• Déjeuner : 300 MAD/personne + courses\n• Dîner : 400 MAD/personne + courses\n\nRègles de la maison :\n• Maison de famille — merci de respecter l\'esprit du lieu\n• Musique bienvenue, niveau sonore raisonnable après minuit\n• Interdiction de fumer à l\'intérieur · Invités enregistrés uniquement\n\nPaiement : 50% d\'acompte pour confirmer, 50% à l\'arrivée.\n\nAu plaisir de vous accueillir !\n' + ownerName
-            : 'Hello ' + _fn + ', thank you for reaching out — we would be delighted to welcome you to Villa DarJ!\n\nThe villa is my family home in the heart of the Palmeraie, with private pool, full air conditioning, and a dedicated team on-site: Said (your majordome), Faiza (private chef), and Bouchra (housekeeping).\n\nA quick summary of your stay:\n• Check-in: ' + (g.arrival||'TBC') + '\n• Check-out: ' + (g.departure||'TBC') + '\n• Duration: ' + (nights||'?') + ' nights\n• Guests: ' + (g.guests||'?') + '\n• Rate: ' + (g.price ? g.price+'€' : 'TBC') + '\n\nBefore we confirm, could you please let me know:\n1. Group composition — how many couples and singles? (for room assignment)\n2. Any dietary needs or allergies for the chef?\n3. Would you like airport transfer arranged? (~200 MAD one way)\n\nOur food service:\n• Brunch: 300 MAD for the group\n• Lunch: 300 MAD/person + groceries\n• Dinner: 400 MAD/person + groceries\n\nHouse rules:\n• Family home — please respect the spirit of the place\n• Music welcome, reasonable noise after midnight\n• No smoking inside · Registered guests only\n\nPayment: 50% deposit to confirm, 50% on arrival.\n\nLooking forward to hosting you!\n' + ownerName;
-        } else if (isAirbnb) {
-          tmplText = fr
-            ? 'Bonjour ' + _fn + ', merci beaucoup pour votre message — nous serions ravis d\'accueillir votre groupe à la Villa DarJ.\n\nLa villa est notre maison de famille, et nous ferons en sorte que tout soit préparé le plus confortablement possible. ' + _weather + '\n\nPour confirmer, pouvez-vous nous préciser la composition du groupe — combien de couples et combien de célibataires ?\n\nRepas :\n• Brunch : 300 MAD pour le groupe\n• Déjeuner : 300 MAD/personne + courses\n• Dîner : 400 MAD/personne + courses\n\nRègles de la maison :\n• Maison de famille — merci de respecter l\'esprit du lieu\n• Musique bienvenue, niveau sonore raisonnable après minuit\n• Interdiction de fumer à l\'intérieur · Invités enregistrés uniquement\n• Conformément à la loi marocaine, nous ne pouvons pas accueillir de couples musulmans non mariés partageant une chambre\n\nUne fois la composition des chambres confirmée et les règles acceptées, je vous envoie la confirmation officielle immédiatement.\n\nMerci,\n' + ownerName
-            : 'Hello ' + _fn + ', thank you so much for your message — we would be delighted to welcome your group to Villa DarJ.\n\nThe villa is my family home and we will make sure everything is prepared as comfortably as possible. ' + _weather + '\n\nJust one quick question before we confirm: could you please let us know the group composition — how many couples and how many singles?\n\nFood service:\n• Brunch: 300 MAD for the group\n• Lunch: 300 MAD/person + groceries\n• Dinner: 400 MAD/person + groceries\n\nHouse rules:\n• Family home — please respect the spirit of the place\n• Music welcome, reasonable noise after midnight\n• No smoking inside · Registered guests only\n• Under Moroccan law, unmarried Muslim couples cannot share a room\n\nOnce you confirm the room composition and agree to the house rules, I will send the official booking confirmation right away.\n\nThank you,\n' + ownerName;
-        }
-        if (tmplText) {
-          responses.unshift({ label: isDirect ? 'Template Direct' : 'Template Airbnb', tone: 'professional', text: tmplText });
+        if (!isReviewReq) {
+          if (isDirect) {
+            tmplText = fr
+              ? 'Bonjour ' + _fn + ', merci de nous avoir contactés — nous serions ravis de vous accueillir à la Villa DarJ !\n\nLa villa est notre maison de famille au cœur de la Palmeraie, avec piscine privée, climatisation complète, et une équipe dédiée sur place : Said (votre majordome), Faiza (chef privée), et Bouchra (ménage).\n\nRésumé rapide de votre séjour :\n• Arrivée : ' + (g.arrival||'à confirmer') + '\n• Départ : ' + (g.departure||'à confirmer') + '\n• Durée : ' + (nights||'?') + ' nuits\n• Invités : ' + (g.guests||'?') + '\n• Tarif : ' + (g.price ? g.price+'€' : 'à confirmer') + '\n\nAvant de confirmer, pourriez-vous nous préciser :\n1. La composition du groupe — combien de couples et de célibataires ? (pour l\'attribution des chambres)\n2. Des besoins alimentaires ou allergies pour la chef ?\n3. Souhaitez-vous un transfert aéroport ? (~200 MAD par trajet)\n\nNotre service repas :\n• Brunch : 300 MAD pour le groupe\n• Déjeuner : 300 MAD/personne + courses\n• Dîner : 400 MAD/personne + courses\n\nRègles de la maison :\n• Maison de famille — merci de respecter l\'esprit du lieu\n• Musique bienvenue, niveau sonore raisonnable après minuit\n• Interdiction de fumer à l\'intérieur · Invités enregistrés uniquement\n\nPaiement : 50% d\'acompte pour confirmer, 50% à l\'arrivée.\n\nAu plaisir de vous accueillir !\n' + ownerName
+              : 'Hello ' + _fn + ', thank you for reaching out — we would be delighted to welcome you to Villa DarJ!\n\nThe villa is my family home in the heart of the Palmeraie, with private pool, full air conditioning, and a dedicated team on-site: Said (your majordome), Faiza (private chef), and Bouchra (housekeeping).\n\nA quick summary of your stay:\n• Check-in: ' + (g.arrival||'TBC') + '\n• Check-out: ' + (g.departure||'TBC') + '\n• Duration: ' + (nights||'?') + ' nights\n• Guests: ' + (g.guests||'?') + '\n• Rate: ' + (g.price ? g.price+'€' : 'TBC') + '\n\nBefore we confirm, could you please let me know:\n1. Group composition — how many couples and singles? (for room assignment)\n2. Any dietary needs or allergies for the chef?\n3. Would you like airport transfer arranged? (~200 MAD one way)\n\nOur food service:\n• Brunch: 300 MAD for the group\n• Lunch: 300 MAD/person + groceries\n• Dinner: 400 MAD/person + groceries\n\nHouse rules:\n• Family home — please respect the spirit of the place\n• Music welcome, reasonable noise after midnight\n• No smoking inside · Registered guests only\n\nPayment: 50% deposit to confirm, 50% on arrival.\n\nLooking forward to hosting you!\n' + ownerName;
+          } else if (isAirbnb) {
+            tmplText = fr
+              ? 'Bonjour ' + _fn + ', merci beaucoup pour votre message — nous serions ravis d\'accueillir votre groupe à la Villa DarJ.\n\nLa villa est notre maison de famille, et nous ferons en sorte que tout soit préparé le plus confortablement possible. ' + _weather + '\n\nPour confirmer, pouvez-vous nous préciser la composition du groupe — combien de couples et combien de célibataires ?\n\nRepas :\n• Brunch : 300 MAD pour le groupe\n• Déjeuner : 300 MAD/personne + courses\n• Dîner : 400 MAD/personne + courses\n\nRègles de la maison :\n• Maison de famille — merci de respecter l\'esprit du lieu\n• Musique bienvenue, niveau sonore raisonnable après minuit\n• Interdiction de fumer à l\'intérieur · Invités enregistrés uniquement\n• Conformément à la loi marocaine, nous ne pouvons pas accueillir de couples musulmans non mariés partageant une chambre\n\nUne fois la composition des chambres confirmée et les règles acceptées, je vous envoie la confirmation officielle immédiatement.\n\nMerci,\n' + ownerName
+              : 'Hello ' + _fn + ', thank you so much for your message — we would be delighted to welcome your group to Villa DarJ.\n\nThe villa is my family home and we will make sure everything is prepared as comfortably as possible. ' + _weather + '\n\nJust one quick question before we confirm: could you please let us know the group composition — how many couples and how many singles?\n\nFood service:\n• Brunch: 300 MAD for the group\n• Lunch: 300 MAD/person + groceries\n• Dinner: 400 MAD/person + groceries\n\nHouse rules:\n• Family home — please respect the spirit of the place\n• Music welcome, reasonable noise after midnight\n• No smoking inside · Registered guests only\n• Under Moroccan law, unmarried Muslim couples cannot share a room\n\nOnce you confirm the room composition and agree to the house rules, I will send the official booking confirmation right away.\n\nThank you,\n' + ownerName;
+          }
+          if (tmplText) {
+            responses.unshift({ label: isDirect ? 'Template Direct' : 'Template Airbnb', tone: 'professional', text: tmplText });
+          }
         }
         if (responses.length) {
           var optsCard = document.createElement('div');
@@ -35575,7 +35590,9 @@ function startTour(){
           optsCard.dataset.staffloEmail = '1';
           var optsTitle = document.createElement('div');
           optsTitle.className = 'sr-title';
-          optsTitle.innerHTML = '✍️ <strong>' + responses.length + '</strong> ' + (fr?'options de réponse':'reply options') + ' <span class="sr-hint">— ' + (fr?'cliquez pour ouvrir':'click to open') + '</span>';
+          optsTitle.innerHTML = isReviewReq
+            ? (fr ? '⭐ Avis à publier sur Airbnb <span class="sr-hint">— copiez dans le formulaire</span>' : '⭐ Review to publish on Airbnb <span class="sr-hint">— copy into the form</span>')
+            : '✍️ <strong>' + responses.length + '</strong> ' + (fr?'options de réponse':'reply options') + ' <span class="sr-hint">— ' + (fr?'cliquez pour ouvrir':'click to open') + '</span>';
           optsCard.appendChild(optsTitle);
 
           responses.forEach(function(resp, i) {
@@ -35606,14 +35623,17 @@ function startTour(){
             var actions = document.createElement('div');
             actions.className = 'sr-opt-actions';
 
-            var sendBtn = document.createElement('button');
-            sendBtn.type = 'button';
-            sendBtn.className = 'sr-btn sr-btn-send';
-            sendBtn.textContent = fr?'💬 Envoyer WhatsApp':'💬 Send WhatsApp';
-            sendBtn.addEventListener('click', function(e) {
-              e.stopPropagation(); e.preventDefault();
-              if (typeof sendPendingWA === 'function' && waKey) sendPendingWA(waKey);
-            });
+            var sendBtn = null;
+            if (!isReviewReq) {
+              sendBtn = document.createElement('button');
+              sendBtn.type = 'button';
+              sendBtn.className = 'sr-btn sr-btn-send';
+              sendBtn.textContent = fr?'💬 Envoyer WhatsApp':'💬 Send WhatsApp';
+              sendBtn.addEventListener('click', function(e) {
+                e.stopPropagation(); e.preventDefault();
+                if (typeof sendPendingWA === 'function' && waKey) sendPendingWA(waKey);
+              });
+            }
 
             var editBtn = document.createElement('button');
             editBtn.type = 'button';
@@ -35635,7 +35655,7 @@ function startTour(){
               });
             });
 
-            actions.appendChild(sendBtn);
+            if (sendBtn) actions.appendChild(sendBtn);
             actions.appendChild(editBtn);
             actions.appendChild(copyBtn);
             expanded.appendChild(txt);
