@@ -9664,6 +9664,27 @@ async function reconcileConfirmationBreakdowns() {
 }
 window.reconcileConfirmationBreakdowns = reconcileConfirmationBreakdowns;
 
+/* Wrapper bouton-only : le boot appelle les 3 fonctions directement, donc aucun
+   toast parasite au démarrage. Sérialise les 3 étapes (avant : fire-and-forget
+   parallèle) — évite des PATCH concurrents sur les mêmes fiches. Les toasts de
+   succès existants (>0) restent dans chaque fonction ; le wrapper n'ajoute que
+   les deux cas aujourd'hui muets : total 0 et erreur. */
+async function reconcileNowWithFeedback() {
+  var total = 0, failed = false;
+  try {
+    if (typeof reconcilePayouts === 'function') { var r1 = await reconcilePayouts(); if (r1 && r1.reconciled) total += r1.reconciled; }
+    if (typeof reconcileConfirmationBreakdowns === 'function') { var r2 = await reconcileConfirmationBreakdowns(); if (r2 && r2.reconciled) total += r2.reconciled; }
+    if (typeof integrateReservationRequests === 'function') { var r3 = await integrateReservationRequests(); if (r3 && r3.integrated) total += r3.integrated; }
+  } catch (e) {
+    failed = true;
+    console.error('[financial] réconciliation en erreur:', e);
+  }
+  if (typeof toast !== 'function') return;
+  if (failed) { toast('Réconciliation en erreur — voir la console'); return; }
+  if (total === 0) toast('Tout est à jour — rien de nouveau à réconcilier');
+}
+window.reconcileNowWithFeedback = reconcileNowWithFeedback;
+
 /* Auto-integrates Airbnb "Reservation Request" emails (classifyEmail kind:'booking_request')
    into crm_clients as inquiry leads — booking_status:'inquiry' keeps them out of ops surfaces
    via isFirmBooking(), while contact_type:'client' matches the convention already used for
@@ -29054,7 +29075,7 @@ window.addEventListener('DOMContentLoaded', function() {
           <div style="font-size:9px;letter-spacing:3px;color:rgba(255,255,255,.4);margin-bottom:2px">INBOX</div>
           <div style="font-family:'Cormorant Garamond',serif;font-size:17px;color:#fff;font-weight:300">Inbox</div>
         </div>
-        <button onclick="if(typeof reconcilePayouts==='function')reconcilePayouts();if(typeof reconcileConfirmationBreakdowns==='function')reconcileConfirmationBreakdowns();if(typeof integrateReservationRequests==='function')integrateReservationRequests()" title="Réconcilier les paiements Airbnb" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:0 10px;height:28px;border-radius:14px;font-size:11px;cursor:pointer;margin-right:6px">💸 Réconcilier</button>
+        <button onclick="reconcileNowWithFeedback()" title="Réconcilier les paiements Airbnb" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:0 10px;height:28px;border-radius:14px;font-size:11px;cursor:pointer;margin-right:6px">💸 Réconcilier</button>
         <button onclick="closeInbox()" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
       </div>
       <div id="inboxModalTabs" style="display:flex;gap:6px;padding-bottom:12px;flex-wrap:wrap"></div>

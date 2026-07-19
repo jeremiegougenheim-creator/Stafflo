@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v349 (reconcileConfirmationBreakdowns: missing "adjustment" line in Airbnb confirmation email now treated as 0, not unknown; already-reconciled guard allows unreconciled→reconciled upgrade)
-const CACHE = 'stafflo-v349';
+// Stafflo Service Worker — v350 (💸 Réconcilier button now gives visible feedback on 0-reconciled and error, via reconcileNowWithFeedback wrapper — was previously silent in both cases)
+const CACHE = 'stafflo-v350';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
