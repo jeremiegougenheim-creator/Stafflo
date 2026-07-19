@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v350 (💸 Réconcilier button now gives visible feedback on 0-reconciled and error, via reconcileNowWithFeedback wrapper — was previously silent in both cases)
-const CACHE = 'stafflo-v350';
+// Stafflo Service Worker — v351 ([VillaSnap] console.debug log gated behind opt-in stafflo_debug localStorage flag — was spamming console on every render)
+const CACHE = 'stafflo-v351';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
