@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v351 ([VillaSnap] console.debug log gated behind opt-in stafflo_debug localStorage flag — was spamming console on every render)
-const CACHE = 'stafflo-v351';
+// Stafflo Service Worker — v352 (.toast z-index 999 → 100000, was hidden under #inboxModal (9996) and the rest of the stack up to 99999)
+const CACHE = 'stafflo-v352';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
