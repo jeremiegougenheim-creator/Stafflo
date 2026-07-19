@@ -9557,13 +9557,22 @@ async function reconcileConfirmationBreakdowns() {
     // parsed net must reconcile with gross+adjustment+hostFee, or we don't write it.
     // `reconciled` is stored (not recomputed later) so the provenance popover can
     // just read the status instead of re-deriving it from the components.
-    if (financial.grossRoomFee != null && financial.adjustment != null && financial.hostFee != null) {
-      var replay = Math.round((financial.grossRoomFee + financial.adjustment + financial.hostFee) * 100) / 100;
-      if (Math.abs(replay - financial.net) > 0.5) {
+    if (financial.grossRoomFee != null && financial.hostFee != null) {
+      // Airbnb omet la ligne "adjustment" quand il n'y en a pas : absence ≠ inconnu.
+      // On rejoue avec 0, et on ne promeut adjustment à 0 QUE si le replay prouve
+      // l'égalité au centime — jamais de valeur écrite sans preuve arithmétique.
+      var adjEffective = financial.adjustment != null ? financial.adjustment : 0;
+      var replay = Math.round((financial.grossRoomFee + adjEffective + financial.hostFee) * 100) / 100;
+      if (Math.abs(replay - financial.net) <= 0.5) {
+        if (financial.adjustment == null) financial.adjustment = 0;
+        financial.reconciled = true;
+      } else if (financial.adjustment != null) {
         console.warn('[financial] ' + financial.bookingRef + ': YOU EARN (' + financial.net + ') does not reconcile with room fee + adjustment + host fee (' + replay + ') — not written.');
         continue;
+      } else {
+        // Un adjustment existait probablement mais n'a pas été parsé → net seul, non réconcilié.
+        console.warn('[financial] ' + financial.bookingRef + ': net parsed but replay without adjustment mismatches — writing net only, marked unreconciled.');
       }
-      financial.reconciled = true;
     } else {
       console.warn('[financial] ' + financial.bookingRef + ': net parsed but breakdown components missing — writing net only, marked unreconciled.');
     }
@@ -9614,7 +9623,8 @@ async function reconcileConfirmationBreakdowns() {
       var client = matches[j];
       var already = client.details && client.details.financial &&
         client.details.financial.bookingRef === financial.bookingRef &&
-        client.details.financial.source === 'confirmation_email';
+        client.details.financial.source === 'confirmation_email' &&
+        (client.details.financial.reconciled === true || financial.reconciled !== true);
       if (already) continue;
 
       var mergedDetails = Object.assign({}, client.details || {});

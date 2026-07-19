@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v348 (v-item92: guest note (c.notes) merges into the fiche stay pane, below Money; duplicate v5dAriaSummary id resolved — journal pane copy renamed to v5dAriaSummaryJournal)
-const CACHE = 'stafflo-v348';
+// Stafflo Service Worker — v349 (reconcileConfirmationBreakdowns: missing "adjustment" line in Airbnb confirmation email now treated as 0, not unknown; already-reconciled guard allows unreconciled→reconciled upgrade)
+const CACHE = 'stafflo-v349';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
