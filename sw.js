@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v357 (inbox Système B : « Traités » renommé « 📦 Archivés » (le compteur comptait déjà archived_at) + bouton Désarchiver (archived_at=null, miroir exact du chemin d'archivage))
-const CACHE = 'stafflo-v357';
+// Stafflo Service Worker — v358 (bottom nav : icônes nb-home/nb-location inversées (home↔key) + applyNavV2 n'écrase plus data-en avec 'Maison' → affiche 'Home' en anglais)
+const CACHE = 'stafflo-v358';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
