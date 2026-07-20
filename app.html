@@ -3577,7 +3577,7 @@ window.renderSoloTurnoverCard = function(){
       if (!c.arrival) return;
       var arr = new Date(c.arrival); arr.setHours(0,0,0,0);
       if (arr.getTime() === today.getTime()) {
-        items.push({ tier:'p1', icon:'🛬', title:(FR?'Arrivée ':'Arriving ')+(c.name||''), sub:(FR?'Brief staff + welcome':'Brief staff + welcome'), client:c, cta:(FR?'Send welcome message':'Send welcome message') });
+        items.push({ tier:'p1', icon:'🛬', title:(FR?'Arrivée ':'Arriving ')+(c.name||''), sub:(FR?'Brief staff + welcome':'Brief staff + welcome'), client:c, cta:(FR?'✍️ Rédiger le welcome':'✍️ Draft welcome'), action:'welcome' });
       }
     });
     firmList.forEach(function(c){
@@ -3594,7 +3594,7 @@ window.renderSoloTurnoverCard = function(){
       var arr = new Date(c.arrival); arr.setHours(0,0,0,0);
       var d = Math.round((arr - today)/86400000);
       if (d >= 1 && d <= 3) {
-        items.push({ tier:'p2', icon:'📅', title:(FR?'Arrivée J+':'Arrival J+')+d+' · '+(c.name||''), sub:(FR?'Briefer staff, courses, message':'Brief staff, groceries, message'), client:c, cta:(FR?'Send welcome message':'Send welcome message') });
+        items.push({ tier:'p2', icon:'📅', title:(FR?'Arrivée J+':'Arrival J+')+d+' · '+(c.name||''), sub:(FR?'Briefer staff, courses, message':'Brief staff, groceries, message'), client:c, cta:(FR?'✍️ Rédiger le welcome':'✍️ Draft welcome'), action:'welcome' });
       }
     });
     var p1 = items.filter(function(x){return x.tier==='p1';}).slice(0,3);
@@ -3602,7 +3602,7 @@ window.renderSoloTurnoverCard = function(){
     var opps = [];
     var nextNew = firmList.filter(function(c){ return c.arrival && new Date(c.arrival)>today; }).sort(function(a,b){ return new Date(a.arrival)-new Date(b.arrival);})[0];
     if (nextNew) {
-      opps.push({ tier:'opp', icon:'✨', title:(FR?'Opportunité · ':'Opportunity · ')+firstName(nextNew.name), sub:(FR?'Anticipez un welcome message premium pour le prochain séjour':'Send an early premium welcome for the next stay'), client:nextNew, cta:(FR?'Send welcome message':'Send welcome message') });
+      opps.push({ tier:'opp', icon:'✨', title:(FR?'Opportunité · ':'Opportunity · ')+firstName(nextNew.name), sub:(FR?'Anticipez un welcome message premium pour le prochain séjour':'Send an early premium welcome for the next stay'), client:nextNew, cta:(FR?'✍️ Rédiger le welcome':'✍️ Draft welcome'), action:'welcome' });
     }
     var finalList = p1.concat(p2).concat(opps.slice(0,1));
     var moreCount = Math.max(0, items.length - p1.length - p2.length);
@@ -3673,7 +3673,12 @@ window.renderSoloTurnoverCard = function(){
       primaryCTA: item.cta,
       secondaryCTA: FR ? 'Fermer' : 'Close',
       onConfirm: function(){
-        if (cl.id && typeof openDetail === 'function') openDetail(cl.id);
+        if (item.action === 'welcome') {
+          var nameEsc = (cl.name || '').replace(/'/g, "\\'");
+          if (typeof openAriaModal === 'function') openAriaModal('send welcome message to ' + nameEsc);
+        } else if (cl.id && typeof openDetail === 'function') {
+          openDetail(cl.id);
+        }
       }
     });
   }
