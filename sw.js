@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v361 (fix race clients : garde de complétude dans loadFromSupabase — un fetch partiel (moins de lignes qu'en mémoire, dû à un contexte d'auth incomplet au boot) n'écrase plus le jeu complet ; corrige la disparition de clients type Sofia)
-const CACHE = 'stafflo-v361';
+// Stafflo Service Worker — v362 (onglet Rentals : liste guests placée en tête via insertBefore(guests, villaV3), déterministe ; remplace l'ancien double-appendChild non déterministe)
+const CACHE = 'stafflo-v362';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

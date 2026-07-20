@@ -18661,11 +18661,18 @@ document.addEventListener('DOMContentLoaded', function() {
     if (pricing && locTab && pricing.parentNode !== locTab) {
       locTab.appendChild(pricing);   // déplace tout le bloc pricing dans Location
     }
-    // Nav v2 étape E : Guests absorbé dans Rentals, sous le pricing.
+    // Nav v2 étape E : Guests absorbé dans Rentals, en tête (avant le pricing).
+    // insertBefore plutôt qu'appendChild : déterministe même si applyNavV2Content()
+    // est rappelée plusieurs fois dans un ordre imprévisible (l'ancien double
+    // appendChild dépendait de l'ordre d'exécution relatif des deux blocs).
     var guests = document.getElementById('guestsV5');
-    if (guests && locTab && guests.parentNode !== locTab) {
-      locTab.appendChild(guests);   // après #villaV3 → apparaît sous le pricing
-      guests.style.display = '';     // #guestsV5 est display:none par défaut → le montrer
+    if (locTab && guests) {
+      if (pricing && pricing.parentNode === locTab) {
+        locTab.insertBefore(guests, pricing);   // guests juste avant pricing
+      } else {
+        locTab.insertBefore(guests, locTab.firstChild);   // pas de pricing → guests en tête
+      }
+      guests.style.display = '';   // #guestsV5 est display:none par défaut → le montrer
     }
     // #guestDetailV5 est position:fixed (overlay plein écran) mais reste un enfant DOM
     // de #tab-clients tant qu'on ne le déplace pas — un ancêtre display:none le cache
