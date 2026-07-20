@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v355 (saveInboxSettings no longer PATCHes villa_settings.email_connection — was overwriting Gmail credentials with {auto_sync,interval_min} from an empty local cfg, silently wiping tokens; those two keys now live in localStorage only)
-const CACHE = 'stafflo-v355';
+// Stafflo Service Worker — v356 (panneau Réglages lit cfg.email_connection.email — même source que le modal ; tue la contradiction « 2 settings »)
+const CACHE = 'stafflo-v356';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
