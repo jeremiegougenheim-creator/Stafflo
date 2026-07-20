@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v358 (bottom nav : icônes nb-home/nb-location inversées (home↔key) + applyNavV2 n'écrase plus data-en avec 'Maison' → affiche 'Home' en anglais)
-const CACHE = 'stafflo-v358';
+// Stafflo Service Worker — v359 (bottom nav réordonnée : Rentals en position 2, ARIA reste centré ; échange order nb-home 2↔4 nb-location)
+const CACHE = 'stafflo-v359';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
