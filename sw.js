@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v360 (cartes welcome (3 tiers) : le CTA ouvre le brouillon ARIA éditable au lieu de naviguer vers la fiche + libellé honnête « Rédiger le welcome / Draft welcome » ; cartes départ/mi-séjour inchangées)
-const CACHE = 'stafflo-v360';
+// Stafflo Service Worker — v361 (fix race clients : garde de complétude dans loadFromSupabase — un fetch partiel (moins de lignes qu'en mémoire, dû à un contexte d'auth incomplet au boot) n'écrase plus le jeu complet ; corrige la disparition de clients type Sofia)
+const CACHE = 'stafflo-v361';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

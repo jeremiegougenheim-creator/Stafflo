@@ -9222,6 +9222,15 @@ async function loadFromSupabase() {
     });
     if (r.ok) {
       var rows = await r.json();
+      var _incoming = rows.length;
+      var _current  = (window.clients && window.clients.length) || 0;
+      // Ne pas laisser un fetch partiel (race d'auth au boot) écraser un jeu plus complet
+      // déjà chargé. On n'écrase que si : premier chargement (mémoire vide), OU le nouveau
+      // jeu est au moins aussi grand que l'actuel.
+      if (_current > 0 && _incoming < _current) {
+        console.warn('[Stafflo] fetch partiel ignoré: ' + _incoming + ' lignes < ' + _current + ' déjà en mémoire (race auth au boot évitée)');
+        return; // on garde le jeu complet déjà en place
+      }
       clients = rows.map(function(r) { return {
         id: r.id, name: r.name||'', nat: r.nat||'', email: r.email||'', phone: r.phone||'',
         arrival: r.arrival||'', departure: r.departure||'',
