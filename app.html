@@ -26389,6 +26389,24 @@ window.addEventListener('DOMContentLoaded', function() {
     } catch(e){ row.archived_at = prevArchived; if (typeof window.refreshAllInboxRows==='function') window.refreshAllInboxRows(); toast('⚠ '+(fr()?'Échec réseau':'Network error')); }
   };
 
+  window.inboxUnarchive = async function(emailId){
+    var row = window._inboxEmails && window._inboxEmails[emailId]; if (!row) return;
+    var prevArchived = row.archived_at;
+    row.archived_at = null;
+    _animateRemove(emailId);
+    toast(fr()?'↩️ Désarchivé':'↩️ Unarchived');
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      var key = cfg.sbKey || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
+      var auth = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
+      var r = await fetch(SB_URL + '/rest/v1/email_inbox?id=eq.' + emailId, {
+        method: 'PATCH', headers: { apikey: key, Authorization: 'Bearer ' + auth, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ archived_at: null })
+      });
+      if (!r.ok) throw new Error(r.status);
+    } catch(e){ row.archived_at = prevArchived; if (typeof window.refreshAllInboxRows==='function') window.refreshAllInboxRows(); toast('⚠ '+(fr()?'Échec réseau':'Network error')); }
+  };
+
   window.inboxFlag = async function(emailId){
     var row = window._inboxEmails && window._inboxEmails[emailId]; if (!row) return;
     var prev = row.flagged;
@@ -34892,7 +34910,7 @@ function startTour(){
             {k:'inbox',lbl:'📬 Inbox',c:counts.inbox},
             {k:'unread',lbl:'● '+(fr?'Non lus':'Unread'),c:counts.unread},
             {k:'flagged',lbl:'⭐ '+(fr?'Suivi':'Flagged'),c:counts.flagged},
-            {k:'archived',lbl:'✓ '+(fr?'Traités':'Done'),c:counts.archived},
+            {k:'archived',lbl:'📦 '+(fr?'Archivés':'Archived'),c:counts.archived},
             {k:'trash',lbl:'🗑',c:counts.trash}
           ];
           tabsEl.innerHTML = tabs.map(function(t){
@@ -35230,6 +35248,19 @@ function startTour(){
                 '</div>' +
               '</details>';
             msgs.appendChild(headerCard);
+
+            if (cleanRow.archived_at) {
+              var unarchiveBtn = document.createElement('button');
+              unarchiveBtn.type = 'button';
+              unarchiveBtn.dataset.staffloEmail = '1';
+              unarchiveBtn.textContent = fr ? '↩️ Désarchiver' : '↩️ Unarchive';
+              unarchiveBtn.style.cssText = 'display:block;margin:4px 0 8px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--paper);color:var(--ink);font-size:12px;cursor:pointer';
+              unarchiveBtn.onclick = function(){
+                if (typeof window.inboxUnarchive === 'function') window.inboxUnarchive(cleanRow.id);
+                unarchiveBtn.remove();
+              };
+              msgs.appendChild(unarchiveBtn);
+            }
 
             // Show typing indicator
             var typing = document.getElementById('chatTyping');

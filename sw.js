@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v356 (panneau Réglages lit cfg.email_connection.email — même source que le modal ; tue la contradiction « 2 settings »)
-const CACHE = 'stafflo-v356';
+// Stafflo Service Worker — v357 (inbox Système B : « Traités » renommé « 📦 Archivés » (le compteur comptait déjà archived_at) + bouton Désarchiver (archived_at=null, miroir exact du chemin d'archivage))
+const CACHE = 'stafflo-v357';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
