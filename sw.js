@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v364 (classif intent: "demande" seul ne déclenche plus leads_only)
-const CACHE = 'stafflo-v364';
+// Stafflo Service Worker — v365 (phone-frame désactivé par défaut, opt-in via ?frame=1)
+const CACHE = 'stafflo-v365';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
