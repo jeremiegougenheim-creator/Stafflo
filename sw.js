@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v363 (loadFromSupabase : re-render explicite grille v5 après re-fetch, Sofia visible sans switch d'onglet)
-const CACHE = 'stafflo-v363';
+// Stafflo Service Worker — v364 (classif intent: "demande" seul ne déclenche plus leads_only)
+const CACHE = 'stafflo-v364';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
