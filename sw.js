@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v362 (onglet Rentals : liste guests placée en tête via insertBefore(guests, villaV3), déterministe ; remplace l'ancien double-appendChild non déterministe)
-const CACHE = 'stafflo-v362';
+// Stafflo Service Worker — v363 (loadFromSupabase : re-render explicite grille v5 après re-fetch, Sofia visible sans switch d'onglet)
+const CACHE = 'stafflo-v363';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
