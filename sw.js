@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v372 (onboarding: étape 4 préparée (labels + validation), non routée — display:none volontaire)
-const CACHE = 'stafflo-v372';
+// Stafflo Service Worker — v373 (onboarding: étape 4 compte routée — submitOnbAccount() → authSignUp())
+const CACHE = 'stafflo-v373';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

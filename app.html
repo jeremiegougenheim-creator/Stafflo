@@ -3100,11 +3100,7 @@ window.addEventListener('keydown', function(e){
 
       <!-- v-onb4 — ÉCRAN COMPTE : création de compte = dernier écran du tunnel.
            Email → Mot de passe → CTA → « ou lien magique ». Une seule surface d'auth. -->
-      <!-- ÉTAPE 4 PRÉPARÉE MAIS NON ROUTÉE : display:none volontaire.
-           Ne pas retirer avant que submitOnbAccount() existe (COMMIT 3),
-           sinon next() tombe sur complete(false) et termine l'onboarding
-           sans créer de compte. -->
-      <section class="onbV3-screen" data-step="acct" style="display:none">
+      <section class="onbV3-screen" data-step="acct">
         <h2 class="onbV3-h2" id="onbV3AcctH2" data-fr="Votre villa est prête." data-en="Your villa is ready.">Votre villa est prête.</h2>
         <p class="onbV3-sub" id="onbV3AcctSub" data-fr="Créez votre accès pour la retrouver partout — téléphone, ordinateur, tablette." data-en="Create your access to find it anywhere — phone, laptop, tablet.">Créez votre accès pour la retrouver partout — téléphone, ordinateur, tablette.</p>
         <div id="onbV3AcctChip" style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #C9963A;border-radius:12px;padding:11px 14px;margin-bottom:16px;box-shadow:0 6px 18px rgba(201,150,58,.12)">
@@ -29361,13 +29357,16 @@ window.addEventListener('DOMContentLoaded', function() {
    ════════════════════════════════════════════════════════════════════ */
 (function onboardingV3Controller(){
   var ROOT_ID = 'onboardingV3';
-  var STEP_COUNT = 4; // v179 : 4 écrans (splash/wow/villa+type/canaux+équipe)
+  var STEP_COUNT = 5; // v-onbacct : 5 écrans (splash/wow/villa+type/canaux+équipe/compte)
   var LS_KEY = 'stafflo_onboarding_state';
   var DEBOUNCE_MS = 300;
 
   var state = null;
   var saveTimer = null;
   var historyDepth = 0;
+  // v-onbacct-pw : mot de passe gardé hors state.data — jamais dans le blob sérialisé
+  // en clair par debouncedPersist()/persistCfg() (localStorage + cfg.onboarding).
+  var acctPwDraft = '';
 
   function $(id){ return document.getElementById(id); }
   function root(){ return $(ROOT_ID); }
@@ -29535,7 +29534,7 @@ window.addEventListener('DOMContentLoaded', function() {
       case 1: return true; // wow — optionnel, passer sans interagir autorisé
       case 2: return !!(d.villa_name && d.villa_name.trim()) && !!(d.city && d.city.trim()); // villa+ville (type déplacé en Réglages, v-onb1)
       case 3: return true; // canaux+équipe — souple, Direct activé par défaut
-      case 4: return !!(d.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email.trim()) && d.password && d.password.length >= 8); // écran compte — préparé, non routé
+      case 4: return !!(d.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email.trim()) && acctPwDraft && acctPwDraft.length >= 8); // écran compte
       default: return true;
     }
   }
@@ -29543,6 +29542,7 @@ window.addEventListener('DOMContentLoaded', function() {
   function syncFormFromState(){
     var d = state.data;
     if ($('onbV3VillaName')) $('onbV3VillaName').value = d.villa_name || '';
+    if ($('onbV3AcctEmail')) $('onbV3AcctEmail').value = d.email || '';
     if ($('onbV3City'))      $('onbV3City').value      = d.city || '';
     if ($('onbV3BasePrice')) $('onbV3BasePrice').value = d.base_price || '';
     if ($('onbV3Bedrooms'))  $('onbV3Bedrooms').textContent  = d.bedrooms;
@@ -29647,7 +29647,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
   function next(){
     if (!isStepValid(state.step)) return;
-    if (state.step === STEP_COUNT - 1) { complete(false); return; }
+    if (state.step === STEP_COUNT - 1) { submitOnbAccount(); return; }
     if (state.step === 0) {
       // Splash → step 1: also push first history entry so back button works
       go(state.step + 1, { pushHistory: true });
@@ -29759,6 +29759,50 @@ window.addEventListener('DOMContentLoaded', function() {
     try { if (typeof window.renderDashV2 === 'function') window.renderDashV2(); } catch(e){}
     try { if (typeof loadSettingsUI === 'function') loadSettingsUI(); } catch(e){}
     try { if (typeof updateSetupChecklist === 'function') updateSetupChecklist(); } catch(e){}
+  }
+
+  // v-onbacct — création de compte, dernier écran du tunnel. Réutilise authSignUp()
+  // (même chemin que le gate d'auth existant, app.html:6817) : pas de nouveau client,
+  // pas de nouvelle fonction d'auth. complete() n'est appelée qu'après succès confirmé.
+  async function submitOnbAccount(){
+    var email = (state.data.email || '').trim();
+    var pw = acctPwDraft || '';
+    var btn = $('onbV3AcctSubmit');
+    var msg = $('onbV3AcctMsg');
+    if (btn) { btn.disabled = true; btn.textContent = fr() ? 'Création…' : 'Creating…'; }
+    if (msg) { msg.style.color = '#8A8678'; msg.textContent = fr() ? 'Création du compte…' : 'Creating account…'; }
+    try {
+      var data = await authSignUp(email, pw, {
+        villa_name: state.data.villa_name || 'Ma Villa',
+        bedrooms: state.data.bedrooms,
+        base_price: state.data.base_price
+      });
+      if (data.access_token) {
+        posthog.capture('signup_completed');
+        complete(false);
+        return;
+      }
+      // Confirmation email requise — compte créé mais pas de session encore.
+      if (msg) {
+        msg.style.color = '#3B6D11';
+        msg.textContent = fr() ? '✓ Compte créé — vérifiez votre email pour confirmer.' : '✓ Account created — check your email to confirm.';
+      }
+      if (btn) { btn.disabled = false; btn.textContent = fr() ? 'Créer mon compte' : 'Create my account'; }
+    } catch(e) {
+      var raw = (e && e.message) || '';
+      var isNetwork = (e instanceof TypeError) || /failed to fetch|networkerror/i.test(raw);
+      var isDupe = /already registered|already exists|already in use/i.test(raw);
+      var text;
+      if (isDupe) {
+        text = fr() ? 'Cet email est déjà utilisé — connectez-vous plutôt.' : 'This email is already in use — sign in instead.';
+      } else if (isNetwork) {
+        text = fr() ? 'Erreur réseau — vérifiez votre connexion et réessayez.' : 'Network error — check your connection and try again.';
+      } else {
+        text = (fr() ? 'Échec de la création — ' : 'Signup failed — ') + (raw || (fr() ? 'erreur inconnue' : 'unknown error'));
+      }
+      if (msg) { msg.style.color = '#A32D2D'; msg.textContent = text; }
+      if (btn) { btn.disabled = false; btn.textContent = fr() ? 'Créer mon compte — 14 jours offerts' : 'Create my account — 14 days free'; }
+    }
   }
 
   /* ────── Event wiring ────── */
@@ -30129,6 +30173,16 @@ window.addEventListener('DOMContentLoaded', function() {
     if (wowAnalyze) {
       wowAnalyze.addEventListener('click', wowExtract);
     }
+
+    // Step 4 — account creation
+    var acctEmail = $('onbV3AcctEmail');
+    if (acctEmail) acctEmail.addEventListener('input', function(){ state.data.email = acctEmail.value.trim(); debouncedPersist(); applyStep(true); });
+    var acctPw = $('onbV3AcctPw');
+    if (acctPw) acctPw.addEventListener('input', function(){ acctPwDraft = acctPw.value; applyStep(true); });
+    var acctForm = $('onbV3AcctForm');
+    // preventDefault + next() : réutilise l'intercepteur de next() (validité + submitOnbAccount())
+    // au lieu de dupliquer la logique sur le submit du form.
+    if (acctForm) acctForm.addEventListener('submit', function(e){ e.preventDefault(); next(); });
 
     // Swipe nav on stage
     bindSwipe();
