@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v368 (paste-from-fiche : textarea Conversation persistée dans details.conversation)
-const CACHE = 'stafflo-v368';
+// Stafflo Service Worker — v369 (ARIA: injecte details.conversation (tronqué) dans le fil du guest actif)
+const CACHE = 'stafflo-v369';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

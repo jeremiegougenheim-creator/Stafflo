@@ -15594,7 +15594,8 @@ async function buildGuestThreadBlock(client, fr) {
   } catch(e){}
   var chatRows = [];
   try { chatRows = await loadChatHistory({ clientId: client.id, limit: 10 }); } catch(e){}
-  if (!emailRows.length && !chatRows.length) return '';
+  var _pastedConv = (client.details && String(client.details.conversation || '').trim()) || '';
+  if (!emailRows.length && !chatRows.length && !_pastedConv) return '';
   var lines = [(fr ? '═══ FIL DE CONVERSATION RÉEL — ' : '═══ REAL CONVERSATION THREAD — ') + (client.name||'').toUpperCase() + ' ═══'];
   emailRows.slice().reverse().forEach(function(m){
     var body = (m.body || '').replace(/\s+/g,' ').trim().slice(0, 600);
@@ -15604,6 +15605,10 @@ async function buildGuestThreadBlock(client, fr) {
     var who = row.role === 'user' ? (cfg.owner || 'Owner') : 'ARIA';
     lines.push('[chat] ' + who + ': ' + (row.content || '').slice(0, 300));
   });
+  if (_pastedConv) {
+    var _pc = _pastedConv.length > 4000 ? (_pastedConv.slice(0, 2500) + '\n[…]\n' + _pastedConv.slice(-1500)) : _pastedConv;
+    lines.push((fr ? '[conversation collée par le gérant] ' : '[conversation pasted by owner] ') + _pc);
+  }
   lines.push(fr ? '═══ FIN FIL ═══' : '═══ END THREAD ═══');
   return lines.join('\n');
 }
