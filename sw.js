@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v374 (today: carte ARIA bienvenue + ghost cards zero-state)
-const CACHE = 'stafflo-v374';
+// Stafflo Service Worker — v375 (onboarding wow: eyebrow EXEMPLE + dates sans année + micro-ligne rassurance)
+const CACHE = 'stafflo-v375';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
