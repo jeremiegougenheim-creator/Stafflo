@@ -31855,11 +31855,16 @@ function startTour(){
   }
 
   /* ── Notes pane + ARIA-generated summary (24h cache) ── */
+  function sfDebounce(fn, ms){ var t; return function(){ var a=arguments, s=this;
+    clearTimeout(t); t=setTimeout(function(){ fn.apply(s,a); }, ms); }; }
+
   function renderConversation(c){
     var ta = $('v5dConversation');
     if (!ta) return;
     ta.value = (c.details && c.details.conversation) || '';
-    ta.oninput = function(){ c.details = c.details || {}; c.details.conversation = ta.value; persistClient(c); };
+    var persistDebounced = sfDebounce(function(){ persistClient(c); }, 800);
+    ta.oninput = function(){ c.details = c.details || {}; c.details.conversation = ta.value; persistDebounced(); };
+    ta.onblur = function(){ persistClient(c); };
   }
 
   function renderNotes(c){
@@ -31867,7 +31872,9 @@ function startTour(){
     var ta = $('v5dNotes');
     if (ta) {
       ta.value = c.notes || '';
-      ta.oninput = function(){ c.notes = ta.value; persistClient(c); };
+      var persistDebounced = sfDebounce(function(){ persistClient(c); }, 800);
+      ta.oninput = function(){ c.notes = ta.value; persistDebounced(); };
+      ta.onblur = function(){ persistClient(c); };
     }
     var sum = $('v5dAriaSummary');
     if (!sum) return;

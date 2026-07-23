@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v369 (ARIA: injecte details.conversation (tronqué) dans le fil du guest actif)
-const CACHE = 'stafflo-v369';
+// Stafflo Service Worker — v370 (fiche client: debounce 800ms sur persistClient pour Conversation/Notes, flush au blur)
+const CACHE = 'stafflo-v370';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
