@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v367 (fix: boot-order race — bootstrapAuth's showAuthGate clobbered onboarding-first guest UX)
-const CACHE = 'stafflo-v367';
+// Stafflo Service Worker — v368 (paste-from-fiche : textarea Conversation persistée dans details.conversation)
+const CACHE = 'stafflo-v368';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
