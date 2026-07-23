@@ -1686,6 +1686,24 @@ body.is-v3-on #todayV3 { display: flex !important; }
 .v3-chip:hover { background:rgba(201,150,58,.18); border-color:rgba(201,150,58,.5); }
 .v3-chip:active { transform:scale(.97); }
 
+/* Welcome ARIA card — zero-state (zéro séjour + zéro équipe), see renderV3Welcome() */
+.v3-welcome-card { background:#FAF6EE; border:1px solid #E5DCC8; border-radius:16px; padding:20px; display:flex; flex-direction:column; gap:10px; }
+.v3-welcome-eyebrow { font-family:'DM Sans','Inter',sans-serif; font-size:10.5px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#C9963A; }
+.v3-welcome-title { font-family:'Cormorant Garamond',Georgia,serif; font-size:22px; font-weight:500; color:#0F2318; line-height:1.25; margin:0; }
+.v3-welcome-text { font-family:'DM Sans','Inter',sans-serif; font-size:13.5px; line-height:1.5; color:#3A362E; margin:0; }
+.v3-welcome-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; }
+.v3-welcome-btn { flex:1; min-width:160px; background:transparent; color:#1d4d3a; border:1px solid rgba(29,77,58,.3); border-radius:10px; padding:10px 14px; font-family:'DM Sans','Inter',sans-serif; font-size:12.5px; font-weight:600; cursor:pointer; transition:border-color .15s, background .15s; text-align:center; }
+.v3-welcome-btn:hover { background:rgba(29,77,58,.06); border-color:#1d4d3a; }
+.v3-welcome-btn-primary { background:#C9963A; color:#0F2318; border-color:#C9963A; }
+.v3-welcome-btn-primary:hover { opacity:.9; }
+.v3-welcome-later { align-self:flex-start; background:none; border:none; padding:2px 0 0; font-family:'DM Sans','Inter',sans-serif; font-size:11.5px; color:#6B6760; text-decoration:underline; text-decoration-color:rgba(107,103,96,.4); cursor:pointer; }
+.v3-welcome-later:hover { color:#0F2318; }
+
+/* Ghost cards — empty-state copy for sections with no data yet */
+.v3-ghost-card { background:#fff; border:1px dashed #E5DCC8; border-radius:16px; padding:16px; }
+.v3-ghost-title { font-family:'Cormorant Garamond',Georgia,serif; font-size:17px; color:#0F2318; margin:0 0 4px; }
+.v3-ghost-text { font-family:'DM Sans','Inter',sans-serif; font-size:12.5px; color:#6B6760; line-height:1.5; margin:0; }
+
 .v3-stats-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .v3-stat-chip { flex:1; min-width:0; display:flex; align-items:center; gap:6px; padding:9px 12px; background:#FAF6EE; border:1px solid #E5DCC8; border-radius:10px; font-family:'DM Sans','Inter',sans-serif; font-size:12.5px; color:#1A1208; overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; scrollbar-width:thin; scrollbar-color:#E5DCC8 transparent; }
 .v3-stat-num { font-weight:600; color:#0F2318; }
@@ -3496,6 +3514,19 @@ window.renderSoloTurnoverCard = function(){
   function firstName(n){ return (n||'').split(' ')[0] || ''; }
   function fr(){ return typeof lang !== 'undefined' && lang === 'fr'; }
 
+  /* Shared zero-state predicate — zéro séjour firm ET zéro membre d'équipe.
+     Recomputed on every render, never persisted (v307: stale localStorage flags
+     contaminated new accounts). Gates v3WelcomeCard, v3GhostMonth and the
+     "no stays" copy in renderV3Calendar's empty branch. */
+  var v3WelcomeDismissed = false; // session-only, in-memory — resets on reload
+  function isZeroState(){
+    var firmList = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients.filter(firm) : [];
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var hasTeam = (Array.isArray(cfg.staffMembers) && cfg.staffMembers.length > 0) ||
+                  (typeof cfg.staff === 'string' && cfg.staff.trim().length > 0);
+    return firmList.length === 0 && !hasTeam;
+  }
+
   /* ── Card 1: ARIA hero — counter from existing aria-actions store ── */
   function renderV3Hero(){
     var num = document.getElementById('v3CounterNum');
@@ -3729,7 +3760,12 @@ window.renderSoloTurnoverCard = function(){
                       .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); })
                       .slice(0,4);
     if (!next.length) {
-      list.innerHTML = '<li style="padding:10px 0;color:#6B6760;font-size:12.5px;font-style:italic">' + (FR?'Aucune arrivée à venir':'No upcoming arrivals') + '</li>';
+      // Zero-state (no séjour ever, same predicate as v3WelcomeCard) gets the ARIA-paste
+      // nudge; accounts with past-but-no-upcoming stays keep the generic empty copy.
+      var emptyTxt = isZeroState()
+        ? (FR?'Aucun séjour pour l\'instant. Collez une conversation ci-dessus — ARIA crée la fiche.':'No stays yet. Paste a conversation above — ARIA creates the record.')
+        : (FR?'Aucune arrivée à venir':'No upcoming arrivals');
+      list.innerHTML = '<li style="padding:10px 0;color:#6B6760;font-size:12.5px;font-style:italic">' + emptyTxt + '</li>';
       return;
     }
     list.innerHTML = next.map(function(c){
@@ -3880,6 +3916,55 @@ window.renderSoloTurnoverCard = function(){
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
+  /* ── Welcome ARIA card — zero-state only; routes to existing ARIA/Gmail/iCal
+       entry points, invents no new logic ── */
+  function renderV3Welcome(){
+    var card = document.getElementById('v3WelcomeCard');
+    if (!card) return;
+    if (v3WelcomeDismissed || !isZeroState()) { card.style.display = 'none'; return; }
+    var FR = fr();
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var villa = (cfg.villa || '').trim() || (FR ? 'votre villa' : 'your villa');
+    card.innerHTML =
+      '<div class="v3-welcome-eyebrow">' + (FR?'ARIA · BIENVENUE':'ARIA · WELCOME') + '</div>' +
+      '<div class="v3-welcome-title">' + (FR?'Bienvenue à ':'Welcome to ') + escapeHtml(villa) + '.</div>' +
+      '<div class="v3-welcome-text">' + (FR
+        ? 'Je me souviens de tout ce qui concerne votre maison. Confiez-moi une première conversation — j\'en fais une fiche de séjour propre. Vous gardez la main.'
+        : 'I remember everything about your home. Hand me a first conversation — I\'ll turn it into a clean stay record. You stay in control.') +
+      '</div>' +
+      '<div class="v3-welcome-actions">' +
+        '<button type="button" class="v3-welcome-btn v3-welcome-btn-primary" onclick="if(typeof ariaQuickAction===\'function\')ariaQuickAction(\'analyze\')">' + (FR?'Coller une conversation':'Paste a conversation') + '</button>' +
+        '<button type="button" class="v3-welcome-btn" onclick="if(typeof connectEmailProvider===\'function\')connectEmailProvider(\'google\')">' + (FR?'Connecter Gmail — ARIA lit vos réservations':'Connect Gmail — ARIA reads your bookings') + '</button>' +
+        '<button type="button" class="v3-welcome-btn" onclick="if(typeof openIcalSettings===\'function\')openIcalSettings()">' + (FR?'Synchroniser un calendrier (Airbnb, Booking…)':'Sync a calendar (Airbnb, Booking…)') + '</button>' +
+      '</div>' +
+      '<button type="button" class="v3-welcome-later" onclick="if(typeof v3DismissWelcome===\'function\')v3DismissWelcome()">' + (FR?'Plus tard — explorer d\'abord':'Later — explore first') + '</button>';
+    card.style.display = '';
+  }
+
+  window.v3DismissWelcome = function(){
+    v3WelcomeDismissed = true;
+    var card = document.getElementById('v3WelcomeCard');
+    if (card) card.style.display = 'none';
+  };
+
+  /* ── Ghost "Ce mois · votre maison" — real accounts only, zero-state only.
+       Never touches v3DemoMonth / renderDemoMonthCard (demo stays demo). ── */
+  function renderV3GhostMonth(){
+    var el = document.getElementById('v3GhostMonth');
+    if (!el) return;
+    if ((typeof isDemo === 'function' && isDemo()) || !isZeroState()) { el.style.display = 'none'; return; }
+    var FR = fr();
+    el.innerHTML =
+      '<div class="v3-ghost-card">' +
+        '<div class="v3-ghost-title">' + (FR?'Ce mois · votre maison':'This month · your home') + '</div>' +
+        '<div class="v3-ghost-text">' + (FR
+          ? 'Ajoutez votre équipe dans les Réglages — salaires et charges apparaîtront ici, loué ou non.'
+          : 'Add your team in Settings — salaries and expenses will show up here, whether the villa is booked or not.') +
+        '</div>' +
+      '</div>';
+    el.style.display = '';
+  }
+
   /* ── Master render ── */
   window.renderTodayV3All = function(){
     if (!flagOn()) return;
@@ -3890,6 +3975,8 @@ window.renderSoloTurnoverCard = function(){
       if (dm) dm.innerHTML = (typeof isDemo === 'function' && isDemo() && typeof renderDemoMonthCard === 'function')
         ? renderDemoMonthCard() : '';
     } catch(e){ console.warn('[v3 demo month]', e); }
+    try { renderV3Welcome(); }      catch(e){ console.warn('[v3 welcome]', e); }
+    try { renderV3GhostMonth(); }   catch(e){ console.warn('[v3 ghost month]', e); }
     try { renderV3Hero(); }         catch(e){ console.warn('[v3 hero]', e); }
     try { renderV3VillaStats(); }   catch(e){ console.warn('[v3 stats]', e); }
     try { renderV3InboxChip(); }    catch(e){ console.warn('[v3 inbox]', e); }
@@ -4284,6 +4371,11 @@ window.renderSoloTurnoverCard = function(){
 <!-- === Today v3 hi-fi (strangler fig — gated by stafflo_aria_first_v1, supersedes ariaFirstHero & v2 rows when flag ON) === -->
 <div id="todayV3" style="display:none">
 
+  <!-- Welcome ARIA card — zero-state only (zéro séjour + zéro équipe), same predicate
+       as the ghost cards below. Recalculated every render, no localStorage persistence
+       (v307 lesson: stale flags contaminate new accounts). Filled by renderV3Welcome(). -->
+  <div id="v3WelcomeCard" class="v3-welcome-card" style="display:none"></div>
+
   <!-- HERO: compact ARIA — prompt + chips + counter -->
   <div class="v3-hero">
     <div class="v3-hero-prompt-row">
@@ -4310,6 +4402,11 @@ window.renderSoloTurnoverCard = function(){
   <!-- DEMO-ONLY: "Ce mois · votre maison" house-ops card — filled by renderTodayV3All
        (gated isDemo()). Empty/cleared outside demo. Top of brief, just under hero. -->
   <div id="v3DemoMonth"></div>
+
+  <!-- Ghost "Ce mois · votre maison" — real (non-demo) accounts, zero-state only.
+       Distinct from v3DemoMonth above (never touches its demo logic). Filled by
+       renderV3GhostMonth(). -->
+  <div id="v3GhostMonth" style="display:none"></div>
 
   <!-- nav_v2 étape D : résumé maison cliquable (remplace le détail sur le Today,
        qui vit dans l'onglet Maison depuis l'étape C). Caché par défaut. -->

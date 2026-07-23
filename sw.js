@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v373 (onboarding: étape 4 compte routée — submitOnbAccount() → authSignUp())
-const CACHE = 'stafflo-v373';
+// Stafflo Service Worker — v374 (today: carte ARIA bienvenue + ghost cards zero-state)
+const CACHE = 'stafflo-v374';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
