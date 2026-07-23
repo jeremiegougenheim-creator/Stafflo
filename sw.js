@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v375 (onboarding wow: eyebrow EXEMPLE + dates sans année + micro-ligne rassurance)
-const CACHE = 'stafflo-v375';
+// Stafflo Service Worker — v376 (onboarding splash: icônes bullets en cercle bordé gold)
+const CACHE = 'stafflo-v376';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
