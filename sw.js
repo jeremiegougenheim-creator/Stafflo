@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v370 (fiche client: debounce 800ms sur persistClient pour Conversation/Notes, flush au blur)
-const CACHE = 'stafflo-v370';
+// Stafflo Service Worker — v371 (onboarding: écran compte v3 — retrait tabs auth, lien vers gate, i18n)
+const CACHE = 'stafflo-v371';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
