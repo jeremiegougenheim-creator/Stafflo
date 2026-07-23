@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v371 (onboarding: écran compte v3 — retrait tabs auth, lien vers gate, i18n)
-const CACHE = 'stafflo-v371';
+// Stafflo Service Worker — v372 (onboarding: étape 4 préparée (labels + validation), non routée — display:none volontaire)
+const CACHE = 'stafflo-v372';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

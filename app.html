@@ -3100,6 +3100,10 @@ window.addEventListener('keydown', function(e){
 
       <!-- v-onb4 — ÉCRAN COMPTE : création de compte = dernier écran du tunnel.
            Email → Mot de passe → CTA → « ou lien magique ». Une seule surface d'auth. -->
+      <!-- ÉTAPE 4 PRÉPARÉE MAIS NON ROUTÉE : display:none volontaire.
+           Ne pas retirer avant que submitOnbAccount() existe (COMMIT 3),
+           sinon next() tombe sur complete(false) et termine l'onboarding
+           sans créer de compte. -->
       <section class="onbV3-screen" data-step="acct" style="display:none">
         <h2 class="onbV3-h2" id="onbV3AcctH2" data-fr="Votre villa est prête." data-en="Your villa is ready.">Votre villa est prête.</h2>
         <p class="onbV3-sub" id="onbV3AcctSub" data-fr="Créez votre accès pour la retrouver partout — téléphone, ordinateur, tablette." data-en="Create your access to find it anywhere — phone, laptop, tablet.">Créez votre accès pour la retrouver partout — téléphone, ordinateur, tablette.</p>
@@ -7046,6 +7050,8 @@ function hideAuthGate() {
 }
 window.hideAuthGate = hideAuthGate;
 
+// ⚠️ MORTE : écrasée par la déclaration switchAuthTab à ~18523 (hoisting, même scope).
+// Ne pas éditer ici — toute correction va dans la version de 18523.
 function switchAuthTab(tab) {
   var login = document.getElementById('authLoginForm');
   var signup = document.getElementById('authSignupForm');
@@ -18518,7 +18524,7 @@ async function doSignOut() {
 // v-authtab : unifiée + null-safe. Deux écrans auth coexistent (strangler-fig) :
 // le gate généré (showAuthGate → authLoginForm/authSignupForm/authMsg, tabs .auth-tab[data-tab],
 // appelle 'login') et l'écran statique legacy #authScreen (authTabSignin/authFormSignin/authMessage,
-// appelle 'signin'). Cette déclaration écrase celle de la ligne ~6885 (hoisting), donc elle doit
+// appelle 'signin'). Cette déclaration écrase celle de la ligne ~7049 (hoisting), donc elle doit
 // gérer les deux. Tout est gardé null-safe : chaque écran ignore les IDs de l'autre.
 function switchAuthTab(tab) {
   var isSignup = (tab === 'signup');
@@ -29505,7 +29511,8 @@ window.addEventListener('DOMContentLoaded', function() {
         // été décalé — index de nav et contenu désynchronisés.
         1: { fr:'C\'est bluffant →',     en:'That\'s impressive →', ar:'مذهل ←', th:'น่าทึ่ง →', zh:'太厉害了 →' },
         2: { fr:'Continuer →',           en:'Continue →', ar:'متابعة ←', th:'ดำเนินการต่อ →', zh:'继续 →' },
-        3: { fr:'Créer ma villa',        en:'Create my villa', ar:'إنشاء فيلتي', th:'สร้างวิลล่าของฉัน', zh:'创建我的别墅' }
+        3: { fr:'Créer ma villa',        en:'Create my villa', ar:'إنشاء فيلتي', th:'สร้างวิลล่าของฉัน', zh:'创建我的别墅' },
+        4: { fr:'Créer mon compte', en:'Create my account' }
       };
       var L = labels[state.step] || labels[1];
       primary.textContent = L[lang] || L.en || L.fr;
@@ -29528,6 +29535,7 @@ window.addEventListener('DOMContentLoaded', function() {
       case 1: return true; // wow — optionnel, passer sans interagir autorisé
       case 2: return !!(d.villa_name && d.villa_name.trim()) && !!(d.city && d.city.trim()); // villa+ville (type déplacé en Réglages, v-onb1)
       case 3: return true; // canaux+équipe — souple, Direct activé par défaut
+      case 4: return !!(d.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email.trim()) && d.password && d.password.length >= 8); // écran compte — préparé, non routé
       default: return true;
     }
   }
