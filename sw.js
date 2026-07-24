@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v378 (onboarding: no-session ne pose plus le tunnel sur une démo demandée)
-const CACHE = 'stafflo-v378';
+// Stafflo Service Worker — v379 (fix: ?demo=1 seul déclencheur de démo, plus de localStorage)
+const CACHE = 'stafflo-v379';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
