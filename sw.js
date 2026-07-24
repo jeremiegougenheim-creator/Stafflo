@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v376 (onboarding splash: icônes bullets en cercle bordé gold)
-const CACHE = 'stafflo-v376';
+// Stafflo Service Worker — v377 (onboarding: city transmis dans les metadata de signup)
+const CACHE = 'stafflo-v377';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
