@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v380 (authScreen: lien de retour ← Retour)
-const CACHE = 'stafflo-v380';
+// Stafflo Service Worker — v381 (authScreen: placeholders + traductions des 6 inputs)
+const CACHE = 'stafflo-v381';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
