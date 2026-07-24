@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v377 (onboarding: city transmis dans les metadata de signup)
-const CACHE = 'stafflo-v377';
+// Stafflo Service Worker — v378 (onboarding: no-session ne pose plus le tunnel sur une démo demandée)
+const CACHE = 'stafflo-v378';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

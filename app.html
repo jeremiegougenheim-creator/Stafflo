@@ -18973,7 +18973,14 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
       // No session — landing brandée (splash V3 : Set up my villa / Sign in / démo)
       applyLang();
-      if (typeof window.launchOnboardingV3 === 'function') {
+      // v-demo31 : ne pas poser le tunnel d'onboarding par-dessus une démo demandée.
+      // Lecture synchrone (URL + localStorage) — pas d'état auth async, pas de race.
+      var demoWanted = false;
+      try { demoWanted = new URLSearchParams(location.search).get('demo') === '1'
+                      || localStorage.getItem('stafflo_demo_mode') === '1'; } catch(e){}
+      if (demoWanted) {
+        enterDemoMode(); goTab('today'); chatInit(); renderAll(); renderTodayQV();
+      } else if (typeof window.launchOnboardingV3 === 'function') {
         window.launchOnboardingV3();
       } else {
         enterDemoMode(); goTab('today'); chatInit(); renderAll(); renderTodayQV();
