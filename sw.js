@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v379 (fix: ?demo=1 seul déclencheur de démo, plus de localStorage)
-const CACHE = 'stafflo-v379';
+// Stafflo Service Worker — v380 (authScreen: lien de retour ← Retour)
+const CACHE = 'stafflo-v380';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
