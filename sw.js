@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v389 (aria-label boutons icone, COMMIT B-bis portage)
-const CACHE = 'stafflo-v389';
+// Stafflo Service Worker — v390 (4 tons semantiques go/wait/house/alert, COMMIT C portage)
+const CACHE = 'stafflo-v390';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

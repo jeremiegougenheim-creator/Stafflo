@@ -235,3 +235,96 @@ v388 -> **v389**.
   en prod/staging réel et confirmer au lecteur d'écran (ou juste au survol)
   que le bouton annonce bien « Gérer mon abonnement » ou « Passer à Solo »
   selon le statut, pas juste « Abonnement ».
+
+## COMMIT C — quatre tons sémantiques (go/wait/house/alert)
+
+- Recherche préalable (agent Explore) : **aucune infrastructure de ton
+  n'existait dans `app.html`** — ni les variables CSS, ni `[data-tone]`, ni
+  les classes `.pcard__i`/`.sig__i`/etc. du fichier de référence. Seules les
+  chaînes de sélecteur DANS `auditTones()` (mon propre COMMIT A) les
+  mentionnaient — c'était du code mort en attente de ce commit. Il n'y a
+  donc pas de « fonctions de rendu existantes à rebrancher sur les
+  classes du fichier de référence » au sens littéral : ces classes n'ont
+  jamais existé ici. Rebranché sur l'équivalent RÉEL le plus proche trouvé
+  dans `app.html`.
+- CSS posé (additif, un troisième bloc `:root{}` à la suite de celui du
+  COMMIT 2, même convention) : les 8 variables de ton, `[data-tone=X]`
+  générique (`background`/`color` en `!important` — nécessaire, sinon un
+  style inline existant l'emporterait par spécificité, même bug que
+  COMMIT B) et `.tone-tile` (42px, rayon, liseré intérieur `inset 1.5px`)
+  prête à l'emploi mais pas encore posée sur un composant existant : aucune
+  tuile carrée dédiée n'existe aujourd'hui dans `app.html` (les icônes
+  d'alerte et de charge sont des spans inline en ligne de texte, pas des
+  tuiles). Documenté plutôt qu'inventé un nouveau composant pour la caser.
+- Câblé sur 2 points concrets, sans toucher la logique existante :
+  1. `renderAlert()` (l.20740, alertes/signaux) : ajouté `const ALERT_TONE
+     = {urgent:'alert', warn:'wait', good:'go', info:'house'}` et
+     `data-tone="${ALERT_TONE[a.type]}"` sur la même div qui porte déjà
+     `class="alert-hm ${a.type}"`. Les règles `.warn/.good/.info/.urgent`
+     (l.396-399, 1327-1330) restent en place, intactes — `[data-tone]`
+     l'emporte par `!important`, comme prévu.
+  2. `renderMaisonReal()` (l.39689, pastille payé/à régler) : ajouté
+     `data-tone="go"`/`data-tone="wait"` sur les deux `<span>` de pastille,
+     couleurs en dur (`GREEN_MID`, `#8a6420`...) laissées dans le HTML,
+     supplantées visuellement par les valeurs canoniques.
+
+### Itérations avant le vert
+
+1 seule. Risque identifié avant d'écrire le code (pas après) : le
+`onmouseenter`/`onmouseleave` de `renderAlert()` fait
+`this.style.background='rgba(60,108,17,.04)'` au survol — un style inline
+posé en JS. Avec `[data-tone]{background:...!important}`, cet effet de
+survol devient invisible (le `!important` gagne même sur un style inline
+posé après coup). Accepté sciemment : l'effet actuel remplaçait déjà la
+couleur du type par un survol générique verdâtre, perdant elle aussi le
+sens du ton pendant le survol — la nouvelle version garde la couleur
+sémantique visible en permanence, ce qui est plus cohérent avec la règle
+du commit, au prix d'un micro-effet de survol en moins. Noté ici plutôt
+que découvert en test.
+
+### Sortie du harnais (6 critères)
+
+1. `node --check` : **OK**
+2. Delta d'accolades : **-3** (inchangé)
+3. `auditContrast()` : cliquet inchangé (les tons touchent des éléments
+   déjà comptés, mêmes valeurs de contraste avant/après à vérifier — voir
+   ci-dessous)
+4. `auditLabels()` : **0** (inchangé, toujours à zéro depuis B-bis)
+5. `auditTones()` : **`fautes: []`** sur les 48 combinaisons — aucun
+   élément `.aicon`/`.pact`/`.btn` ne porte les couleurs `--t-*-fg`
+6. Erreurs console : **0/48**
+
+`>>> HARNAIS: VERT` (2 runs consécutifs)
+
+### PHASE 4 — champs affichés ancien vs nouveau
+
+Sans objet côté données : aucun champ ajouté/retiré, uniquement une
+recoloration des pastilles payé/à régler (villa) et un attribut
+sémantique sur les lignes d'alerte. Vérifié visuellement sur
+`tests/shots/villa-1440-fr.png` : pastille « à régler » en or, « payé »
+en vert — conforme aux valeurs canoniques. **Non vérifié visuellement** :
+le rendu de `renderAlert()` — le mode démo (`?demo=1`) ne peuple pas
+`generateAlerts()` avec des données réalistes (dépend d'appels réseau
+mockés qui renvoient du vide), donc aucune `.alert-hm` n'est apparue dans
+les captures pour confirmer le rendu réel. Voir vérification manuelle
+recommandée.
+
+### Service worker
+
+v389 -> **v390**.
+
+### Ce qui reste douteux
+
+- `.tone-tile` (42px) est posée en CSS mais n'a aucun consommateur réel
+  pour l'instant — à vérifier si un futur commit (D ou G, qui touchent aux
+  surfaces) doit l'adopter sur un vrai composant, ou si elle doit rester
+  en réserve.
+- Le rendu réel de `renderAlert()` avec `data-tone` n'a pas pu être
+  observé (mode démo sans alertes). Recommandation manuelle : ouvrir
+  l'app avec un vrai compte ayant des alertes actives (paiement en retard,
+  arrivée du jour, etc.) et confirmer que chaque ligne de `.alert-hm`
+  affiche le bon liseré de couleur (or/vert/bleu/rouille selon le type)
+  et que le survol ne fait plus disparaître la couleur.
+- Perte du micro-effet de survol vert sur les lignes d'alerte (voir
+  itérations ci-dessus) — mineur, mais à signaler si quelqu'un le
+  remarque.

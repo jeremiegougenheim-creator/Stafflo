@@ -74,6 +74,32 @@
   --r-xs:4px; --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:20px; --r-pill:999px;
   --i-xs:16px; --i-sm:19px; --i-md:22px; --i-lg:25px; --i-xl:28px;
 }
+/* COMMIT C (portage) — quatre tons sémantiques, portés depuis stafflo-ui-v19.html.
+   Règle : la couleur dit l'état, l'or dit l'action — jamais l'inverse.
+   go=vert acquis/revenu · wait=or en attente · house=bleu bien et équipe ·
+   alert=rouille urgent. auditTones() (COMMIT A) vérifie qu'aucune de ces
+   couleurs n'apparaît sur un élément d'action (.aicon/.pact/.btn). */
+:root{
+  --t-go-bg:#E3F0E8;    --t-go-fg:#1F6B47;
+  --t-wait-bg:#FDF0D6;  --t-wait-fg:#8A5D0F;
+  --t-house-bg:#E6EEF6; --t-house-fg:#2C5875;
+  --t-alert-bg:#FAE8E2; --t-alert-fg:#9B3A25;
+}
+[data-tone=go]{background:var(--t-go-bg)!important;color:var(--t-go-fg)!important}
+[data-tone=wait]{background:var(--t-wait-bg)!important;color:var(--t-wait-fg)!important}
+[data-tone=house]{background:var(--t-house-bg)!important;color:var(--t-house-fg)!important}
+[data-tone=alert]{background:var(--t-alert-bg)!important;color:var(--t-alert-fg)!important}
+/* Tuile d'icône 42px + liseré intérieur — nouvelle classe partagée, à poser
+   sur tout futur icon-tile qui porte un data-tone (aucun composant existant
+   n'a de tuile carrée dédiée aujourd'hui ; voir RAPPORT-PORTAGE.md COMMIT C). */
+.tone-tile{width:42px;height:42px;border-radius:var(--r-md);display:grid;place-items:center;box-shadow:inset 0 0 0 1.5px rgba(26,18,8,.10);flex-shrink:0}
+/* Liseré de carte accordé au ton — appliqué directement sur .alert-hm, qui
+   porte déjà border-left par type (.warn/.good/.info/.urgent, l.396-399 et
+   1327-1330, laissés intacts) ; [data-tone] prend le dessus une fois posé. */
+.alert-hm[data-tone=go]{border-left:3px solid var(--t-go-fg)}
+.alert-hm[data-tone=wait]{border-left:3px solid var(--t-wait-fg)}
+.alert-hm[data-tone=house]{border-left:3px solid var(--t-house-fg)}
+.alert-hm[data-tone=alert]{border-left:3px solid var(--t-alert-fg)}
 html{scroll-behavior:smooth}
 body{font-family:'DM Sans',sans-serif;font-size:14px;color:var(--ink);background:var(--paper);min-height:100vh}
 
@@ -20711,10 +20737,15 @@ async function generateAlerts(weatherTemp) {
     if (/event|festival|marathon|fête|noël/i.test(txt)) return { action: 'open:aria-event', label: fr?'→ ARIA: planifier':'→ ARIA: plan' };
     return { action: 'open:aria', label: fr?'→ Demander à ARIA':'→ Ask ARIA' };
   };
+  // COMMIT C (portage) : mappe le type d'alerte existant vers un des 4 tons
+  // sémantiques posés en CSS (l.73+). N'a jamais existé avant ce commit —
+  // laisse .warn/.good/.info/.urgent (l.396-399, 1327-1330) intacts, se
+  // contente d'ajouter data-tone en plus sur le même élément.
+  const ALERT_TONE = { urgent: 'alert', warn: 'wait', good: 'go', info: 'house' };
   const renderAlert = (a, idx) => {
     const route = routeAlert(a);
     return `
-    <div class="alert-hm ${a.type}" data-alert-idx="${idx}" onclick="handleAlertClick('${route.action}', this)" style="cursor:pointer;transition:background .15s" onmouseenter="this.style.background='rgba(60,108,17,.04)'" onmouseleave="this.style.background=''">
+    <div class="alert-hm ${a.type}" data-tone="${ALERT_TONE[a.type] || 'house'}" data-alert-idx="${idx}" onclick="handleAlertClick('${route.action}', this)" style="cursor:pointer;transition:background .15s" onmouseenter="this.style.background='rgba(60,108,17,.04)'" onmouseleave="this.style.background=''">
       <span class="alert-icon-w" style="flex-shrink:0;font-size:14px">${(function(){var e=(a.title||'').match(/^[\p{Emoji}]+/u);var k=e?e[0]:(a.type==='urgent'?'🚨':a.type==='warn'?'⚠️':a.type==='good'?'✅':'💡');return typeof iconFor==='function'?iconFor(k,a):k;})()}</span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:12px;margin-bottom:2px">${(a.title||'').replace(/^[\p{Emoji}\s]+/u,'')}</div>
@@ -39657,9 +39688,12 @@ function renderMaisonReal() {
   var due = _totals.due, paid = _totals.paid;
   var rowsHtml = rows.map(function(x){
     var isPaid = x.status === 'paye';
+    // COMMIT C (portage) : data-tone en plus des couleurs en dur ci-dessus
+    // (laissées intactes) — go=payé, wait=à régler, valeurs canoniques
+    // posées en CSS (l.73+) l'emportent via !important.
     var pill = isPaid
-      ? '<span style="font-size:10px;font-weight:600;color:'+GREEN_MID+';background:rgba(29,77,58,.10);border-radius:var(--r-sm);padding:3px 9px">'+(fr?'payé':'paid')+'</span>'
-      : '<span style="font-size:10px;font-weight:600;color:#8a6420;background:#FBF3DC;border:1px solid rgba(201,150,58,.35);border-radius:var(--r-sm);padding:3px 9px">'+(fr?'à régler':'to settle')+'</span>';
+      ? '<span data-tone="go" style="font-size:10px;font-weight:600;color:'+GREEN_MID+';background:rgba(29,77,58,.10);border-radius:var(--r-sm);padding:3px 9px">'+(fr?'payé':'paid')+'</span>'
+      : '<span data-tone="wait" style="font-size:10px;font-weight:600;color:#8a6420;background:#FBF3DC;border:1px solid rgba(201,150,58,.35);border-radius:var(--r-sm);padding:3px 9px">'+(fr?'à régler':'to settle')+'</span>';
     return '<div class="mc-row" data-charge-id="'+(x.id||'')+'" style="display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer">'
       + '<span style="flex-shrink:0;width:30px;height:30px;border-radius:var(--r-sm);background:#F4EFE3;display:inline-flex;align-items:center;justify-content:center;font-size:15px">'+(ICON[x.category]||'•')+'</span>'
       + '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#1A1208">'+(x.label||'')+'</div>'
