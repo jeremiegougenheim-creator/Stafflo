@@ -6932,6 +6932,15 @@ async function authSignUp(email, password, meta) {
     STAFFLO_AUTH.user = data.user;
     STAFFLO_AUTH.mode = 'authed';
     saveSessionLocal(data);
+    // v383 — pont entre les deux systèmes de session. STAFFLO_AUTH.session (ancien) et
+    // _stafflo_session (courant) coexistent ; authSignUp n'alimentait que le premier.
+    // pushVillaSettings (l.23286), persistStaffToMaison (l.29793) et le RPC generate_month
+    // (l.29846) gardent tous sur _stafflo_session → sortie de tunnel silencieusement vide.
+    // saveSession() écrit _stafflo_session ET _stafflo_user. Déclarée l.18457, même bloc
+    // <script> (6474-29268) donc hoistée : appel direct sûr, pas de garde typeof nécessaire.
+    // Le double localStorage.setItem sur la clé stafflo_session est volontaire et sans effet
+    // (même clé, même valeur) — NE PAS retirer saveSessionLocal en « simplification ».
+    saveSession(data);
     staffloWipeIfUserChanged(data.user && data.user.id);
   }
   return data;

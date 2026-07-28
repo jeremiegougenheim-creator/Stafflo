@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v382 (header: dropdown langue FR/EN remplace les drapeaux)
-const CACHE = 'stafflo-v382';
+// Stafflo Service Worker — v383 (authSignUp : pont _stafflo_session, villa poussée après signup)
+const CACHE = 'stafflo-v383';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
