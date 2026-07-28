@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v383 (authSignUp : pont _stafflo_session, villa poussée après signup)
-const CACHE = 'stafflo-v383';
+// Stafflo Service Worker — v384 (slot AirDNA masqué sans clé — endpoint placeholder)
+const CACHE = 'stafflo-v384';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
