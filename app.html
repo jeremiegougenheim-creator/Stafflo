@@ -1951,6 +1951,9 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v4-market-delta { flex-shrink:0; width:62px; text-align:right; font-family:'DM Sans','Inter',sans-serif; font-size:11.5px; font-weight:600; }
 .v4-market-delta.is-pos { color:#639922; }
 .v4-market-delta.is-neg { color:#A32D2D; }
+/* COMMIT 8 — thin-data honesty on owner-entered competitor panels */
+.v4-market-unverified { flex-shrink:0; margin-left:6px; font-size:9.5px; letter-spacing:.3px; text-transform:uppercase; color:#A57930; background:rgba(201,150,58,.14); border-radius:var(--r-xs); padding:1px 5px; }
+.v4-market-note { margin-top:10px; }
 
 /* Opportunities */
 .v4-opps-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px; }
@@ -20177,6 +20180,10 @@ function addCompFromSuggestion(idx) {
   var div = document.createElement('div');
   div.className = 'comp-edit-row';
   div.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
+  /* COMMIT 8 — curated suggestion, price never independently verified by the owner. Tagged
+     so saveCompetitors() can carry the flag into stored comps and the market panels can
+     disclose it instead of presenting it as researched data. */
+  div.dataset.unverified = '1';
   div.innerHTML =
     '<input class="comp-name-input" value="'+ s.name.replace(/"/g,'&quot;') +'" style="flex:2;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:var(--r-sm);font-size:11px;font-family:DM Sans,sans-serif;background:var(--paper)">' +
     '<input class="comp-price-input" type="number" value="'+ s.price +'" style="width:72px;padding:6px 8px;border:1px solid rgba(44,31,20,.15);border-radius:var(--r-sm);font-size:11px;font-family:DM Sans,sans-serif;background:var(--paper)">' +
@@ -20195,7 +20202,8 @@ function saveCompetitors() {
     const name = row.querySelector('.comp-name-input').value.trim();
     const price = parseInt(row.querySelector('.comp-price-input').value) || 0;
     const source = row.querySelector('.comp-source-input').value.trim();
-    if (name && price) comps.push({name, price, source});
+    /* COMMIT 8 — carries the MRX_COMP_SUGGESTIONS origin flag into storage */
+    if (name && price) comps.push({name, price, source, unverified: row.dataset.unverified === '1'});
   });
   try { localStorage.setItem('darj_competitors', JSON.stringify(comps)); } catch(e) {}
   const msg = document.getElementById('savedMsg');
@@ -21221,20 +21229,35 @@ function renderMarketBand() {
     el.innerHTML = '<div style="padding:24px 18px;text-align:center;color:var(--muted);font-size:12px;font-style:italic">Ajoutez des concurrents pour voir les prix du marché</div>';
     return;
   }
+  const FR = (typeof fr === 'function') ? fr() : (typeof lang !== 'undefined' && lang === 'fr');
   const yourPrice = getPrice ? getPrice().pricePN : 0;
   const avg = Math.round(comps.reduce((s,x) => s + x.price, 0) / comps.length);
   const diff = yourPrice ? yourPrice - avg : null;
   const diffColor = diff !== null ? (diff < -100 ? '#3B6D11' : diff > 100 ? '#C0392B' : 'var(--muted)') : '';
   const sortedComps = comps.slice().sort((a,b)=>a.price-b.price);
-  let rows = sortedComps.map(x =>
-    '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 18px;border-bottom:1px solid rgba(0,0,0,.04);font-size:12px"><span style="color:var(--ink);font-weight:500">' + x.name.split('—')[0].trim().slice(0,20) + '</span><span style="color:var(--gold);font-weight:600;font-family:Cormorant Garamond,serif;font-size:13px">' + x.price + '€</span></div>'
-  ).join('');
+  const unverifiedCount = comps.filter(function(x){ return !!x.unverified; }).length;
+  let rows = sortedComps.map(x => {
+    const tag = x.unverified ? ('<span class="v4-market-unverified" data-fr="non vérifié" data-en="unverified">' + (FR?'non vérifié':'unverified') + '</span>') : '';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 18px;border-bottom:1px solid rgba(0,0,0,.04);font-size:12px"><span style="color:var(--ink);font-weight:500">' + x.name.split('—')[0].trim().slice(0,20) + tag + '</span><span style="color:var(--gold);font-weight:600;font-family:Cormorant Garamond,serif;font-size:13px">' + x.price + '€</span></div>';
+  }).join('');
+  /* COMMIT 8 — under 3 saved comps isn't a market average; disclose instead of implying one. */
+  let noteHtml = '';
+  if (comps.length < 3) {
+    const n = comps.length;
+    const noteFr = n + ' concurrent' + (n>1?'s':'') + ' saisi' + (n>1?'s':'') +
+      (unverifiedCount ? (', dont ' + unverifiedCount + ' non vérifié' + (unverifiedCount>1?'s':'')) : '') +
+      ' — ce n\'est pas une moyenne de marché : à lire comme un repère isolé.';
+    const noteEn = n + ' competitor' + (n>1?'s':'') + ' entered' +
+      (unverifiedCount ? (', ' + unverifiedCount + ' unverified') : '') +
+      ' — this is not a market average: read it as an isolated data point.';
+    noteHtml = '<div class="market-alert" data-fr="' + noteFr.replace(/"/g,'&quot;') + '" data-en="' + noteEn.replace(/"/g,'&quot;') + '">' + (FR?noteFr:noteEn) + '</div>';
+  }
   let html =
     '<div style="padding:14px 18px 6px;display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid rgba(0,0,0,.04);background:var(--paper)">' +
       '<div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">Moyenne marché</div><div style="font-family:Cormorant Garamond,serif;font-size:20px;color:var(--ink);font-weight:500;line-height:1.2">' + avg + '€</div></div>' +
       (yourPrice ? ('<div style="text-align:right"><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase">Vous</div><div style="font-family:Cormorant Garamond,serif;font-size:20px;font-weight:500;line-height:1.2;color:' + diffColor + '">' + yourPrice + '€</div>' + (diff!==null ? '<div style="font-size:10px;color:' + diffColor + '">' + (diff>0?'+':'') + diff + '€</div>' : '') + '</div>') : '') +
     '</div>' +
-    '<div>' + rows + '</div>';
+    '<div>' + rows + '</div>' + noteHtml;
   el.innerHTML = html;
   // v185 — persist market snapshot (throttled 1/day, only if real data)
   var _cp = sortedComps.map(function(x){ return x.price; }).filter(function(p){ return p > 0; });
@@ -30821,12 +30844,14 @@ function startTour(){
     var sorted = comps.slice().sort(function(a,b){ return (b.price||0) - (a.price||0); }).slice(0, 5);
     var avg = Math.round(sorted.reduce(function(s,c){ return s + (c.price||0); }, 0) / Math.max(1, sorted.length));
     var yourPrice = getPrice().pricePN;
+    var unverifiedCount = comps.filter(function(c){ return !!c.unverified; }).length;
     var rows = sorted.map(function(c){
       var d = (c.price||0) - avg;
       var sign = d > 0 ? '+' : d < 0 ? '−' : '';
       var dCls = d > 0 ? 'is-pos' : d < 0 ? 'is-neg' : '';
+      var tag = c.unverified ? ('<span class="v4-market-unverified" data-fr="non vérifié" data-en="unverified">' + (FR?'non vérifié':'unverified') + '</span>') : '';
       return '<div class="v4-market-row">' +
-               '<span class="v4-market-name">' + escapeHtml(c.name||'?') + '</span>' +
+               '<span class="v4-market-name">' + escapeHtml(c.name||'?') + '</span>' + tag +
                '<span class="v4-market-price">' + fmtPrice(c.price||0) + '</span>' +
                '<span class="v4-market-delta ' + dCls + '">' + sign + Math.abs(d) + '€</span>' +
              '</div>';
@@ -30840,7 +30865,32 @@ function startTour(){
                    '<span class="v4-market-delta ' + youCls + '">' + youSign + Math.abs(youDelta) + '€</span>' +
                  '</div>';
     host.innerHTML = rows + youRow;
-    if (meta) meta.textContent = sorted.length + ' ' + (FR?'concurrents':'competitors');
+    if (meta) meta.textContent = sorted.length + ' ' + (FR?'concurrents':'competitors') + (unverifiedCount ? (' · ' + unverifiedCount + ' ' + (FR?('non vérifié'+(unverifiedCount>1?'s':'')):'unverified')) : '');
+    /* COMMIT 8 — under 3 saved comps isn't a market average; say so instead of implying one. */
+    var note = document.getElementById('v4MarketNote');
+    if (!note && host.parentElement) {
+      note = document.createElement('div');
+      note.id = 'v4MarketNote';
+      note.className = 'v4-market-note market-alert';
+      host.parentElement.appendChild(note);
+    }
+    if (note) {
+      if (comps.length < 3) {
+        var n = comps.length;
+        var noteFr = n + ' concurrent' + (n>1?'s':'') + ' saisi' + (n>1?'s':'') +
+          (unverifiedCount ? (', dont ' + unverifiedCount + ' non vérifié' + (unverifiedCount>1?'s':'')) : '') +
+          ' — ce n\'est pas une moyenne de marché : à lire comme un repère isolé.';
+        var noteEn = n + ' competitor' + (n>1?'s':'') + ' entered' +
+          (unverifiedCount ? (', ' + unverifiedCount + ' unverified') : '') +
+          ' — this is not a market average: read it as an isolated data point.';
+        note.setAttribute('data-fr', noteFr);
+        note.setAttribute('data-en', noteEn);
+        note.textContent = FR ? noteFr : noteEn;
+        note.style.display = '';
+      } else {
+        note.style.display = 'none';
+      }
+    }
   }
 
   /* ── OPPORTUNITIES — 3 heuristic items ── */

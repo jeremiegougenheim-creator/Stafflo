@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v385 (rayons normalisés sur tokens --r-*, COMMIT 2 portage UI)
-const CACHE = 'stafflo-v385';
+// Stafflo Service Worker — v386 (panneau marché — donnée mince + tag non-vérifié, COMMIT 8)
+const CACHE = 'stafflo-v386';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
