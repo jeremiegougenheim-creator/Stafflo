@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v388 (retrait outline:none inline, COMMIT B portage)
-const CACHE = 'stafflo-v388';
+// Stafflo Service Worker — v389 (aria-label boutons icone, COMMIT B-bis portage)
+const CACHE = 'stafflo-v389';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

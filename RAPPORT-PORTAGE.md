@@ -159,3 +159,79 @@ v387 -> **v388**.
   mais à signaler si le résultat visuel surprend sur un composant précis
   (ex. `.aria-hero-input`, `.v3-hero-input` — fonds sombres, l'anneau doré
   pourrait trancher différemment qu'attendu sur ces surfaces).
+
+## COMMIT B-bis — aria-label sur les boutons icône
+
+- Diagnostic dédié (script ad hoc, pas dans `visual.mjs`) : ouvert les 8 vues
+  (5 écrans + 3 modales) et collecté `auditLabels()` sur chacune, dédupliqué
+  par signature `classe {dataset}`. Résultat : seulement **4 boutons
+  distincts**, pas 31 bugs isolés — répétés (jusqu'à 14 fois pour le
+  chevron de carte pliable, présent sur chaque carte de chaque écran).
+  1. `hdr-btn` × 3 (`ariaMemBtn`, `icalSyncBtn`, `notifBtn`, l.3279-3281) :
+     `title` déjà présent et dynamique (mis à jour au survol), `aria-label`
+     manquant. Ajouté un `aria-label` statique correspondant au `title` de
+     repos, sans toucher au handler `onmouseenter`.
+  2. `.aria-mic-btn` × 5 occurrences identiques : avait déjà
+     `aria-label="Voice input"` mais pas de `title`, et portait des
+     attributs `data-fr-label`/`data-en-label` **inertes** (rien ne les
+     lisait). `applyLang()` (l.13083-13088) sait déjà gérer
+     `data-title-fr/en` et `data-aria-label-fr/en` pour n'importe quel
+     élément — converti vers cette convention existante plutôt que d'en
+     inventer une nouvelle ou d'étendre `labelize()`.
+  3. Chevron de carte pliable, deux implémentations (`v2-icon-btn _hdChev`
+     l.34856 dans le dashboard v2, et un second sans classe l.35060 dans
+     les cartes maison/`hm-card`) : bouton généré en JS, aucune étiquette,
+     icône seule qui bascule haut/bas selon l'état. Ajouté un `aria-label`
+     + `title` **dynamiques** dans leurs `applyState(collapsed)` respectifs
+     (Déplier/Réduire ou Expand/Collapse selon l'état ET la langue), pas
+     une valeur statique — sinon l'étiquette mentirait une fois la carte
+     dépliée.
+  4. `cfgSubscriptionBtn` (l.5936, modale réglages) : texte posé
+     dynamiquement par `renderSubscriptionSettings()` (l.39425) une fois
+     l'entitlement chargé — vide tant que cet appel n'a pas résolu (ou dans
+     un contexte de test où l'appel est mocké). Ajouté un `aria-label`/
+     `title` statique de repli dans le HTML (« Abonnement ») ET fait poser
+     par `renderSubscriptionSettings()` un `aria-label`/`title` calqués sur
+     le texte réel une fois connu, pour ne jamais désynchroniser les deux.
+
+### Itérations avant le vert
+
+1 seule après diagnostic — les 4 causes once identified étaient chacune une
+correction de 1 à 3 lignes. Revérifié avec le même script de diagnostic :
+0 bouton restant sans étiquette sur les 8 vues.
+
+### Sortie du harnais (6 critères)
+
+1. `node --check` : **OK**
+2. Delta d'accolades : **-3** (inchangé)
+3. `auditContrast()` : cliquet inchangé (aucune couleur touchée par ce
+   commit)
+4. `auditLabels()` : **0 sur les 48 combinaisons** (était 28-30 avant) —
+   cliquet resserré à zéro, comme demandé. Vérifié stable sur 2 runs
+   consécutifs.
+5. `auditTones()` : `fautes: []` (toujours rien à auditer avant COMMIT C)
+6. Erreurs console : **0/48**
+
+`>>> HARNAIS: VERT`
+
+### PHASE 4 — champs affichés ancien vs nouveau
+
+Sans objet : aucun champ visuel ajouté/retiré, uniquement des attributs
+d'accessibilité invisibles à l'écran (`aria-label`, `title`).
+
+### Service worker
+
+v388 -> **v389**.
+
+### Ce qui reste douteux
+
+- `cfgSubscriptionBtn` : le `aria-label` de repli statique (« Abonnement »)
+  n'est vu par un lecteur d'écran que dans la fenêtre entre le rendu HTML
+  et la résolution de `bootSubscription()` (normalement quelques centaines
+  de ms) — comportement correct mais je n'ai pas pu observer le cas réel
+  post-résolution en environnement de test (l'entitlement est mocké, donc
+  `renderSubscriptionSettings()` peut ne jamais se déclencher avec des
+  données réalistes). Vérification manuelle recommandée : ouvrir Réglages
+  en prod/staging réel et confirmer au lecteur d'écran (ou juste au survol)
+  que le bouton annonce bien « Gérer mon abonnement » ou « Passer à Solo »
+  selon le statut, pas juste « Abonnement ».
