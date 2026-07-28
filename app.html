@@ -111,6 +111,7 @@ body.is-shrunk .hstat-lbl{display:none}
 body.is-shrunk .hstat-val{font-size:13px;font-weight:600}
 body.is-shrunk .hstat+.hstat::before{content:'·';color:rgba(255,255,255,.4);margin-right:6px;font-weight:400}
 body.is-shrunk .hdr-btn,body.is-shrunk #ariaMemBtn,body.is-shrunk #icalSyncBtn,body.is-shrunk #notifBtn{padding:3px 7px;font-size:11px}
+/* v-langdrop : #langSeg remplacé par le <select> #langDrop dans le header. Règle .lang-seg conservée (strangler-fig, DOM non supprimé ailleurs). */
 body.is-shrunk .lang-seg{height:22px}
 body.is-shrunk #sessionBadge{display:none}
 .nav-badge{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:4px;vertical-align:middle;animation:pulse 1.5s infinite}
@@ -1051,11 +1052,13 @@ header:not([class]) {
 }
 
 /* ── Lang segmented control (2 flags side by side) ── */
+/* v-langdrop : bloc .lang-seg* orphelin — id="langSeg" retiré du header (remplacé par le <select> #langDrop), CSS conservée (strangler-fig, pas de suppression). */
 .lang-seg{display:inline-flex;align-items:center;background:rgba(201,150,58,.08);border:1px solid rgba(201,150,58,.35);border-radius:6px;overflow:hidden;height:26px}
 .lang-seg-btn{background:transparent;border:none;padding:0 8px;height:100%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;line-height:1;opacity:.4;filter:grayscale(.7);transition:opacity .15s,filter .15s,background .15s;font-family:'DM Sans',sans-serif}
 .lang-seg-btn:hover{opacity:.7;filter:grayscale(.3)}
 .lang-seg-btn.on{opacity:1;filter:none;background:rgba(201,150,58,.18)}
 .lang-seg-divider{width:1px;height:60%;background:rgba(201,150,58,.35)}
+.lang-drop{background:rgba(201,150,58,.08);border:1px solid rgba(201,150,58,.35);border-radius:6px;height:26px;padding:0 6px;font-size:12px;color:inherit;font-family:inherit;cursor:pointer}
 @media(max-width:540px){
   .lang-seg{height:24px}
   .lang-seg-btn{padding:0 6px;font-size:13px}
@@ -3251,11 +3254,10 @@ window.addEventListener('keydown', function(e){
       <div class="hstat-val" id="hCount">—</div>
       <div class="hstat-lbl" id="lCount">CLIENTS</div>
     </div>
-    <div class="lang-seg" id="langSeg" role="group" aria-label="Language">
-      <button class="lang-seg-btn" id="langSegFr" onclick="setLang('fr')" aria-label="Français" title="Français">🇫🇷</button>
-      <span class="lang-seg-divider"></span>
-      <button class="lang-seg-btn" id="langSegEn" onclick="setLang('en')" aria-label="English" title="English">🇬🇧</button>
-    </div>
+    <select id="langDrop" class="lang-drop" onchange="setLang(this.value)" aria-label="Language">
+      <option value="fr">Français</option>
+      <option value="en">English</option>
+    </select>
     <button class="hdr-btn" id="ariaMemBtn" onclick="openAriaMemoryEditor()" onmouseenter="(function(b){try{var c=(typeof getCfg==='function')?getCfg():{};var m=(c.ariaMemory||'').trim();var l=m.length;var prev=l?(m.slice(0,160)+(l>160?'…':'')):(lang==='fr'?'Vide. Cliquez pour ajouter du contexte.':'Empty. Click to add context.');b.title=prev+'\\n\\n'+l+(lang==='fr'?' caractères':' chars');}catch(e){}})(this)" title="Aria Memory" style="padding:5px 9px"><i class="ti ti-brain" style="font-size:13px;vertical-align:-1px"></i></button>
     <button class="hdr-btn" id="icalSyncBtn" onclick="openIcalSettings()" onmouseenter="(function(b){try{var c=(typeof getCfg==='function')?getCfg():{};var n=(c.icalFeeds||[]).length;var ls=c.icalLastSyncAt?new Date(c.icalLastSyncAt).toLocaleString():(lang==='fr'?'Jamais':'Never');b.title=(lang==='fr'?'Sync calendriers · ':'Calendar sync · ')+n+(lang==='fr'?' feed(s)\\nDernière sync : ':' feed(s)\\nLast sync: ')+ls;}catch(e){}})(this)" title="Sync calendars" style="padding:5px 9px"><i class="ti ti-calendar-event" style="font-size:13px;vertical-align:-1px"></i></button>
     <button class="hdr-btn" id="notifBtn" onclick="requestNotifPermission()" onmouseenter="(function(b){try{var p=Notification.permission;b.title=p==='granted'?(lang==='fr'?'Notifications actives':'Notifications enabled'):p==='denied'?(lang==='fr'?'Notifications bloquées':'Notifications blocked'):(lang==='fr'?'Activer les notifications':'Enable notifications');}catch(e){}})(this)" title="Notifications" style="padding:5px 9px"><i class="ti ti-bell" style="font-size:13px;vertical-align:-1px"></i></button>
@@ -13045,6 +13047,8 @@ function applyLang() {
   var _segEn = document.getElementById('langSegEn');
   if (_segFr) _segFr.classList.toggle('on', fr);
   if (_segEn) _segEn.classList.toggle('on', !fr);
+  var d = document.getElementById('langDrop');
+  if (d) d.value = lang;
   // Legacy fallback (in case old langBtn is reintroduced somewhere)
   var _legacy = document.getElementById('langBtn');
   if (_legacy) _legacy.textContent = fr ? '🇬🇧 EN' : '🇫🇷 FR';

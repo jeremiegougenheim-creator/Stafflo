@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v381 (authScreen: placeholders + traductions des 6 inputs)
-const CACHE = 'stafflo-v381';
+// Stafflo Service Worker — v382 (header: dropdown langue FR/EN remplace les drapeaux)
+const CACHE = 'stafflo-v382';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
