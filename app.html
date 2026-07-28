@@ -64,14 +64,10 @@
      et sur les plus chaudes #7A7567 ne montait qu'à 3,92-4,39:1. Recalculé
      #706B5D par mesure directe contre TOUTES les teintes de fond trouvées
      dans l'app (pas juste blanc) : 4,53:1 dans le pire cas.
-     Reste un conflit non résolu par ce commit : --muted sert aussi de texte
-     sur fonds sombres (vert #0F2318, #1D4D3A) où c'est l'inverse — une
-     teinte plus SOMBRE réduit encore ce contraste-là. Ces cas étaient déjà
-     rouges avant ce commit (donc pas de régression du cliquet) mais
-     resteront rouges après — signalé dans RAPPORT-PORTAGE.md, pas résolu
-     ici : la vraie solution est une variable dédiée aux fonds sombres,
-     hors du scope « surfaces » de ce commit.
-     paper absent -> #F4EFE3 (la seconde surface manquait, écart de
+     Conflit noté ici (--muted sur fonds sombres vert #0F2318/#1D4D3A, où
+     c'est l'inverse : une teinte plus SOMBRE réduit encore ce contraste) —
+     résolu au COMMIT D-bis par scission de la variable, voir juste en
+     dessous. paper absent -> #F4EFE3 (la seconde surface manquait, écart de
        luminance page/carte 5,88% -> 11,78%), card #fff -> #FFFDF8. */
   --ink:#1A1208;--paper:#F4EFE3;--card:#FFFDF8;
   --green:#1B4332;--green2:#2A5240;--green3:#0F2318;
@@ -79,7 +75,20 @@
   --gold-ink:#8e6414;
   /* #C9963A ne fait que ~2,7:1 sur fond clair : jamais pour du texte.
      --gold-ink monte à 5,27:1 et le remplace où l'or porte du texte. */
-  --border:#E8E2D8;--muted:#706B5D;--red:#C0392B;
+  /* COMMIT D-bis — scission de --muted, qui servait à la fois de texte sur
+     fond clair ET sur fond sombre (deux corrections opposées, un seul
+     compromis n'existe pas). --muted-on-light reprend telle quelle la
+     valeur --muted du COMMIT D (#706B5D, 4,53:1 mesuré dans le pire cas
+     contre les fonds clairs réels de l'app : paper/cream/card). --muted
+     reste défini, en alias de ce cas clair, pour tout usage non reclassé.
+     --muted-on-dark (#B6B2A7) mesuré empiriquement contre les DEUX fonds
+     sombres réellement rencontrés derrière du texte --muted dans l'app
+     (repérés via auditContrastGroups() sur les 5 écrans + 3 modales du
+     harnais, cliquet tests/baseline.json) : #1D4D3A (le pire des deux,
+     étant le plus clair) -> 4,56:1 ; #0F2318 -> 7,78:1. Même teinte que
+     --muted (chaud, gris-taupe), juste éclaircie pour rester lisible sur
+     fond sombre au lieu d'y être assombrie. */
+  --border:#E8E2D8;--muted:#706B5D;--muted-on-light:#706B5D;--muted-on-dark:#B6B2A7;--red:#C0392B;
   --text:#1A1208;--text3:#706B5D;--faint:#B0A898;--bg:#F4EFE3;--green-xl:#1D4D3A;
   --shadow:0 2px 14px rgba(26,18,8,.07);--shadow-lg:0 8px 32px rgba(26,18,8,.14);
   --radius:14px;--radius-sm:8px;--radius-lg:20px;
@@ -2215,14 +2224,14 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5d-pt + .v5d-pt { border-top:1px solid rgba(201,150,58,.2); }
 .v5d-pt-t { flex:1; }
 .v5d-pt-c { font-size:9px; font-weight:700; color:#a33; background:#fdf0f0; border-radius:var(--r-pill); padding:2px 7px; white-space:nowrap; }
-.v5d-pt-b { font-size:9px; font-weight:700; color:#8a8578; background:rgba(15,35,24,.06); border-radius:var(--r-pill); padding:2px 7px; white-space:nowrap; }
+.v5d-pt-b { font-size:9px; font-weight:700; color:var(--muted-on-light); background:rgba(15,35,24,.06); border-radius:var(--r-pill); padding:2px 7px; white-space:nowrap; }
 .v5d-pt-go { border:1px solid #E5DCC8; background:#fff; border-radius:var(--r-sm); padding:4px 10px; font-family:'DM Sans','Inter',sans-serif; font-size:11px; font-weight:600; color:#1d4d3a; cursor:pointer; white-space:nowrap; }
 .v5d-pt-go:hover { background:#1d4d3a; color:#FAF6EE; border-color:#1d4d3a; }
 .v5d-opt { display:block; width:100%; text-align:left; border:1px solid #E5DCC8; border-radius:var(--r-md); padding:12px 13px; background:#FAF6EE; margin-bottom:8px; cursor:pointer; font-family:'DM Sans','Inter',sans-serif; }
 .v5d-opt:hover { border-color:#C9963A; background:#fdf6e8; }
 .v5d-opt.is-picked { border-color:#2f7a52; background:#f2f7f4; box-shadow:0 0 0 1px #2f7a52; }
 .v5d-opt-v { font-family:'Cormorant Garamond',Georgia,serif; font-size:20px; font-weight:600; color:#0F2318; }
-.v5d-opt-s { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#8a8578; font-weight:700; margin-top:5px; }
+.v5d-opt-s { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted-on-light); font-weight:700; margin-top:5px; }
 .v5d-opt-d { font-size:11.5px; color:#6B6760; margin-top:4px; line-height:1.45; }
 .v5d-why { font-size:12.5px; line-height:1.6; color:#6B6760; margin-bottom:14px; }
 .v5d-blocked { display:flex; gap:8px; background:rgba(15,35,24,.05); border-radius:var(--r-sm); padding:10px 12px; font-size:12px; color:#6B6760; }
@@ -2230,15 +2239,15 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5d-money { display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:8px; }
 .v5d-money-c { border:1px solid #E5DCC8; border-radius:var(--r-md); padding:10px 12px; background:#fff; }
 .v5d-money-c.is-strong { background:#0F2318; border-color:#0F2318; }
-.v5d-money-l { font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:#8a8578; font-weight:700; }
+.v5d-money-l { font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted-on-light); font-weight:700; }
 .v5d-money-c.is-strong .v5d-money-l { color:rgba(250,246,238,.55); }
 .v5d-money-v { font-family:'Cormorant Garamond',Georgia,serif; font-size:18px; font-weight:600; margin-top:3px; line-height:1.1; color:#0F2318; }
 .v5d-money-c.is-strong .v5d-money-v { color:#FAF6EE; }
-.v5d-money-s { font-size:10px; color:#8a8578; margin-top:2px; }
+.v5d-money-s { font-size:10px; color:var(--muted-on-light); margin-top:2px; }
 .v5d-money-c.is-strong .v5d-money-s { color:rgba(250,246,238,.5); }
 
 .v5d-guest-note { background:#fdf9f0; border:1px solid rgba(201,150,58,.28); border-radius:var(--r-md); padding:12px 14px; margin:14px 0 4px; }
-.v5d-guest-note-h { font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:#8a8578; font-weight:700; margin-bottom:7px; display:flex; align-items:center; gap:6px; }
+.v5d-guest-note-h { font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted-on-light); font-weight:700; margin-bottom:7px; display:flex; align-items:center; gap:6px; }
 .v5d-guest-note-b { font-size:13px; line-height:1.55; color:#0F2318; white-space:pre-wrap; word-break:break-word; }
 
 .v5d-cta-row { flex-shrink:0; display:flex; gap:10px; padding:12px 14px; padding-bottom:max(12px, env(safe-area-inset-bottom,12px)); background:#fff; border-top:1px solid #E5DCC8; }
@@ -4824,20 +4833,20 @@ window.renderSetupOneLiner = function(){
     <div class="snap-grid" style="align-items:end">
       <div class="snap-cell gold">
         <div id="tsPrice" class="snap-val gold" style="font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--gold);line-height:1.02">—€</div>
-        <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Prix ce soir" data-en="Tonight's price">Prix ce soir</div>
+        <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted-on-dark);font-weight:600" data-fr="Prix ce soir" data-en="Tonight's price">Prix ce soir</div>
       </div>
       <div class="snap-cell">
         <div id="tsOccupancy" class="snap-val" style="font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--green-dark,#0F2318);line-height:1.02">—</div>
-        <div id="tsOccupancyLbl" style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Occupation · ce mois" data-en="Occupancy · this month">Occupation · ce mois</div>
+        <div id="tsOccupancyLbl" style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted-on-dark);font-weight:600" data-fr="Occupation · ce mois" data-en="Occupancy · this month">Occupation · ce mois</div>
       </div>
       <div class="snap-cell">
         <div id="tsNet" class="snap-val" style="font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--green-dark,#0F2318);line-height:1.02">—€</div>
-        <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Net ce mois" data-en="Net this month">Net ce mois</div>
+        <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted-on-dark);font-weight:600" data-fr="Net ce mois" data-en="Net this month">Net ce mois</div>
         <div id="tsNetFlag" style="font-size:8px;letter-spacing:.3px;text-transform:uppercase;color:#BA7517;font-weight:600;margin-top:2px;display:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
       </div>
       <div class="snap-cell">
         <div id="tsPipeline" class="snap-val" style="font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:300;color:var(--green-dark,#0F2318);line-height:1.02">—</div>
-        <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);font-weight:600" data-fr="Pipeline" data-en="Pipeline">Pipeline</div>
+        <div style="margin-top:6px;font-family:'Inter','DM Sans',sans-serif;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted-on-dark);font-weight:600" data-fr="Pipeline" data-en="Pipeline">Pipeline</div>
       </div>
     </div>
   </div>
@@ -5957,10 +5966,10 @@ window.renderSetupOneLiner = function(){
         <span style="font-size:18px">✅</span>
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--green)" data-fr="IA fournie par Stafflo" data-en="AI provided by Stafflo">IA fournie par Stafflo</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:1px" data-fr="Mistral · Union Européenne — aucune configuration requise" data-en="Mistral · European Union — no configuration needed">Mistral · Union Européenne — aucune configuration requise</div>
+          <div style="font-size:11px;color:var(--muted-on-dark);margin-top:1px" data-fr="Mistral · Union Européenne — aucune configuration requise" data-en="Mistral · European Union — no configuration needed">Mistral · Union Européenne — aucune configuration requise</div>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--muted);border-top:1px solid var(--border);padding-top:8px;line-height:1.5" data-fr="Les analyses IA passent par Mistral (Paris, UE) via le proxy sécurisé Stafflo. Vos données clients restent en Europe et ne sont jamais utilisées pour entraîner les modèles." data-en="AI calls go through Mistral (Paris, EU) via the secure Stafflo proxy. Your guest data stays in Europe and is never used to train models.">Les analyses IA passent par Mistral (Paris, UE) via le proxy sécurisé Stafflo. Vos données clients restent en Europe et ne sont jamais utilisées pour entraîner les modèles.</div>
+      <div style="font-size:11px;color:var(--muted-on-dark);border-top:1px solid var(--border);padding-top:8px;line-height:1.5" data-fr="Les analyses IA passent par Mistral (Paris, UE) via le proxy sécurisé Stafflo. Vos données clients restent en Europe et ne sont jamais utilisées pour entraîner les modèles." data-en="AI calls go through Mistral (Paris, EU) via the secure Stafflo proxy. Your guest data stays in Europe and is never used to train models.">Les analyses IA passent par Mistral (Paris, UE) via le proxy sécurisé Stafflo. Vos données clients restent en Europe et ne sont jamais utilisées pour entraîner les modèles.</div>
     </div>
   </div>
   <!-- Hidden inputs kept for legacy compatibility (loadSettingsUI / saveSettings still reference these) -->
