@@ -8,6 +8,17 @@
 // Safety: reuses launchTestContext() from browser-harness.js (blocks the
 // service worker, mocks ai-proxy) and adds a broad supabase.co + Nominatim
 // mock on top, so no combination can reach a real paid backend.
+//
+// Ratchet, not tolerance (per-combination, tests/baseline.json): the current
+// app.html carries real pre-existing contrast/label debt (hundreds of hits,
+// dominated by a handful of color pairs — see RAPPORT-PORTAGE.md, COMMIT A).
+// Fixing all of it is COMMIT B/D's job, not every commit's. So the gate is:
+// for each (view, width, lang), auditContrast()/auditLabels() failure counts
+// must never EXCEED the last recorded baseline. A commit that lowers a count
+// tightens the ratchet (baseline.json is rewritten to the new, lower value);
+// a commit that raises any single count is a hard regression and fails the
+// run, full stop — no averaging across combinations. auditTones() has no
+// ratchet: any "couleur d'état sur une action" is a hard fail, always.
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -21,7 +32,20 @@ const { launchTestContext } = require('./browser-harness.js');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SHOTS_DIR = path.join(__dirname, 'shots');
+const BASELINE_PATH = path.join(__dirname, 'baseline.json');
 const PORT = 8934;
+
+function loadBaseline() {
+  try {
+    return JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'));
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveBaseline(data) {
+  fs.writeFileSync(BASELINE_PATH, JSON.stringify(data, null, 2) + '\n');
+}
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
@@ -80,8 +104,17 @@ async function auditOrSkip(page, fnName) {
   }, fnName);
 }
 
-function auditFailed(a) {
-  return !a.skipped && (a.error || (Array.isArray(a.result) && a.result.length > 0));
+// Tones has no ratchet: auditTones() returns {etats, fautes}, not an array —
+// any non-empty `fautes` (state color on an action element) is a hard fail.
+function tonesFailed(a) {
+  return !a.skipped && (a.error || (a.result && Array.isArray(a.result.fautes) && a.result.fautes.length > 0));
+}
+
+// Count of findings for a ratchet-tracked audit (contrast/labels), or null
+// when the audit doesn't exist yet (pre-COMMIT-A) or threw.
+function auditCount(a) {
+  if (a.skipped || a.error || !Array.isArray(a.result)) return null;
+  return a.result.length;
 }
 
 function resetOverlays() {
@@ -122,8 +155,15 @@ async function captureOne(page, key, width, lang, openFn) {
   page.off('console', onConsole);
   page.off('pageerror', onPageError);
 
-  const fail = auditFailed(contrast) || auditFailed(labels) || auditFailed(tones) || consoleErrors.length > 0;
-  return { view: key, width, lang, contrast, labels, tones, consoleErrors, fail };
+  // Hard fails: console/page errors, thrown audits, or a tone violation.
+  // Ratchet comparison (contrast/labels counts vs baseline) happens in run(),
+  // once every combo's counts are known.
+  const hardFail = tonesFailed(tones) || contrast.error || labels.error || consoleErrors.length > 0;
+  return {
+    view: key, width, lang, contrast, labels, tones, consoleErrors,
+    contrastCount: auditCount(contrast), labelsCount: auditCount(labels),
+    hardFail,
+  };
 }
 
 async function run() {
@@ -137,7 +177,18 @@ async function run() {
       for (const lang of LANGS) {
         const { browser, context, page } = await launchTestContext({
           viewport: { width, height: 900 },
+          reducedMotion: 'reduce',
         });
+
+        // app.html has ~11 setInterval-driven re-renders (tagline rotation,
+        // ARIA counter, autosave/inbox refresh, kebab injection...). Left
+        // running, one can fire mid-capture at a wall-clock-dependent moment
+        // and change the DOM out from under a later screen in the same
+        // session — this made auditContrast()/auditLabels() counts flaky
+        // (same code, same combo, different count between two full runs).
+        // Freeze all of them; setTimeout (used for the one-shot demo boot
+        // chain: generateAlerts/loadMorningBrief) is untouched.
+        await page.addInitScript(() => { window.setInterval = () => 0; });
 
         // Broad safety net beyond ai-proxy (already mocked by launchTestContext):
         // demo mode bypasses auth but still calls several edge functions.
@@ -149,6 +200,8 @@ async function run() {
         });
         await context.route('**/nominatim.openstreetmap.org/**', (route) =>
           route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+        await context.route('**/api.exchangerate-api.com/**', (route) =>
+          route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ rates: { USD: 1.08, MAD: 10.8, GBP: 0.85 } }) }));
 
         await page.addInitScript((l) => {
           try { localStorage.setItem('stafflo_lang', l); } catch (e) {}
@@ -157,7 +210,11 @@ async function run() {
         try {
           await page.goto(url, { waitUntil: 'load', timeout: 30000 });
         } catch (e) {
-          results.push({ view: 'BOOT', width, lang, fail: true, consoleErrors: [String(e)], contrast: {skipped:true}, labels:{skipped:true}, tones:{skipped:true} });
+          results.push({
+            view: 'BOOT', width, lang, hardFail: true, consoleErrors: [String(e)],
+            contrast: { skipped: true }, labels: { skipped: true }, tones: { skipped: true },
+            contrastCount: null, labelsCount: null,
+          });
           await browser.close();
           continue;
         }
@@ -165,7 +222,11 @@ async function run() {
         await page.evaluate((l) => {
           if (typeof window.setLang === 'function') window.setLang(l);
         }, lang);
-        await page.waitForTimeout(200);
+        // setLang() schedules generateAlerts (+200ms) and loadMorningBrief
+        // (+500ms) via setTimeout. Wait past both here, once, instead of
+        // letting them fire mid-run and land on an arbitrary later screen —
+        // that's what made contrast/label counts non-deterministic run to run.
+        await page.waitForTimeout(700);
 
         for (const screen of SCREENS) {
           results.push(await captureOne(page, screen.key, width, lang, screen.open));
@@ -185,21 +246,64 @@ async function run() {
   }
 
   const auditsExist = results.some((r) => !r.contrast.skipped || !r.labels.skipped || !r.tones.skipped);
-  const anyFail = results.some((r) => r.fail);
+  const oldBaseline = loadBaseline();
+  const bootstrapping = auditsExist && !oldBaseline;
+
+  // Per-combo ratchet comparison: current count must never exceed the last
+  // recorded baseline for that exact (view, width, lang). No global average.
+  const newBaseline = {};
+  let regression = false;
+  for (const r of results) {
+    const key = `${r.view}-${r.width}-${r.lang}`;
+    if (r.contrastCount === null && r.labelsCount === null) continue; // audits absent, nothing to ratchet
+    const prev = oldBaseline && oldBaseline[key];
+    r.regressed = [];
+    if (prev) {
+      if (r.contrastCount !== null && r.contrastCount > prev.contrast) {
+        r.regressed.push(`contrast ${prev.contrast} -> ${r.contrastCount}`);
+      }
+      if (r.labelsCount !== null && r.labelsCount > prev.labels) {
+        r.regressed.push(`labels ${prev.labels} -> ${r.labelsCount}`);
+      }
+    }
+    if (r.regressed.length) regression = true;
+    newBaseline[key] = {
+      contrast: r.contrastCount !== null ? r.contrastCount : (prev ? prev.contrast : null),
+      labels: r.labelsCount !== null ? r.labelsCount : (prev ? prev.labels : null),
+    };
+  }
+
+  const anyFail = results.some((r) => r.hardFail) || regression;
 
   console.log('\n=== RÉSULTATS tests/visual.mjs ===');
   for (const r of results) {
-    const status = r.fail ? 'FAIL' : (r.contrast.skipped ? 'SKIP (audits absents)' : 'PASS');
-    console.log(`${r.view.padEnd(14)} ${String(r.width).padEnd(5)} ${r.lang}  ${status}`);
+    const ratchetBad = r.regressed && r.regressed.length > 0;
+    const fail = r.hardFail || ratchetBad;
+    const status = fail ? 'FAIL' : (r.contrastCount === null && r.labelsCount === null ? 'SKIP (audits absents)' : 'PASS');
+    const counts = r.contrastCount !== null ? ` [contraste:${r.contrastCount} labels:${r.labelsCount}]` : '';
+    console.log(`${r.view.padEnd(14)} ${String(r.width).padEnd(5)} ${r.lang}  ${status}${counts}`);
     for (const e of r.consoleErrors) console.log(`    console error: ${e}`);
     if (r.contrast.error) console.log(`    auditContrast() a levé: ${r.contrast.error}`);
     if (r.labels.error) console.log(`    auditLabels() a levé: ${r.labels.error}`);
     if (r.tones.error) console.log(`    auditTones() a levé: ${r.tones.error}`);
+    if (ratchetBad) console.log(`    RÉGRESSION cliquet: ${r.regressed.join(', ')}`);
   }
 
   console.log(`\nCombinaisons testées: ${results.length}`);
   console.log(`Audits présents dans app.html: ${auditsExist ? 'oui' : 'non (normal avant COMMIT A)'}`);
-  console.log(`Échecs: ${results.filter((r) => r.fail).length}`);
+  console.log(`Échecs (hors cliquet): ${results.filter((r) => r.hardFail).length}`);
+  console.log(`Régressions de cliquet: ${results.filter((r) => r.regressed && r.regressed.length).length}`);
+
+  if (bootstrapping) {
+    saveBaseline(newBaseline);
+    console.log(`\nCliquet armé pour la première fois -> tests/baseline.json (${Object.keys(newBaseline).length} combinaisons).`);
+  } else if (auditsExist && !regression) {
+    saveBaseline(newBaseline);
+    console.log('\nCliquet resserré (ou inchangé) -> tests/baseline.json mis à jour.');
+  } else if (regression) {
+    console.log('\ntests/baseline.json NON modifié (régression détectée, ratchet non resserré).');
+  }
+
   console.log(anyFail ? '\n>>> HARNAIS: ROUGE' : '\n>>> HARNAIS: VERT');
   if (!auditsExist) {
     console.log('(auditContrast/auditLabels/auditTones absents — critères 3 à 5 non vérifiables avant COMMIT A)');

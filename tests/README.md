@@ -52,7 +52,30 @@ de l'écran au moment de l'échec.
 
 Le harnais réutilise `launchTestContext()` de `browser-harness.js`
 (service worker bloqué, `ai-proxy` mocké) et ajoute un mock générique sur
-`**/*.supabase.co/**` et `**/nominatim.openstreetmap.org/**` : aucune
-combinaison ne peut atteindre un vrai backend payant, même en mode démo
-(le mode démo ne bypass que l'auth, pas les appels aux edge functions
-comme `price-intelligence`, `weather-proxy`, `transcribe`, etc.).
+`**/*.supabase.co/**`, `**/nominatim.openstreetmap.org/**` et
+`**/api.exchangerate-api.com/**` : aucune combinaison ne peut atteindre un
+vrai backend payant, même en mode démo (le mode démo ne bypass que
+l'auth, pas les appels aux edge functions comme `price-intelligence`,
+`weather-proxy`, `transcribe`, etc., ni les appels externes comme le taux
+de change EUR).
+
+## Déterminisme (cliquet contraste/labels)
+
+`tests/baseline.json` enregistre, par combinaison exacte (écran × largeur
+× langue), le nombre d'échecs `auditContrast()`/`auditLabels()`. Le
+critère vert n'exige pas `[]` immédiatement : un commit ne doit jamais
+faire REMONTER le compte d'une combinaison par rapport à sa baseline
+enregistrée. S'il le fait baisser, `baseline.json` est resserré (écrasé
+avec les nouveaux comptes plus bas) et commité avec le changement. La
+dette initiale (des centaines d'échecs, dominés par une poignée de
+couples couleur/fond) est du ressort des COMMITS B et D, pas de chaque
+commit individuellement.
+
+app.html a une douzaine de `setInterval` (rotation de tagline, compteur
+ARIA, auto-refresh inbox...) qui, livrés à eux-mêmes, changent le DOM à
+des instants dépendant de l'horloge murale — ça rendait les comptes
+d'audit non-déterministiques d'un run à l'autre sans aucun changement de
+code. Le harnais les gèle via `window.setInterval = () => 0` injecté
+avant le chargement de la page (voir commentaire dans `visual.mjs`).
+`setTimeout` n'est pas touché : la chaîne de boot démo (`generateAlerts`,
+`loadMorningBrief`) en dépend et doit s'exécuter une fois.

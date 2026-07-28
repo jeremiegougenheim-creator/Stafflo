@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v386 (panneau marché — donnée mince + tag non-vérifié, COMMIT 8)
-const CACHE = 'stafflo-v386';
+// Stafflo Service Worker — v387 (audits auditContrast/auditLabels/auditTones, COMMIT A portage)
+const CACHE = 'stafflo-v387';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

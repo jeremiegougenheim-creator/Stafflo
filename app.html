@@ -39813,6 +39813,147 @@ function staffloPrompt(opts){
   });
 }
 window.staffloPrompt = staffloPrompt;
+
+/* ── COMMIT A — audits portés depuis stafflo-ui-v19.html : auditContrast(),
+   auditLabels(), auditTones(). Autonomes, sans dépendance, à taper dans la
+   console sur n'importe quel écran/modale. ── */
+var ACT_LABELS = {
+  aria:{fr:"Ouvrir ARIA",en:"Open ARIA"}, signals:{fr:"Voir les signaux",en:"See signals"},
+  settings:{fr:"Réglages",en:"Settings"}, mic:{fr:"Dicter",en:"Dictate"},
+  send:{fr:"Envoyer",en:"Send"}, herosend:{fr:"Envoyer",en:"Send"},
+  ariasend:{fr:"Envoyer",en:"Send"}, copy:{fr:"Copier",en:"Copy"},
+  airbnb:{fr:"Ouvrir Airbnb",en:"Open Airbnb"}, wa:{fr:"WhatsApp",en:"WhatsApp"},
+  refetch:{fr:"Relancer le relevé",en:"Fetch again"}, resync:{fr:"Synchroniser",en:"Sync"},
+  unplug:{fr:"Déconnecter",en:"Disconnect"}, plug:{fr:"Connecter",en:"Connect"},
+  help:{fr:"Aide",en:"Help"}, addstaff:{fr:"Ajouter une personne",en:"Add a person"},
+  addguest:{fr:"Ajouter un client",en:"Add a guest"}, addcharge:{fr:"Ajouter un poste",en:"Add an item"},
+  editcharge:{fr:"Modifier",en:"Edit"}, savememo:{fr:"Enregistrer",en:"Save"},
+  prevmonth:{fr:"Mois précédent",en:"Previous month"}, nextmonth:{fr:"Mois suivant",en:"Next month"},
+  thismonth:{fr:"Aujourd'hui",en:"Today"}, openguest:{fr:"Ouvrir la fiche",en:"Open profile"},
+  addevent:{fr:"Ajouter un événement",en:"Add an event"}, block:{fr:"Bloquer la date",en:"Block the date"},
+  summarise:{fr:"Résumer",en:"Summarise"}, makeprofile:{fr:"Créer la fiche",en:"Create profile"},
+  archivemail:{fr:"Archiver",en:"Archive"}, paywall:{fr:"Voir les formules",en:"See plans"},
+  checkout:{fr:"Continuer",en:"Continue"}, signout:{fr:"Se déconnecter",en:"Sign out"},
+  fact:{fr:"Détail du facteur",en:"Factor detail"}, prio:{fr:"Ouvrir",en:"Open"},
+  signal:{fr:"Ouvrir le signal",en:"Open signal"},
+  "aria-day":{fr:"Brief du jour",en:"Today's brief"},
+  "aria-price":{fr:"Expliquer ce prix",en:"Explain this price"},
+  "aria-client":{fr:"Message client",en:"Guest message"}
+};
+function labelize(){
+  var manquants = [];
+  document.querySelectorAll("button, a[href]").forEach(function(b){
+    if (b.textContent.trim()) return;                 // a du texte visible
+    if (b.getAttribute("aria-label") && b.title) return;
+    var k = b.dataset.act || b.dataset.go || "";
+    var d = ACT_LABELS[k];
+    var t = d ? (lang === 'fr' ? d.fr : d.en)
+          : (b.dataset.del ? (lang === 'fr' ? "Retirer" : "Remove")
+          : b.dataset.archive ? (lang === 'fr' ? "Archiver" : "Archive")
+          : b.dataset.close !== undefined ? (lang === 'fr' ? "Fermer" : "Close")
+          : b.dataset.notif ? (lang === 'fr' ? "Activer ou désactiver" : "Toggle") : "");
+    if (t){ b.setAttribute("aria-label", t); b.title = t; }
+    else manquants.push(b.className + " " + JSON.stringify(b.dataset));
+  });
+  if (manquants.length) console.warn("[labelize] boutons sans étiquette :", manquants);
+  return manquants;
+}
+window.auditLabels = labelize;
+
+function _auditRgb(c){
+  var m = (c||"").match(/rgba?\(([^)]+)\)/); if (!m) return null;
+  var v = m[1].split(",").map(parseFloat);
+  return {r:v[0], g:v[1], b:v[2], a:(v.length>3 ? v[3] : 1)};
+}
+function _auditLum(o){
+  var f = function(c){ c/=255; return c<=0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
+  return 0.2126*f(o.r) + 0.7152*f(o.g) + 0.0722*f(o.b);
+}
+function _auditBgOf(el){
+  var n = el;
+  while (n && n !== document.documentElement){
+    var c = _auditRgb(getComputedStyle(n).backgroundColor);
+    if (c && c.a >= 0.95) return c;
+    n = n.parentElement;
+  }
+  return {r:255,g:255,b:255,a:1};
+}
+function auditContrast(){
+  var out = [];
+  document.querySelectorAll("body *").forEach(function(el){
+    var txt = "";
+    el.childNodes.forEach(function(n){ if (n.nodeType === 3) txt += n.textContent; });
+    txt = txt.trim();
+    if (!txt) return;
+    var st = getComputedStyle(el);
+    if (st.visibility === "hidden" || st.display === "none" || +st.opacity < 0.5) return;
+    var fg = _auditRgb(st.color); if (!fg) return;
+    var bg = _auditBgOf(el);
+    /* texte semi-transparent : composition sur le fond */
+    if (fg.a < 1){
+      fg = {r: fg.r*fg.a + bg.r*(1-fg.a),
+            g: fg.g*fg.a + bg.g*(1-fg.a),
+            b: fg.b*fg.a + bg.b*(1-fg.a), a:1};
+    }
+    var l1 = _auditLum(fg), l2 = _auditLum(bg);
+    var ratio = (Math.max(l1,l2) + 0.05) / (Math.min(l1,l2) + 0.05);
+    var px = parseFloat(st.fontSize);
+    var gros = px >= 18.66 || (px >= 14 && +st.fontWeight >= 700);
+    var seuil = gros ? 3 : 4.5;
+    if (ratio < seuil){
+      out.push({texte: txt.slice(0,42), ratio: +ratio.toFixed(2), seuil: seuil,
+                px: px, classe: el.className || el.tagName,
+                fg: 'rgb(' + Math.round(fg.r) + ',' + Math.round(fg.g) + ',' + Math.round(fg.b) + ')',
+                bg: 'rgb(' + Math.round(bg.r) + ',' + Math.round(bg.g) + ',' + Math.round(bg.b) + ')'});
+    }
+  });
+  if (!out.length) console.log("%cContraste : aucun échec sur cet écran.", "color:#2E7D5B;font-weight:600");
+  else console.table(out);
+  return out;
+}
+window.auditContrast = auditContrast;
+
+/* Regroupe les échecs de auditContrast() par couple (couleur texte, couleur
+   fond effectif) — plusieurs centaines d'éléments partagent souvent la même
+   poignée de couples. Sert à cibler le COMMIT D (palette/surfaces) plutôt
+   que de traiter chaque élément un par un. */
+function auditContrastGroups(){
+  var list = auditContrast();
+  var map = {};
+  list.forEach(function(o){
+    var k = o.fg + ' / ' + o.bg;
+    if (!map[k]) map[k] = { couple: k, ratio: o.ratio, seuil: o.seuil, count: 0, exemple: o.texte + ' (' + o.classe + ')' };
+    map[k].count++;
+  });
+  var groups = Object.keys(map).map(function(k){ return map[k]; })
+    .sort(function(a,b){ return b.count - a.count; });
+  console.table(groups);
+  return groups;
+}
+window.auditContrastGroups = auditContrastGroups;
+
+/* Vérifier le code couleur en direct : tape auditTones() dans la console.
+   Liste chaque tuile d'information avec le ton qu'elle porte, et signale
+   toute couleur d'état posée sur un élément d'action. */
+function auditTones(){
+  var etats = [], fautes = [];
+  document.querySelectorAll("[data-tone]").forEach(function(el){
+    var t = el.querySelector(".pcard__c h4, .sig__c strong");
+    etats.push({ton: el.dataset.tone, element: t ? t.textContent.trim().slice(0,40) : el.className});
+  });
+  document.querySelectorAll(".aicon, .pact, .btn").forEach(function(el){
+    var c = getComputedStyle(el).color;
+    ["--t-go-fg","--t-house-fg","--t-alert-fg"].forEach(function(v){
+      var val = getComputedStyle(document.body).getPropertyValue(v).trim();
+      if (val && c === val) fautes.push(el.className + " porte " + v + " — c'est une action");
+    });
+  });
+  console.log("%cÉtats colorés :", "font-weight:600"); console.table(etats);
+  if (fautes.length) console.warn("Couleur d'état sur une action :", fautes);
+  else console.log("%cAucune couleur d'état sur un élément d'action.", "color:#1F6B47;font-weight:600");
+  return {etats: etats, fautes: fautes};
+}
+window.auditTones = auditTones;
 </script>
 </body>
 </html>
