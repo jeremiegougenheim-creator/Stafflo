@@ -57,11 +57,30 @@
 @font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url('./fonts/Inter-400-700.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
-  --ink:#1A1208;--paper:#FBF7F0;--card:#fff;
+  /* COMMIT D (portage) — muted #8A8070 mesuré à 3,89:1 sur blanc, sous le
+     seuil. La valeur mesurée du fichier de référence (#7A7567, 4,60:1 sur
+     blanc PUR) ne suffisait pas ici : app.html a plusieurs teintes de fond
+     quasi-blanc (paper #F4EFE3, cream #FAF6EE, card #FFFDF8 et d'autres),
+     et sur les plus chaudes #7A7567 ne montait qu'à 3,92-4,39:1. Recalculé
+     #706B5D par mesure directe contre TOUTES les teintes de fond trouvées
+     dans l'app (pas juste blanc) : 4,53:1 dans le pire cas.
+     Reste un conflit non résolu par ce commit : --muted sert aussi de texte
+     sur fonds sombres (vert #0F2318, #1D4D3A) où c'est l'inverse — une
+     teinte plus SOMBRE réduit encore ce contraste-là. Ces cas étaient déjà
+     rouges avant ce commit (donc pas de régression du cliquet) mais
+     resteront rouges après — signalé dans RAPPORT-PORTAGE.md, pas résolu
+     ici : la vraie solution est une variable dédiée aux fonds sombres,
+     hors du scope « surfaces » de ce commit.
+     paper absent -> #F4EFE3 (la seconde surface manquait, écart de
+       luminance page/carte 5,88% -> 11,78%), card #fff -> #FFFDF8. */
+  --ink:#1A1208;--paper:#F4EFE3;--card:#FFFDF8;
   --green:#1B4332;--green2:#2A5240;--green3:#0F2318;
   --green-light:#D8F3DC;--gold:#C9963A;--gold-light:#FEF3DC;
-  --border:#E8E2D8;--muted:#8A8070;--red:#C0392B;
-  --text:#1A1208;--text3:#8A8070;--faint:#B0A898;--bg:#FBF7F0;--green-xl:#1D4D3A;
+  --gold-ink:#8e6414;
+  /* #C9963A ne fait que ~2,7:1 sur fond clair : jamais pour du texte.
+     --gold-ink monte à 5,27:1 et le remplace où l'or porte du texte. */
+  --border:#E8E2D8;--muted:#706B5D;--red:#C0392B;
+  --text:#1A1208;--text3:#706B5D;--faint:#B0A898;--bg:#F4EFE3;--green-xl:#1D4D3A;
   --shadow:0 2px 14px rgba(26,18,8,.07);--shadow-lg:0 8px 32px rgba(26,18,8,.14);
   --radius:14px;--radius-sm:8px;--radius-lg:20px;
   --transition:.2s ease;
@@ -1859,7 +1878,7 @@ body.is-v3-on #todayV3 { display: flex !important; }
 .v3-card-body { display:flex; flex-direction:column; gap:8px; }
 .v3-card-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
 .v3-card-ft { padding-top:6px; border-top:1px solid #E5DCC8; }
-.v3-card-link { background:none; border:none; padding:6px 0; color:#C9963A; font-family:'DM Sans','Inter',sans-serif; font-size:12.5px; font-weight:600; cursor:pointer; letter-spacing:.2px; }
+.v3-card-link { background:none; border:none; padding:6px 0; color:var(--gold-ink); font-family:'DM Sans','Inter',sans-serif; font-size:12.5px; font-weight:600; cursor:pointer; letter-spacing:.2px; }
 .v3-card-link:hover { color:#0F2318; }
 
 /* What matters items — left-border colour codes priority */
@@ -2311,7 +2330,7 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .onb-langbar { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; padding-top:2px; }
 .onb-langbar button { background:none; border:none; color:#8A8678; font-family:'DM Sans','Inter',sans-serif; font-size:12.5px; cursor:pointer; padding:4px 2px; }
 .onb-langbar button:hover { color:#0F2318; }
-.onb-langbar button.is-active { color:#C9963A; font-weight:600; }
+.onb-langbar button.is-active { color:var(--gold-ink); font-weight:600; }
 
 .onbV3-orb-wrap { position:relative; width:92px; height:92px; display:flex; align-items:center; justify-content:center; margin-bottom:18px; }
 .onbV3-orb-glow { position:absolute; inset:-24px; border-radius:50%; background:radial-gradient(circle, rgba(201,150,58,.32) 0%, rgba(201,150,58,0) 65%); animation:onbV3OrbGlow 4s ease-in-out infinite; pointer-events:none; }
@@ -2494,7 +2513,7 @@ body.no-frame #staffloShell .bot-nav{
   --s-cream:#FAF6EE;--s-paper:#F4EFE3;
   --s-green-dark:#0F2318;--s-green-mid:#1D4D3A;--s-green-deep:#091711;
   --s-gold:#C9963A;--s-gold-soft:#E9D7A8;--s-gold-tint:#FBF3DC;
-  --s-ink:#1A1208;--s-muted:#7A7567;--s-hairline:rgba(15,35,24,.08);
+  --s-ink:#1A1208;--s-muted:#706B5D;--s-hairline:rgba(15,35,24,.08);
   --s-serif:'Cormorant Garamond',Georgia,serif;
   --s-sans:'Inter',-apple-system,sans-serif;
   /* v199 — booking card v2 additions (strangler fig, gated by stafflo_aria_first_v1) */
@@ -4570,7 +4589,7 @@ window.renderSoloTurnoverCard = function(){
   <div class="v2-card" id="todayStatsStrip" style="padding:12px 14px">
     <div style="display:flex;gap:10px;align-items:baseline;justify-content:space-between">
       <div style="text-align:center;flex:1;min-width:0">
-        <div id="tssNet"      class="tss-val" style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:500;color:var(--gold);line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+        <div id="tssNet"      class="tss-val" style="font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:500;color:var(--gold-ink);line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
         <div class="tss-lbl" style="font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin-top:4px">NET</div>
         <div id="tssNetFlag" style="font-size:8.5px;letter-spacing:.3px;text-transform:uppercase;color:#BA7517;font-weight:600;margin-top:2px;display:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
       </div>
@@ -6635,7 +6654,7 @@ function showInfoPopover(triggerEl, key) {
   pop.innerHTML =
     '<div style="font-family:Cormorant Garamond,serif;font-size:14px;font-weight:600;margin-bottom:8px;color:#1a3a1a">' + (fr ? data.title_fr : data.title_en) + '</div>' +
     '<div style="color:#3a4a3a">' + (fr ? data.body_fr : data.body_en) + '</div>' +
-    '<button onclick="closeInfoPopovers()" style="position:absolute;top:6px;right:8px;background:none;border:none;color:#8A8070;font-size:16px;cursor:pointer;padding:2px 6px;line-height:1">×</button>';
+    '<button onclick="closeInfoPopovers()" style="position:absolute;top:6px;right:8px;background:none;border:none;color:#706B5D;font-size:16px;cursor:pointer;padding:2px 6px;line-height:1">×</button>';
   document.body.appendChild(pop);
   // Position relative to trigger
   var r = triggerEl.getBoundingClientRect();
@@ -7137,11 +7156,11 @@ function showAuthGate() {
       '<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#C9963A 0%,#E4C68B 42%,rgba(201,150,58,0) 100%)"></div>' +
       '<div style="text-align:center;margin-bottom:26px">' +
         '<div style="display:flex;align-items:center;justify-content:center;gap:8px"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 L20 19 L17 19 L15 15 L9 15 L7 19 L4 19 Z" fill="#C9963A"/><path d="M10.3 12 L13.7 12 L12 8.5 Z" fill="#1a3a1a"/><circle cx="12" cy="6" r="1.5" fill="#C9963A"/></svg><span style="font-family:Cormorant Garamond,serif;font-size:34px;font-weight:500;color:#0F2318;letter-spacing:-.5px">Stafflo</span></div>' +
-        '<div style="font-size:10.5px;letter-spacing:2.2px;text-transform:uppercase;color:#8A8070;margin-top:6px">' + (fr?'Villa ops · IA':'Villa ops · AI') + '</div>' +
+        '<div style="font-size:10.5px;letter-spacing:2.2px;text-transform:uppercase;color:#706B5D;margin-top:6px">' + (fr?'Villa ops · IA':'Villa ops · AI') + '</div>' +
       '</div>' +
       '<div id="authTabs" style="display:flex;gap:0;margin-bottom:22px;border-bottom:1px solid #E8E2D8">' +
         '<button data-tab="login" class="auth-tab auth-tab-active" onclick="switchAuthTab(\'login\')" style="flex:1;background:none;border:none;padding:10px;font-size:13px;font-weight:600;color:#1a3a1a;cursor:pointer;border-bottom:2px solid #C9963A;font-family:inherit">' + (fr?'Connexion':'Login') + '</button>' +
-        '<button data-tab="signup" class="auth-tab" onclick="switchAuthTab(\'signup\')" style="flex:1;background:none;border:none;padding:10px;font-size:13px;font-weight:600;color:#8A8070;cursor:pointer;font-family:inherit">' + (fr?'Créer un compte':'Sign up') + '</button>' +
+        '<button data-tab="signup" class="auth-tab" onclick="switchAuthTab(\'signup\')" style="flex:1;background:none;border:none;padding:10px;font-size:13px;font-weight:600;color:#706B5D;cursor:pointer;font-family:inherit">' + (fr?'Créer un compte':'Sign up') + '</button>' +
       '</div>' +
       '<div id="authForms">' +
         '<div id="authLoginForm">' +
@@ -7154,12 +7173,12 @@ function showAuthGate() {
           '</div>' +
           '<div style="position:relative;margin-bottom:18px">' +
             '<input id="authPassword" name="password" type="password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding:14px 78px 14px 14px;border:1px solid #E8E2D8;border-radius:var(--r-md);font-size:15px;font-family:inherit;box-sizing:border-box;color:#0F2318">' +
-            '<button type="button" onclick="authTogglePw(\'authPassword\',this)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:#8A8070;font-size:11.5px;font-weight:500;font-family:inherit;cursor:pointer;padding:6px 6px">' + (fr?'Afficher':'Show') + '</button>' +
+            '<button type="button" onclick="authTogglePw(\'authPassword\',this)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:#706B5D;font-size:11.5px;font-weight:500;font-family:inherit;cursor:pointer;padding:6px 6px">' + (fr?'Afficher':'Show') + '</button>' +
           '</div>' +
           '<button type="submit" id="authLoginBtn" style="width:100%;background:#0F2318;color:#fff;border:none;border-radius:var(--r-md);padding:15px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.2px">' + (fr?'Se connecter':'Sign in') + '</button>' +
           '<div style="margin:22px 0 14px;display:flex;align-items:center;gap:12px;font-size:10.5px;letter-spacing:1.6px;color:#B5AC9C"><div style="flex:1;height:1px;background:#E8E2D8"></div><span>' + (fr?'OU':'OR') + '</span><div style="flex:1;height:1px;background:#E8E2D8"></div></div>' +
           '<button type="button" onclick="handleAuthMagicLink()" id="authMagicBtn" style="width:100%;background:#fff;color:#0F2318;border:1px solid rgba(201,150,58,.55);border-radius:var(--r-md);padding:14px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.2px">' + (fr?'✉ Recevoir un lien magique':'✉ Send me a magic link') + '</button>' +
-          '<div style="font-size:11px;color:#8A8070;text-align:center;margin-top:9px;line-height:1.4">' + (fr?'Sans mot de passe · lien valide 60 min':'No password · link valid 60 min') + '</div>' +
+          '<div style="font-size:11px;color:#706B5D;text-align:center;margin-top:9px;line-height:1.4">' + (fr?'Sans mot de passe · lien valide 60 min':'No password · link valid 60 min') + '</div>' +
           '</form>' +
         '</div>' +
         '<div id="authSignupForm" style="display:none">' +
@@ -7170,19 +7189,19 @@ function showAuthGate() {
           '<div style="font-size:12px;font-weight:500;color:rgba(15,35,24,.60);margin-bottom:6px">' + (fr?'Mot de passe':'Password') + '</div>' +
           '<div style="position:relative">' +
             '<input id="authSuPassword" type="password" placeholder="••••••••" autocomplete="new-password" style="width:100%;padding:14px 78px 14px 14px;border:1px solid #E8E2D8;border-radius:var(--r-md);font-size:15px;font-family:inherit;box-sizing:border-box;color:#0F2318">' +
-            '<button type="button" onclick="authTogglePw(\'authSuPassword\',this)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:#8A8070;font-size:11.5px;font-weight:500;font-family:inherit;cursor:pointer;padding:6px 6px">' + (fr?'Afficher':'Show') + '</button>' +
+            '<button type="button" onclick="authTogglePw(\'authSuPassword\',this)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:#706B5D;font-size:11.5px;font-weight:500;font-family:inherit;cursor:pointer;padding:6px 6px">' + (fr?'Afficher':'Show') + '</button>' +
           '</div>' +
-          '<div style="font-size:11px;color:#8A8070;margin:7px 0 18px">' + (fr?'8 caractères minimum.':'8 characters minimum.') + '</div>' +
+          '<div style="font-size:11px;color:#706B5D;margin:7px 0 18px">' + (fr?'8 caractères minimum.':'8 characters minimum.') + '</div>' +
           '<button onclick="handleAuthSignup()" id="authSignupBtn" style="width:100%;background:#0F2318;color:#fff;border:none;border-radius:var(--r-md);padding:15px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.2px">' + (fr?'Créer mon compte · Essai 14 jours':'Create account · 14-day trial') + '</button>' +
           '<div style="margin:22px 0 14px;display:flex;align-items:center;gap:12px;font-size:10.5px;letter-spacing:1.6px;color:#B5AC9C"><div style="flex:1;height:1px;background:#E8E2D8"></div><span>' + (fr?'OU':'OR') + '</span><div style="flex:1;height:1px;background:#E8E2D8"></div></div>' +
           '<button onclick="handleAuthMagicLinkSignup()" id="authMagicSignupBtn" style="width:100%;background:#fff;color:#0F2318;border:1px solid rgba(201,150,58,.55);border-radius:var(--r-md);padding:14px;font-size:14.5px;font-weight:600;cursor:pointer;font-family:inherit;letter-spacing:.2px">' + (fr?'✉ Recevoir le lien d\'inscription':'✉ Send me the signup link') + '</button>' +
-          '<div style="font-size:11px;color:#8A8070;text-align:center;margin-top:9px;line-height:1.4">' + (fr?'Aucun mot de passe à retenir · lien valide 60 min':'No password to remember · link valid 60 min') + '</div>' +
+          '<div style="font-size:11px;color:#706B5D;text-align:center;margin-top:9px;line-height:1.4">' + (fr?'Aucun mot de passe à retenir · lien valide 60 min':'No password to remember · link valid 60 min') + '</div>' +
         '</div>' +
       '</div>' +
       '<div id="authMsg" style="margin-top:14px;font-size:12px;text-align:center;min-height:18px"></div>' +
       '<div style="margin:22px 0 0;padding-top:20px;border-top:1px solid #E8E2D8;text-align:center">' +
         '<button onclick="enterDemoMode();location.search=\'?demo=1\'" style="background:none;border:none;color:#1d4d3a;border-radius:var(--r-sm);padding:9px 14px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:inherit">' + (fr?'🎬 Essayer en mode démo':'🎬 Try demo mode') + '</button>' +
-        '<div style="font-size:10.5px;color:#8A8070;margin-top:4px">' + (fr?'Villa fictive · aucune inscription':'Demo villa · no signup') + '</div>' +
+        '<div style="font-size:10.5px;color:#706B5D;margin-top:4px">' + (fr?'Villa fictive · aucune inscription':'Demo villa · no signup') + '</div>' +
         '<div style="font-size:10.5px;color:#B5AC9C;margin-top:14px">' + (fr?'Données traitées en Europe':'Data processed in Europe') + '</div>' +
       '</div>' +
     '</div>';
@@ -7309,7 +7328,7 @@ async function handleAuthSignup() {
             '<div style="font-size:13px;color:#1a3a1a;line-height:1.5;margin-bottom:14px">' +
               (fr?'Un lien de confirmation a été envoyé à<br><strong>':'A confirmation link was sent to<br><strong>') + email + '</strong>' +
             '</div>' +
-            '<div style="background:#fff;border-radius:var(--r-sm);padding:10px;font-size:11px;color:#8A8070;line-height:1.5;text-align:left;margin-bottom:12px">' +
+            '<div style="background:#fff;border-radius:var(--r-sm);padding:10px;font-size:11px;color:#706B5D;line-height:1.5;text-align:left;margin-bottom:12px">' +
               '<strong>' + (fr?'Pas d\'email après 2 min ?':'No email after 2 min?') + '</strong><br>' +
               '• ' + (fr?'Vérifiez le dossier spam/promotions':'Check spam/promotions folder') + '<br>' +
               '• ' + (fr?'Vérifiez la bonne orthographe de l\'email':'Check email spelling') + '<br>' +
@@ -7401,7 +7420,7 @@ function _renderMagicLinkSent(email, isSignup) {
       '<div style="font-size:48px;margin-bottom:10px">📬</div>' +
       '<div style="font-family:Cormorant Garamond,serif;font-size:20px;color:#1a3a1a;font-weight:400;margin-bottom:10px">' + title + '</div>' +
       '<div style="font-size:13px;color:#1a3a1a;line-height:1.5;margin-bottom:14px">' + sub + '</div>' +
-      '<div style="background:#fff;border-radius:var(--r-sm);padding:10px;font-size:11px;color:#8A8070;line-height:1.5;text-align:left;margin-bottom:14px">' +
+      '<div style="background:#fff;border-radius:var(--r-sm);padding:10px;font-size:11px;color:#706B5D;line-height:1.5;text-align:left;margin-bottom:14px">' +
         '<strong>' + (fr?'Pas d\'email après 1 min ?':'No email after 1 min?') + '</strong><br>' +
         '• ' + (fr?'Vérifiez le dossier spam/promotions':'Check spam/promotions') + '<br>' +
         '• ' + (fr?'Vérifiez l\'orthographe de l\'email ci-dessus':'Check the email above is spelled correctly') +
@@ -7997,13 +8016,13 @@ var staffloCal = (function(){
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.55);z-index:9997;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)';
     modal.onclick = function(e){ if (e.target === modal) modal.remove(); };
     var html = '<div style="background:#fff;border-radius:var(--r-lg);max-width:380px;width:100%;padding:18px 20px;box-shadow:0 24px 64px rgba(0,0,0,.3);font-family:DM Sans,sans-serif" onclick="event.stopPropagation()">';
-    html += '<div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#8A8070;margin-bottom:4px">' + dateLbl + '</div>';
+    html += '<div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#706B5D;margin-bottom:4px">' + dateLbl + '</div>';
 
     if (!info) {
       html += '<div style="font-family:Cormorant Garamond,serif;font-size:18px;color:#1a3a1a;margin-bottom:12px">' + (fr?'📭 Jour libre':'📭 Free day') + '</div>';
       html += '<div style="font-size:12px;color:#3a4a3a;margin-bottom:14px;line-height:1.5">' + (fr?'Aucune réservation. Tu peux planifier, bloquer ou demander à ARIA des suggestions de pricing.':'No booking. Plan, block or ask ARIA for pricing suggestions.') + '</div>';
       html += '<button onclick="staffloCal.askAria(\'' + dateKey + '\',\'pricing\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:#1B4332;color:#fff;border:none;border-radius:var(--r-sm);padding:11px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:6px;font-family:inherit">→ ' + (fr?'Demander à ARIA un prix sur mesure':'Ask ARIA for a tailored price') + '</button>';
-      html += '<button onclick="staffloCal.askAria(\'' + dateKey + '\',\'block\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:none;color:#8A8070;border:1.5px solid #E8E2D8;border-radius:var(--r-sm);padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ ' + (fr?'Bloquer cette date':'Block this date') + '</button>';
+      html += '<button onclick="staffloCal.askAria(\'' + dateKey + '\',\'block\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:none;color:#706B5D;border:1.5px solid #E8E2D8;border-radius:var(--r-sm);padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">+ ' + (fr?'Bloquer cette date':'Block this date') + '</button>';
     } else if (info.type === 'event') {
       var evLbl = (info.ev && info.ev[ fr?2:3 ]) || '';
       html += '<div style="font-family:Cormorant Garamond,serif;font-size:18px;color:#1a3a1a;margin-bottom:6px">🎯 ' + evLbl + '</div>';
@@ -8014,12 +8033,12 @@ var staffloCal = (function(){
       var gName = (g.name||'').replace(/[<>]/g,'') + ' ' + (g.nat||'');
       var typeLbl = info.type === 'arrival' ? (fr?'Arrivée':'Arrival') : info.type === 'departure' ? (fr?'Départ':'Departure') : (fr?'En séjour':'In stay');
       html += '<div style="font-family:Cormorant Garamond,serif;font-size:18px;color:#1a3a1a;margin-bottom:4px">' + gName + '</div>';
-      html += '<div style="font-size:11px;color:#8A8070;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px">' + typeLbl + ' · ' + (g.guests||'?') + ' pers · ' + (g.nights||'?') + 'n</div>';
+      html += '<div style="font-size:11px;color:#706B5D;letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px">' + typeLbl + ' · ' + (g.guests||'?') + ' pers · ' + (g.nights||'?') + 'n</div>';
       if (g.notes) html += '<div style="font-size:12px;color:#3a4a3a;margin-bottom:14px;line-height:1.5;font-style:italic;background:#FAF7F2;padding:8px 10px;border-radius:var(--r-sm)">' + g.notes + '</div>';
       html += '<button onclick="if(typeof openDetail===\'function\')openDetail(\'' + g.id + '\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:#1B4332;color:#fff;border:none;border-radius:var(--r-sm);padding:11px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:6px;font-family:inherit">→ ' + (fr?'Voir profil':'Open profile') + '</button>';
       html += '<button onclick="staffloCal.askAria(\'' + dateKey + '\',\'guest\');this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:none;color:#1a3a1a;border:1.5px solid #E8E2D8;border-radius:var(--r-sm);padding:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">→ ' + (fr?'ARIA : actions pour ce séjour':'ARIA: actions for this stay') + '</button>';
     }
-    html += '<button onclick="this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:none;border:none;color:#8A8070;font-size:11px;cursor:pointer;margin-top:10px;font-family:inherit">' + (fr?'Annuler':'Cancel') + '</button>';
+    html += '<button onclick="this.closest(\'.cal-day-modal\').remove()" style="width:100%;background:none;border:none;color:#706B5D;font-size:11px;cursor:pointer;margin-top:10px;font-family:inherit">' + (fr?'Annuler':'Cancel') + '</button>';
     html += '</div>';
     modal.innerHTML = html;
     document.body.appendChild(modal);
@@ -8843,7 +8862,7 @@ function renderResidenceV1() {
                '<span style="flex-shrink:0;width:40px;height:40px;border-radius:var(--r-md);background:' + p.tintBg + ';color:' + p.tintColor + ';display:inline-flex;align-items:center;justify-content:center;font-size:18px">' + ico(p.icon) + '</span>' +
                '<div style="flex:1;min-width:0">' +
                  '<div style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:' + GREEN_DARK + '">' + p.name + ' <span style="font-weight:400;color:' + GREEN_MID + '">· ' + p.role + '</span></div>' +
-                 '<div style="font-family:Inter,sans-serif;font-size:12px;color:var(--muted,#8A8070);margin-top:2px">' + p.last + '</div>' +
+                 '<div style="font-family:Inter,sans-serif;font-size:12px;color:var(--muted,#706B5D);margin-top:2px">' + p.last + '</div>' +
                '</div>' +
                '<button type="button" onclick="if(typeof toast===\'function\'){toast(\'' + demoMsg + '\')}" aria-label="' + (fr?'Appeler ':'Call ') + p.name + '" style="flex-shrink:0;width:38px;height:38px;border-radius:50%;border:none;background:rgba(29,77,58,.10);color:' + GREEN_MID + ';display:inline-flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer">' + ico('📞') + '</button>' +
              '</div>';
@@ -9380,7 +9399,7 @@ async function pullSettingsFromSupabase() {
       console.warn('[magic-link] error:', errorDesc);
       try {
         var fr = (localStorage.getItem('stafflo_lang') || 'fr') === 'fr';
-        document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:DM Sans,sans-serif;background:#FAF6EE;padding:20px"><div style="background:#fff;padding:36px;border-radius:var(--r-xl);max-width:420px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.08)"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-family:Cormorant Garamond,serif;font-size:22px;color:#1a3a1a;margin-bottom:10px">' + (fr?'Lien expiré ou invalide':'Link expired or invalid') + '</div><div style="color:#8A8070;font-size:13px;line-height:1.5;margin-bottom:18px">' + errorDesc.replace(/\+/g,' ') + '</div><a href="' + location.pathname + '" style="display:inline-block;background:#1a3a1a;color:#fff;padding:11px 22px;border-radius:var(--r-md);text-decoration:none;font-size:13px;font-weight:600">' + (fr?'Retour à la connexion':'Back to login') + '</a></div></div>';
+        document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:DM Sans,sans-serif;background:#FAF6EE;padding:20px"><div style="background:#fff;padding:36px;border-radius:var(--r-xl);max-width:420px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.08)"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-family:Cormorant Garamond,serif;font-size:22px;color:#1a3a1a;margin-bottom:10px">' + (fr?'Lien expiré ou invalide':'Link expired or invalid') + '</div><div style="color:#706B5D;font-size:13px;line-height:1.5;margin-bottom:18px">' + errorDesc.replace(/\+/g,' ') + '</div><a href="' + location.pathname + '" style="display:inline-block;background:#1a3a1a;color:#fff;padding:11px 22px;border-radius:var(--r-md);text-decoration:none;font-size:13px;font-weight:600">' + (fr?'Retour à la connexion':'Back to login') + '</a></div></div>';
       } catch(_){}
       return;
     }
@@ -12485,7 +12504,7 @@ function openDetail(id) {
   var roleColors = {
     chef:'background:#FEF3DC;color:#7A5A1A',
     staff:'background:#E6F1FB;color:#0A2A4A',
-    driver:'background:#F0EDE8;color:#8A8070',
+    driver:'background:#F0EDE8;color:#706B5D',
     vous:'background:#D8F3DC;color:#1B4332'
   };
   var clPhone = (cl.phone||'').replace(/[\s\-+()]/g,'');
@@ -21575,7 +21594,7 @@ function renderTodayQV() {
     if (arrT) boardTasks.push({role:'driver', label:fr?'Transfert':'Driver', text:(fr?'Récupérer ':'Pick up ')+nm+' — '+arrT, key:'driver'});
     boardTasks.push({role:'you', label:fr?'Vous':'You', text:fr?'Envoyer message de bienvenue':'Send welcome message', key:'welcome'});
 
-    const rColors = {chef:'background:#FEF3DC;color:#7A5A1A', housekeeping:'background:#E6F1FB;color:#0A2A4A', driver:'background:#F0EDE8;color:#8A8070', you:'background:#D8F3DC;color:#1B4332'};
+    const rColors = {chef:'background:#FEF3DC;color:#7A5A1A', housekeeping:'background:#E6F1FB;color:#0A2A4A', driver:'background:#F0EDE8;color:#706B5D', you:'background:#D8F3DC;color:#1B4332'};
     const sDone = (k) => localStorage.getItem('bt_'+k+'_'+actionGuest.id) === 'done';
     const sWip  = (k) => localStorage.getItem('bt_'+k+'_'+actionGuest.id) === 'wip';
     const doneCount = boardTasks.filter(t => sDone(t.key)).length;
@@ -21648,7 +21667,7 @@ function renderTodayQV() {
       if (arrT) staffTasks.push({role:'driver', label:fr?'Transfert':'Driver', text:(fr?'Récupérer ':'Pick up ')+nm+' — '+arrT, key:'driver'});
       staffTasks.push({role:'you', label:fr?'Vous':'You', text:fr?'Envoyer message de bienvenue':'Send welcome message', key:'welcome_msg'});
 
-      const rColors = {chef:'background:#FEF3DC;color:#7A5A1A', housekeeping:'background:#E6F1FB;color:#0A2A4A', driver:'background:#F0EDE8;color:#8A8070', you:'background:#D8F3DC;color:#1B4332'};
+      const rColors = {chef:'background:#FEF3DC;color:#7A5A1A', housekeeping:'background:#E6F1FB;color:#0A2A4A', driver:'background:#F0EDE8;color:#706B5D', you:'background:#D8F3DC;color:#1B4332'};
       const sDone = (k) => localStorage.getItem('bt_'+k+'_'+nextUp.id) === 'done';
       const sWip  = (k) => localStorage.getItem('bt_'+k+'_'+nextUp.id) === 'wip';
 
@@ -22457,7 +22476,7 @@ function renderBriefCards(el, cards) {
             '</button>';
   }
 
-  html += '<button id="briefChecklistBtn" onclick="generateStaffChecklist()" style="width:100%;margin-top:10px;background:none;border:1.5px solid #E8E2D8;border-radius:var(--r-md);padding:9px;font-size:12px;font-weight:600;cursor:pointer;color:#8A8070;font-family:DM Sans,sans-serif">' +
+  html += '<button id="briefChecklistBtn" onclick="generateStaffChecklist()" style="width:100%;margin-top:10px;background:none;border:1.5px solid #E8E2D8;border-radius:var(--r-md);padding:9px;font-size:12px;font-weight:600;cursor:pointer;color:#706B5D;font-family:DM Sans,sans-serif">' +
             (fr ? '📋 Générer checklist staff' : '📋 Generate staff checklist') + '</button>';
 
   el.innerHTML = html;
@@ -24082,7 +24101,7 @@ function enhanceAriaActions(bubble) {
   var actionsHtml = '<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">';
   actions.forEach(function(a, idx){
     var kindIcon = a.kind === 'whatsapp' ? '💬' : a.kind === 'email' ? '✉️' : a.kind === 'sms' ? '📱' : a.kind === 'copy' ? '📋' : '📝';
-    var targetLbl = a.target ? ('<span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#8A8070;margin-left:6px">→ ' + a.target + '</span>') : '';
+    var targetLbl = a.target ? ('<span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#706B5D;margin-left:6px">→ ' + a.target + '</span>') : '';
     actionsHtml += '<div style="background:rgba(255,255,255,.55);border:1px solid rgba(201,150,58,.3);border-radius:var(--r-sm);padding:9px 11px">' +
       '<div style="font-size:12px;font-weight:600;color:#1A1208;margin-bottom:4px">' + kindIcon + ' ' + a.label + targetLbl + '</div>' +
       (a.content ? '<div style="font-size:11px;color:#3a2f1f;margin-bottom:7px;line-height:1.45;white-space:pre-wrap">' + a.content.replace(/</g,'&lt;') + '</div>' : '') +
@@ -24098,7 +24117,7 @@ function enhanceAriaActions(bubble) {
   bubble.innerHTML =
     (intro ? '<div style="margin-bottom:6px;color:#1A1208">' + intro.replace(/</g,'&lt;') + '</div>' : '') +
     actionsHtml +
-    (outro ? '<div style="margin-top:8px;font-size:11px;color:#8A8070;font-style:italic">' + outro.replace(/</g,'&lt;') + '</div>' : '');
+    (outro ? '<div style="margin-top:8px;font-size:11px;color:#706B5D;font-style:italic">' + outro.replace(/</g,'&lt;') + '</div>' : '');
   bubble.dataset.actionsParsed = '1';
 }
 
@@ -27253,7 +27272,7 @@ window.addEventListener('DOMContentLoaded', function() {
                          : a.kind==='sms'      ? (fr?'✓ Envoyer SMS':'✓ Send SMS')
                          : a.kind==='copy'     ? (fr?'📋 Copier':'📋 Copy')
                          : (fr?'✓ Demander à Aria':'✓ Ask Aria');
-        var targetLbl = a.target ? ('<span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#8A8070;margin-left:6px">→ ' + a.target + '</span>') : '';
+        var targetLbl = a.target ? ('<span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#706B5D;margin-left:6px">→ ' + a.target + '</span>') : '';
         var hasContent = !!(a.content && a.content.trim());
         // Card compacte : label + target + bouton primary + 2 boutons secondary (Voir / Copier)
         actionsHtml +=
@@ -27277,7 +27296,7 @@ window.addEventListener('DOMContentLoaded', function() {
       bubble.innerHTML =
         (intro ? '<div style="margin-bottom:6px;color:#1A1208">' + intro.replace(/</g,'&lt;') + '</div>' : '') +
         actionsHtml +
-        (outro ? '<div style="margin-top:8px;font-size:11px;color:#8A8070;font-style:italic">' + outro.replace(/</g,'&lt;') + '</div>' : '');
+        (outro ? '<div style="margin-top:8px;font-size:11px;color:#706B5D;font-style:italic">' + outro.replace(/</g,'&lt;') + '</div>' : '');
       bubble.dataset.actionsParsed = '1';
     };
   }
@@ -28227,10 +28246,10 @@ window.addEventListener('DOMContentLoaded', function() {
     html += '</div>';
     // Actions
     if (actions.length){
-      html += '<div style="font-size:10px;letter-spacing:1px;color:#8A8070;text-transform:uppercase;margin-bottom:6px;font-weight:600">' + (f?'Actions suggérées':'Suggested actions') + '</div>';
+      html += '<div style="font-size:10px;letter-spacing:1px;color:#706B5D;text-transform:uppercase;margin-bottom:6px;font-weight:600">' + (f?'Actions suggérées':'Suggested actions') + '</div>';
       html += '<div style="display:flex;flex-direction:column;gap:6px">';
       actions.forEach(function(a, idx){
-        var targetLbl = a.target ? '<span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#8A8070;margin-left:6px">→ ' + a.target + '</span>' : '';
+        var targetLbl = a.target ? '<span style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#706B5D;margin-left:6px">→ ' + a.target + '</span>' : '';
         html +=
           '<div style="background:#fff;border:1px solid rgba(201,150,58,.25);border-radius:var(--r-sm);padding:8px 10px">' +
             '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">' +

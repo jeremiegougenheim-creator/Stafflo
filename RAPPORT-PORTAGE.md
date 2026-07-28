@@ -328,3 +328,119 @@ v389 -> **v390**.
 - Perte du micro-effet de survol vert sur les lignes d'alerte (voir
   itérations ci-dessus) — mineur, mais à signaler si quelqu'un le
   remarque.
+
+## COMMIT D — surfaces (paper/card, palette) — contraste PAS à zéro, voir tableau
+
+**Prévenu à l'avance dans le rapport COMMIT A** : la dette de contraste
+était massive (637-719 échecs/écran) et concentrée sur une poignée de
+couples. Ce commit devait la ramener à zéro. Elle passe à **220-228**
+(**-69 %**), pas zéro. J'arrête ici et je documente, comme convenu.
+
+### Ce qui a été changé
+
+1. **Surfaces** (valeurs exactes du fichier de référence) : `--paper`
+   `#FBF7F0` -> `#F4EFE3`, `--card` `#fff` -> `#FFFDF8`, `--bg` aligné sur
+   `--paper`. Écart de luminance page/carte : 5,88 % -> 11,78 %, comme
+   spécifié.
+2. **`--muted`/`--text3`** : `#8A8070` -> mesuré, pas repris tel quel du
+   fichier de référence. Sa valeur (`#7A7567`, 4,60:1 sur blanc PUR)
+   restait sous 4,5:1 contre plusieurs autres teintes quasi-blanches que
+   porte réellement `app.html` (paper, cream, card...). Recalculé
+   `#706B5D` par mesure directe contre TOUTES les teintes de fond
+   trouvées : 4,53:1 dans le pire cas. 413 usages via la variable + 26
+   occurrences en hex brut corrigées (1 gradient décoratif non lié au
+   texte, volontairement laissé intact).
+3. **`--gold-ink:#8e6414`** (nouvelle variable, valeur du fichier de
+   référence) : l'or `#C9963A` ne fait que ~2,7:1 sur fond clair — jamais
+   utilisable comme couleur de TEXTE, seulement en accent/fond/bordure.
+   Câblé sur 3 sites vérifiés un par un (pas par recherche-remplacement
+   globale) :
+   - `#tssNet` (bandeau stats Today, sur `.v2-card` = `var(--card)`, clair)
+   - `.v3-card-link` (liens « + N more → », sur `.v3-card{background:#fff}`, clair)
+   - `.onb-langbar button.is-active` (sélecteur de langue onboarding, sur
+     `#onboardingV3{background:#FAF6EE}`, clair)
+
+### Deux erreurs faites puis corrigées AVANT de committer
+
+En généralisant trop vite « l'or en texte doit devenir gold-ink », j'ai
+d'abord appliqué ce changement à `.aria-hero-counter-lbl` (« SIGNAUX ») et
+`.price-season` (« saison normale ») — puis vérifié leur contexte réel
+(`rgba(255,255,255,.88)` et `#fff` sur les éléments voisins immédiats) :
+ce sont des composants sur fond **sombre** (bandeau ARIA vert foncé, carte
+prix vert foncé). `gold-ink` y aurait rendu le texte quasi invisible —
+l'inverse du problème visé. Les deux échecs de contraste que montrait le
+diagnostic pour ces éléments (`rgb(201,150,58)/rgb(27,67,50)` etc.)
+demandent en réalité un or plus CLAIR sur fond sombre, pas plus foncé —
+un problème distinct, non résolu ici. Annulé les deux avant de committer,
+gardé uniquement les 3 sites où j'ai vérifié le fond directement dans le
+CSS avant d'éditer.
+
+### Non fait dans ce commit (scope ambigu, pas deviné)
+
+- **Titres Cormorant en graisse 600** : 138 usages de `font-weight` avec
+  Cormorant Garamond dans `app.html`, réparti 300/400/500/600/700 — un
+  remplacement global casserait des usages décoratifs volontairement plus
+  légers (logo, nombres). Le fichier de référence ne clarifie pas non plus
+  quels éléments précis visent les 600 au-delà de « titres ». Pas fait.
+- **Contours à 1,5px** : dans le fichier de référence, le 1,5px cible des
+  classes précises (`.aicon`, `.pact`, `.chip`, `.ccard`/`.pcard`/`.sig`/
+  `.frow`) qui, comme `.tone-tile` au COMMIT C, **n'existent pas** dans
+  `app.html` — `.v2-card`/`.v3-card` (l'équivalent réel le plus proche)
+  utilisent déjà `1px`, comme la classe `.card` de base du fichier de
+  référence lui-même (pas 1,5px). Pas de cible sûre identifiée, pas fait.
+
+### Tableau des couples restants (46 groupes, 220 échecs, écran `today`/1440/fr — représentatif des 48 combinaisons)
+
+| Couple (texte/fond) | Ratio | Seuil | Nb | Exemple | Piste |
+|---|---|---|---|---|---|
+| `rgb(201,150,58)` / `rgb(255,253,248)` | 2.61 | 3 | 25 | `4 (DIV)` | or-sur-carte non identifié — sites multiples, à vérifier un par un comme ci-dessus |
+| `rgb(255,255,255)` / `rgb(250,246,238)` | 1.08 | 3 | 21 | `ARIA (aria-hero-name)` | texte blanc sur fond clair — suspect, probablement lié à l'état du bandeau ARIA (COMMIT G) |
+| `rgb(201,150,58)` / `rgb(250,246,238)` | 2.46 | 3 | 20 | `lo (EM)` | idem or-sur-clair |
+| `rgb(141,161,153)` / `rgb(27,67,50)` | 4.06 | 4.5 | 15 | `PERS. (qv-stat-lbl)` | texte clair sur fond sombre, tout près du seuil |
+| `rgb(201,150,58)` / `rgb(255,255,255)` | 2.66 | 4.5 | 12 | `J+5 (v3-cal-when)` | or-sur-blanc, calendrier |
+| `rgb(138,134,120)` / `rgb(250,246,238)` | 3.38 | 4.5 | 10 | `English (BUTTON)` | **2e teinte grise distincte** de `--muted`, non traitée par ce commit |
+| `rgb(255,255,255)` / `rgb(37,211,102)` | 1.98 | 4.5 | 10 | `💬 WhatsApp (A)` | couleur de marque tierce (WhatsApp) — ne pas toucher |
+| `rgb(255,255,255)` / `rgb(255,253,248)` | 1.02 | 4.5 | 10 | `16 (BUTTON)` | blanc sur quasi-blanc — probable bug distinct, pas un simple réglage de palette |
+| `rgb(111,123,116)` / `rgb(15,35,24)` | 3.74 | 4.5 | 8 | `Guests (SPAN)` | texte clair sur fond sombre |
+| … 37 autres groupes, 1 à 7 occurrences chacun | | | 49 | | long tail, voir `auditContrastGroups()` en direct |
+
+**Non résolu par ce commit, signalé explicitement** : `--muted` sert aussi
+de texte sur fonds sombres (vert `#0F2318`/`#1D4D3A`) où la même variable
+doit être plus CLAIRE, pas plus foncée — conflit structurel, pas
+réparable en changeant une seule valeur. Nécessite une variable séparée
+pour le texte secondaire sur fond sombre.
+
+### Sortie du harnais (6 critères)
+
+1. `node --check` : **OK**
+2. Delta d'accolades : **-3** (inchangé)
+3. `auditContrast()` : **220-228 selon combinaison, PAS zéro** (était
+   225-233 avant le dernier ajustement or, 664-719 avant COMMIT D) — cliquet
+   resserré, aucune régression, mais critère non atteint. Voir tableau
+   ci-dessus.
+4. `auditLabels()` : **0** (inchangé)
+5. `auditTones()` : `fautes: []` (inchangé)
+6. Erreurs console : **0/48**
+
+`>>> HARNAIS: VERT` au sens du cliquet (aucune régression), **ROUGE** au
+sens du critère explicite « contraste à zéro » de ce commit.
+
+### PHASE 4 — champs affichés ancien vs nouveau
+
+Sans objet : aucun champ ajouté/retiré, uniquement des couleurs.
+
+### Service worker
+
+v390 -> **v391**.
+
+### Ce qui reste douteux / à faire à la main
+
+- Le tableau ci-dessus, en particulier la 2e teinte grise (`rgb(138,134,
+  120)`) qui n'est pas `--muted` et n'a pas été identifiée dans ce commit.
+- `aria-hero-name` blanc sur fond clair (21 occurrences) — probablement
+  lié à un état du bandeau ARIA à examiner au COMMIT G, pas retenté ici
+  pour éviter une 3e erreur de contexte.
+- `--muted` sur fond sombre reste sous le seuil (conflit structurel noté
+  en commentaire dans le CSS, l.60+).
+- Titres Cormorant (graisse) et contours 1,5px : scope ambigu, pas fait,
+  voir section dédiée ci-dessus.

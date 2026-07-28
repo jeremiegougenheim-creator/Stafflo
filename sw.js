@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v390 (4 tons semantiques go/wait/house/alert, COMMIT C portage)
-const CACHE = 'stafflo-v390';
+// Stafflo Service Worker — v391 (surfaces + palette, contraste -69%, COMMIT D portage)
+const CACHE = 'stafflo-v391';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
