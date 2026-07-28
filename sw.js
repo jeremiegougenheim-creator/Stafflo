@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v384 (slot AirDNA masqué sans clé — endpoint placeholder)
-const CACHE = 'stafflo-v384';
+// Stafflo Service Worker — v385 (rayons normalisés sur tokens --r-*, COMMIT 2 portage UI)
+const CACHE = 'stafflo-v385';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
