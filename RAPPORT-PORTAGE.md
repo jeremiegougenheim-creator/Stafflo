@@ -87,3 +87,75 @@ v386 -> **v387**.
 - `auditContrastGroups()` n'a pas de test dédié dans `visual.mjs` (c'est un
   outil de diagnostic pour moi/l'utilisateur, pas un critère de vert) — à
   garder à l'esprit si un futur commit s'appuie dessus.
+
+## COMMIT B — retrait des `outline:none` qui écrasaient `:focus-visible`
+
+- Régénéré la liste par grep (les 38 numéros de ligne notés avant ce commit
+  dans le commentaire d'`app.html` étaient bien périmés — décalés de +8 à
+  +66 lignes selon leur position, à cause des éditions COMMIT 1/2/8 et de
+  mon propre COMMIT A). Trouvé 38 déclarations `outline:none`, pas 38 « en
+  style inline » comme le disait le commentaire préexistant : 24 sont de
+  vrais attributs `style="..."` (statiques ou générés en JS), 14 sont des
+  règles de classe dans le `<style>` global (ex. `.field input{...}`).
+  Vérifié que les deux catégories posent le même problème : la règle
+  universelle `:focus-visible{outline:2px solid var(--gold)}` (l.539) a une
+  spécificité de (0,1,0) — n'importe quelle règle de classe (0,1,1) ou tout
+  style inline l'emporte, peu importe l'ordre. Donc les 38, pas seulement
+  les 24. Retiré les 38 en un seul passage Python vérifié (regex
+  `outline\s*:\s*none\s*;?`, avant/après comptés : 38 -> 0), remplacé le
+  commentaire périmé par une note de résolution.
+
+### Itérations avant le vert
+
+1 seule. Le retrait ne touche à aucune couleur/texte, donc aucun impact
+attendu sur `auditContrast()`/`auditLabels()` — confirmé : les comptes
+après ce commit sont identiques à la baseline du COMMIT A à la combinaison
+près (ex. `today-1440-fr` : 673 avant, 673 après). Un seul résidu
+cosmétique repéré en relisant le diff : `.cs-sel{...cursor:pointer;}` se
+termine par un point-virgule avant l'accolade fermante (la règle n'avait
+pas de `;` après `outline:none`, seulement avant) — CSS valide, aucun
+effet, non corrigé (n'aurait fait que déplacer le problème inverse sur un
+autre cas).
+
+### Sortie du harnais (6 critères)
+
+1. `node --check` : **OK**
+2. Delta d'accolades : **-3** (inchangé)
+3. `auditContrast()` : cliquet **resserré à l'identique** (aucune baisse —
+   attendu, cette correction est invisible sur le texte/couleur, elle
+   restaure juste l'anneau de focus natif). Zéro reste porté par COMMIT D.
+4. `auditLabels()` : idem, inchangé (28-30 selon combinaison). Zéro reste
+   porté par COMMIT B-bis.
+5. `auditTones()` : **`fautes: []`** sur les 48 combinaisons (rien n'existe
+   encore à auditer avant COMMIT C).
+6. Erreurs console : **0/48**.
+
+`>>> HARNAIS: VERT`
+
+### PHASE 4 — champs affichés ancien vs nouveau
+
+Sans objet : aucun champ ajouté/retiré. Le seul changement observable est
+comportemental (au clavier) — un `Tab` dans un champ de recherche, un
+textarea ARIA, un input d'onboarding, etc. affiche maintenant l'anneau
+doré `:focus-visible` au lieu de rien. Invisible sur une capture d'écran
+statique (le harnais ne simule pas de focus clavier) — noté en vérification
+manuelle recommandée, voir synthèse finale.
+
+### Service worker
+
+v387 -> **v388**.
+
+### Ce qui reste douteux
+
+- Aucun test automatisé ne vérifie réellement que l'anneau de focus
+  s'affiche désormais (le harnais capture des écrans au repos, pas des
+  états `:focus`). Recommandation manuelle : `Tab` dans chaque écran/modale
+  et confirmer visuellement l'anneau doré sur au moins un input par
+  catégorie (recherche CRM, textarea ARIA, champ d'onboarding, réglages
+  iCal/IMAP).
+- Les 14 occurrences retirées des règles de classe (vs les 24 en style
+  inline) élargissent le périmètre au-delà du titre littéral du commit
+  (« inline »). Choix justifié ci-dessus par la spécificité CSS réelle,
+  mais à signaler si le résultat visuel surprend sur un composant précis
+  (ex. `.aria-hero-input`, `.v3-hero-input` — fonds sombres, l'anneau doré
+  pourrait trancher différemment qu'attendu sur ces surfaces).
