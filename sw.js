@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v407 (fix: FetchEvent network error sur ?onboarding=1, cache navigations avec ignoreSearch)
-const CACHE = 'stafflo-v407';
+// Stafflo Service Worker — v408 (COMMIT R : paliers de prix tolèrent l'absence de valeur, jamais de palier fabriqué)
+const CACHE = 'stafflo-v408';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
