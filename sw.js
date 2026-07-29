@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v386 (panneau marché — donnée mince + tag non-vérifié, COMMIT 8)
-const CACHE = 'stafflo-v386';
+// Stafflo Service Worker — v402 (titres de modale en 600, 8 sélecteurs, règle v19, COMMIT L)
+const CACHE = 'stafflo-v402';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
