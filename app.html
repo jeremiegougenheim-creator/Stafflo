@@ -39936,17 +39936,46 @@ function _auditLum(o){
   var f = function(c){ c/=255; return c<=0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
   return 0.2126*f(o.r) + 0.7152*f(o.g) + 0.0722*f(o.b);
 }
+/* Exception marque tierce : #25D366 est la couleur officielle WhatsApp
+   (bouton/icône), pas un choix de palette Stafflo — on ne la modifie
+   jamais. Constante en dur ici plutôt que dans baseline.json puisque ce
+   dernier est reconstruit à chaque run du harnais. */
+var AUDIT_WHATSAPP_GREEN = {r:37, g:211, b:102, tol:2};
+
+/* Remonte les ancêtres et COMPOSE chaque fond semi-transparent sur celui
+   du dessous (out = fg*a + bg*(1-a)) jusqu'au premier fond opaque (a>=0.95)
+   ou la racine (blanc par défaut). Un simple `if (a>=0.95) return` sur le
+   premier fond trouvé ignorait les fonds semi-transparents empilés
+   au-dessus — d'où de faux « blanc sur blanc » sur le calendrier.
+   Signale aussi tout background-image en dégradé rencontré en chemin :
+   sa couleur réelle n'est pas lisible via backgroundColor, donc on ne la
+   devine pas — l'appelant classe l'élément en indéterminé. */
 function _auditBgOf(el){
+  var layers = [];
+  var hasGradient = false;
   var n = el;
   while (n && n !== document.documentElement){
-    var c = _auditRgb(getComputedStyle(n).backgroundColor);
-    if (c && c.a >= 0.95) return c;
+    var st = getComputedStyle(n);
+    if (!hasGradient && st.backgroundImage && st.backgroundImage.indexOf("gradient") !== -1) hasGradient = true;
+    var c = _auditRgb(st.backgroundColor);
+    if (c && c.a > 0){
+      layers.push(c);
+      if (c.a >= 0.95) break;
+    }
     n = n.parentElement;
   }
-  return {r:255,g:255,b:255,a:1};
+  if (!layers.length || layers[layers.length-1].a < 0.95) layers.push({r:255,g:255,b:255,a:1});
+  var acc = layers[layers.length-1];
+  for (var i = layers.length-2; i >= 0; i--){
+    var top = layers[i];
+    acc = {r: top.r*top.a + acc.r*(1-top.a),
+           g: top.g*top.a + acc.g*(1-top.a),
+           b: top.b*top.a + acc.b*(1-top.a), a:1};
+  }
+  return {color: acc, gradient: hasGradient};
 }
 function auditContrast(){
-  var out = [];
+  var echecs = [], indetermines = [];
   document.querySelectorAll("body *").forEach(function(el){
     var txt = "";
     el.childNodes.forEach(function(n){ if (n.nodeType === 3) txt += n.textContent; });
@@ -39955,7 +39984,18 @@ function auditContrast(){
     var st = getComputedStyle(el);
     if (st.visibility === "hidden" || st.display === "none" || +st.opacity < 0.5) return;
     var fg = _auditRgb(st.color); if (!fg) return;
-    var bg = _auditBgOf(el);
+    var bgInfo = _auditBgOf(el);
+    var bg = bgInfo.color;
+    if (Math.abs(bg.r-AUDIT_WHATSAPP_GREEN.r)<=AUDIT_WHATSAPP_GREEN.tol
+        && Math.abs(bg.g-AUDIT_WHATSAPP_GREEN.g)<=AUDIT_WHATSAPP_GREEN.tol
+        && Math.abs(bg.b-AUDIT_WHATSAPP_GREEN.b)<=AUDIT_WHATSAPP_GREEN.tol) return;
+    var px = parseFloat(st.fontSize);
+    var classe = el.className || el.tagName;
+    if (bgInfo.gradient){
+      indetermines.push({texte: txt.slice(0,42), px: px, classe: classe,
+                          raison: "background-image en dégradé sur un ancêtre"});
+      return;
+    }
     /* texte semi-transparent : composition sur le fond */
     if (fg.a < 1){
       fg = {r: fg.r*fg.a + bg.r*(1-fg.a),
@@ -39964,28 +40004,29 @@ function auditContrast(){
     }
     var l1 = _auditLum(fg), l2 = _auditLum(bg);
     var ratio = (Math.max(l1,l2) + 0.05) / (Math.min(l1,l2) + 0.05);
-    var px = parseFloat(st.fontSize);
     var gros = px >= 18.66 || (px >= 14 && +st.fontWeight >= 700);
     var seuil = gros ? 3 : 4.5;
     if (ratio < seuil){
-      out.push({texte: txt.slice(0,42), ratio: +ratio.toFixed(2), seuil: seuil,
-                px: px, classe: el.className || el.tagName,
+      echecs.push({texte: txt.slice(0,42), ratio: +ratio.toFixed(2), seuil: seuil,
+                px: px, classe: classe,
                 fg: 'rgb(' + Math.round(fg.r) + ',' + Math.round(fg.g) + ',' + Math.round(fg.b) + ')',
                 bg: 'rgb(' + Math.round(bg.r) + ',' + Math.round(bg.g) + ',' + Math.round(bg.b) + ')'});
     }
   });
-  if (!out.length) console.log("%cContraste : aucun échec sur cet écran.", "color:#2E7D5B;font-weight:600");
-  else console.table(out);
-  return out;
+  if (!echecs.length) console.log("%cContraste : aucun échec sur cet écran.", "color:#2E7D5B;font-weight:600");
+  else console.table(echecs);
+  if (indetermines.length) console.warn("[auditContrast] " + indetermines.length + " élément(s) indéterminé(s) (dégradé) :", indetermines);
+  return {echecs: echecs, indetermines: indetermines};
 }
 window.auditContrast = auditContrast;
 
-/* Regroupe les échecs de auditContrast() par couple (couleur texte, couleur
-   fond effectif) — plusieurs centaines d'éléments partagent souvent la même
-   poignée de couples. Sert à cibler le COMMIT D (palette/surfaces) plutôt
-   que de traiter chaque élément un par un. */
+/* Regroupe les échecs RÉELS de auditContrast() par couple (couleur texte,
+   couleur fond effectif) — plusieurs centaines d'éléments partagent souvent
+   la même poignée de couples. Sert à cibler le COMMIT D (palette/surfaces)
+   plutôt que de traiter chaque élément un par un. Les indéterminés (dégradés)
+   n'entrent pas dans ce regroupement. */
 function auditContrastGroups(){
-  var list = auditContrast();
+  var list = auditContrast().echecs;
   var map = {};
   list.forEach(function(o){
     var k = o.fg + ' / ' + o.bg;

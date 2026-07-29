@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v392 (scission --muted-on-light/--muted-on-dark, COMMIT D-bis)
-const CACHE = 'stafflo-v392';
+// Stafflo Service Worker — v393 (COMMIT A-bis, auditContrast() : composition transparence + détection dégradés)
+const CACHE = 'stafflo-v393';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

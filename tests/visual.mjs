@@ -111,10 +111,21 @@ function tonesFailed(a) {
 }
 
 // Count of findings for a ratchet-tracked audit (contrast/labels), or null
-// when the audit doesn't exist yet (pre-COMMIT-A) or threw.
+// when the audit doesn't exist yet (pre-COMMIT-A) or threw. auditLabels()
+// still returns a bare array; auditContrast() returns {echecs, indetermines}
+// since COMMIT A-bis — the ratchet only ever counts echecs (real failures).
 function auditCount(a) {
-  if (a.skipped || a.error || !Array.isArray(a.result)) return null;
-  return a.result.length;
+  if (a.skipped || a.error) return null;
+  if (Array.isArray(a.result)) return a.result.length;
+  if (a.result && Array.isArray(a.result.echecs)) return a.result.echecs.length;
+  return null;
+}
+
+// Indéterminés (dégradés non résolus) sur auditContrast() — informatif
+// uniquement, hors cliquet.
+function indetermineCount(a) {
+  if (a.skipped || a.error || !a.result || !Array.isArray(a.result.indetermines)) return null;
+  return a.result.indetermines.length;
 }
 
 function resetOverlays() {
@@ -162,6 +173,7 @@ async function captureOne(page, key, width, lang, openFn) {
   return {
     view: key, width, lang, contrast, labels, tones, consoleErrors,
     contrastCount: auditCount(contrast), labelsCount: auditCount(labels),
+    indetermineCount: indetermineCount(contrast),
     hardFail,
   };
 }
@@ -257,6 +269,7 @@ async function run() {
     const key = `${r.view}-${r.width}-${r.lang}`;
     if (r.contrastCount === null && r.labelsCount === null) continue; // audits absent, nothing to ratchet
     const prev = oldBaseline && oldBaseline[key];
+    r.prevContrast = prev ? prev.contrast : null;
     r.regressed = [];
     if (prev) {
       if (r.contrastCount !== null && r.contrastCount > prev.contrast) {
@@ -280,7 +293,10 @@ async function run() {
     const ratchetBad = r.regressed && r.regressed.length > 0;
     const fail = r.hardFail || ratchetBad;
     const status = fail ? 'FAIL' : (r.contrastCount === null && r.labelsCount === null ? 'SKIP (audits absents)' : 'PASS');
-    const counts = r.contrastCount !== null ? ` [contraste:${r.contrastCount} labels:${r.labelsCount}]` : '';
+    const oldTotal = r.prevContrast != null ? r.prevContrast : '?';
+    const counts = r.contrastCount !== null
+      ? ` [contraste:${r.contrastCount} indéterminés:${r.indetermineCount ?? 0} ancien-total:${oldTotal} labels:${r.labelsCount}]`
+      : '';
     console.log(`${r.view.padEnd(14)} ${String(r.width).padEnd(5)} ${r.lang}  ${status}${counts}`);
     for (const e of r.consoleErrors) console.log(`    console error: ${e}`);
     if (r.contrast.error) console.log(`    auditContrast() a levé: ${r.contrast.error}`);
