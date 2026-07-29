@@ -1380,3 +1380,105 @@ jour le document/sous-titre pour refléter la réalité, ou (b) déplacer
 contenu, donc un commit à part, avec sa propre recon (où `#villaV3` est-il
 lu/écrit ailleurs, `applyNavV2Content()` à réviser, etc.). Pas de
 recommandation ici — décision produit, pas mécanique.
+
+## COMMIT L — titres en Cormorant 600 (SW v402)
+
+### Recon (avant tout code)
+
+176 déclarations `font-family: Cormorant Garamond` dans `app.html` (174
+usages réels + 2 `@font-face`), graisses étalées de 300 à 700. Trois
+familles proposées comme frontière : (1) titre principal par écran, (2)
+noms de clients — cartes de liste et en-tête de fiche, (3) titres de
+modale/panneau. Sur les 176, une quinzaine seulement matchent une des
+trois familles ; le reste est correctement hors-cadre (valeurs KPI,
+libellés de section en capitales, titres de carte génériques réutilisés
+dans plusieurs écrans, mot-symbole ARIA/Stafflo, sous-en-têtes internes
+d'une fiche, code mort).
+
+### Famille 1 — abandonnée
+
+Aucun titre d'écran équivalent à la référence n'existe dans `app.html`.
+Le seul élément portant le texte exact "Aujourd'hui"/"Clients"/"Villa"/
+"Calendrier" est `#activeTabLabel` (l.3438) — mais il est en `'DM Sans'`,
+11px, majuscules, déjà graisse 600 : c'est un libellé de section en
+capitales (explicitement hors-cadre), pas un titre Cormorant. Depuis
+COMMIT H (top-nav), chaque écran s'ouvre directement sur un hero photo
++ le sous-titre du COMMIT H (`#hdrSubtitle`) — il n'y a pas de `<h1>`/`<h2>`
+de page. Ne pas en créer un : ce serait une décision de mise en page
+(introduire un nouvel élément, potentiellement un nouveau font-family
+là où il n'y en a pas), pas un ajustement de graisse. Repris tel quel du
+brief.
+
+### Famille 2 — abandonnée
+
+Le nom de client de la liste réellement affichée par défaut (nav2 ON),
+`.v5-card-name` (l.2181, carte répétée dans `#guestsV5`), est en
+`'DM Sans','Inter',sans-serif` — pas en Cormorant. Deux autres candidats
+Cormorant existaient (`.v5-hero-name` l.2124, carte "invité en cours" ;
+`.v5d-hero-name`/`.v5d-topbar-title` l.2197/2201, en-tête de la fiche
+invité), déjà en graisse 600 — mais la famille est abandonnée dans son
+ensemble : rien édité.
+
+### Famille 3 — appliquée, 8 sélecteurs
+
+24px / 600 / letter-spacing 0.01em partout, sans exception de taille pour
+ces 8 (contrairement à une règle intermédiaire envisagée puis abandonnée
+qui aurait préservé les tailles ≥24px) :
+
+1. `.why-box h3` (l.555) — popup "Pourquoi ce prix". 17px/400 -> 24px/600.
+2. `.onbV3-h2` (l.2329) — titres d'étape onboarding V3 (`#onboardingV3`,
+   `position:fixed`). Confirmé dans le flux canonique, pas dans le bloc
+   mort l.6541-6688 (`.onbV3-h2` n'y apparaît jamais — ce bloc utilise des
+   styles inline, aucune classe `onbV3-*` ; comment `v178 — legacy wizard
+   neutralisé` confirme le bloc mort inatteignable en défaut). 26px/600 ->
+   24px/600. Override desktop non touché : `@media(min-width:720px)
+   { .onbV3-h2 { font-size:30px; } }` (l.2412) hérite la graisse/le
+   letter-spacing du cascade, seule sa taille reste à 30px — pas mentionné
+   par la consigne, laissé tel quel, signalé ici.
+3. `.fiche-v1 .fh h2` (l.3007) — panneau générique "fiche de provenance"
+   (`role="dialog"`), titre = `p.title` selon l'appelant. 23px/500 ->
+   24px/600.
+4. Titre modale Inbox, inline (l.29772) — `#inboxModal`. 17px/300 ->
+   24px/600.
+5. `.stafflo-sheet-hd` (l.29804) — primitive générique
+   `window.StaffloSheet.open({title})`, un seul édit couvre toutes les
+   feuilles du bas. 20px/700 -> 24px/600.
+6. Titre modale Réglages Inbox, inline (l.34003) — `.inbox-settings-modal`.
+   16px, graisse absente (ancêtre `.inbox-settings-hd` n'en fixe pas non
+   plus) -> 24px/600 ajouté explicitement.
+7. `.ate-header h2` (l.39076) — Templates Editor (`.ate-overlay`,
+   `position:fixed`). 22px/500 -> 24px/600. Override mobile `@media(max-
+   width:600px) { .ate-header h2 { font-size:18px; } }` (l.39191) NON
+   édité : ne fixant que `font-size`, il hérite déjà la nouvelle graisse
+   600 et le letter-spacing 0.01em par cascade normale (même sélecteur,
+   règle de base modifiée plus haut dans la même feuille de style
+   injectée) — vérifié, pas de `!important` en jeu.
+8. Titre modale Réglages, inline (l.6134) — `#settingsModal`. 18px,
+   graisse absente -> 24px/600 ajouté explicitement.
+
+### Exclus explicitement, aucun édit
+
+- `staffloPrompt()`, `opts.title` (l.40282) — déjà 24px cible ? Non, 20px,
+  mais déjà graisse 600 : laissé tel quel sur consigne explicite (le seul
+  autre attribut visé, la graisse, est déjà correct).
+- `#staffloErrorOverlay .seo-title` (l.2107) — titre d'erreur, pas de
+  modale de contenu ; déjà graisse 600. Taille (22px) volontairement non
+  alignée sur 24px : préservée telle quelle sur consigne explicite (un
+  titre d'erreur peut avoir une taille pensée pour son propre registre,
+  pas celui d'une modale de contenu).
+- Mur d'abonnement, "Votre accès à ARIA est en pause" (l.3100) — déjà
+  24px/700. Non touché : gaté OFF par défaut (`stafflo_subscription_wall_v1`,
+  strangler-fig, pas encore en prod) — même règle que le reste du build,
+  pas de retouche sur du code en dormance.
+
+### Sortie du harnais
+
+1. `node --check` sur les 43 blocs `<script>` extraits : **OK**.
+2. Delta d'accolades : **-3** (inchangé, avant et après).
+3. `tests/visual.mjs` : 48/48 combinaisons **PASS**, 0 échec hors cliquet,
+   0 régression de cliquet, cliquet resserré/inchangé -> `tests/baseline.json`
+   mis à jour.
+
+### Service worker
+
+v401 -> **v402**.

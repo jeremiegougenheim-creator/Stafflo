@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v401 (signal Mawazine wait->go + ordre onglets Calendrier/Villa, règle v19, COMMIT K)
-const CACHE = 'stafflo-v401';
+// Stafflo Service Worker — v402 (titres de modale en 600, 8 sélecteurs, règle v19, COMMIT L)
+const CACHE = 'stafflo-v402';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
