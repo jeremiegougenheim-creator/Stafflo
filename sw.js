@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v398 (calendrier : cases riches prénom/net-nuit/pax/flèche, COMMIT I)
-const CACHE = 'stafflo-v398';
+// Stafflo Service Worker — v399 (isFirmBooking : 5 replis divergents documentés, aucun changement de comportement, COMMIT J)
+const CACHE = 'stafflo-v399';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -3669,6 +3669,7 @@ window.renderSoloTurnoverCard = function(){
     return d.toLocaleDateString(fr ? 'fr-FR' : 'en-US', { day:'numeric', month:'short' });
   }
 
+  /* repli mort par hoisting — DIVERGE de la canonique s'il s'exécutait : ignore booking_status (snake_case), et traite tout statut hors lead/inquiry/quoted comme ferme (ex. 'cancelled' → à tort ferme). Voir RAPPORT-PORTAGE.md, COMMIT J. */
   function firm(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : !!(c && c.bookingStatus !== 'lead' && c.bookingStatus !== 'inquiry' && c.bookingStatus !== 'quoted'); }
   function todayMidnight(){ var d = new Date(); d.setHours(0,0,0,0); return d; }
   function firstName(n){ return (n||'').split(' ')[0] || ''; }
@@ -11279,11 +11280,13 @@ function buildStaffNote(query, fr) {
       var _cand = _candidates[_ni].toLowerCase();
       guest = clients.find(function(c) {
         var _first = (c.name || '').split(/\s+/)[0].toLowerCase();
+        /* repli mort par hoisting — DIVERGE de la canonique s'il s'exécutait : n'accepte que bookingStatus==='confirmed', rate 'pending', statut vide (legacy=ferme) et booking_status (snake_case). Voir RAPPORT-PORTAGE.md, COMMIT J. */
         return _first === _cand && (typeof isFirmBooking === 'function' ? isFirmBooking(c) : c.bookingStatus === 'confirmed');
       }) || null;
     }
     if (!guest) {
       var _upcoming = clients.filter(function(c) {
+        /* repli mort par hoisting — DIVERGE de la canonique s'il s'exécutait : n'accepte que bookingStatus==='confirmed', rate 'pending', statut vide (legacy=ferme) et booking_status (snake_case). Voir RAPPORT-PORTAGE.md, COMMIT J. */
         return (typeof isFirmBooking === 'function' ? isFirmBooking(c) : c.bookingStatus === 'confirmed')
           && c.arrival && c.arrival.slice(0,10) >= todayISO;
       }).sort(function(a,b) { return (a.arrival||'').localeCompare(b.arrival||''); });
@@ -31498,6 +31501,7 @@ function startTour(){
     catch(e){ try { return localStorage.getItem('stafflo_aria_first_v1') !== '0'; } catch(_) { return true; } }
   }
   function safeCfg(){ try { return (typeof getCfg === 'function') ? getCfg() : (JSON.parse(localStorage.getItem('stafflo_cfg')||'{}')); } catch(e){ return {}; } }
+  /* repli mort par hoisting — DIVERGE de la canonique s'il s'exécutait : !!c accepte n'importe quel client, ignore complètement bookingStatus (lead/inquiry/quoted/cancelled tous à tort fermes). Voir RAPPORT-PORTAGE.md, COMMIT J. */
   function firm(c){ return typeof isFirmBooking === 'function' ? isFirmBooking(c) : !!c; }
   function fmt(n){ try { return Math.round(n).toLocaleString(fr()?'fr-FR':'en-US'); } catch(e){ return String(n); } }
   function fmtEuro(n){ return fmt(n) + '€'; }
@@ -33580,6 +33584,7 @@ function startTour(){
       return Math.round((d - n) / 86400000);
     } catch(e){ return Infinity; }
   }
+  /* repli mort par hoisting — DIVERGE de la canonique s'il s'exécutait : rate le statut vide (legacy=ferme) et booking_status (snake_case) ; gère 'pending' correctement. Voir RAPPORT-PORTAGE.md, COMMIT J. */
   function firmOf(c){
     if (typeof isFirmBooking === 'function') return isFirmBooking(c);
     return c && (c.bookingStatus === 'confirmed' || c.bookingStatus === 'pending');
@@ -33702,6 +33707,7 @@ function startTour(){
     var row = document.getElementById('ariaCtxChips'); if(!row) return;
     var today = new Date(); today.setHours(0,0,0,0);
     var L = (window.clients||[]).filter(function(c){
+      /* repli mort par hoisting — DIVERGE de la canonique s'il s'exécutait : ne lit que booking_status (snake_case), ignore bookingStatus (camelCase) et 'pending', rate le statut vide (legacy=ferme). Voir RAPPORT-PORTAGE.md, COMMIT J. */
       return (typeof isFirmBooking==='function') ? isFirmBooking(c) : c.booking_status==='confirmed';
     });
     var chips = [];

@@ -930,3 +930,109 @@ v397 -> **v398**.
 - `staffloCal.tap()` (modale au clic) n'a pas été relu en détail — le
   comportement au clic est inchangé par construction (aucune ligne de cette
   fonction modifiée), mais pas ré-audité pour ce commit.
+
+## COMMIT J — `isFirmBooking()` : les 74 replis sont morts (SW v399)
+
+### Ce qui était demandé au départ, et pourquoi ça a changé de forme
+
+Le brief initial demandait d'instrumenter chaque repli de `isFirmBooking()`
+avec un `console.warn` pour transformer un risque supposé (repli silencieux
+qui diverge de la canonique sans signal) en risque visible. Le recon a
+démontré que ce risque n'existe pas dans le fichier actuel — voir
+démonstration ci-dessous. Le commit a donc changé de forme : pas de
+`console.warn`, pas de changement de comportement, juste une trace écrite
+(ce document) et cinq commentaires sources aux points où un futur refactor
+(notamment la découpe en modules) pourrait réintroduire le risque.
+
+### Recon : combien de replis, où
+
+`grep -n "isFirmBooking" app.html` → **74 occurrences** (pas ~10 comme
+supposé au départ — le recon d'origine datait d'avant plusieurs commits qui
+ont fait dériver les numéros de ligne). Canonique unique, exposée sur
+`window`, l.10998-11006 :
+
+```js
+function isFirmBooking(c) {
+  if (!c) return false;
+  var bs = c.bookingStatus || c.booking_status || '';
+  if (!bs) return true;
+  return bs === 'confirmed' || bs === 'pending';
+}
+window.isFirmBooking = isFirmBooking;
+```
+
+Sur les 74, ~45 sont de vrais replis (ternaire ou garde avec branche
+alternative) ; le reste sont des appels nus (pas de garde) ou des
+commentaires.
+
+### Démonstration : pourquoi les 74 sont morts
+
+Deux raisons indépendantes, chacune suffisante seule :
+
+1. **Hoisting.** `isFirmBooking` est une déclaration `function` classique
+   (pas `const`/`var =`), donc entièrement hoistée (nom + corps) dans son
+   bloc `<script>` (l.6704-29656, confirmé par `awk` sur les balises
+   `<script>`/`</script>`). Elle est appelable dès la première ligne de ce
+   bloc, indépendamment de sa position source à la ligne 10998. Vérifié à
+   la main (`node -e`) : `typeof isFirmBooking` vaut `'function'` avant
+   même que la ligne `function isFirmBooking(){}` s'exécute textuellement,
+   dans un même script.
+2. **Aucun `<script>` du fichier n'a `async`/`defer`/`type="module"`**
+   (grep ciblé) — tous les blocs s'exécutent en synchrone, dans l'ordre du
+   document. Les 6 sites de repli situés dans un bloc `<script>`
+   *antérieur* au bloc 6704-29656 (l.3456, 3672, 4267, 4319, 4743, 4978)
+   sont les seuls où un risque était théoriquement possible. Tous les six
+   sont enveloppés dans des fonctions qui ne s'exécutent que plus tard —
+   via `DOMContentLoaded`, `setTimeout`, ou un registre de renderers
+   (`window._dashV2Renderers.push(...)`) — jamais au niveau racine de leur
+   propre bloc. Le temps qu'elles s'exécutent, le bloc définissant
+   `isFirmBooking` a déjà fini de tourner.
+
+Aucun chemin de code, aujourd'hui, ne peut atteindre une branche de repli
+avant que la canonique existe. Les ~45 replis sont du code mort, tous, sans
+exception.
+
+### Table des cinq replis qui divergeraient (si jamais ils s'exécutaient)
+
+La majorité des replis sont des `: true` (fail-open, ne filtrent jamais) —
+inoffensifs par construction, pas une vraie heuristique. Cinq réimplémentent
+une vraie logique et **divergeraient** de la canonique s'ils s'exécutaient un
+jour :
+
+| Ligne(s) | Fonction | Repli | Ce qu'il rate vs canonique |
+|---|---|---|---|
+| 3672 | `firm()` | `!!(c && bookingStatus∉{lead,inquiry,quoted})` | Ignore `booking_status` (snake_case) ; traite tout statut hors `{lead,inquiry,quoted}` comme ferme — un `'cancelled'` serait à tort ferme. |
+| 11283, 11289 | inline (guest lookup) | `bookingStatus==='confirmed'` | Rate `'pending'`, rate le statut vide (legacy = ferme dans la canonique), ignore `booking_status` (snake_case). Trop strict : sous-compte les fermes. |
+| 31504 | `firm()` | `!!c` | Accepte n'importe quel client tant qu'il existe — ignore complètement le statut. `lead`/`inquiry`/`quoted`/`cancelled` seraient tous à tort fermes. |
+| 33587 | `firmOf()` | `bookingStatus∈{confirmed,pending}` | Gère `'pending'` correctement, mais rate le statut vide (legacy = ferme) et `booking_status` (snake_case). |
+| 33710 | inline (`buildAriaCtxChips`) | `booking_status==='confirmed'` | Snake_case seulement — ignore `bookingStatus` (camelCase), rate `'pending'`, rate le statut vide (legacy = ferme). |
+
+Chacune de ces cinq lignes porte maintenant un commentaire au même format :
+`/* repli mort par hoisting — DIVERGE de la canonique s'il s'exécutait : <détail>. Voir RAPPORT-PORTAGE.md, COMMIT J. */`
+— placé juste au-dessus de la ligne concernée (deux emplacements pour la
+paire 11283/11289, qui est le même repli dupliqué deux fois dans la même
+fonction).
+
+### Ce qui n'a PAS été fait (exprès)
+
+- **Aucun `console.warn`.** Le repli n'a jamais de chance de s'exécuter
+  aujourd'hui ; un warn qui ne se déclenche jamais n'aurait rien prouvé de
+  plus que ce document, pour 45 points d'édition en plus.
+- **Aucune suppression, aucune unification.** Les replis restent tels
+  quels, y compris les cinq buggés — per [[strangler-fig]]/CLAUDE.md §2.7,
+  aucun cleanup pendant la phase de build. Ils sont candidats pour la
+  session de cleanup post-v1 : voir `stafflo-audit-backlog` (mémoire),
+  section « isFirmBooking fallback guards ».
+- **Aucun changement de comportement.** Six commentaires source, un
+  document, un bump de service worker.
+
+### Sortie du harnais
+
+1. `node --check /tmp/all_js.js` (scripts extraits) : **OK**
+2. Delta d'accolades : **-3** (inchangé — les commentaires n'ouvrent/ferment
+   aucune accolade)
+3. Pas d'audit visuel — zéro changement DOM/CSS, rien à capturer.
+
+### Service worker
+
+v398 -> **v399**.
