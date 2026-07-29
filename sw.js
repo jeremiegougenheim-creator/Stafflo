@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v394 (cinq causes du contraste, COMMIT D-ter)
-const CACHE = 'stafflo-v394';
+// Stafflo Service Worker — v395 (réglages en modale, COMMIT E)
+const CACHE = 'stafflo-v395';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

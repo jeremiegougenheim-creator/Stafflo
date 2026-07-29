@@ -3340,7 +3340,8 @@ window.addEventListener('keydown', function(e){
     </select>
     <button class="hdr-btn" id="ariaMemBtn" onclick="openAriaMemoryEditor()" onmouseenter="(function(b){try{var c=(typeof getCfg==='function')?getCfg():{};var m=(c.ariaMemory||'').trim();var l=m.length;var prev=l?(m.slice(0,160)+(l>160?'…':'')):(lang==='fr'?'Vide. Cliquez pour ajouter du contexte.':'Empty. Click to add context.');b.title=prev+'\\n\\n'+l+(lang==='fr'?' caractères':' chars');}catch(e){}})(this)" title="Aria Memory" aria-label="Aria Memory" style="padding:5px 9px"><i class="ti ti-brain" style="font-size:13px;vertical-align:-1px"></i></button>
     <button class="hdr-btn" id="icalSyncBtn" onclick="openIcalSettings()" onmouseenter="(function(b){try{var c=(typeof getCfg==='function')?getCfg():{};var n=(c.icalFeeds||[]).length;var ls=c.icalLastSyncAt?new Date(c.icalLastSyncAt).toLocaleString():(lang==='fr'?'Jamais':'Never');b.title=(lang==='fr'?'Sync calendriers · ':'Calendar sync · ')+n+(lang==='fr'?' feed(s)\\nDernière sync : ':' feed(s)\\nLast sync: ')+ls;}catch(e){}})(this)" title="Sync calendars" aria-label="Sync calendars" style="padding:5px 9px"><i class="ti ti-calendar-event" style="font-size:13px;vertical-align:-1px"></i></button>
-    <button class="hdr-btn" id="notifBtn" onclick="requestNotifPermission()" onmouseenter="(function(b){try{var p=Notification.permission;b.title=p==='granted'?(lang==='fr'?'Notifications actives':'Notifications enabled'):p==='denied'?(lang==='fr'?'Notifications bloquées':'Notifications blocked'):(lang==='fr'?'Activer les notifications':'Enable notifications');}catch(e){}})(this)" title="Notifications" aria-label="Notifications" style="padding:5px 9px"><i class="ti ti-bell" style="font-size:13px;vertical-align:-1px"></i></button>
+    <!-- #notifBtn déplacé vers Réglages — COMMIT E (voir #settingsModal, section NOTIFICATIONS) -->
+    <!-- <button class="hdr-btn" id="notifBtn" onclick="requestNotifPermission()" onmouseenter="(function(b){try{var p=Notification.permission;b.title=p==='granted'?(lang==='fr'?'Notifications actives':'Notifications enabled'):p==='denied'?(lang==='fr'?'Notifications bloquées':'Notifications blocked'):(lang==='fr'?'Activer les notifications':'Enable notifications');}catch(e){}})(this)" title="Notifications" aria-label="Notifications" style="padding:5px 9px"><i class="ti ti-bell" style="font-size:13px;vertical-align:-1px"></i></button> -->
     <button class="hdr-btn" id="trashBtn" onclick="openTrashV6()" title="Trash" aria-label="Trash" style="display:none;padding:5px 9px"><i class="ti ti-trash" style="font-size:13px;vertical-align:-1px"></i><span id="trashBtnCount" style="margin-left:4px;font-size:10px;font-weight:700"></span></button>
     <button class="v3-mode-btn" id="v3ModeBtn" onclick="toggleTodayV3()" title="Toggle Today v3 hi-fi" aria-label="Toggle Today v3" style="display:none">V3</button><!-- masqué en vue client — toggle dev, re-toggle via console toggleTodayV3() -->
     <button class="hdr-btn"  style="padding:5px 9px;font-size:14px;position:relative;z-index:9999" title="Réglages" data-title-fr="Réglages" data-title-en="Settings">⚙</button>
@@ -6154,6 +6155,39 @@ window.renderSetupOneLiner = function(){
       <button onclick="setLang('fr')" id="btnFr" style="flex:1;padding:12px;border:1.5px solid var(--green);border-radius:var(--r-sm);background:var(--green);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer">🇫🇷 Français</button>
       <button onclick="setLang('en')" id="btnEn" style="flex:1;padding:12px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:transparent;font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;color:var(--ink)">🇬🇧 English</button>
     </div>
+  </div>
+
+  <!-- Notifications (app-level, PAS villa-specific) — COMMIT E.
+       Interrupteur en mémoire uniquement (window._notifPrefs) : pas dans
+       SETTINGS_FIELD_MAP, donc jamais lu par autoSaveAll()/pullSettingsFromSupabase().
+       Aucun effet sur scheduleAllNotifs() pour l'instant : arrivées/départs est la
+       SEULE catégorie réellement câblée (voir requestNotifPermission ~l.37386).
+       « Nouvelles demandes » et « messages de l'équipe » n'ont aucun déclencheur —
+       affichés désactivés + « Bientôt », jamais cochables, pour ne pas promettre un
+       envoi qui n'existe pas (même règle que « ARIA n'invente pas » : une case à
+       cocher active est une promesse, on ne l'affiche que si elle tient). -->
+  <div class="settings-section">
+    <div class="settings-title" data-fr="NOTIFICATIONS" data-en="NOTIFICATIONS">NOTIFICATIONS</div>
+    <div class="field" style="display:flex;align-items:center;gap:10px">
+      <input type="checkbox" id="cfgNotifArrivals" checked onchange="_setNotifPref('arrivals', this.checked)" style="cursor:pointer">
+      <label for="cfgNotifArrivals" style="flex:1;margin:0" data-fr="Arrivées et départs" data-en="Arrivals and departures">Arrivées et départs</label>
+    </div>
+    <div class="field" style="display:flex;align-items:center;gap:10px;opacity:.5">
+      <input type="checkbox" id="cfgNotifRequests" disabled style="cursor:not-allowed">
+      <label for="cfgNotifRequests" style="flex:1;margin:0" data-fr="Nouvelles demandes" data-en="New requests">Nouvelles demandes</label>
+      <span style="font-size:10px;letter-spacing:.5px;color:var(--muted);border:1px solid var(--border);border-radius:var(--r-xs);padding:2px 6px" data-fr="Bientôt" data-en="Coming soon">Bientôt</span>
+    </div>
+    <div class="field" style="display:flex;align-items:center;gap:10px;opacity:.5">
+      <input type="checkbox" id="cfgNotifStaffMsg" disabled style="cursor:not-allowed">
+      <label for="cfgNotifStaffMsg" style="flex:1;margin:0" data-fr="Messages de l'équipe" data-en="Team messages">Messages de l'équipe</label>
+      <span style="font-size:10px;letter-spacing:.5px;color:var(--muted);border:1px solid var(--border);border-radius:var(--r-xs);padding:2px 6px" data-fr="Bientôt" data-en="Coming soon">Bientôt</span>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.4" data-fr="Nécessite l'autorisation du navigateur." data-en="Requires browser permission.">Nécessite l'autorisation du navigateur.</div>
+    <!-- #notifBtn rapatrié depuis le header — COMMIT E.
+         class="btn-save" (blanc sur --green), pas "hdr-btn" (or sur vert plein,
+         conçu pour le header sombre) : sur le panneau clair, hdr-btn donnerait
+         de l'or sur fond clair — même cause que COMMIT D-ter #1. -->
+    <button class="btn-save" id="notifBtn" onclick="requestNotifPermission()" onmouseenter="(function(b){try{var p=Notification.permission;b.title=p==='granted'?(lang==='fr'?'Notifications actives':'Notifications enabled'):p==='denied'?(lang==='fr'?'Notifications bloquées':'Notifications blocked'):(lang==='fr'?'Activer les notifications':'Enable notifications');}catch(e){}})(this)" title="Notifications" aria-label="Notifications" style="margin-top:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px"><i class="ti ti-bell" style="font-size:14px"></i><span data-fr="Activer les notifications" data-en="Enable notifications">Activer les notifications</span></button>
   </div>
 
   <div class="settings-section" style="padding:10px 0;text-align:center">
@@ -37368,6 +37402,16 @@ function startTour(){
     } catch(e){}
   };
 })();
+</script>
+
+<!-- Interrupteurs Notifications (Réglages) — COMMIT E. En mémoire seulement,
+     pas de persistance ; défini hors du guard 'Notification in window' pour
+     rester appelable même si le navigateur ne supporte pas l'API. -->
+<script>
+// requests/staffMessages restent à false : aucun déclencheur n'existe pour ces
+// catégories (voir section NOTIFICATIONS de #settingsModal, cases désactivées).
+window._notifPrefs = { arrivals: true, requests: false, staffMessages: false };
+window._setNotifPref = function(key, val){ try { window._notifPrefs[key] = !!val; } catch(e){} };
 </script>
 
 <!-- ════════════════════════════════════════════════════════════════
