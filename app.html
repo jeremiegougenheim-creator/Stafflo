@@ -786,7 +786,12 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 /* ARIA branding — inline header + smiley logo */
 .aria-logo{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.15);background:linear-gradient(135deg,#D4A24A,#B8842B);position:relative;overflow:hidden}
 .aria-logo svg{width:100%;height:100%;display:block}
-.aria-name{font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:500;letter-spacing:1.5px}
+/* color:#fff explicite (COMMIT G) — vivait par héritage tant que .aria-name
+   n'existait que dans l'en-tête #ariaModal (déjà color:#fff). Depuis que
+   .v3-hero (corps clair) le réutilise dans sa bande sombre, l'héritage ne
+   suffit plus : sans ça le texte prend l'encre par défaut du corps clair,
+   invisible sur fond vert. */
+.aria-name{font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:500;letter-spacing:1.5px;color:#fff}
 .aria-badge{background:rgba(201,150,58,.18);border:1px solid rgba(201,150,58,.45);color:var(--gold);font-size:9px;font-weight:700;padding:2px 7px;border-radius:var(--r-sm);letter-spacing:1.5px;font-family:'DM Sans',sans-serif}
 .aria-online-dot{width:7px;height:7px;border-radius:50%;background:#7EC850;box-shadow:0 0 0 2px rgba(126,200,80,.25)}
 
@@ -813,6 +818,13 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .aria-fab-A{font-family:'Cormorant Garamond',Georgia,serif;font-size:20px;font-weight:700;color:var(--gold);line-height:1;letter-spacing:0}
 .aria-fab-badge{position:absolute;top:-2px;right:-2px;background:#A32D2D;color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:var(--r-sm);padding:0 5px;display:none;align-items:center;justify-content:center;border:2px solid var(--green3)}
 .aria-fab-badge.show{display:flex}
+/* COMMIT G — exclusivité bande/FAB (IntersectionObserver, voir syncAriaFabBandExclusivity()
+   plus bas) : tant que .aria-hero est à l'écran, le flottant s'efface. Câblage dormant :
+   #ariaFab reste masqué par la règle !important ci-dessous (décision v162/v167, un seul
+   orbe ARIA — celui de la nav). Réactiver le flottant est une décision produit à part,
+   pas un effet de bord de ce commit — voir RAPPORT-PORTAGE.md, COMMIT G. */
+.aria-fab{transition:opacity .22s,transform .22s,box-shadow .18s}
+.aria-fab.fab--hidden{opacity:0;pointer-events:none}
 #ariaFab{display:none!important} /* v167 — flottant legacy masqué AUSSI sur mobile reel (les hide v162 etaient scopes desktop-only) */
 
 /* ARIA slim search bar (new — replaces big inline box) */
@@ -826,12 +838,19 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 .aria-searchbar-go:hover{filter:brightness(1.1)}
 .aria-searchbar-go:active{transform:scale(.94)}
 
-/* ── ARIA HERO (Today centerpiece) ── */
-/* ── ARIA HERO — refonte v4 IMPOSANTE (hero présent, contraste fort) ── */
-.aria-hero{background:radial-gradient(ellipse at top right, rgba(201,150,58,.15) 0%, transparent 55%), linear-gradient(135deg, var(--green3) 0%, #081d12 100%);border-radius:var(--r-xl);padding:22px 26px 20px;box-shadow:0 12px 40px rgba(15,35,24,.28), inset 0 1px 0 rgba(255,255,255,.05);border:1px solid rgba(201,150,58,.4);width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:16px;position:relative;overflow:hidden}
-.aria-hero::before{content:'';position:absolute;top:-80px;right:-80px;width:280px;height:280px;background:radial-gradient(circle, rgba(201,150,58,.18) 0%, transparent 65%);pointer-events:none;animation:ariaHeroGlow 8s ease-in-out infinite alternate}
-.aria-hero::after{content:'';position:absolute;inset:0;background:linear-gradient(120deg, transparent 60%, rgba(201,150,58,.04) 100%);pointer-events:none}
-@keyframes ariaHeroGlow{0%{opacity:.7;transform:scale(1)}100%{opacity:1;transform:scale(1.08)}}
+/* ── ARIA HERO (Today/Guests/Villa centerpiece) ── */
+/* COMMIT G — porté depuis stafflo-ui-v19.html (renderHero()/syncFab(), bloc CSS
+   « PANNEAU ARIA — bande verte en tête »). Le vert reste la signature ARIA mais
+   confiné à .aria-hero-top (une BANDE), pas toute la surface : le corps redevient
+   clair (var(--card)), ce qui rend au panneau ses trois niveaux d'emphase — encre,
+   gris, doré — au lieu de tout aplatir en blanc-sur-vert. Trois teintes de bande
+   échantillonnées dans la capture de référence, à ne pas retoucher à l'oeil. */
+:root{--aria-band-hi:#182821;--aria-band:#13201A;--aria-band-lo:#0E1B15}
+/* Aucun max-height, aucun overflow : le panneau ne scrolle jamais. Une version
+   précédente tranchait les quatre actions en deux sur mobile avec ce genre de
+   contrainte — un panneau qui coupe son propre contenu est pire qu'un panneau
+   un peu plus haut. */
+.aria-hero{background:var(--card);border-radius:var(--r-xl);border:1.5px solid rgba(201,150,58,.4);box-shadow:0 12px 40px rgba(15,35,24,.16);width:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;position:relative;overflow:visible;padding:0 26px 20px}
 
 /* === AriaFirst v1 — orb hero (strangler fig, gated by stafflo_aria_first_v1) === */
 .af1-hero{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:48px 24px 56px;background:var(--cream);min-height:60vh;box-sizing:border-box}
@@ -865,8 +884,13 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
   .af1-brief-cta{font-size:13px;padding:11px 14px}
 }
 
-/* Top row: logo + name/tagline left, counter right */
-.aria-hero-top{display:flex;align-items:center;justify-content:space-between;gap:18px;position:relative;z-index:1}
+/* La bande : pleine largeur, coins hauts arrondis, débord négatif pour rejoindre
+   les bords du panneau (celui-ci reste en overflow:visible, voir plus haut). */
+.aria-hero-top{display:flex;align-items:center;justify-content:space-between;gap:18px;position:relative;z-index:1;
+  margin:0 -26px 0;padding:16px 26px;
+  background:linear-gradient(158deg,var(--aria-band-hi) 0%,var(--aria-band) 46%,var(--aria-band-lo) 100%);
+  border-bottom:1px solid rgba(201,150,58,.55);
+  border-radius:calc(var(--r-xl) - 1.5px) calc(var(--r-xl) - 1.5px) 0 0}
 .aria-hero-left{display:flex;align-items:center;gap:14px;min-width:0;flex:1}
 .aria-online-dot{width:9px;height:9px;border-radius:50%;background:#7EC850;box-shadow:0 0 0 3px rgba(126,200,80,.25), 0 0 14px rgba(126,200,80,.5)}
 
@@ -875,81 +899,97 @@ main{padding-bottom:max(16px,env(safe-area-inset-bottom))}
 
 .aria-hero-titles{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .aria-hero-namerow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+/* Ces trois éléments ne vivent plus que sur la bande (fond sombre garanti) :
+   blanc/or restent corrects, jamais recopiés tels quels sur le corps clair. */
 .aria-hero-name{font-family:'Cormorant Garamond',serif;font-size:30px;font-weight:500;color:#fff;letter-spacing:.5px;line-height:1;white-space:nowrap}
 .aria-badge{background:rgba(201,150,58,.22);border:1px solid rgba(201,150,58,.55);color:var(--gold);font-size:10px;font-weight:700;padding:3px 9px;border-radius:var(--r-sm);letter-spacing:1.5px;font-family:'DM Sans',sans-serif;text-transform:uppercase}
 .aria-hero-tagline{font-size:13px;color:rgba(255,255,255,.82);letter-spacing:.2px;font-family:'DM Sans',sans-serif;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .aria-hero-tagline strong{color:var(--gold);font-weight:600}
 
-/* Counter card — visible, not a tiny pill */
-.aria-hero-counter{display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(201,150,58,.12);border:1.5px solid rgba(201,150,58,.45);border-radius:var(--r-md);padding:10px 14px;cursor:pointer;flex-shrink:0;transition:background .15s,transform .1s;line-height:1;min-width:64px}
+/* Compteur signaux — COMMIT G : retiré de la bande (redirait la pastille du FAB
+   ET la carte SIGNAUX, laquelle dit en plus LESQUELS). Règle conservée ici,
+   déplacée dans l'en-tête du pop-up #ariaModal, seul endroit où il vit encore. */
+.aria-hero-counter{display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(201,150,58,.12);border:1.5px solid rgba(201,150,58,.45);border-radius:var(--r-md);padding:7px 11px;cursor:pointer;flex-shrink:0;transition:background .15s,transform .1s;line-height:1;min-width:52px}
 .aria-hero-counter:hover{background:rgba(201,150,58,.22);transform:translateY(-1px)}
 .aria-hero-counter:active{transform:scale(.97)}
-.aria-hero-counter-num{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;color:var(--gold);line-height:1;margin-bottom:4px}
-.aria-hero-counter-lbl{font-size:9px;color:rgba(201,150,58,.9);letter-spacing:1.4px;font-weight:700;font-family:'DM Sans',sans-serif;text-transform:uppercase}
+.aria-hero-counter-num{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:500;color:var(--gold);line-height:1;margin-bottom:2px}
+/* color:var(--gold) plein, pas rgba(...,.9) — 4,47:1 sous le seuil requis
+   (4,5) une fois ce compteur posé sur le fond plein du pop-up (il vivait sur
+   un dégradé dans la bande, non mesurable). 5,15:1 en plein. */
+.aria-hero-counter-lbl{font-size:8px;color:var(--gold);letter-spacing:1.2px;font-weight:700;font-family:'DM Sans',sans-serif;text-transform:uppercase}
 
-/* Big input row */
-.aria-hero-input-row{width:100%;display:flex;align-items:center;gap:10px;background:rgba(250,246,238,.12);border:none;border-radius:var(--r-md);padding:6px 10px 6px 28px;transition:background .15s,box-shadow .15s;cursor:text;position:relative;z-index:1;box-sizing:border-box}
-.aria-hero-input-row:hover{background:rgba(250,246,238,.18)}
-.aria-hero-input-row:focus-within{background:rgba(250,246,238,.22);box-shadow:0 0 0 2px rgba(201,150,58,.45)}
-.aria-hero-input{flex:1;min-width:0;background:transparent;border:none;color:#fff;font-family:'DM Sans',sans-serif;font-size:15.5px;padding:13px 8px 13px 4px;font-weight:400;text-align:left}
-.aria-hero-input::placeholder{color:var(--muted-on-dark)}
-.aria-hero-go{background:linear-gradient(135deg, var(--gold) 0%, #B8862E 100%);color:#fff;border:none;border-radius:var(--r-md);width:42px;height:42px;font-weight:700;font-size:18px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;transition:filter .15s,transform .1s;box-shadow:0 4px 12px rgba(201,150,58,.35)}
+/* Champ de saisie — blanc, cerclé de vert 2px (11,50:1 sur le corps clair ;
+   l'or ne fait que 2,50:1 en bordure, insuffisant pour qu'on le voie d'emblée). */
+.aria-hero-input-row{width:100%;display:flex;align-items:center;gap:10px;background:#fff;border:2px solid var(--aria-band);border-radius:var(--r-md);padding:6px 6px 6px 15px;margin-top:2px;transition:border-color .15s,box-shadow .15s;cursor:text;position:relative;z-index:1;box-sizing:border-box;box-shadow:0 1px 0 rgba(19,32,26,.06),0 3px 12px -5px rgba(19,32,26,.32)}
+.aria-hero-input-row:focus-within{border-color:var(--gold);box-shadow:0 0 0 4px rgba(201,150,58,.18)}
+.aria-hero-input{flex:1;min-width:0;background:transparent;border:none;color:var(--ink);font-family:'DM Sans',sans-serif;font-size:15.5px;padding:13px 8px 13px 4px;font-weight:400;text-align:left}
+.aria-hero-input::placeholder{color:var(--muted-on-light)}
+/* color:var(--green3) pas #fff — 2,66:1 en blanc sur or plein (le fond n'est
+   plus le dégradé d'origine, qui masquait ce couple à l'audit). 6,21:1 en vert
+   foncé : même convention que le reste de la bande, l'or ne porte jamais de
+   texte/icône blanc. */
+.aria-hero-go{background:var(--gold);color:var(--green3);border:none;border-radius:var(--r-md);width:42px;height:42px;font-weight:700;font-size:18px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;transition:filter .15s,transform .1s;box-shadow:0 4px 12px rgba(201,150,58,.35)}
 .aria-hero-go:hover{filter:brightness(1.12);transform:translateY(-1px)}
 .aria-hero-go:active{transform:scale(.94)}
-/* ── ARIA Voice Mic Button ── */
-.aria-mic-btn{background:none;border:none;color:var(--s-gold,#C9963A);font-size:20px;cursor:pointer;padding:8px;border-radius:50%;transition:all .15s;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;position:relative}
-.aria-mic-btn:hover{background:rgba(201,150,58,.15)}
+/* ── ARIA Voice Mic Button — sur corps clair désormais ── */
+.aria-mic-btn{background:none;border:none;color:var(--gm,#1D4D3A);font-size:20px;cursor:pointer;padding:8px;border-radius:50%;transition:all .15s;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.aria-mic-btn:hover{background:rgba(29,77,58,.12)}
 .aria-mic-btn.listening{color:#fff;background:rgba(192,57,43,.85);animation:micPulse 1.5s ease-in-out infinite}
 .aria-mic-btn.listening::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(192,57,43,.4);animation:micRing 1.5s ease-in-out infinite}
 @keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.4)}50%{box-shadow:0 0 0 10px rgba(192,57,43,0)}}
 @keyframes micRing{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.25);opacity:0}}
 .aria-mic-btn.unsupported{display:none}
 
-/* Chunky chips — readable CTAs */
-.aria-hero-chips{display:grid;grid-template-columns:1fr 1fr;gap:8px;position:relative;z-index:1}
-.aria-hero-chip{background:rgba(255,255,255,.08);border:1.5px solid rgba(201,150,58,.32);color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;padding:9px 12px;border-radius:var(--r-pill);cursor:pointer;transition:all .15s;letter-spacing:.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-width:0}
-.aria-hero-chip:hover{background:var(--gold);border-color:var(--gold);color:#fff;transform:translateY(-1px);box-shadow:0 4px 12px rgba(201,150,58,.3)}
-.aria-hero-chip:active{transform:scale(.97)}
+/* Trois suggestions cliquables sous le champ — un champ vide ne dit pas ce qu'on
+   peut demander. */
+.aria-suggs{display:flex;flex-wrap:wrap;gap:7px;position:relative;z-index:1}
+.aria-sugg-chip{background:#fff;border:1.5px solid rgba(29,77,58,.28);color:var(--gm,#1D4D3A);font-family:'DM Sans',sans-serif;font-size:12.5px;font-weight:500;padding:7px 13px;border-radius:var(--r-pill);cursor:pointer;transition:all .15s;min-height:36px;display:inline-flex;align-items:center}
+.aria-sugg-chip:hover{background:var(--t-go-bg,#E3F0E8);border-color:var(--gm,#1D4D3A)}
+.aria-sugg-chip:active{transform:scale(.97)}
+
+/* Quatre actions, une seule couleur : l'or dit l'action. Les états (go/wait/
+   house/alert) ne s'y invitent jamais — auditTones() le garantit. */
+.aria-actions{display:flex;gap:8px;position:relative;z-index:1}
+.aria-action-btn{width:44px;height:44px;min-width:44px;min-height:44px;border-radius:var(--r-md);border:1.5px solid rgba(201,150,58,.42);background:var(--t-wait-bg,#FDF0D6);color:var(--gold-ink);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
+.aria-action-btn:hover{background:var(--gm,#1D4D3A);color:#fff;border-color:var(--gm,#1D4D3A)}
+.aria-action-btn .ti{font-size:19px}
 
 /* Tablette portrait : tagline raccourcie, pas cachée */
 @media(max-width:880px){
-  .aria-hero{padding:20px 22px 18px;gap:14px}
+  .aria-hero{padding:0 22px 18px;gap:14px}
+  .aria-hero-top{margin:0 -22px 0;padding:14px 22px}
   .aria-hero-name{font-size:26px}
   .aria-hero-tagline{font-size:12.5px}
   .aria-logo-lg{width:50px;height:50px}
   .aria-logo-lg svg{width:32px;height:32px}
-  .aria-hero-counter-num{font-size:20px}
   .aria-hero-input{font-size:14.5px}
-  .aria-hero-chip{font-size:12.5px;padding:8px 14px}
+  .aria-sugg-chip{font-size:12px;padding:6px 11px}
 }
 /* Mobile : top empilé, mais toujours imposant */
 @media(max-width:580px){
-  .aria-hero{padding:18px 18px 16px;gap:14px;border-radius:var(--r-lg)}
-  .aria-hero-top{gap:12px}
+  .aria-hero{padding:0 18px 16px;gap:14px;border-radius:var(--r-lg)}
+  .aria-hero-top{margin:0 -18px 0;padding:12px 18px;gap:12px;border-radius:calc(var(--r-lg) - 1.5px) calc(var(--r-lg) - 1.5px) 0 0}
   .aria-hero-left{gap:11px;min-width:0}
   .aria-hero-name{font-size:22px}
   .aria-hero-tagline{font-size:11.5px;white-space:normal;line-height:1.35;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
   .aria-logo-lg{width:44px;height:44px}
   .aria-logo-lg svg{width:28px;height:28px}
-  .aria-hero-counter{padding:7px 10px;min-width:54px}
-  .aria-hero-counter-num{font-size:18px}
-  .aria-hero-counter-lbl{font-size:8.5px;letter-spacing:1px}
   .aria-hero-input{font-size:14.5px;padding:11px 6px 11px 4px;text-align:left}
-  .aria-hero-input-row{padding:6px 8px 6px 22px;gap:8px}
+  .aria-hero-input-row{padding:6px 6px 6px 12px;gap:8px}
   .aria-hero-go{width:38px;height:38px;font-size:16px}
-  .aria-hero-chips{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .aria-hero-chip{font-size:12.5px;padding:8px 14px}
+  .aria-suggs{gap:5px}
+  .aria-sugg-chip{font-size:12px;padding:6px 10px;min-height:32px}
+  .aria-actions{gap:6px}
+  .aria-action-btn{width:40px;height:40px;min-width:40px;min-height:40px}
 }
 /* iPhone portrait étroit */
 @media(max-width:380px){
-  .aria-hero{padding:16px 14px 14px}
+  .aria-hero{padding:0 14px 14px}
+  .aria-hero-top{margin:0 -14px 0;padding:10px 14px}
   .aria-hero-name{font-size:20px}
   .aria-hero-tagline{font-size:11px}
   .aria-logo-lg{width:40px;height:40px}
   .aria-logo-lg svg{width:26px;height:26px}
-  .aria-hero-counter{padding:6px 9px;min-width:50px}
-  .aria-hero-counter-num{font-size:16px}
-  .aria-hero-counter-lbl{font-size:8px;letter-spacing:.8px}
   .aria-hero-input{font-size:14px}
   .aria-badge{font-size:9px;padding:2px 7px}
 }
@@ -1750,21 +1790,15 @@ body, main { background: var(--cream); }
    blanc alors que body.is-v3-on est present. On force la visibilite en CSS, gate sur
    body.is-v3-on, !important pour battre l'inline. Deterministe, immunise au timing. */
 body.is-v3-on #todayV3 { display: flex !important; }
-.v3-hero { background:#0F2318; border:1px solid #1d4d3a; border-radius:var(--r-lg); padding:12px 14px; display:flex; flex-direction:column; gap:10px; }
-.v3-hero-prompt-row { display:flex; align-items:center; gap:8px; }
-.v3-hero-input { flex:1; min-width:0; background:rgba(8,29,18,.5); border:1px solid rgba(201,150,58,.25); border-radius:var(--r-md); padding:10px 12px; color:#fff; font-family:'DM Sans','Inter',sans-serif; font-size:14px;  transition:border-color .15s, box-shadow .15s; }
-.v3-hero-input::placeholder { color:rgba(255,255,255,.42); }
-.v3-hero-input:focus { border-color:#C9963A; box-shadow:0 0 0 3px rgba(201,150,58,.18); }
-.v3-hero-send { flex-shrink:0; width:36px; height:36px; border-radius:var(--r-md); background:#C9963A; color:#0F2318; border:none; font-size:16px; font-weight:700; cursor:pointer; transition:opacity .15s; }
-.v3-hero-send:hover { opacity:.88; }
-.v3-hero-counter { flex-shrink:0; display:none; align-items:baseline; gap:4px; padding:8px 10px; border-radius:var(--r-md); background:rgba(201,150,58,.12); border:1px solid rgba(201,150,58,.3); color:#C9963A; font-family:'Cormorant Garamond',Georgia,serif; font-size:14px; font-weight:600; letter-spacing:.3px; }
-.v3-hero-counter-sep { opacity:.6; padding:0 2px; }
-.v3-hero-counter-lbl { font-size:10px; letter-spacing:1.5px; font-family:'DM Sans','Inter',sans-serif; font-weight:700; }
-.v3-hero-chips { display:flex; flex-wrap:wrap; gap:8px; padding-bottom:2px; }
-.v3-chip { flex-shrink:0; background:rgba(255,255,255,.06); color:#fff; border:1px solid rgba(201,150,58,.25); border-radius:var(--r-pill); padding:7px 14px; font-family:'DM Sans','Inter',sans-serif; font-size:12.5px; font-weight:500; white-space:nowrap; cursor:pointer; transition:background .15s, border-color .15s; }
+/* COMMIT G — .v3-hero ne porte plus ses propres règles de panneau : la classe
+   .aria-hero (ajoutée en HTML à côté de .v3-hero) les fournit — même bande verte
+   en tête / corps clair / champ / suggestions / actions que Today-Guests-Villa.
+   Zéro règle dupliquée entre les deux composants ; .v3-hero reste une classe
+   marqueur (ciblée par le hook landscape ligne ~1847 et par du JS existant),
+   .v3-hero-prompt-row/.v3-hero-input/.v3-hero-send/.v3-hero-chips/.v3-chip et le
+   compteur 7 jours sont retirés du HTML (voir plus bas), ces règles n'ont donc
+   plus de cible — retirées avec elles plutôt que laissées mortes. */
 .eu-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;letter-spacing:.2px;color:#0F2318;background:#E9D7A8;border:1px solid #C9963A;border-radius:var(--r-pill);padding:4px 10px;white-space:nowrap}
-.v3-chip:hover { background:rgba(201,150,58,.18); border-color:rgba(201,150,58,.5); }
-.v3-chip:active { transform:scale(.97); }
 
 /* Welcome ARIA card — zero-state (zéro séjour + zéro équipe), see renderV3Welcome() */
 .v3-welcome-card { background:#FAF6EE; border:1px solid #E5DCC8; border-radius:var(--r-lg); padding:20px; display:flex; flex-direction:column; gap:10px; }
@@ -1809,7 +1843,11 @@ body.is-v3-on #todayV3 { display: flex !important; }
 @media (max-width:899px) and (orientation:landscape) {
   .s-header { padding-top:6px !important; padding-bottom:6px !important; min-height:48px !important; }
   .s-header .s-villa-name { font-size:18px !important; }
-  #todayV3 .v3-hero { padding:8px 10px !important; }
+  /* COMMIT G — .v3-hero (aria-hero partagé) : la bande déborde de -(padding
+     latéral) via .aria-hero-top, donc les deux doivent bouger ensemble ou les
+     coins arrondis de la bande dépassent le panneau. */
+  #todayV3 .v3-hero { padding:0 10px 8px !important; }
+  #todayV3 .v3-hero .aria-hero-top { margin:0 -10px 0 !important; padding:8px 10px !important; }
   .bot-nav { height:48px !important; }
   .bot-nav .nav-icon { font-size:22px !important; }
   .bot-nav .nav-label { display:none !important; }
@@ -2449,9 +2487,10 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 
   /* ── Mobile-first single column inside the 390px shell ──
      Every row/grid stacks vertically. Stat strips (.snap-grid,
-     .aria-hero-chips, .guest-stats, .sc-row, .qv-inhouse-grid,
+     .aria-suggs, .aria-actions, .guest-stats, .sc-row, .qv-inhouse-grid,
      .v4-signals, .v4-scen-grid, .v5d-stay-grid) are NOT matched by
-     these selectors — they keep their compact multi-cell layout. */
+     these selectors — they keep their compact multi-cell layout.
+     (.aria-hero-chips renamed to .aria-suggs/.aria-actions — COMMIT G.) */
   #staffloShell .row,
   #staffloShell [class*="row-"],
   #staffloShell .hm-grid,
@@ -2677,9 +2716,10 @@ body.no-frame #staffloShell .bot-nav{
 #staffloShell #ariaHeroToday .aria-logo-lg svg {
   width: 26px !important; height: 26px !important;
 }
-/* Chips on both heroes: shave vertical padding + 1pt font size */
-#staffloShell .aria-hero-chip,
-#staffloShell .v3-chip {
+/* Suggestion chips on all three heroes + v3: shave vertical padding + 1pt font
+   size (.aria-hero-chip/.v3-chip both superseded by the shared .aria-sugg-chip
+   — COMMIT G) */
+#staffloShell .aria-sugg-chip {
   padding-top: 7px !important; padding-bottom: 7px !important;
   font-size: 12px !important;
 }
@@ -4465,26 +4505,54 @@ window.renderSoloTurnoverCard = function(){
        (v307 lesson: stale flags contaminate new accounts). Filled by renderV3Welcome(). -->
   <div id="v3WelcomeCard" class="v3-welcome-card" style="display:none"></div>
 
-  <!-- HERO: compact ARIA — prompt + chips + counter -->
-  <div class="v3-hero">
-    <div class="v3-hero-prompt-row">
-      <input class="v3-hero-input" id="v3HeroInput" type="text"
+  <!-- HERO: compact ARIA — COMMIT G : même panneau que .aria-hero (Today/Guests/
+       Villa), classes PARTAGÉES (aria-hero + aria-hero-top/aria-hero-input-row/
+       aria-suggs/aria-actions) — pas de règles dupliquées, voir RAPPORT-PORTAGE.md.
+       Identité compacte (aria-logo/aria-name, 24px/17px) plutôt que la version
+       imposante (aria-logo-lg/aria-hero-name, 56px/30px) : ces deux tailles
+       existaient déjà (la compacte servait au pop-up), réutilisées telles quelles
+       plutôt qu'une troisième inventée. Pas de tagline/decision-line : v3-hero
+       n'en a jamais eu, on n'invente pas de contenu. Pas de compteur dans la
+       bande — même règle que .aria-hero (le signal vit dans le pop-up). -->
+  <div class="v3-hero aria-hero">
+    <div class="aria-hero-top">
+      <div class="aria-hero-left">
+        <span class="aria-online-dot"></span>
+        <span class="aria-logo"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 4 L20 19 L17 19 L15 15 L9 15 L7 19 L4 19 Z" fill="#0F2318"/><path d="M10.3 12 L13.7 12 L12 8.5 Z" fill="#C9963A"/><circle cx="12" cy="6" r="1.5" fill="#0F2318"/></svg></span>
+        <span class="aria-name">ARIA</span>
+        <span class="aria-badge">AI</span>
+      </div>
+    </div>
+    <!-- Compteur "Actions Aria · 7 jours" — resté display:none depuis sa création
+         (jamais raccordé, jamais montré), pas la même donnée que le compteur
+         SIGNAUX du pop-up. Commenté ici, pas supprimé : renderV3Hero() reste
+         inoffensif si #v3CounterNum n'existe plus (if (!num) return;). -->
+    <!--
+    <div class="v3-hero-counter" id="v3HeroCounter" title="Actions Aria · 7 jours">
+      <span id="v3CounterNum">0</span><span class="v3-hero-counter-sep">·</span><span class="v3-hero-counter-lbl">7D</span>
+    </div>
+    -->
+    <div class="aria-hero-input-row" onclick="this.querySelector('.aria-hero-input').focus()">
+      <input class="aria-hero-input aria-searchbar-input" id="v3HeroInput" type="text"
         placeholder="Demandez à ARIA · collez un message"
         data-placeholder-fr="Demandez à ARIA · collez un message"
         data-placeholder-en="Ask ARIA · paste a message"
         onkeydown="if(event.key==='Enter'&&this.value.trim()){sendAriaSearchToModal(this);this.value=''}">
       <button class="aria-mic-btn" onclick="event.stopPropagation();toggleAriaMic(this)" title="Entrée vocale" aria-label="Entrée vocale" data-title-fr="Entrée vocale" data-title-en="Voice input" data-aria-label-fr="Entrée vocale" data-aria-label-en="Voice input"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
-      <button class="v3-hero-send" onclick="var i=document.getElementById('v3HeroInput');if(i.value.trim()){sendAriaSearchToModal(i);i.value=''}" aria-label="Send to ARIA">↑</button>
-      <div class="v3-hero-counter" id="v3HeroCounter" title="Actions Aria · 7 jours">
-        <span id="v3CounterNum">0</span><span class="v3-hero-counter-sep">·</span><span class="v3-hero-counter-lbl">7D</span>
-      </div>
+      <button class="aria-hero-go" onclick="event.stopPropagation();var i=document.getElementById('v3HeroInput');if(i.value.trim()){sendAriaSearchToModal(i);i.value=''}" aria-label="Send to ARIA">↑</button>
     </div>
-    <div class="v3-hero-chips" role="toolbar" aria-label="ARIA quick actions">
-      <button class="v3-chip" data-chip="email"     data-fr="✉ Rédiger email"      data-en="✉ Draft email">✉ Rédiger email</button>
-      <button class="v3-chip" data-chip="whatsapp"  data-fr="💬 WhatsApp"           data-en="💬 WhatsApp">💬 WhatsApp</button>
-      <button class="v3-chip" data-chip="analyze"   data-fr="🔍 Analyser message" data-en="🔍 Analyze message">🔍 Analyser message</button>
-      <button class="v3-chip" data-chip="price"     data-fr="💰 Suggérer prix"     data-en="💰 Suggest price">💰 Suggérer prix</button>
-      <button class="v3-chip" data-chip="checklist" data-fr="✓ Checklist staff"   data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
+    <!-- Trois suggestions + quatre actions or — mêmes classes ET mêmes cibles
+         (ariaBandAction) que .aria-hero : un seul jeu de prompts ARIA à maintenir. -->
+    <div class="aria-suggs">
+      <button class="aria-sugg-chip" onclick="ariaBandAction('who_arrives')" data-fr="Qui arrive demain ?" data-en="Who arrives tomorrow?">Qui arrive demain ?</button>
+      <button class="aria-sugg-chip" onclick="ariaBandAction('price')" data-fr="Prix ce soir" data-en="Price tonight">Prix ce soir</button>
+      <button class="aria-sugg-chip" onclick="ariaBandAction('staff_brief')" data-fr="Brief ménage" data-en="Housekeeping brief" data-fr-solo="Prévenir le ménage" data-en-solo="Message cleaner">Brief ménage</button>
+    </div>
+    <div class="aria-actions" role="toolbar" aria-label="ARIA quick actions">
+      <button class="aria-action-btn" onclick="ariaBandAction('write_msg')" title="Rédiger" aria-label="Rédiger" data-title-fr="Rédiger" data-title-en="Write" data-aria-label-fr="Rédiger" data-aria-label-en="Write"><i class="ti ti-pencil"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('paste_email')" title="Extraire" aria-label="Extraire" data-title-fr="Extraire" data-title-en="Extract" data-aria-label-fr="Extraire" data-aria-label-en="Extract"><i class="ti ti-scan"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('price')" title="Prix" aria-label="Prix" data-title-fr="Prix" data-title-en="Price" data-aria-label-fr="Prix" data-aria-label-en="Price"><i class="ti ti-currency-euro"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('staff_brief')" title="Tâche" aria-label="Tâche" data-title-fr="Tâche" data-title-en="Task" data-aria-label-fr="Tâche" data-aria-label-en="Task"><i class="ti ti-checkbox"></i></button>
     </div>
   </div>
 
@@ -4578,10 +4646,6 @@ window.renderSoloTurnoverCard = function(){
           <div class="aria-hero-decision" id="ariaHeroDecision" style="font-family:'DM Sans',sans-serif;font-size:13.5px;color:rgba(255,255,255,.88);letter-spacing:.2px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
         </div>
       </div>
-      <div class="aria-hero-counter" id="ariaHeroCounter" title="Signaux actifs détectés par Aria" data-title-fr="Signaux actifs détectés par Aria" data-title-en="Active signals detected by Aria">
-        <span class="aria-hero-counter-num" id="ariaCounterNum">—</span>
-        <span class="aria-hero-counter-lbl" data-fr="SIGNAUX" data-en="SIGNALS">SIGNAUX</span>
-      </div>
     </div>
     <div class="aria-hero-input-row" onclick="this.querySelector('.aria-hero-input').focus()">
       <input class="aria-hero-input aria-searchbar-input" type="text"
@@ -4592,12 +4656,19 @@ window.renderSoloTurnoverCard = function(){
       <button class="aria-mic-btn" onclick="event.stopPropagation();toggleAriaMic(this)" title="Entrée vocale" aria-label="Entrée vocale" data-title-fr="Entrée vocale" data-title-en="Voice input" data-aria-label-fr="Entrée vocale" data-aria-label-en="Voice input"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <button class="aria-hero-go" onclick="event.stopPropagation();sendAriaSearchToModal(this.closest('.aria-hero-input-row').querySelector('.aria-hero-input'))" aria-label="Open ARIA">↑</button>
     </div>
-    <div class="aria-hero-chips">
-      <button class="aria-hero-chip" onclick="ariaQuickAction('email')" data-fr="✉ Rédiger un email" data-en="✉ Draft email">✉ Rédiger un email</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('whatsapp')" data-fr="💬 WhatsApp" data-en="💬 WhatsApp">💬 WhatsApp</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button><span title="Prix calculé depuis ta grille saisonnière via price-intelligence · Confiance A (comps live) / B (météo) / C (grille seule) — jamais inventé" style="cursor:help;font-size:11px;opacity:.55;margin-left:3px;vertical-align:middle;font-family:sans-serif">ℹ</span>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('checklist')" data-fr="✓ Checklist staff" data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
+    <!-- Trois suggestions cliquables — COMMIT G, porté de stafflo-ui-v19.html -->
+    <div class="aria-suggs">
+      <button class="aria-sugg-chip" onclick="ariaBandAction('who_arrives')" data-fr="Qui arrive demain ?" data-en="Who arrives tomorrow?">Qui arrive demain ?</button>
+      <button class="aria-sugg-chip" onclick="ariaBandAction('price')" data-fr="Prix ce soir" data-en="Price tonight">Prix ce soir</button><span title="Prix calculé depuis ta grille saisonnière via price-intelligence · Confiance A (comps live) / B (météo) / C (grille seule) — jamais inventé" style="cursor:help;font-size:11px;opacity:.55;margin-left:3px;vertical-align:middle;font-family:sans-serif">ℹ</span>
+      <button class="aria-sugg-chip" onclick="ariaBandAction('staff_brief')" data-fr="Brief ménage" data-en="Housekeeping brief" data-fr-solo="Prévenir le ménage" data-en-solo="Message cleaner">Brief ménage</button>
+    </div>
+    <!-- Quatre actions en or, identiques — la couleur dit l'état ailleurs, l'or dit
+         l'action ici. COMMIT G, porté de stafflo-ui-v19.html (ARIA_CTA/renderHero()). -->
+    <div class="aria-actions">
+      <button class="aria-action-btn" onclick="ariaBandAction('write_msg')" title="Rédiger" aria-label="Rédiger" data-title-fr="Rédiger" data-title-en="Write" data-aria-label-fr="Rédiger" data-aria-label-en="Write"><i class="ti ti-pencil"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('paste_email')" title="Extraire" aria-label="Extraire" data-title-fr="Extraire" data-title-en="Extract" data-aria-label-fr="Extraire" data-aria-label-en="Extract"><i class="ti ti-scan"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('price')" title="Prix" aria-label="Prix" data-title-fr="Prix" data-title-en="Price" data-aria-label-fr="Prix" data-aria-label-en="Price"><i class="ti ti-currency-euro"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('staff_brief')" title="Tâche" aria-label="Tâche" data-title-fr="Tâche" data-title-en="Task" data-aria-label-fr="Tâche" data-aria-label-en="Task"><i class="ti ti-checkbox"></i></button>
     </div>
   </div>
 </div>
@@ -5435,10 +5506,6 @@ window.renderSetupOneLiner = function(){
           <div class="aria-hero-tagline" data-fr="La mémoire vive de votre villa" data-en="Your villa's living memory">La mémoire vive de votre villa</div>
         </div>
       </div>
-      <div class="aria-hero-counter" title="Signaux actifs détectés par Aria" data-title-fr="Signaux actifs détectés par Aria" data-title-en="Active signals detected by Aria">
-        <span class="aria-hero-counter-num ariaCounterNumMirror">—</span>
-        <span class="aria-hero-counter-lbl" data-fr="SIGNAUX" data-en="SIGNALS">SIGNAUX</span>
-      </div>
     </div>
     <div class="aria-hero-input-row" onclick="this.querySelector('.aria-hero-input').focus()">
       <input class="aria-hero-input aria-searchbar-input" type="text"
@@ -5449,12 +5516,18 @@ window.renderSetupOneLiner = function(){
       <button class="aria-mic-btn" onclick="event.stopPropagation();toggleAriaMic(this)" title="Entrée vocale" aria-label="Entrée vocale" data-title-fr="Entrée vocale" data-title-en="Voice input" data-aria-label-fr="Entrée vocale" data-aria-label-en="Voice input"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <button class="aria-hero-go" onclick="event.stopPropagation();sendAriaSearchToModal(this.closest('.aria-hero-input-row').querySelector('.aria-hero-input'))" aria-label="Open ARIA">↑</button>
     </div>
-    <div class="aria-hero-chips">
-      <button class="aria-hero-chip" onclick="ariaQuickAction('email')" data-fr="✉ Rédiger un email" data-en="✉ Draft email">✉ Rédiger un email</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('whatsapp')" data-fr="💬 WhatsApp" data-en="💬 WhatsApp">💬 WhatsApp</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button><span title="Prix calculé depuis ta grille saisonnière via price-intelligence · Confiance A (comps live) / B (météo) / C (grille seule) — jamais inventé" style="cursor:help;font-size:11px;opacity:.55;margin-left:3px;vertical-align:middle;font-family:sans-serif">ℹ</span>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('checklist')" data-fr="✓ Checklist staff" data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
+    <!-- Trois suggestions cliquables — COMMIT G, porté de stafflo-ui-v19.html -->
+    <div class="aria-suggs">
+      <button class="aria-sugg-chip" onclick="ariaBandAction('who_arrives')" data-fr="Qui arrive demain ?" data-en="Who arrives tomorrow?">Qui arrive demain ?</button>
+      <button class="aria-sugg-chip" onclick="ariaBandAction('price')" data-fr="Prix ce soir" data-en="Price tonight">Prix ce soir</button><span title="Prix calculé depuis ta grille saisonnière via price-intelligence · Confiance A (comps live) / B (météo) / C (grille seule) — jamais inventé" style="cursor:help;font-size:11px;opacity:.55;margin-left:3px;vertical-align:middle;font-family:sans-serif">ℹ</span>
+      <button class="aria-sugg-chip" onclick="ariaBandAction('staff_brief')" data-fr="Brief ménage" data-en="Housekeeping brief" data-fr-solo="Prévenir le ménage" data-en-solo="Message cleaner">Brief ménage</button>
+    </div>
+    <!-- Quatre actions en or, identiques — COMMIT G, porté de stafflo-ui-v19.html -->
+    <div class="aria-actions">
+      <button class="aria-action-btn" onclick="ariaBandAction('write_msg')" title="Rédiger" aria-label="Rédiger" data-title-fr="Rédiger" data-title-en="Write" data-aria-label-fr="Rédiger" data-aria-label-en="Write"><i class="ti ti-pencil"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('paste_email')" title="Extraire" aria-label="Extraire" data-title-fr="Extraire" data-title-en="Extract" data-aria-label-fr="Extraire" data-aria-label-en="Extract"><i class="ti ti-scan"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('price')" title="Prix" aria-label="Prix" data-title-fr="Prix" data-title-en="Price" data-aria-label-fr="Prix" data-aria-label-en="Price"><i class="ti ti-currency-euro"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('staff_brief')" title="Tâche" aria-label="Tâche" data-title-fr="Tâche" data-title-en="Task" data-aria-label-fr="Tâche" data-aria-label-en="Task"><i class="ti ti-checkbox"></i></button>
     </div>
   </div>
 </div>
@@ -5660,10 +5733,6 @@ window.renderSetupOneLiner = function(){
           <div class="aria-hero-tagline" data-fr="La mémoire vive de votre villa" data-en="Your villa's living memory">La mémoire vive de votre villa</div>
         </div>
       </div>
-      <div class="aria-hero-counter" title="Signaux actifs détectés par Aria" data-title-fr="Signaux actifs détectés par Aria" data-title-en="Active signals detected by Aria">
-        <span class="aria-hero-counter-num ariaCounterNumMirror">—</span>
-        <span class="aria-hero-counter-lbl" data-fr="SIGNAUX" data-en="SIGNALS">SIGNAUX</span>
-      </div>
     </div>
     <div class="aria-hero-input-row" onclick="this.querySelector('.aria-hero-input').focus()">
       <input class="aria-hero-input aria-searchbar-input" type="text"
@@ -5674,12 +5743,18 @@ window.renderSetupOneLiner = function(){
       <button class="aria-mic-btn" onclick="event.stopPropagation();toggleAriaMic(this)" title="Entrée vocale" aria-label="Entrée vocale" data-title-fr="Entrée vocale" data-title-en="Voice input" data-aria-label-fr="Entrée vocale" data-aria-label-en="Voice input"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></svg></button>
       <button class="aria-hero-go" onclick="event.stopPropagation();sendAriaSearchToModal(this.closest('.aria-hero-input-row').querySelector('.aria-hero-input'))" aria-label="Open ARIA">↑</button>
     </div>
-    <div class="aria-hero-chips">
-      <button class="aria-hero-chip" onclick="ariaQuickAction('price')" data-fr="💰 Suggérer un prix" data-en="💰 Suggest a price">💰 Suggérer un prix</button><span title="Prix calculé depuis ta grille saisonnière via price-intelligence · Confiance A (comps live) / B (météo) / C (grille seule) — jamais inventé" style="cursor:help;font-size:11px;opacity:.55;margin-left:3px;vertical-align:middle;font-family:sans-serif">ℹ</span>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('analyze')" data-fr="🔍 Analyser un message" data-en="🔍 Analyze message">🔍 Analyser un message</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('checklist')" data-fr="✓ Checklist staff" data-en="✓ Staff checklist" data-fr-solo="✓ Prévenir le ménage" data-en-solo="✓ Message cleaner">✓ Checklist staff</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('email')" data-fr="✉ Rédiger un email" data-en="✉ Draft email">✉ Rédiger un email</button>
-      <button class="aria-hero-chip" onclick="ariaQuickAction('whatsapp')" data-fr="💬 WhatsApp" data-en="💬 WhatsApp">💬 WhatsApp</button>
+    <!-- Trois suggestions cliquables — COMMIT G, porté de stafflo-ui-v19.html -->
+    <div class="aria-suggs">
+      <button class="aria-sugg-chip" onclick="ariaBandAction('who_arrives')" data-fr="Qui arrive demain ?" data-en="Who arrives tomorrow?">Qui arrive demain ?</button>
+      <button class="aria-sugg-chip" onclick="ariaBandAction('price')" data-fr="Prix ce soir" data-en="Price tonight">Prix ce soir</button><span title="Prix calculé depuis ta grille saisonnière via price-intelligence · Confiance A (comps live) / B (météo) / C (grille seule) — jamais inventé" style="cursor:help;font-size:11px;opacity:.55;margin-left:3px;vertical-align:middle;font-family:sans-serif">ℹ</span>
+      <button class="aria-sugg-chip" onclick="ariaBandAction('staff_brief')" data-fr="Brief ménage" data-en="Housekeeping brief" data-fr-solo="Prévenir le ménage" data-en-solo="Message cleaner">Brief ménage</button>
+    </div>
+    <!-- Quatre actions en or, identiques — COMMIT G, porté de stafflo-ui-v19.html -->
+    <div class="aria-actions">
+      <button class="aria-action-btn" onclick="ariaBandAction('write_msg')" title="Rédiger" aria-label="Rédiger" data-title-fr="Rédiger" data-title-en="Write" data-aria-label-fr="Rédiger" data-aria-label-en="Write"><i class="ti ti-pencil"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('paste_email')" title="Extraire" aria-label="Extraire" data-title-fr="Extraire" data-title-en="Extract" data-aria-label-fr="Extraire" data-aria-label-en="Extract"><i class="ti ti-scan"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('price')" title="Prix" aria-label="Prix" data-title-fr="Prix" data-title-en="Price" data-aria-label-fr="Prix" data-aria-label-en="Price"><i class="ti ti-currency-euro"></i></button>
+      <button class="aria-action-btn" onclick="ariaBandAction('staff_brief')" title="Tâche" aria-label="Tâche" data-title-fr="Tâche" data-title-en="Task" data-aria-label-fr="Tâche" data-aria-label-en="Task"><i class="ti ti-checkbox"></i></button>
     </div>
   </div>
 </div>
@@ -13403,6 +13478,14 @@ function goTab(t) {
     }
     if (btn) btn.classList.toggle('on', id===t);
   });
+
+  // COMMIT G — bande .aria-hero / flottant ARIA exclusifs (dormant tant que
+  // #ariaFab reste masqué par v162/v167, voir syncAriaFabBandExclusivity()).
+  // Différé pour laisser le display toggle ci-dessus se refléter dans le
+  // layout avant que l'IntersectionObserver ne mesure quoi que ce soit.
+  if (typeof window.syncAriaFabBandExclusivity === 'function') {
+    setTimeout(window.syncAriaFabBandExclusivity, 50);
+  }
 
   if (typeof renderAlertsForTab==='function') renderAlertsForTab(t);
 
@@ -25218,6 +25301,19 @@ function ariaQuickAction(kind) {
     input.focus();
   }
 }
+// COMMIT G — ariaQuickAction() assume le pop-up déjà ouvert (elle ne fait
+// qu'écrire/focus dans #ariaModalInput, jamais openAriaModal()) : c'est correct
+// pour ses appelants historiques, tous DANS le pop-up (chips #ariaContextChips).
+// Les 3 suggestions et 4 actions or de la bande .aria-hero sont cliquées depuis
+// EN DEHORS du pop-up — l'appeler telle quelle laisserait le pop-up fermé pendant
+// qu'un texte s'écrit dans son champ caché. Ce wrapper ouvre d'abord (idempotent
+// si déjà ouvert), puis rejoue le kind réel. 'price' fait déjà sa propre ouverture
+// (grounding price-intelligence, voir ci-dessus) — pas de double-ouverture.
+function ariaBandAction(kind) {
+  if (kind === 'price') { if (typeof ariaQuickAction === 'function') ariaQuickAction('price'); return; }
+  if (typeof openAriaModal === 'function') openAriaModal();
+  setTimeout(function(){ if (typeof ariaQuickAction === 'function') ariaQuickAction(kind); }, 80);
+}
 function onAriaDragOver(e) {
   e.preventDefault();
   e.stopPropagation();
@@ -33312,6 +33408,14 @@ function startTour(){
         <span class="aria-name">ARIA</span>
         <span class="aria-badge">AI</span>
       </div>
+      <!-- COMMIT G — compteur de signaux déplacé ici depuis la bande .aria-hero
+           (Today/Guests/Villa) : sur ces écrans il redisait ce que la pastille du
+           FAB et la carte SIGNAUX affichent déjà, laquelle dit en plus LESQUELS.
+           Le pop-up est le seul endroit où rien d'autre ne le montre. -->
+      <div class="aria-hero-counter" id="ariaHeroCounter" title="Signaux actifs détectés par Aria" aria-label="Signaux actifs détectés par Aria" data-title-fr="Signaux actifs détectés par Aria" data-title-en="Active signals detected by Aria" data-aria-label-fr="Signaux actifs détectés par Aria" data-aria-label-en="Active signals detected by Aria">
+        <span class="aria-hero-counter-num" id="ariaCounterNum">—</span>
+        <span class="aria-hero-counter-lbl" data-fr="SIGNAUX" data-en="SIGNALS">SIGNAUX</span>
+      </div>
       <div style="display:flex;align-items:center;gap:6px">
         <button onclick="openAriaHistory()" title="Historique" aria-label="History" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">🕘</button>
         <button onclick="closeAriaModal()" style="background:rgba(255,255,255,.1);border:none;color:#fff;width:30px;height:30px;border-radius:50%;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center">✕</button>
@@ -37087,18 +37191,51 @@ function startTour(){
 
   /* Update counter UI — shows active brief-cards count (signals), not raw
      usage. trackAriaAction() still records interactions to localStorage for
-     analytics, but the hero badge surfaces "things that need attention". */
+     analytics, but the badge surfaces "things that need attention".
+     COMMIT G — single instance now (moved into #ariaModal's header, no longer
+     duplicated across the 3 .aria-hero bands), so the .ariaCounterNumMirror
+     fan-out this used to need is gone too. */
   function updateAriaCounter(){
     try {
       var briefCount = (window._briefCards || []).length;
       var display = briefCount || '—';
       var el = document.getElementById('ariaCounterNum');
       if (el) el.textContent = display;
-      document.querySelectorAll('.ariaCounterNumMirror').forEach(function(e){ e.textContent = display; });
       if (typeof updateAriaDecisionLine === 'function') updateAriaDecisionLine();
     } catch(e){}
   }
   window.updateAriaCounter = updateAriaCounter;
+
+  /* COMMIT G — exclusivité bande .aria-hero / flottant ARIA, portée de
+     stafflo-ui-v19.html (syncFab()). Observe la bande actuellement visible
+     (une seule à la fois : Today/Guests/Villa se masquent mutuellement via
+     goTab()) et masque le flottant tant qu'elle est à l'écran.
+     DORMANT PAR CONSTRUCTION : #ariaFab est masqué par une règle CSS
+     !important distincte depuis v162/v167 (un seul orbe ARIA, celui de la
+     nav #nb-aria) — cette fonction ne touche pas à cette règle, donc aucun
+     effet visible tant qu'elle reste en place. Câblée maintenant pour ne pas
+     avoir à revenir dans goTab() le jour où réactiver le flottant redevient
+     une décision produit assumée. Voir RAPPORT-PORTAGE.md, COMMIT G. */
+  var ariaFabObs = null;
+  function syncAriaFabBandExclusivity(){
+    if (ariaFabObs) { try { ariaFabObs.disconnect(); } catch(e){} ariaFabObs = null; }
+    var fab = document.getElementById('ariaFab');
+    if (!fab) return;
+    var heroes = document.querySelectorAll('.aria-hero');
+    var hero = null;
+    for (var i = 0; i < heroes.length; i++) {
+      if (heroes[i].offsetParent !== null) { hero = heroes[i]; break; }
+    }
+    if (!hero || typeof IntersectionObserver !== 'function') {
+      fab.classList.remove('fab--hidden');
+      return;
+    }
+    ariaFabObs = new IntersectionObserver(function(entries){
+      fab.classList.toggle('fab--hidden', entries[0].isIntersecting);
+    }, { threshold: 0.35 });
+    ariaFabObs.observe(hero);
+  }
+  window.syncAriaFabBandExclusivity = syncAriaFabBandExclusivity;
 
   /* v136: fetchPriceIntelligence — appel Edge Function avant LLM pour grounding prix */
   async function fetchPriceIntelligence(targetDate) {

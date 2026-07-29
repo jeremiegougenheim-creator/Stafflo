@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v396 (bandeau lit l'habilitation réelle, COMMIT F)
-const CACHE = 'stafflo-v396';
+// Stafflo Service Worker — v397 (panneau ARIA : bande verte en tête, corps clair, COMMIT G)
+const CACHE = 'stafflo-v397';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

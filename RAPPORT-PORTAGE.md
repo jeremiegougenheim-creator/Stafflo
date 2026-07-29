@@ -595,3 +595,222 @@ v393 -> **v394**.
   `app.html`, pas juste ces boutons).
 - `--muted` (alias non préfixé) reste défini pour compat ; tout nouveau
   code doit utiliser `--muted-on-light`/`--muted-on-dark` explicitement.
+
+## COMMIT G — panneau ARIA : bande verte en tête, corps clair (SW v397)
+
+Porté depuis `stafflo-ui-v19.html` (`renderHero()`, `syncFab()`, bloc CSS
+« PANNEAU ARIA — bande verte en tête, corps clair »).
+
+### 0. Découverte préalable — ce qui est vraiment visible par défaut
+
+Le composant visé au départ (`.aria-hero` / `#ariaHeroToday`, `#ariaHeroGuests`,
+`#ariaHeroVilla`) s'est révélé masqué par défaut. Deux drapeaux en cause,
+aucun des deux touché par ce commit :
+
+- **`stafflo_aria_first_v1` — ON par défaut depuis v87** (`flagOn()`,
+  app.html l.~3590 : `localStorage.getItem('stafflo_aria_first_v1') !== '0'`
+  → vrai si jamais posé). SW est à v397, v87 est très ancien : la quasi-
+  totalité des comptes réels tournent avec le flag ON depuis longtemps.
+  Effet sur Today : `applyV3Mode()` (l.~3608) masque tous les enfants de
+  `#tab-today` sauf `#todayV3` — dont `.v3-hero`, PAS `.aria-hero`
+  (`#ariaHeroToday`). Sur Guests/Villa, `#guestsV5`/`#villaV3` remplacent
+  tout le contenu de l'onglet de la même façon (fonctions distinctes,
+  même esprit) — `#ariaHeroGuests`/`#ariaHeroVilla` disparaissent avec le
+  reste. Vérifié à l'écran (captures `tests/shots/today-390-fr.png`,
+  `clients-390-fr.png`, `villa-390-fr.png` avant ce commit) : Today montre
+  `.v3-hero`, Guests montre la fiche du client courant (pas de bande ARIA
+  du tout), Villa montre « Ce mois · votre maison » (une seule bulle
+  « Aria : » inline, pas de bande non plus).
+- **`#ariaFab` masqué depuis v162/v167** — trois règles CSS distinctes,
+  toutes `!important` : l.~828 (globale, v167 : « masqué AUSSI sur mobile
+  réel, les hide v162 étaient scopés desktop-only »), l.~2471 (scopée
+  `#staffloShell`, v77, antérieure et redondante avec les deux autres),
+  l.~2474 (globale, v162 : « un seul orbe ARIA, le A de la nav suffit,
+  badge déplacé sur `#nb-aria` »). Le HTML `#ariaFab` est conservé par
+  design pour réversibilité (commentaire v162 explicite).
+
+Remonté à l'utilisateur avant de continuer (AskUserQuestion) : quel
+composant traiter ? Décision reçue — traiter les DEUX (`.aria-hero` ET
+`.v3-hero`, le composant Today réellement visible), ne rien ajouter à
+Guests/Villa (décision produit antérieure, pas un oubli, pas à renverser
+dans un commit de couleur), factoriser le CSS entre les deux plutôt que
+le dupliquer, documenter les deux drapeaux ici.
+
+### 1. Ce qui est factorisé
+
+`.v3-hero` porte désormais AUSSI la classe `.aria-hero` (HTML :
+`class="v3-hero aria-hero"`) et réutilise telles quelles les classes déjà
+écrites pour Today/Guests/Villa : `.aria-hero-top` (bande), `.aria-hero-left`,
+`.aria-online-dot`, `.aria-hero-input-row`, `.aria-hero-input`,
+`.aria-hero-go`, `.aria-mic-btn`, `.aria-suggs`/`.aria-sugg-chip`,
+`.aria-actions`/`.aria-action-btn`. Zéro règle de panneau dupliquée : la
+règle de base `.v3-hero{background:#0F2318;...}` a été retirée (elle ne
+faisait que répéter ce que `.aria-hero` fournit maintenant), `.v3-hero` reste
+une classe marqueur (ciblée par le hook responsive landscape l.~1843 et par
+`wireV3Chips()`, devenu un no-op inoffensif — voir §4).
+
+Seule différence assumée entre les deux : l'identité dans la bande. Today/
+Guests/Villa gardent la version imposante (`.aria-logo-lg` 56px +
+`.aria-hero-name` 30px + tagline + decision-line). `.v3-hero` réutilise la
+paire compacte qui existait déjà ailleurs dans le fichier — `.aria-logo`
+24px + `.aria-name` 17px, jusqu'ici seule dans l'en-tête du pop-up
+`#ariaModal` — plutôt que d'inventer une troisième taille. `.aria-name` n'a
+plus de `color` par héritage (elle vivait uniquement dans un en-tête déjà
+`color:#fff`) : `color:#fff` posé explicitement sur la règle elle-même,
+sinon le texte prend l'encre du corps clair une fois réutilisée dans la
+bande sombre de `.v3-hero` — trouvé à l'écran, pas à la lecture.
+
+Les 3 suggestions et 4 actions or de `.v3-hero` pointent vers les MÊMES
+prompts que `.aria-hero` (même fonction `ariaBandAction()`, voir §3) : un
+seul jeu de prompts ARIA à maintenir des deux côtés du flag.
+
+### 2. Le panneau lui-même (Today/Guests/Villa + v3)
+
+- Bande : `.aria-hero-top`, dégradé 158°, trois teintes échantillonnées
+  dans la référence (`--aria-band-hi:#182821`, `--aria-band:#13201A`,
+  `--aria-band-lo:#0E1B15`), non retouchées. Filet or 1px en bas
+  (`border-bottom:1px solid rgba(201,150,58,.55)`), coins hauts arrondis
+  nichés dans le rayon du panneau (`calc(var(--r-xl) - 1.5px)`).
+- Corps : `var(--card)` (déjà le blanc-crème des `.v2-card`, cohérence avec
+  le reste de l'app plutôt qu'une valeur inventée).
+- `.aria-hero{overflow:visible}`, aucun `max-height` — comme la référence,
+  pour la même raison qu'elle documente (une version antérieure tranchait
+  les 4 actions en deux sur mobile avec ce genre de contrainte).
+- Champ : blanc, cerclé de vert 2px (`var(--aria-band)`, la teinte médiane
+  de la bande), focus → or. Le bouton d'envoi (`.aria-hero-go`) est passé
+  d'un dégradé à `background:var(--gold)` uni (fidèle à la référence) —
+  ça a exposé un vrai bug de contraste, voir §5.
+- Compteur signaux : retiré des 3 bandes ET de la bande `.v3-hero`, ne vit
+  plus que dans l'en-tête de `#ariaModal` (une seule instance suffit
+  désormais — les `.ariaCounterNumMirror` de Guests/Villa sont retirés,
+  `updateAriaCounter()` simplifiée en conséquence).
+- Exclusivité bande/FAB : `syncAriaFabBandExclusivity()` (IntersectionObserver,
+  seuil 0.35, reconstruite à chaque `goTab()`, dégradation sûre si
+  `IntersectionObserver` est absent). **Dormante par construction** :
+  cible `#ariaFab`, qui reste masqué par les 3 règles listées en §0 — ce
+  commit ne les touche pas. Pour réveiller le flottant (décision produit
+  à part, pas un effet de bord de G) : retirer/adapter les règles
+  `#ariaFab{display:none!important}` aux lignes ~828 et ~2474, et
+  `#staffloShell #ariaFab{display:none!important}` à la ligne ~2471.
+
+### 3. Bug trouvé en route : les chips ne faisaient rien
+
+`ariaQuickAction(kind)` (utilisée par les anciens `.aria-hero-chip` ET
+`.v3-chip` via `wireV3Chips()`) n'a jamais ouvert le pop-up elle-même —
+elle écrit seulement dans `#ariaModalInput`, en supposant le pop-up déjà
+ouvert (vrai pour ses appelants historiques, les chips DANS le pop-up).
+Deux bugs cumulés sur les boutons de bande/v3 :
+
+1. Kinds jamais mappés : `'email'`, `'whatsapp'`, `'analyze'`, `'checklist'`
+   n'existaient pas dans la table de prompts de `ariaQuickAction()` (seul
+   `'price'` était géré, en cas spécial) — clic sans aucun effet, silencieux.
+2. Même avec un kind valide, l'appeler depuis l'extérieur du pop-up écrit
+   dans un champ caché (`display:none` sur `.aria-modal-bg`) sans jamais
+   l'ouvrir.
+
+Nouveau wrapper `ariaBandAction(kind)` (app.html, juste après
+`ariaQuickAction()`) : ouvre le pop-up d'abord (idempotent), rejoue le kind
+réel ensuite. `'price'` fait exception — elle s'ouvre déjà elle-même
+(grounding price-intelligence), pas de double ouverture. Tous les boutons
+de bande/v3 utilisent désormais des kinds réels (`who_arrives`, `price`,
+`staff_brief`, `write_msg`, `paste_email`) au lieu des anciens jamais
+mappés — les 3 suggestions et 4 actions or fonctionnent réellement,
+contrairement aux 5 chips qu'elles remplacent.
+
+### 4. Ce qui est commenté, pas supprimé
+
+- Compteur « Actions Aria · 7 jours » de `.v3-hero` (`#v3HeroCounter`) :
+  `display:none` depuis sa création, jamais raccordé à un affichage réel —
+  commenté en HTML avec la raison, `renderV3Hero()` intacte (no-op sûr,
+  `if (!num) return;`).
+- `wireV3Chips()` : plus aucun `.v3-chip[data-chip]` dans le DOM après ce
+  commit → boucle vide, no-op inoffensif. Fonction laissée telle quelle
+  (pas de risque à la garder, cf. §3 sur `ariaQuickAction()` qu'elle
+  appelait).
+
+### 5. Bug de contraste trouvé en portant la bande (pas dans le plan initial)
+
+Déplacer des éléments d'un fond en DÉGRADÉ (indéterminé pour
+`auditContrast()`, jamais mesuré) vers un fond PLEIN (mesurable) a révélé
+deux vrais échecs jusque-là invisibles à l'audit :
+
+- `.aria-hero-go` (bouton d'envoi, `↑`) : blanc sur or plein = 2,66:1
+  (icône 18px/700 → seuil « gros texte » 3:1, toujours sous la barre).
+  Sur l'ancien dégradé, indéterminé, jamais vu. `color:#fff` → `color:
+  var(--green3)` = 6,21:1. Même convention que le reste de la bande :
+  l'or ne porte jamais de texte/icône blanc.
+- `.aria-hero-counter-lbl` (« SIGNAUX ») : `rgba(201,150,58,.9)` sur le
+  fond du chip composé sur `var(--green3)` = 4,47:1, sous le seuil 4,5
+  (texte 8px, jamais « gros »). Invisible tant que le compteur vivait
+  sur le dégradé de la bande. `rgba(...,.9)` → `var(--gold)` plein =
+  5,15:1.
+
+Les deux corrigés avant de committer. Vérifié par diff avant/après avec
+un harnais Playwright ad hoc reproduisant exactement les conditions de
+`tests/visual.mjs` (mêmes mocks, mêmes gels de `setInterval`, même
+séquence `goto load → wait 800ms → setLang → wait 700ms → goTab`) : sans
+ces deux fixes, +4 échecs réels sur les 48 combinaisons (régression de
+cliquet confirmée) ; avec, retour exact aux comptes d'avant COMMIT G sur
+les 48 (88/89/95 à 390px, 87/88/94 à 768/1440px — identiques à la
+baseline pré-commit).
+
+### 6. Les deux points de vigilance demandés
+
+**Dégradés → indéterminés, de combien ils montent.** Mesuré par
+`tests/visual.mjs` (compte officiel, écrit dans `tests/baseline.json`,
+informatif — hors cliquet) :
+
+- 390px : 49 → ~22-24 (léger bruit de ±2 d'un run à l'autre, déjà
+  documenté comme caractéristique du harnais — voir COMMIT A). **Baisse**,
+  pas hausse : les anciens `.aria-hero-chip`/`.v3-chip` vivaient sur
+  l'ancien dégradé plein-panneau (indéterminés) et disparaissent ;
+  `.aria-suggs`/`.aria-actions`/le champ vivent sur le corps clair PLEIN
+  (résolvables, jamais indéterminés).
+- 768px/1440px : 49 → ~68-70. **Hausse** cette fois — composition
+  différente à ces largeurs, pas creusé plus loin que la confirmation
+  du chiffre officiel (le harnais lui-même documente une marge de
+  non-déterminisme resurgissant parfois à certaines largeurs, cf. COMMIT
+  A « le harnais lui-même était non-déterministe »). Dans les deux cas,
+  0 échec réel introduit (voir tableau §5) : ces éléments restent sur la
+  bande en dégradé, ni pire ni mieux qu'avant, juste non mesurables.
+
+**Les 21 `aria-hero-name` blanc-sur-clair du COMMIT D — disparaissent-ils ?**
+Non reproductibles dans le code actuel : instrumenté précisément (classe
+exacte `aria-hero-name`, avant/après ce commit, 390px ET 768px) →
+**0 échec réel, 3 indéterminés, identique avant et après**. `.aria-hero-name`
+vit sur un fond en dégradé depuis avant ce commit (le panneau entier
+était un dégradé) et continue d'y vivre après (seule la bande l'est
+maintenant) — sa classification n'a pas bougé d'un pouce. Les 21 échecs
+réels mentionnés viennent d'un état antérieur au reclassement
+dégradé→indéterminé introduit au COMMIT A-bis (voir RAPPORT-PORTAGE.md
+plus haut) : un vrai bug d'état à l'époque, déjà résolu depuis par ce
+reclassement, pas par ce commit — ni réintroduit ni « corrigé » ici,
+juste confirmé absent.
+
+### Sortie du harnais (6 critères)
+
+1. `node --check` : **OK**
+2. Delta d'accolades : **-3** (inchangé)
+3. `auditContrast()` : **88/89/95 (390px), 87/88/94 (768/1440px)** — identique
+   à la baseline pré-COMMIT-G sur les 48 combinaisons, 0 régression.
+4. `auditLabels()` : **0** (inchangé)
+5. `auditTones()` : `fautes: []` (inchangé) — les 4 actions or n'empruntent
+   aucune teinte d'état (go/wait/house/alert).
+6. Erreurs console : **0/48**
+
+`>>> HARNAIS: VERT`.
+
+### Service worker
+
+v396 -> **v397**.
+
+### Ce qui reste douteux / à faire à la main
+
+- La composition exacte des indéterminés supplémentaires à 768/1440px
+  (§6) n'a pas été décomposée élément par élément — confirmé que 0 sont
+  de vrais échecs, pas creusé plus loin faute de gain clair.
+- `#ariaFab` et son exclusivité restent dormants (§0, §2) — décision
+  produit à prendre séparément, pas dans ce commit.
+- `wireV3Chips()` et le compteur `#v3HeroCounter` commenté (§4) : dead
+  code mineur laissé en l'état par choix (strangler-fig), à revisiter
+  seulement dans une session de cleanup dédiée.
