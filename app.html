@@ -19553,6 +19553,11 @@ document.addEventListener('DOMContentLoaded', function() {
           // (session neuve, localStorage vide) — repeupler une fois la base résolue.
           if (typeof populateSeasonSelect === 'function') populateSeasonSelect();
           if (typeof updatePrice === 'function') updatePrice();
+          // COMMIT R3 : rafraîchit les 5 paliers depuis l'ancre en tâche de fond —
+          // fait passer les comptes existants (paliers hérités du DEFAULT colonne)
+          // aux valeurs dérivées sans attendre un prochain "Tout enregistrer".
+          // Best-effort, jamais bloquant sur le boot.
+          if (typeof pushVillaSettings === 'function') pushVillaSettings(getCfg()).catch(function(){});
           var cfg = getCfg();
           if (!cfg.onboarded) {
             // Defer slightly so the rest of the UI has rendered behind the modal
@@ -20326,9 +20331,17 @@ function populateSeasonSelect() {
   var fr = (typeof lang !== 'undefined' && lang === 'fr');
   var prevValue = seasonEl.value;
   var prevAutoset = seasonEl.dataset.autoset || '';
+
+  // COMMIT R3 : dès que l'ancre (cfg.basePrice) est connue, le select ne
+  // reste JAMAIS bloqué sur "?" — au minimum plat (les 5 paliers = basePrice)
+  // en attendant que computeSeasonTiers() (async, réseau) résolve une forme
+  // réelle. "?" désactivé reste réservé au seul cas où basePrice lui-même
+  // est inconnu (aucune ancre du tout — cf. COMMIT R2, inchangé ci-dessous).
+  var hasAnchor = typeof cfg.basePrice === 'number' && cfg.basePrice > 0;
   var vals = SEASON_TIERS.map(function(t){
     var v = cfg[t.cfgKey];
-    return (typeof v === 'number' && v > 0) ? v : null;
+    if (typeof v === 'number' && v > 0) return v;
+    return hasAnchor ? cfg.basePrice : null;
   });
   var complete = vals.every(function(v){ return v !== null; });
 
@@ -20348,12 +20361,25 @@ function populateSeasonSelect() {
   }
 
   seasonEl.disabled = false;
-  delete seasonEl.dataset.titleFr;
-  delete seasonEl.dataset.titleEn;
-  seasonEl.removeAttribute('title');
-  seasonEl.dataset.ariaLabelFr = 'Saison';
-  seasonEl.dataset.ariaLabelEn = 'Season';
-  seasonEl.setAttribute('aria-label', fr ? 'Saison' : 'Season');
+  // COMMIT R3 : la saisonnalité peut être plate (pas encore de forme réelle
+  // résolue) sans que le select soit désactivé — le libellé dit "inconnue",
+  // pas "aucun prix" (point 3). cfg.priceShapeKnown est posé par
+  // pushVillaSettings() une fois computeSeasonTiers() résolu au moins une fois.
+  var shapeKnown = cfg.priceShapeKnown === true;
+  if (shapeKnown) {
+    delete seasonEl.dataset.titleFr;
+    delete seasonEl.dataset.titleEn;
+    seasonEl.removeAttribute('title');
+    seasonEl.dataset.ariaLabelFr = 'Saison';
+    seasonEl.dataset.ariaLabelEn = 'Season';
+  } else {
+    seasonEl.dataset.titleFr = 'Saisonnalité inconnue pour cette ville — prix identique toute l\'année';
+    seasonEl.dataset.titleEn = 'Unknown seasonality for this city — same price year-round';
+    seasonEl.title = fr ? seasonEl.dataset.titleFr : seasonEl.dataset.titleEn;
+    seasonEl.dataset.ariaLabelFr = 'Saison (saisonnalité inconnue)';
+    seasonEl.dataset.ariaLabelEn = 'Season (unknown seasonality)';
+  }
+  seasonEl.setAttribute('aria-label', fr ? seasonEl.dataset.ariaLabelFr : seasonEl.dataset.ariaLabelEn);
   seasonEl.innerHTML = SEASON_TIERS.map(function(t, i){
     return '<option value="' + vals[i] + '" data-fr="' + t.fr + '" data-en="' + t.en + '">' + (fr ? t.fr : t.en) + '</option>';
   }).join('');
@@ -20361,7 +20387,7 @@ function populateSeasonSelect() {
   // Restore a live manual selection if it still matches one of the real tier
   // values; otherwise fall back to "normal" (was the static "selected" default).
   var manualStillValid = prevAutoset === 'manual' && vals.indexOf(parseInt(prevValue, 10)) !== -1;
-  seasonEl.value = manualStillValid ? prevValue : String(cfg.priceNormal);
+  seasonEl.value = manualStillValid ? prevValue : String(vals[1]);
   seasonEl.dataset.autoset = manualStillValid ? 'manual' : '';
 }
 window.populateSeasonSelect = populateSeasonSelect;
@@ -24084,6 +24110,31 @@ async function pushVillaSettings(cfg) {
     if ((!staffMembers || !staffMembers.length) && cfg.staff) {
       try { staffMembers = _staffTextToJson(cfg.staff); } catch(e) {}
     }
+    // COMMIT R3 : les 5 paliers dérivent de cfg.basePrice à chaque push — seul
+    // point d'écriture de villa_settings pour ces colonnes (audit R3 : aucune
+    // autre fonction ne construit un payload villa_settings avec ces champs).
+    // cfg.priceManual{tier:true} gèle un palier déjà édité à la main (même
+    // contrat que cfg.exchange_rates_manual pour les taux de change) — jamais
+    // recalculé une fois verrouillé. Ecrit dans le cfg local + repeuple le
+    // select AVANT le PATCH, pour que payload et l'UI locale voient les mêmes
+    // valeurs.
+    if (typeof cfg.basePrice === 'number' && cfg.basePrice > 0 && typeof computeSeasonTiers === 'function') {
+      try {
+        var _tiers = await computeSeasonTiers(cfg);
+        if (_tiers) {
+          var _manual = cfg.priceManual || {};
+          if (!_manual.low) cfg.priceLow = _tiers.low;
+          if (!_manual.normal) cfg.priceNormal = _tiers.normal;
+          if (!_manual.high) cfg.priceHigh = _tiers.high;
+          if (!_manual.veryhigh) cfg.priceVeryhigh = _tiers.veryhigh;
+          if (!_manual.peak) cfg.pricePeak = _tiers.peak;
+          cfg.priceShapeKnown = !!_tiers.shapeKnown;
+          cfg.priceShapeSource = _tiers.shapeKnown ? { source: _tiers.source, city: _tiers.city, degraded: !!_tiers.degraded } : null;
+          if (typeof setCfg === 'function') setCfg(cfg);
+          if (typeof populateSeasonSelect === 'function') populateSeasonSelect();
+        }
+      } catch(e) { console.warn('computeSeasonTiers error:', e); }
+    }
     // Use undefined (not null/[]) for absent fields — JSON.stringify omits undefined keys,
     // so Supabase PATCH only touches columns that are actually present. Prevents wiping
     // villa_name / staff_members when they're temporarily empty in cfg.
@@ -24097,6 +24148,11 @@ async function pushVillaSettings(cfg) {
       base_price: cfg.basePrice || undefined,
       min_price: (typeof cfg.minPrice === 'number') ? cfg.minPrice : undefined,
       max_price: (typeof cfg.maxPrice === 'number') ? cfg.maxPrice : undefined,
+      price_low: (typeof cfg.priceLow === 'number') ? cfg.priceLow : undefined,
+      price_normal: (typeof cfg.priceNormal === 'number') ? cfg.priceNormal : undefined,
+      price_high: (typeof cfg.priceHigh === 'number') ? cfg.priceHigh : undefined,
+      price_veryhigh: (typeof cfg.priceVeryhigh === 'number') ? cfg.priceVeryhigh : undefined,
+      price_peak: (typeof cfg.pricePeak === 'number') ? cfg.pricePeak : undefined,
       base_capacity: cfg.baseCapacity || undefined,
       extra_guest_fee: cfg.extraGuestFee != null ? cfg.extraGuestFee : undefined,
       platform: cfg.platform || undefined,
@@ -26485,6 +26541,123 @@ async function refreshVillaHotelRates() {
   return window._villaHotelRates;
 }
 window.refreshVillaHotelRates = refreshVillaHotelRates;
+
+// COMMIT R3 : forme saisonnière réelle de la ville (public.city_season_profiles,
+// lecture seule, RLS ouverte à tout utilisateur authentifié). Résolution city_key
+// puis nuts2_code, même schéma que refreshVillaHotelRates() ci-dessus — la table
+// est peuplée d'un mélange de lignes Eurostat NUTS2 (city_key = code nuts2 en
+// minuscule, season_months quasi toujours NULL, peak_months rempli) et d'une
+// poignée de lignes manuelles par ville (season_months complet, cf. Marrakech).
+async function resolveCitySeasonProfile() {
+  try {
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var cityRaw = (cfg.city || '').split(',')[0].trim();
+    if (!cityRaw) { window._citySeasonProfile = { ok:false, reason:'no_city' }; return window._citySeasonProfile; }
+    var cityKey = normalizeCityKey(cityRaw);
+    var key = (typeof getCfg === 'function' && cfg.sbKey) ? cfg.sbKey : SB_ANON;
+    var authToken = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
+    var headers = { apikey: key, Authorization: 'Bearer ' + authToken };
+
+    var row = null;
+    var r1 = await fetch(SB_URL + '/rest/v1/city_season_profiles?city_key=eq.' + encodeURIComponent(cityKey) + '&select=*', { headers: headers });
+    var rows1 = await r1.json();
+    if (Array.isArray(rows1) && rows1.length) row = rows1[0];
+
+    if (!row) {
+      // Repli nuts2_code : couvre le cas où cityRaw serait déjà saisi comme un
+      // code région (ou correspond à une ligne dont city_key ne matche pas mais
+      // dont nuts2_code si) plutôt qu'un nom de ville curaté.
+      var r2 = await fetch(SB_URL + '/rest/v1/city_season_profiles?nuts2_code=eq.' + encodeURIComponent(cityKey.toUpperCase()) + '&select=*', { headers: headers });
+      var rows2 = await r2.json();
+      if (Array.isArray(rows2) && rows2.length) row = rows2[0];
+    }
+
+    if (!row) { window._citySeasonProfile = { ok:false, reason:'no_reference', city: cityRaw }; return window._citySeasonProfile; }
+
+    window._citySeasonProfile = {
+      ok: true,
+      seasonMonths: Array.isArray(row.season_months) ? row.season_months : null,
+      peakMonths: Array.isArray(row.peak_months) ? row.peak_months : null,
+      top2Share: (row.top2_share != null) ? parseFloat(row.top2_share) : null,
+      cityLabel: row.city_label,
+      source: row.source,
+      observedAt: row.observed_at
+    };
+  } catch(e) {
+    window._citySeasonProfile = { ok:false, reason:'error' };
+  }
+  return window._citySeasonProfile;
+}
+window.resolveCitySeasonProfile = resolveCitySeasonProfile;
+
+// COMMIT R3 : les 5 paliers de #season dérivent de cfg.basePrice (l'ancre —
+// seule valeur saisie par le propriétaire) × la forme saisonnière de sa ville.
+// Amplitude (de combien les saisons s'écartent les unes des autres) vient de
+// hotel_benchmarks ; forme (quels mois sont bas/hauts) vient de
+// city_season_profiles. Sans l'une des deux références, forme PLATE : les 5
+// paliers valent basePrice — jamais un ratio fabriqué. "Très haute" n'existe
+// dans aucune des deux sources (season_months ne connaît que low/normal/high/
+// peak) : dérivée par interpolation (high+peak)/2, choix assumé et commenté,
+// pas une lecture directe.
+async function computeSeasonTiers(cfg) {
+  cfg = cfg || ((typeof getCfg === 'function') ? getCfg() : {});
+  var basePrice = (typeof cfg.basePrice === 'number' && cfg.basePrice > 0) ? cfg.basePrice : null;
+  if (!basePrice) return null; // pas d'ancre du tout — rien à dériver (cf. COMMIT R2)
+
+  var flat = { low: basePrice, normal: basePrice, high: basePrice, veryhigh: basePrice, peak: basePrice, shapeKnown: false };
+
+  var hb = (window._villaHotelRates && window._villaHotelRates.ok) ? window._villaHotelRates
+         : await refreshVillaHotelRates();
+  if (!hb || !hb.ok || !hb.seasonRates) return flat; // pas d'amplitude de référence
+
+  var csp = await resolveCitySeasonProfile();
+  if (!csp || !csp.ok) return flat; // pas de forme de référence
+
+  var sr = hb.seasonRates; // {low, normal, high, peak} — prix hôtel absolus
+  if (!(sr.low > 0 && sr.normal > 0 && sr.high > 0 && sr.peak > 0)) return flat;
+
+  if (Array.isArray(csp.seasonMonths) && csp.seasonMonths.length === 12) {
+    // Cas A — forme complète connue (ex. Marrakech) : pondération par comptage
+    // réel des mois de CETTE ville, pas par getSeasonKey() (générique/autre ville).
+    var w = { low:0, normal:0, high:0, peak:0 };
+    csp.seasonMonths.forEach(function(k){ if (w[k] !== undefined) w[k]++; });
+    var totalW = w.low + w.normal + w.high + w.peak;
+    if (totalW !== 12) return flat; // valeur inattendue dans season_months — pas de ratio fabriqué dessus
+    var weightedAvg = (sr.low*w.low + sr.normal*w.normal + sr.high*w.high + sr.peak*w.peak) / 12;
+    if (!weightedAvg) return flat;
+    var ratioLow = sr.low / weightedAvg, ratioNormal = sr.normal / weightedAvg,
+        ratioHigh = sr.high / weightedAvg, ratioPeak = sr.peak / weightedAvg;
+    var ratioVeryhigh = (ratioHigh + ratioPeak) / 2; // interpolation assumée, cf. commentaire ci-dessus
+    return {
+      low: Math.round(basePrice * ratioLow / 10) * 10,
+      normal: Math.round(basePrice * ratioNormal / 10) * 10,
+      high: Math.round(basePrice * ratioHigh / 10) * 10,
+      veryhigh: Math.round(basePrice * ratioVeryhigh / 10) * 10,
+      peak: Math.round(basePrice * ratioPeak / 10) * 10,
+      shapeKnown: true, degraded: false, source: csp.source, city: csp.cityLabel
+    };
+  }
+
+  if (Array.isArray(csp.peakMonths) && csp.peakMonths.length) {
+    // Cas B — forme dégradée (61 des 62 lignes actuelles, ex. tout le jeu
+    // Eurostat) : seuls les mois de peak_months sont connus. Les 10 (ou plus)
+    // autres mois restent à l'ancre — on n'invente pas les mois qu'on ne
+    // connaît pas (consigne explicite COMMIT R3). "Très haute" n'a pas de
+    // mois identifié dans ce cas non plus : reste à l'ancre, comme low/normal/high.
+    var n = csp.peakMonths.length;
+    var weightedAvg2 = (sr.peak * n + sr.normal * (12 - n)) / 12;
+    if (!weightedAvg2) return flat;
+    var peakRatio = sr.peak / weightedAvg2;
+    return {
+      low: basePrice, normal: basePrice, high: basePrice, veryhigh: basePrice,
+      peak: Math.round(basePrice * peakRatio / 10) * 10,
+      shapeKnown: true, degraded: true, source: csp.source, city: csp.cityLabel
+    };
+  }
+
+  return flat; // ligne trouvée mais ni season_months ni peak_months exploitables
+}
+window.computeSeasonTiers = computeSeasonTiers;
 
 // ── Tier (a) : ADR marché réel (market-comps → market_cache/AirROI) ──
 // L'ADR AirROI est un TTM (moyenne glissante 12 mois) : il contient déjà
@@ -31862,6 +32035,17 @@ function startTour(){
       if (p.guestExtra) parts.push('+' + fmtPrice(p.guestExtra) + ' ' + (FR?'invités sup.':'extra guests'));
       parts.push((FR?'Cible':'Target') + ' ' + (p.cap ? ((p.floor||0)+'€–'+p.cap+'€') : ((p.floor||0)+'€+')));
       parts.push('<span style="color:#C9963A;font-weight:600">' + (FR?'Total':'Total') + ' : ' + fmtPrice(price) + '/n · ' + (FR?'net après Airbnb':'net after Airbnb') + ' ' + fmtPrice(price * (1 - (p.hostFeeRate||0))) + '</span>');
+      // COMMIT R3 : les 5 paliers peuvent être plats (basePrice partout) tant que
+      // computeSeasonTiers() n'a pas résolu de forme réelle pour cette ville — le
+      // libellé le dit honnêtement, avec une action à côté (DESIGN R3 : jamais
+      // d'état vide sans action). Or = action, jamais une couleur de ton d'état.
+      var _cfgR3 = (typeof getCfg === 'function') ? getCfg() : {};
+      if (!_cfgR3.priceShapeKnown) {
+        parts.push('<span style="color:var(--muted);font-size:11px">' +
+          (FR ? 'Saisonnalité inconnue pour cette ville — prix identique toute l\'année' : 'Unknown seasonality for this city — same price year-round') +
+          ' · <span style="color:var(--gold);cursor:pointer;text-decoration:underline" onclick="if(typeof openSettings===\'function\')openSettings()">' +
+          (FR ? 'Réglages' : 'Settings') + '</span></span>');
+      }
       explain.innerHTML = parts.join('<br>');
     }
   }

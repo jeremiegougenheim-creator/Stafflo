@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v409 (COMMIT R2 : #season n'a plus de palier € en dur, cfg.price* unique source)
-const CACHE = 'stafflo-v409';
+// Stafflo Service Worker — v410 (COMMIT R3 : les 5 paliers se calculent depuis l'ancre + la forme saisonnière)
+const CACHE = 'stafflo-v410';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
