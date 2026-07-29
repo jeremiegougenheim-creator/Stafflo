@@ -2778,6 +2778,11 @@ body.no-frame #staffloShell.nav-v2-top main{ padding-bottom:16px !important }
 .cal-case.arr{background:var(--green) !important;color:#fff !important;border-color:transparent !important}
 .cal-case.arr .cal-case-top,.cal-case.arr .cal-case-pax{opacity:.85 !important}
 .cal-case.today{box-shadow:inset 0 0 0 2px var(--gold) !important}
+/* COMMIT Q : nuit libre avec prix recommandé — le net (.cal-case-net, ci-
+   dessus) est un fait, en gras, sur fond de ton d'état ; le recommandé est
+   une estimation, en italique et or muté, sur le fond blanc neutre d'une
+   nuit libre. Jamais la même graphie pour les deux. */
+.cal-case-rec{font-weight:500 !important;font-style:italic !important;color:var(--gold-ink,#8a6420) !important;opacity:.85 !important}
 @media(max-width:860px){
   .cal-case{height:72px !important;padding:4px 5px !important}
   .cal-case-name{font-size:10px !important}
@@ -5882,7 +5887,7 @@ window.renderSetupOneLiner = function(){
 <div class="row row-50">
   <div class="v2-card" id="heroVillaTonightCard" style="border-left:3px solid var(--gold);background:linear-gradient(180deg, rgba(201,150,58,.04) 0%, var(--card) 60%)">
     <div class="v2-card-hd">
-      <div class="v2-card-title"><i class="ti ti-currency-euro" style="color:var(--gold-ink)"></i> <span data-fr="Prix recommandé ce soir" data-en="Tonight's recommended price">Prix recommandé ce soir</span></div>
+      <div class="v2-card-title"><i class="ti ti-currency-euro" style="color:var(--gold-ink)"></i> <span data-fr="Prix recommandé" data-en="Recommended price">Prix recommandé</span></div>
     </div>
     <div class="v2-card-body" id="heroVillaTonightBody" style="padding:14px 18px">
       <div class="tonight-price" style="font-family:'Cormorant Garamond',serif;font-size:36px;color:var(--gold-ink);font-weight:500;line-height:1" id="heroVillaTonightPrice">—</div>
@@ -5912,6 +5917,23 @@ window.renderSetupOneLiner = function(){
         <div style="padding:24px 18px;text-align:center;color:var(--muted);font-size:12px;font-style:italic" data-fr="Ajoutez des concurrents ↓" data-en="Add competitors below ↓">Ajoutez des concurrents ↓</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- COMMIT Q : porte "telle quelle" la carte "Donnée mince" de stafflo-ui-v19.html
+     (locMarche()) — même principe que renderMarketBand() ci-dessus (COMMIT 8 :
+     sous 3 comparables, ce n'est pas une moyenne de marché), appliqué cette fois
+     à l'ADR réel AirROI (market-comps), pas aux concurrents saisis à la main.
+     N'apparaît que si un relevé AirROI existe pour cette ville. -->
+<div class="row row-100" id="airroiMarketRow" style="display:none">
+  <div class="v2-card">
+    <div class="v2-card-hd">
+      <div class="v2-card-title"><i class="ti ti-chart-bar"></i> <span data-fr="ADR marché réel" data-en="Real market ADR">ADR marché réel</span>
+        <span id="airroiThinPill" style="display:none;margin-left:8px;background:rgba(201,150,58,.15);color:var(--gold-ink);font-size:10px;font-weight:700;padding:3px 9px;border-radius:var(--r-pill);letter-spacing:.5px;text-transform:uppercase" data-fr="Donnée mince" data-en="Thin data">Donnée mince</span>
+      </div>
+      <button class="v2-icon-btn" onclick="event.stopPropagation();refreshVillaPricing(true).then(function(){renderAirroiMarketCard();if(typeof v2RenderHero==='function')v2RenderHero();})" title="Relancer le relevé" data-title-fr="Relancer le relevé" data-title-en="Fetch again" aria-label="Relancer le relevé" data-aria-label-fr="Relancer le relevé" data-aria-label-en="Fetch again"><i class="ti ti-refresh"></i></button>
+    </div>
+    <div class="v2-card-body" id="airroiMarketBody" style="padding:14px 18px"></div>
   </div>
 </div>
 
@@ -6146,6 +6168,10 @@ window.renderSetupOneLiner = function(){
       <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);background:var(--t-go-bg)"></span><span data-fr="Événement" data-en="Event">Événement</span></span>
       <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);border:1.5px solid var(--gold);box-shadow:inset 0 0 0 1.5px var(--gold)"></span><span data-fr="Aujourd'hui" data-en="Today">Aujourd'hui</span></span>
     </div>
+    <!-- COMMIT Q : résumé du mois affiché — nuits libres × prix recommandé de
+         la saison du mois (un mois = une seule saison, getSeasonKey() est
+         mensuel). Rien si aucune référence n'a pu être résolue (jamais 0€). -->
+    <div id="calTabMonthSummary" style="padding:4px 14px 12px;font-size:12.5px;color:var(--muted)"></div>
   </div>
 
   <div class="v2-card" data-no-collapse="1">
@@ -8435,6 +8461,12 @@ window.staffloCal = staffloCal;
     dayNames.forEach(function(dn){ parts.push('<div>' + dn + '</div>'); });
     parts.push('</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;padding:0 4px 4px">');
     for (var i = 0; i < startDow; i++) parts.push('<div></div>');
+    // COMMIT Q : un mois = une seule saison (getSeasonKey() est mensuel),
+    // donc un seul prix recommandé pour tout le mois affiché. Rien si
+    // window._villaPricing n'a pas résolu (pas de prix inventé).
+    var pricing = window._villaPricing;
+    var monthRecPrice = (pricing && pricing.ok) ? pricing.seasonPrices[getSeasonKey(new Date(s.year, s.month, 15))] : null;
+    var freeNightsInMonth = 0;
     for (var d = 1; d <= daysInMonth; d++){
       var dateObj = new Date(s.year, s.month, d);
       var key = toKey(dateObj);
@@ -8476,12 +8508,36 @@ window.staffloCal = staffloCal;
         ttl = dateLbl + ' — ' + evLabel;
         content += '</div>';
       } else {
-        content += '</div>';
+        // Nuit libre — COMMIT Q : prix recommandé de la saison du mois, une
+        // estimation (jamais confondue graphiquement avec .cal-case-net, un
+        // fait réel). Rien si monthRecPrice est indisponible.
+        freeNightsInMonth++;
+        if (monthRecPrice) {
+          var recStr = Math.round(monthRecPrice).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '€';
+          ttl = dateLbl + ' — ' + (FR ? 'libre · recommandé ' : 'free · recommended ') + recStr;
+          content += '</div><div class="cal-case-meta"><span class="cal-case-rec">' + recStr + '</span></div>';
+        } else {
+          content += '</div>';
+        }
       }
       parts.push('<button class="' + cls + '" data-cal-day="' + key + '" onclick="if(window.staffloCal&&staffloCal.tap)staffloCal.tap(\'' + key + '\')" title="' + escAttr(ttl) + '" aria-label="' + escAttr(ttl) + '">' + content + '</button>');
     }
     parts.push('</div>');
     grid.innerHTML = parts.join('');
+    var summaryEl = document.getElementById('calTabMonthSummary');
+    if (summaryEl) {
+      if (freeNightsInMonth > 0 && monthRecPrice) {
+        var totalStr = Math.round(freeNightsInMonth * monthRecPrice).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '€';
+        summaryEl.textContent = months[s.month].toLowerCase() + ' — ' + freeNightsInMonth + ' ' +
+          (FR ? (freeNightsInMonth > 1 ? 'nuits libres' : 'nuit libre') : (freeNightsInMonth > 1 ? 'free nights' : 'free night')) +
+          ' · ' + totalStr + ' ' + (FR ? 'au prix recommandé' : 'at recommended price');
+      } else if (freeNightsInMonth > 0) {
+        summaryEl.textContent = months[s.month].toLowerCase() + ' — ' + freeNightsInMonth + ' ' +
+          (FR ? (freeNightsInMonth > 1 ? 'nuits libres' : 'nuit libre') : (freeNightsInMonth > 1 ? 'free nights' : 'free night'));
+      } else {
+        summaryEl.textContent = '';
+      }
+    }
   }
   function renderUpcoming(){
     var host = document.getElementById('calTabUpcoming'); if (!host) return;
@@ -13671,6 +13727,13 @@ function goTab(t) {
       try { if (typeof window.renderMaisonInto === 'function') window.renderMaisonInto(); } catch(e){}
     } else {
       try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); if (typeof renderPrestataires === 'function') setTimeout(renderPrestataires, 100); if (typeof renderMaisonTasks === 'function') setTimeout(renderMaisonTasks, 150); } catch(e) { console.error('loadHomeData error:', e); }
+      // COMMIT Q : #villaV3 (pricing) vit ici quand navV2 est off.
+      if (typeof refreshVillaPricing === 'function') {
+        refreshVillaPricing().then(function(){
+          try { if (typeof v2RenderHero === 'function') v2RenderHero(); } catch(e){}
+          try { if (typeof renderAirroiMarketCard === 'function') renderAirroiMarketCard(); } catch(e){}
+        });
+      }
     }
   }
   // Nav v2 étape B : le pricing (#villaV3) vit désormais dans Location, pas Maison.
@@ -13680,8 +13743,24 @@ function goTab(t) {
     try { if (typeof renderVillaOpsExtra === 'function') setTimeout(renderVillaOpsExtra, 200); } catch(e){}
     // Nav v2 étape E : Guests vit désormais dans Location, sous le pricing.
     try { if (typeof renderClients === 'function') setTimeout(renderClients, 120); } catch(e){}
+    // COMMIT Q : prix recommandé (30j + mois suivant) + carte "ADR marché réel".
+    if (typeof refreshVillaPricing === 'function') {
+      refreshVillaPricing().then(function(){
+        try { if (typeof v2RenderHero === 'function') v2RenderHero(); } catch(e){}
+        try { if (typeof renderAirroiMarketCard === 'function') renderAirroiMarketCard(); } catch(e){}
+      });
+    }
   }
-  if (t === 'calendar') { try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); } }
+  if (t === 'calendar') {
+    try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e) { console.error('renderCalendarTab error:', e); }
+    // COMMIT Q : nuits libres du calendrier + résumé mensuel dépendent de
+    // window._villaPricing — re-rendu une fois résolu (silencieux si déjà en cache).
+    if (typeof refreshVillaPricing === 'function') {
+      refreshVillaPricing().then(function(){
+        try { if (typeof renderCalendarTab === 'function') renderCalendarTab(); } catch(e){}
+      });
+    }
+  }
   if (t === 'today') {
     // Nav v2 étape D : resynchronise le résumé à chaque visite du Today — ne pas
     // dépendre uniquement du wrap sur renderMaisonReal(), qui ne se redéclenche pas
@@ -21060,12 +21139,16 @@ async function generateAlerts(weatherTemp) {
     var _vf = null;
     try {
       if (typeof computeHotelBenchmark === 'function') {
-        _vf = computeHotelBenchmark({
+        /* v114 PROVISIONAL: typical group ≈ bedrooms×1.2 (DarJ 5bed → 6 → villaFair ~850€). NOTE: hotelBedroomsForGuests(ceil/2) has a step discontinuity (6→3 rooms, 7→4 rooms) that makes the benchmark jump ~350€ per guest — the deeper fix is to derive hotel-room-equivalent from BEDROOMS not group, and use group only for the density ratio. Revisit post-launch. */
+        var _bench = computeHotelBenchmark({
           bedrooms: (typeof getVillaConfig==='function'?getVillaConfig().bedrooms:5),
-          /* v114 PROVISIONAL: typical group ≈ bedrooms×1.2 (DarJ 5bed → 6 → villaFair ~850€). NOTE: hotelBedroomsForGuests(ceil/2) has a step discontinuity (6→3 rooms, 7→4 rooms) that makes the benchmark jump ~350€ per guest — the deeper fix is to derive hotel-room-equivalent from BEDROOMS not group, and use group only for the density ratio. Revisit post-launch. */
           guests: (function(){ var _bd=(typeof getVillaConfig==='function'?getVillaConfig().bedrooms:5)||5; var _mx=(typeof getCfg==='function' && getCfg().maxGuests)?getCfg().maxGuests:_bd*2; return Math.max(2, Math.min(Math.round(_bd*1.2), _mx)); })(),
           basePrice: yourPrice
-        }).villaFair;
+        });
+        // COMMIT Q : computeHotelBenchmark() peut renvoyer null tant que
+        // refreshVillaHotelRates() n'a pas résolu (ou n'a aucune référence
+        // pour cette ville) — jamais de prix inventé en attendant.
+        _vf = _bench ? _bench.villaFair : null;
       }
     } catch(e){}
     // _vf = deterministic hotel-benchmark TARGET (fair value vs 5★ hotels). Not an observed market.
@@ -21729,6 +21812,45 @@ function renderMarketBand() {
   }
 }
 
+// COMMIT Q — port fidèle de locMarche() (stafflo-ui-v19.html:1615-1648) :
+// pill "Donnée mince", lignes comparables/chambres/relevé, paragraphe
+// d'avertissement, bouton Relancer. Alimenté par window._villaPricing.marketMeta
+// (jamais par loadSavedCompetitors(), qui reste le flux manuel existant).
+function renderAirroiMarketCard() {
+  var row = document.getElementById('airroiMarketRow');
+  var body = document.getElementById('airroiMarketBody');
+  var pill = document.getElementById('airroiThinPill');
+  if (!row || !body) return;
+  var meta = window._villaPricing && window._villaPricing.marketMeta;
+  if (!meta) { row.style.display = 'none'; return; }
+  row.style.display = '';
+  var FR = (typeof fr === 'function') ? fr() : (typeof lang !== 'undefined' && lang === 'fr');
+  if (pill) pill.style.display = meta.thin ? '' : 'none';
+
+  var bedroomsLine = meta.bedroomsUsed
+    ? (meta.bedroomsUsed + (meta.bedroomsUsed !== meta.bedroomsRequested ? (' (' + (FR?'demandé : ':'requested: ') + meta.bedroomsRequested + ')') : ''))
+    : '—';
+  var ageLine = meta.ageDays != null ? (FR ? ('il y a ' + meta.ageDays + ' j') : (meta.ageDays + ' d ago')) : '—';
+
+  var rows =
+    '<div class="row" style="display:flex;justify-content:space-between;padding:6px 0;font-size:12.5px"><span style="color:var(--muted)"><i class="ti ti-database" style="margin-right:6px;vertical-align:-2px"></i>' + (FR?'Comparables trouvés':'Comparables found') + '</span><span style="font-weight:600">' + meta.compCount + '</span></div>' +
+    '<div class="row" style="display:flex;justify-content:space-between;padding:6px 0;font-size:12.5px;border-top:1px solid var(--border)"><span style="color:var(--muted)"><i class="ti ti-bed" style="margin-right:6px;vertical-align:-2px"></i>' + (FR?'Chambres':'Bedrooms') + '</span><span style="font-weight:600">' + bedroomsLine + '</span></div>' +
+    '<div class="row" style="display:flex;justify-content:space-between;padding:6px 0;font-size:12.5px;border-top:1px solid var(--border)"><span style="color:var(--muted)"><i class="ti ti-clock-exclamation" style="margin-right:6px;vertical-align:-2px"></i>' + (FR?'Relevé':'Fetched') + '</span><span style="font-weight:600' + (meta.stale ? ';color:#A32D2D' : '') + '">' + ageLine + '</span></div>';
+
+  var caveat = meta.thin
+    ? ('<p style="font-size:12px;color:var(--muted);margin-top:12px;line-height:1.5">' +
+        (FR
+          ? ('Un seul comparable' + (meta.bedroomsUsed && meta.bedroomsUsed !== meta.bedroomsRequested ? (', sur ' + meta.bedroomsUsed + ' chambres et non ' + meta.bedroomsRequested) : '') + (meta.stale ? (', et le relevé a dépassé sa fraîcheur de ' + meta.ttlDays + ' jours') : '') + '. Ce n’est pas une médiane de marché : à lire comme un repère isolé.')
+          : ('A single comparable' + (meta.bedroomsUsed && meta.bedroomsUsed !== meta.bedroomsRequested ? (', on ' + meta.bedroomsUsed + ' bedrooms rather than ' + meta.bedroomsRequested) : '') + (meta.stale ? (', past its ' + meta.ttlDays + '-day freshness') : '') + '. This is not a market median — read it as one isolated data point.')) +
+      '</p>')
+    : '';
+
+  body.innerHTML =
+    '<div style="font-family:\'Cormorant Garamond\',serif;font-size:24px;color:var(--gold-ink);font-weight:500;line-height:1">' + meta.adrEur + '€</div>' +
+    '<div style="font-size:11px;color:var(--muted);margin-top:2px">ADR TTM · ' + meta.city + '</div>' +
+    '<div style="margin-top:10px">' + rows + '</div>' + caveat;
+}
+window.renderAirroiMarketCard = renderAirroiMarketCard;
 
 function openSettings() {
   try { loadSettingsUI(); } catch(e) {}
@@ -26010,15 +26132,14 @@ function applyInboxDefaultState() {
 // where ratio depends on guest density and is < 1 (villa always discounts).
 // ════════════════════════════════════════════════════════════════
 
-// Marrakech hotel reference rates per room/night (2 pers, base season)
-// Sources: public rate cards 2024-2025 (Mamounia, Royal Mansour, Selman, Amanjena,
-// Riad Yasmine, La Sultana, Beldi Country Club, Es Saadi, Four Seasons MK).
-// Tiers map roughly to tripadvisor 4★ / 5★ boutique / 5★ palace bands.
-const HOTEL_BENCHMARK_MK = {
-  '4_star':           { label_fr: '4★ premium',     label_en: '4★ premium',     low: 180, normal: 230, high: 320, peak: 480 },
-  '5_star_boutique':  { label_fr: '5★ boutique',    label_en: '5★ boutique',    low: 350, normal: 450, high: 620, peak: 950 },
-  '5_star_palace':    { label_fr: '5★ palace',      label_en: '5★ palace',      low: 700, normal: 950, high: 1400, peak: 2200 }
-};
+// Marrakech hotel reference rates per room/night (2 pers, base season) —
+// superseded par public.hotel_benchmarks — COMMIT Q. Gardé pour mémoire,
+// plus lu par computeHotelBenchmark() (voir resolveVillaHotelRates()).
+// const HOTEL_BENCHMARK_MK = {
+//   '4_star':           { label_fr: '4★ premium',     label_en: '4★ premium',     low: 180, normal: 230, high: 320, peak: 480 },
+//   '5_star_boutique':  { label_fr: '5★ boutique',    label_en: '5★ boutique',    low: 350, normal: 450, high: 620, peak: 950 },
+//   '5_star_palace':    { label_fr: '5★ palace',      label_en: '5★ palace',      low: 700, normal: 950, high: 1400, peak: 2200 }
+// };
 
 // Pick tier from villa base price (per night, full villa) + bedroom count
 function inferVillaTier(basePrice, bedrooms) {
@@ -26028,7 +26149,11 @@ function inferVillaTier(basePrice, bedrooms) {
   return '5_star_palace';
 }
 
-// Season key based on month (Marrakech)
+// Season key based on month (Marrakech) — COMMIT Q : c'est désormais le seul
+// modèle de saison utilisé pour le prix recommandé (appelé une fois par jour
+// sur 12 mois glissants pour peupler calendrier + résumé mensuel + carte
+// Villa). Le sélecteur manuel #season/getPrice()/applyAutoPricing() reste
+// intact et indépendant — un contrôle existant, pas retiré ni réécrit.
 function getSeasonKey(date) {
   var m = (date || new Date()).getMonth(); // 0-11
   // Peak: Dec 20 - Jan 5 + Easter week — approximated by Dec/Apr edges
@@ -26038,6 +26163,38 @@ function getSeasonKey(date) {
   if (m === 9 || m === 10 || m === 2 || m === 3) return 'high';
   if (m === 11 || m === 0) return 'peak'; // Dec/Jan
   return 'normal';
+}
+
+// Poids (nb de mois) de chaque saison selon getSeasonKey() — dérivé par
+// mesure directe plutôt que dupliqué en dur, pour ne jamais diverger si
+// getSeasonKey() change. Sert à normaliser un ADR TTM (déjà lissé sur 12
+// mois) sur la moyenne ANNUELLE plutôt que sur la seule bande "normal" —
+// sinon on double-compte la saisonnalité déjà contenue dans le TTM.
+function seasonMonthWeights() {
+  var w = { low: 0, normal: 0, high: 0, peak: 0 };
+  for (var m = 0; m < 12; m++) w[getSeasonKey(new Date(2024, m, 15))]++;
+  return w;
+}
+
+function normalizeCityKey(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+// Pays -> région hotel_benchmarks (region_key: europe/asie/mena/ameriques).
+// Même esprit que PAYS_CONNUS de l'edge function market-comps, mappé sur
+// région plutôt que sur nom de pays — dupliqué ici volontairement : on ne
+// touche pas à l'edge function pour ce commit.
+var REGION_BY_COUNTRY = {
+  france:'europe', spain:'europe', espagne:'europe', italy:'europe', italie:'europe',
+  portugal:'europe', greece:'europe', grece:'europe', switzerland:'europe', suisse:'europe',
+  'united kingdom':'europe', uk:'europe',
+  morocco:'mena', maroc:'mena', 'united arab emirates':'mena', uae:'mena', emirats:'mena',
+  turkey:'mena', turquie:'mena',
+  thailand:'asie', thailande:'asie', indonesia:'asie', indonesie:'asie',
+  mexico:'ameriques', mexique:'ameriques', 'united states':'ameriques', usa:'ameriques'
+};
+function countryToRegionKey(country) {
+  return REGION_BY_COUNTRY[normalizeCityKey(country)] || null;
 }
 
 // Villa vs Hotel ratio:
@@ -26064,6 +26221,19 @@ function hotelBedroomsForGuests(guests) {
 }
 
 // Main API: returns benchmark + villa target price band
+// Libellés d'affichage par tier — pas un prix, jamais concerné par la
+// garde géographique (ce ne sont que des noms de standing générique).
+var TIER_DISPLAY_LABELS = {
+  '4_star':          { label_fr: '4★ premium',  label_en: '4★ premium'  },
+  '5_star_boutique': { label_fr: '5★ boutique', label_en: '5★ boutique' },
+  '5_star_palace':   { label_fr: '5★ palace',   label_en: '5★ palace'  }
+};
+
+// COMMIT Q : hotelPerRoom vient désormais de window._villaHotelRates
+// (résolu par refreshVillaHotelRates() depuis public.hotel_benchmarks —
+// city_curated pour LA ville de la villa, sinon region_adr pour son pays,
+// jamais Marrakech ailleurs). Sans résolution, renvoie null : pas de
+// prix inventé pendant le chargement ni en l'absence de référence.
 function computeHotelBenchmark(opts) {
   opts = opts || {};
   var bedrooms = opts.bedrooms || 5;
@@ -26071,12 +26241,13 @@ function computeHotelBenchmark(opts) {
   var basePrice = opts.basePrice || 750;
   var date = opts.date || new Date();
 
-  var tier = opts.tier || inferVillaTier(basePrice, bedrooms);
-  var tierData = HOTEL_BENCHMARK_MK[tier];
-  if (!tierData) tierData = HOTEL_BENCHMARK_MK['5_star_boutique'];
+  var rates = window._villaHotelRates;
+  if (!rates || !rates.ok) return null;
 
+  var tier = opts.tier || rates.tier || inferVillaTier(basePrice, bedrooms);
   var seasonKey = getSeasonKey(date);
-  var hotelPerRoom = tierData[seasonKey] || tierData.normal;
+  var hotelPerRoom = rates.seasonRates[seasonKey];
+  if (!hotelPerRoom) return null;
 
   var bedroomsHotel = hotelBedroomsForGuests(guests);
   var hotelTotal = hotelPerRoom * bedroomsHotel; // What N guests would pay at the hotel
@@ -26090,7 +26261,7 @@ function computeHotelBenchmark(opts) {
 
   return {
     tier: tier,
-    tierLabel: tierData,
+    tierLabel: TIER_DISPLAY_LABELS[tier] || TIER_DISPLAY_LABELS['5_star_boutique'],
     seasonKey: seasonKey,
     hotelPerRoom: hotelPerRoom,
     bedroomsHotel: bedroomsHotel,
@@ -26099,10 +26270,189 @@ function computeHotelBenchmark(opts) {
     villaFair: villaFair,
     bedrooms: bedrooms,
     guests: guests,
-    basePrice: basePrice
+    basePrice: basePrice,
+    scope: rates.scope,
+    sourceLabel: rates.sourceLabel,
+    sourceLabelEn: rates.sourceLabelEn
   };
 }
 window.computeHotelBenchmark = computeHotelBenchmark;
+
+// ── Résolution du benchmark hôtel (tier b) — hotel_benchmarks uniquement ──
+// scope='city_curated' pour la ville exacte de la villa ; à défaut,
+// scope='region_adr' pour son pays. Jamais l'inverse : un profil régional
+// n'a pas la précision d'une ville, mais reste une vraie donnée sourcée et
+// datée — préférable à rien, jamais présenté comme une donnée de ville.
+window._villaHotelRates = null;
+async function refreshVillaHotelRates() {
+  try {
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var cityRaw = (cfg.city || '').split(',')[0].trim();
+    if (!cityRaw) { window._villaHotelRates = { ok:false, reason:'no_city' }; return window._villaHotelRates; }
+    var cityKey = normalizeCityKey(cityRaw);
+    var key = (typeof getCfg === 'function' && cfg.sbKey) ? cfg.sbKey : SB_ANON;
+    var authToken = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
+    var headers = { apikey: key, Authorization: 'Bearer ' + authToken };
+    var vcfg = (typeof getVillaConfig === 'function') ? getVillaConfig() : { bedrooms:5, basePrice:750 };
+    var wantedTier = inferVillaTier(vcfg.basePrice, vcfg.bedrooms);
+
+    var row = null, scopeUsed = null;
+    var rCity = await fetch(SB_URL + '/rest/v1/hotel_benchmarks?scope=eq.city_curated&city_key=eq.' + encodeURIComponent(cityKey) + '&select=*', { headers: headers });
+    var cityRows = await rCity.json();
+    if (Array.isArray(cityRows) && cityRows.length) {
+      row = cityRows.filter(function(x){ return x.tier === wantedTier; })[0] || cityRows[0];
+      scopeUsed = 'city_curated';
+    }
+    if (!row) {
+      var region = countryToRegionKey(cfg.country);
+      if (region) {
+        var rRegion = await fetch(SB_URL + '/rest/v1/hotel_benchmarks?scope=eq.region_adr&region_key=eq.' + encodeURIComponent(region) + '&select=*', { headers: headers });
+        var regionRows = await rRegion.json();
+        if (Array.isArray(regionRows) && regionRows.length) { row = regionRows[0]; scopeUsed = 'region_adr'; }
+      }
+    }
+    if (!row) { window._villaHotelRates = { ok:false, reason:'no_reference', city: cityRaw }; return window._villaHotelRates; }
+
+    var fr3 = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+    window._villaHotelRates = {
+      ok: true,
+      seasonRates: { low: row.price_low, normal: row.price_normal, high: row.price_high, peak: row.price_peak },
+      tier: row.tier || null,
+      scope: scopeUsed,
+      city: cityRaw,
+      sourceLabel: (scopeUsed === 'city_curated' ? row.source : ('Moyenne régionale (' + row.city_label + ') · ' + row.source)) + ' · relevé ' + row.observed_at,
+      sourceLabelEn: (scopeUsed === 'city_curated' ? row.source : ('Regional average (' + row.city_label + ') · ' + row.source)) + ' · surveyed ' + row.observed_at,
+      observedAt: row.observed_at
+    };
+  } catch(e) {
+    window._villaHotelRates = { ok:false, reason:'error' };
+  }
+  return window._villaHotelRates;
+}
+window.refreshVillaHotelRates = refreshVillaHotelRates;
+
+// ── Tier (a) : ADR marché réel (market-comps → market_cache/AirROI) ──
+// L'ADR AirROI est un TTM (moyenne glissante 12 mois) : il contient déjà
+// les hautes et basses saisons. Lui appliquer un ratio brut (bande/normal)
+// double-compterait la saisonnalité. On normalise donc le ratio sur la
+// MOYENNE ANNUELLE PONDÉRÉE des 4 bandes hotel_benchmarks (pondération =
+// nb de mois par saison, cf. seasonMonthWeights()) — seule la FORME
+// saisonnière vient du profil hôtelier, l'échelle reste celle du marché réel.
+// Le profil doit être celui de LA MÊME VILLE (scope='city_curated') :
+// jamais un profil régional, dont la saisonnalité mélange trop de climats
+// pour être fiable (Marrakech creuse en été ; Koh Phangan, à la mousson).
+// Sans profil pour cette ville : prix plat (même ADR toutes saisons).
+async function resolveVillaMarketPrice() {
+  try {
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var city = (cfg.city || '').trim();
+    var country = cfg.country || '';
+    if (!city) return { ok:false, reason:'no_city' };
+    var vcfg = (typeof getVillaConfig === 'function') ? getVillaConfig() : { bedrooms:5 };
+
+    var key = cfg.sbKey || SB_ANON;
+    var authToken = (_stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
+    var r = await fetch(SB_URL + '/functions/v1/market-comps', {
+      method: 'POST',
+      headers: { apikey: key, Authorization: 'Bearer ' + authToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ city: city, country: country, bedrooms: vcfg.bedrooms })
+    });
+    var json = await r.json();
+    var data = (json.source === 'cache' || json.source === 'airroi') ? json.data : null;
+    if (!data || data.adr_eur == null) return { ok:false, reason: json.source || 'empty' };
+
+    var compCount = data.comp_count || 0;
+    var TTL_DAYS = 7;
+    var ageDays = data.fetched_at ? Math.floor((Date.now() - new Date(data.fetched_at).getTime()) / 86400000) : null;
+    // COMMIT Q : sous 3 comparables, un échantillon n'est pas un marché —
+    // le niveau (a) ne fait pas autorité (même défaut que le panneau à 5
+    // barres corrigé au COMMIT 8). marketMeta reste renvoyé pour que la
+    // carte "Donnée mince" puisse quand même l'afficher, honnêtement marqué.
+    var marketMeta = {
+      adrEur: data.adr_eur, compCount: compCount,
+      bedroomsUsed: data.comp_bedrooms_used, bedroomsRequested: vcfg.bedrooms,
+      ageDays: ageDays, ttlDays: TTL_DAYS, stale: ageDays != null && ageDays > TTL_DAYS,
+      thin: compCount < 3, city: city
+    };
+    if (marketMeta.thin) return { ok:false, reason:'thin_sample', marketMeta: marketMeta };
+
+    var cityKey = normalizeCityKey(city.split(',')[0]);
+    var kh = { apikey: key, Authorization: 'Bearer ' + authToken };
+    var rc = await fetch(SB_URL + '/rest/v1/hotel_benchmarks?scope=eq.city_curated&city_key=eq.' + encodeURIComponent(cityKey) + '&select=*', { headers: kh });
+    var cityRows = await rc.json();
+    var shapeRow = (Array.isArray(cityRows) && cityRows.length) ? cityRows[0] : null;
+
+    var seasonPrices, mode;
+    if (shapeRow) {
+      var w = seasonMonthWeights();
+      var totalM = w.low + w.normal + w.high + w.peak;
+      var weightedAvg = (shapeRow.price_low*w.low + shapeRow.price_normal*w.normal + shapeRow.price_high*w.high + shapeRow.price_peak*w.peak) / totalM;
+      seasonPrices = {
+        low:    Math.round(data.adr_eur * (shapeRow.price_low    / weightedAvg)),
+        normal: Math.round(data.adr_eur * (shapeRow.price_normal / weightedAvg)),
+        high:   Math.round(data.adr_eur * (shapeRow.price_high   / weightedAvg)),
+        peak:   Math.round(data.adr_eur * (shapeRow.price_peak   / weightedAvg))
+      };
+      mode = 'market_shaped';
+    } else {
+      seasonPrices = { low: data.adr_eur, normal: data.adr_eur, high: data.adr_eur, peak: data.adr_eur };
+      mode = 'market_flat';
+    }
+
+    var staleFr = marketMeta.stale ? (' · relevé il y a ' + ageDays + ' jours') : '';
+    var staleEn = marketMeta.stale ? (' · surveyed ' + ageDays + ' days ago') : '';
+    return {
+      ok: true, mode: mode, seasonPrices: seasonPrices, marketMeta: marketMeta,
+      sourceLabel:   'ADR réel ' + data.adr_eur + '€' + (shapeRow ? (' · profil saisonnier hôtelier ' + shapeRow.city_label) : ' · comparables Airbnb/Booking') + staleFr,
+      sourceLabelEn: 'Real ADR €' + data.adr_eur + (shapeRow ? (' · ' + shapeRow.city_label + ' hotel seasonal profile') : ' · Airbnb/Booking comparables') + staleEn
+    };
+  } catch(e) {
+    return { ok:false, reason:'error' };
+  }
+}
+window.resolveVillaMarketPrice = resolveVillaMarketPrice;
+
+// ── Orchestrateur : (a) marché réel -> (b) benchmark hôtel -> (c) rien ──
+window._villaPricing = null; // { ok, mode, seasonPrices:{low,normal,high,peak}, sourceLabel, sourceLabelEn, marketMeta }
+window._villaPricingFetchedAt = 0;
+var VILLA_PRICING_CACHE_MS = 5 * 60 * 1000; // 5 min : évite un appel réseau à chaque changement d'onglet
+async function refreshVillaPricing(force) {
+  if (!force && window._villaPricing && (Date.now() - window._villaPricingFetchedAt) < VILLA_PRICING_CACHE_MS) {
+    return window._villaPricing;
+  }
+  window._villaPricingFetchedAt = Date.now();
+  var market = await resolveVillaMarketPrice();
+  if (market.ok) { window._villaPricing = market; return window._villaPricing; }
+
+  await refreshVillaHotelRates();
+  if (window._villaHotelRates && window._villaHotelRates.ok) {
+    var vcfg = (typeof getVillaConfig === 'function') ? getVillaConfig() : { bedrooms:5, basePrice:750 };
+    var bd = vcfg.bedrooms || 5;
+    var maxG = (typeof getCfg === 'function' && getCfg().maxGuests) ? getCfg().maxGuests : bd * 2;
+    var guests = Math.max(2, Math.min(Math.round(bd * 1.2), maxG));
+    var repMonth = { low: 6, high: 9, peak: 11, normal: 1 }; // un mois représentatif par saison (cf. getSeasonKey)
+    var seasonPrices = {};
+    ['low','normal','high','peak'].forEach(function(sk){
+      var b = computeHotelBenchmark({ bedrooms: bd, guests: guests, basePrice: vcfg.basePrice, date: new Date(2024, repMonth[sk], 15) });
+      if (b) seasonPrices[sk] = b.villaFair;
+    });
+    if (Object.keys(seasonPrices).length === 4) {
+      window._villaPricing = {
+        ok: true, mode: 'benchmark_' + window._villaHotelRates.scope, seasonPrices: seasonPrices,
+        sourceLabel: window._villaHotelRates.sourceLabel, sourceLabelEn: window._villaHotelRates.sourceLabelEn,
+        marketMeta: market.marketMeta || null
+      };
+      return window._villaPricing;
+    }
+  }
+  window._villaPricing = {
+    ok:false,
+    reason: (window._villaHotelRates && window._villaHotelRates.reason) || market.reason || 'no_reference',
+    marketMeta: market.marketMeta || null
+  };
+  return window._villaPricing;
+}
+window.refreshVillaPricing = refreshVillaPricing;
 
 // Read villa config (bedrooms, base price) from cfg + price form
 function getVillaConfig() {
@@ -26643,21 +26993,76 @@ function v2RenderHero() {
   }
 
   // (card33VillaBody — price snapshot — removed: lives in Home/Pricing tab now)
-  var heroPrice = document.getElementById('heroPricePN');
-  // Villa hero tonight price — with reasoning + competitor delta
-  var villaTonight = document.getElementById('heroVillaTonightPrice');
+  // COMMIT Q : la carte "prix recommandé" ne parle plus de "ce soir" — une
+  // villa est déjà louée ou ne le sera pas ce soir, la décision utile porte
+  // sur les nuits LIBRES à venir. Cadre : 30 prochains jours + mois suivant,
+  // même logique que le résumé mensuel du calendrier (getSeasonKey() par
+  // nuit, jamais un prix inventé si aucune référence n'a résolu).
   var villaTonightBody = document.getElementById('heroVillaTonightBody');
-  if (villaTonight && heroPrice) villaTonight.textContent = heroPrice.textContent;
   if (villaTonightBody) {
     try {
       var fr2 = (typeof lang !== 'undefined' && lang === 'fr');
       var p = (typeof getPrice === 'function') ? getPrice() : null;
-      var nowDate = new Date();
-      var dow = nowDate.getDay(); // 0=Sun, 5=Fri, 6=Sat
-      var month = nowDate.getMonth(); // 0-11
-      var isWeekend = (dow === 5 || dow === 6 || dow === 0);
-      // High season Marrakech: Oct-Apr (cool months) — proxy
-      var highSeason = (month >= 9 || month <= 3);
+      var _pricingNow = window._villaPricing;
+
+      var _countFreeAndRevenue = function(startDate, endDateInclusive) {
+        var list = (typeof clients !== 'undefined' && Array.isArray(clients)) ? clients : [];
+        var booked = {};
+        list.forEach(function(c){
+          if (c.deleted_at || (typeof isFirmBooking === 'function' && !isFirmBooking(c)) || !c.arrival || !c.departure) return;
+          var a = new Date(c.arrival); a.setHours(0,0,0,0);
+          var d = new Date(c.departure); d.setHours(0,0,0,0);
+          for (var t = a.getTime(); t <= d.getTime(); t += 86400000) booked[t] = true;
+        });
+        var freeCount = 0, revenue = 0, complete = true;
+        var endMs = endDateInclusive.getTime();
+        for (var t = startDate.getTime(); t <= endMs; t += 86400000) {
+          if (booked[t]) continue;
+          freeCount++;
+          var price = (_pricingNow && _pricingNow.ok) ? _pricingNow.seasonPrices[getSeasonKey(new Date(t))] : null;
+          if (price) revenue += price; else complete = false;
+        }
+        return { freeCount: freeCount, revenue: Math.round(revenue), complete: complete && freeCount > 0 };
+      };
+
+      var _today0 = new Date(); _today0.setHours(0,0,0,0);
+      var _in30 = new Date(_today0.getTime() + 29 * 86400000);
+      var _next30 = _countFreeAndRevenue(_today0, _in30);
+
+      var _nextMonthStart = new Date(_today0.getFullYear(), _today0.getMonth() + 1, 1);
+      var _nextMonthEnd = new Date(_today0.getFullYear(), _today0.getMonth() + 2, 0);
+      var _nextMonth = _countFreeAndRevenue(_nextMonthStart, _nextMonthEnd);
+      var _monthNames = fr2 ? ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+                            : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      var _nextMonthName = _monthNames[_nextMonthStart.getMonth()];
+
+      var _fmtEur = function(n){ return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '€'; };
+      var _heroHtml;
+      if (!_pricingNow || !_pricingNow.ok) {
+        // Aucune référence résolue — pas de prix inventé, message honnête + action.
+        var _city = (typeof getCfg === 'function' && getCfg().city) ? getCfg().city.split(',')[0].trim() : '';
+        _heroHtml = '<div style="font-size:15px;color:var(--muted);line-height:1.5">' +
+          (fr2
+            ? ('Aucune référence locale' + (_city ? (' pour ' + _city) : '') + ' — saisissez vos tarifs.')
+            : ('No local reference' + (_city ? (' for ' + _city) : '') + ' — enter your rates.')) +
+          '</div>' +
+          '<button onclick="if(typeof openSettings===\'function\')openSettings()" style="margin-top:10px;background:var(--gold);color:var(--green3);border:none;border-radius:var(--r-md);padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">' +
+          (fr2 ? 'Saisir mes tarifs' : 'Enter my rates') + '</button>';
+      } else {
+        var _thirtyLine = _next30.freeCount > 0
+          ? (fr2
+              ? (_next30.freeCount + (_next30.freeCount > 1 ? ' nuits libres' : ' nuit libre') + ' sur 30' + (_next30.complete ? (' · ' + _fmtEur(_next30.revenue) + ' au prix recommandé') : ''))
+              : (_next30.freeCount + (_next30.freeCount > 1 ? ' free nights' : ' free night') + ' of 30' + (_next30.complete ? (' · ' + _fmtEur(_next30.revenue) + ' at recommended price') : '')))
+          : (fr2 ? 'Villa complète sur les 30 prochains jours' : 'Villa fully booked for the next 30 days');
+        var _monthLine = _nextMonth.freeCount > 0
+          ? (fr2
+              ? (_nextMonthName + ' — ' + _nextMonth.freeCount + (_nextMonth.freeCount > 1 ? ' nuits libres' : ' nuit libre') + (_nextMonth.complete ? (' · ' + _fmtEur(_nextMonth.revenue) + ' au prix recommandé') : ''))
+              : (_nextMonthName + ' — ' + _nextMonth.freeCount + (_nextMonth.freeCount > 1 ? ' free nights' : ' free night') + (_nextMonth.complete ? (' · ' + _fmtEur(_nextMonth.revenue) + ' at recommended price') : '')))
+          : (fr2 ? (_nextMonthName + ' — complet') : (_nextMonthName + ' — fully booked'));
+        _heroHtml = '<div class="tonight-price" id="heroVillaTonightPrice" style="font-family:\'Cormorant Garamond\',serif;font-size:32px;color:var(--gold-ink);font-weight:500;line-height:1.2">' + _thirtyLine + '</div>' +
+          '<div style="font-size:12px;color:var(--muted);margin-top:8px">' + _monthLine + '</div>';
+      }
+
       // Competitor band
       var comps = [];
       try { comps = (typeof loadSavedCompetitors === 'function') ? loadSavedCompetitors() : []; } catch(e){}
@@ -26672,11 +27077,7 @@ function v2RenderHero() {
         }
       }
 
-      var priceTxt = p ? (p.pricePN + '€') : (heroPrice.textContent || '—');
       var chips = [];
-      if (highSeason) chips.push({icon:'🍂', txt: fr2?'saison haute':'high season', tone:'gold'});
-      else chips.push({icon:'🌱', txt: fr2?'saison normale':'normal season', tone:'muted'});
-      if (isWeekend) chips.push({icon:'📅', txt: fr2?'weekend':'weekend', tone:'gold'});
       if (compAvg !== null) {
         var dStr = compDelta > 0 ? ('+'+compDelta+'€ '+(fr2?'vs marché':'vs market'))
                  : compDelta < 0 ? (compDelta+'€ '+(fr2?'sous marché':'below market'))
@@ -26761,7 +27162,7 @@ function v2RenderHero() {
                 '<span style="color:var(--muted);border-top:1px solid var(--border);padding-top:6px;margin-top:2px">' + (fr2?'Cible villa':'Villa fair value') + '</span><span style="color:var(--gold);font-weight:600;font-family:Cormorant Garamond,serif;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">' + bench.villaFair + '€</span>' +
               '</div>' +
               (villaPrice ? '<div style="margin-top:9px;padding-top:9px;border-top:1px dashed var(--border);font-size:11px;color:var(--muted)">' + (fr2?'À ':'At ') + villaPrice + '€, ' + (fr2?'tes guests économisent ':'your guests save ') + savings + '</div>' : '') +
-              '<div style="margin-top:6px;font-size:10px;color:var(--muted);font-style:italic">' + (fr2?'Refs : Mamounia, Royal Mansour, Selman, Riad Yasmine, Beldi Country (publiées 2024-25)':'Refs: Mamounia, Royal Mansour, Selman, Riad Yasmine, Beldi Country (2024-25 public rates)') + '</div>' +
+              '<div style="margin-top:6px;font-size:10px;color:var(--muted);font-style:italic">' + String(fr2 ? bench.sourceLabel : bench.sourceLabelEn).replace(/[<>&]/g, function(c){ return c==='<'?'&lt;':c==='>'?'&gt;':'&amp;'; }) + '</div>' +
             '</div>';
         }
       } catch(e) { console.warn('hotel benchmark:', e); }
@@ -26838,10 +27239,9 @@ function v2RenderHero() {
           '</div>';
       }
 
-      villaTonight.textContent = priceTxt;
       villaTonightBody.innerHTML =
-        '<div class="tonight-price" style="font-family:Cormorant Garamond,serif;font-size:32px;color:var(--gold-ink);font-weight:500;line-height:1" id="heroVillaTonightPrice">'+priceTxt+'</div>' +
-        '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'+chipsHtml+'</div>' +
+        _heroHtml +
+        (chipsHtml ? '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'+chipsHtml+'</div>' : '') +
         alertHtml +
         bandHtml +
         whyBtn +
@@ -31317,11 +31717,13 @@ function startTour(){
       var _vf = null;
       try {
         if (typeof computeHotelBenchmark === 'function') {
-          _vf = computeHotelBenchmark({
+          var _bench2 = computeHotelBenchmark({
             bedrooms: (typeof getVillaConfig==='function'?getVillaConfig().bedrooms:5),
             guests: (function(){ var _bd=(typeof getVillaConfig==='function'?getVillaConfig().bedrooms:5)||5; var _mx=(typeof getCfg==='function'&&getCfg().maxGuests)?getCfg().maxGuests:_bd*2; return Math.max(2,Math.min(Math.round(_bd*1.2),_mx)); })(),
             basePrice: _yp
-          }).villaFair;
+          });
+          // COMMIT Q : peut renvoyer null (pas de référence résolue) — pas de prix inventé.
+          _vf = _bench2 ? _bench2.villaFair : null;
         }
       } catch(e){}
       var _hint = (FR?'Ajoutez des concurrents réels dans Settings pour comparer.':'Add real competitors in Settings to compare.');

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v404 (header ≤400px sans chevauchement, panneau ARIA aligné .aria-hero, contrôle scrollWidth harnais, COMMIT P)
-const CACHE = 'stafflo-v404';
+// Stafflo Service Worker — v405 (prix recommandé calculé — hotel_benchmarks + market-comps, calendrier nuits libres, carte Villa 30j+mois suivant, COMMIT Q)
+const CACHE = 'stafflo-v405';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
