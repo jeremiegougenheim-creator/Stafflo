@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v395 (réglages en modale, COMMIT E)
-const CACHE = 'stafflo-v395';
+// Stafflo Service Worker — v396 (bandeau lit l'habilitation réelle, COMMIT F)
+const CACHE = 'stafflo-v396';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

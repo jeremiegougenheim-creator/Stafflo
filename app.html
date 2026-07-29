@@ -6565,11 +6565,16 @@ window.renderSetupOneLiner = function(){
   </div>
 </div>
 
-<!-- TRIAL BANNER (shown when near limit) -->
+<!-- TRIAL BANNER — superseded par #subscriptionBannerTrial/#subscriptionBannerPastDue
+     (window.__ent, RPC ensure_trial) — COMMIT F. Comptait des séjours locaux et
+     affichait "€29/mois" en dur, jamais raccordé à l'abonnement réel. Commenté, pas
+     supprimé.
 <div id="trialBanner" style="display:none;background:linear-gradient(135deg,var(--green3),#1B4332);padding:10px 20px;text-align:center;position:sticky;top:54px;z-index:98">
   <span style="font-size:12px;color:#fff" id="trialBannerText"></span>
   <a href="#" onclick="upgradeToPro(event)" style="margin-left:12px;font-size:11px;background:var(--gold);color:var(--green3);padding:4px 12px;border-radius:var(--r-sm);font-weight:600;text-decoration:none;cursor:pointer" data-fr="Passer Pro →" data-en="Go Pro →">Passer Pro →</a>
 </div>
+-->
+<!-- Bandeaux réels, déjà présents plus haut dans le layout : #subscriptionBannerTrial / #subscriptionBannerPastDue (l.~4429/~4433) -->
 <script>
 const STRIPE_PAYMENT_LINK='https://buy.stripe.com/REPLACE_WITH_YOUR_LINK';
 function upgradeToPro(ev){if(ev)ev.preventDefault();try{if(window.posthog)posthog.capture('upgrade_click')}catch(e){}if(STRIPE_PAYMENT_LINK.indexOf('REPLACE_WITH')===0){toast(lang==='fr'?'Configurez votre Stripe Payment Link dans le code':'Configure your Stripe Payment Link in code');return}var s=(typeof _stafflo_session!=='undefined')?_stafflo_session:{};var email=(s.user&&s.user.email)||'';var uid=(s.user&&s.user.id)||'';var p=new URLSearchParams();if(email)p.set('prefilled_email',email);if(uid)p.set('client_reference_id',uid);window.open(STRIPE_PAYMENT_LINK+(p.toString()?'?'+p.toString():''),'_blank')}
@@ -6621,7 +6626,7 @@ const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsIn
 
 // ── Global state — declared here to avoid initialization order errors ──
 const mods = {event:false, weekend:false, lastmin:false, longstay:true};
-const MAX_FREE_STAYS = 3;
+// const MAX_FREE_STAYS = 3; // superseded par window.__ent — COMMIT F (voir updateTrialBanner ci-dessous)
 
 // When STAFFLO_PROXY is set: no API key needed, works for all users
 // When null: user must provide their own API key in Settings
@@ -19105,28 +19110,41 @@ document.addEventListener('DOMContentLoaded', function() {
         hideDemoBanner();
         clients = [];
       }
-      applyLang();
-      goTab('today');
-      chatInit();
       updateUserIndicator();
-      loadFromSupabase().then(function() {
-        renderTodayQV();
-      }).catch(function(){});
-      // ── Pull villa_settings from Supabase, then show wizard if not onboarded ──
-      pullVillaSettings().then(function() {
-        var cfg = getCfg();
-        if (!cfg.onboarded) {
-          // Defer slightly so the rest of the UI has rendered behind the modal
-          /* v178 — legacy wizard neutralisé. V3 est désormais canonique. */
-          setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
+      // COMMIT F — bootSubscription()/loadEntitlement() n'étaient appelées que depuis
+      // initAppAfterAuth() (premier login / reconnexion Gmail), jamais sur CE chemin
+      // (restauration de session — le cas le plus fréquent, à chaque rechargement d'un
+      // utilisateur déjà connecté). Résultat avant ce fix : window.__ent restait
+      // `undefined` la quasi-totalité du temps, la bannière d'abonnement ne s'affichait
+      // donc presque jamais. Même garde que initAppAfterAuth() : si le mur s'engage, on
+      // n'attend pas le rendu normal (RLS billing_gate renverrait 0 ligne de toute façon).
+      (async function(){
+        if (typeof __staffloBootSubscription === 'function') {
+          var _wallEngaged = await __staffloBootSubscription();
+          if (_wallEngaged) return;
         }
-      }).catch(function() {
-        // If pull fails, still check local cfg
-        var cfg = getCfg();
-        if (!cfg.onboarded) setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
-      });
-      // v-item37 : taux de change live, non bloquant — n'attend pas pullVillaSettings
-      if (typeof fetchAndMergeExchangeRates === 'function') fetchAndMergeExchangeRates();
+        applyLang();
+        goTab('today');
+        chatInit();
+        loadFromSupabase().then(function() {
+          renderTodayQV();
+        }).catch(function(){});
+        // ── Pull villa_settings from Supabase, then show wizard if not onboarded ──
+        pullVillaSettings().then(function() {
+          var cfg = getCfg();
+          if (!cfg.onboarded) {
+            // Defer slightly so the rest of the UI has rendered behind the modal
+            /* v178 — legacy wizard neutralisé. V3 est désormais canonique. */
+            setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
+          }
+        }).catch(function() {
+          // If pull fails, still check local cfg
+          var cfg = getCfg();
+          if (!cfg.onboarded) setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
+        });
+        // v-item37 : taux de change live, non bloquant — n'attend pas pullVillaSettings
+        if (typeof fetchAndMergeExchangeRates === 'function') fetchAndMergeExchangeRates();
+      })();
     } else {
       // No session — landing brandée (splash V3 : Set up my villa / Sign in / démo)
       applyLang();
@@ -23576,6 +23594,9 @@ window.pullVillaSettings = pullVillaSettings;
 // ════════════════════════════════════════════════════════
 // ONBOARDING & TRIAL
 // ════════════════════════════════════════════════════════
+// superseded par window.__ent (loadEntitlement()/ensure_trial) — COMMIT F.
+// Comptage local de séjours, jamais raccordé à l'abonnement réel. Commenté, pas supprimé.
+/*
 function getTrialCount() {
   return parseInt(localStorage.getItem('stafflo_trial_count') || '0');
 }
@@ -23585,6 +23606,7 @@ function incrementTrialCount() {
   localStorage.setItem('stafflo_trial_count', n);
   return n;
 }
+*/
 
 // 2-step magic-input onboarding — villa name → paste anything, ARIA handles it.
 // Legacy flags still honored so anyone who already dismissed the old tour is never re-prompted.
@@ -23598,7 +23620,10 @@ function checkOnboarding() {
     // v179 — legacy onboardModal neutralisé : V3 (launchOnboardingV3) est canonique.
     // if (modal) { modal.style.display = 'flex'; onbGoStep(1); }
   }
-  updateTrialBanner();
+  // updateTrialBanner() superseded par renderSubscriptionBanner()/renderSubscriptionSettings()
+  // (window.__ent) — COMMIT F.
+  if (typeof renderSubscriptionBanner === 'function') renderSubscriptionBanner();
+  if (typeof renderSubscriptionSettings === 'function') renderSubscriptionSettings();
 }
 
 function onbGoStep(step) {
@@ -23811,12 +23836,17 @@ function startDemo() {
   }
 }
 
+// updateTrialBanner() superseded par renderSubscriptionBanner()/renderSubscriptionSettings()
+// (window.__ent, RPC ensure_trial) — COMMIT F. Lisait un comptage localStorage jamais
+// raccordé à l'abonnement réel, affichait "€29/mois" en dur (vrai tarif : 79€ Solo,
+// 49€ fondateur). Commenté, pas supprimé.
+/*
 function updateTrialBanner() {
   const count = getTrialCount();
   const banner = document.getElementById('trialBanner');
   const bannerText = document.getElementById('trialBannerText');
   if (!banner) return;
-  
+
   if (count >= MAX_FREE_STAYS - 1 && count < MAX_FREE_STAYS) {
     // 1 stay left
     banner.style.display = 'block';
@@ -23839,12 +23869,13 @@ saveFromResult = function(g) {
   // Show upsell after 3rd save
   if (count === MAX_FREE_STAYS) {
     setTimeout(() => {
-      toast(lang==='fr' 
-        ? '🎁 3 séjours gratuits utilisés — passez Pro à €29/mois' 
+      toast(lang==='fr'
+        ? '🎁 3 séjours gratuits utilisés — passez Pro à €29/mois'
         : '🎁 3 free stays used — upgrade to Pro for €29/mo');
     }, 2000);
   }
 };
+*/
 
 function setBoardTask(key, status, btn) {
   localStorage.setItem(key, status);
@@ -39464,8 +39495,10 @@ function stopAriaMic(btn) {
   // past_due : Polar relance le paiement, l'accès reste actif pendant la grâce.
   function isActiveStatus(s){ return s === 'active' || s === 'past_due'; }
 
-  // Trois états visibles seulement : essai (none/trialing/null) → CTA upgrade ;
-  // à relancer (past_due/canceled) → CTA mise à jour moyen de paiement ; actif → pas de bannière.
+  // Quatre états — COMMIT F : essai (trialing, countdown réel) ; aucune formule
+  // (none/null, jamais souscrit — texte distinct, ne prétend pas qu'un essai tourne) ;
+  // à relancer (past_due/canceled) → CTA mise à jour moyen de paiement ; actif → pas
+  // de bannière (le cas du premier payant, géré ici : isTrial/isPastDue false → tout masqué).
   function renderSubscriptionBanner(){
     var trialEl = document.getElementById('subscriptionBannerTrial');
     var pastDueEl = document.getElementById('subscriptionBannerPastDue');
@@ -39477,11 +39510,12 @@ function stopAriaMic(btn) {
       return;
     }
     var s = ent.status;
-    var isTrial = !s || s === 'none' || s === 'trialing';
+    var isTrialing = s === 'trialing';
+    var isNoPlan = !s || s === 'none';
     var isPastDue = s === 'past_due' || s === 'canceled';
     if (trialEl) {
-      trialEl.style.display = isTrial ? 'flex' : 'none';
-      if (isTrial) {
+      trialEl.style.display = (isTrialing || isNoPlan) ? 'flex' : 'none';
+      if (isTrialing) {
         var span = document.getElementById('subscriptionBannerTrialText');
         var n = daysLeft(ent.trial_ends_at);
         var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
@@ -39495,6 +39529,10 @@ function stopAriaMic(btn) {
             span.textContent = fr ? 'Essai en cours · Passez à Solo pour garder ARIA.' : 'Trial in progress · Upgrade to Solo to keep ARIA.';
           }
         }
+      } else if (isNoPlan) {
+        var span2 = document.getElementById('subscriptionBannerTrialText');
+        var fr2 = (typeof lang !== 'undefined') ? lang === 'fr' : true;
+        if (span2) span2.textContent = fr2 ? 'Aucune formule active · Passez à Solo pour activer ARIA.' : 'No active plan · Upgrade to Solo to activate ARIA.';
       }
     }
     if (pastDueEl) pastDueEl.style.display = isPastDue ? 'flex' : 'none';
