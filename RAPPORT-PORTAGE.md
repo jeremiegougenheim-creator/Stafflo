@@ -1,3 +1,183 @@
+# SYNTHÈSE FINALE — portage `stafflo-ui-v19.html` → `app.html` (COMMITS A–J)
+
+Branche `staging`. Harnais complet relancé une dernière fois sur l'état
+cumulé des dix commits (3 runs consécutifs, `node tests/visual.mjs`) :
+`node --check` OK, delta d'accolades `-3` (baseline inchangée), **0 échec
+hors cliquet, 0 régression de cliquet** sur les 48 combinaisons. `>>>
+HARNAIS: VERT`, stable.
+
+## Les dix commits, dans l'ordre
+
+| # | Hash | Message | SW |
+|---|---|---|---|
+| A | `b4dd097` | COMMIT A — audits `auditContrast`/`auditLabels`/`auditTones` | v387 |
+| B | `56176c1` | COMMIT B — retrait des `outline:none` qui écrasaient `:focus-visible` | v388 |
+| — | `97fa34f` | COMMIT B-bis — `aria-label` sur les 4 boutons icône sans étiquette | v389 |
+| C | `2eeedb2` | COMMIT C — quatre tons sémantiques go/wait/house/alert | v390 |
+| D | `5fbfc17` | COMMIT D — surfaces/palette, contraste -69 % mais PAS à zéro | v391 |
+| — | `337d361` | COMMIT D-bis — scission `--muted-on-light`/`--muted-on-dark` | v392 |
+| — | `450e6cc` | COMMIT A-bis — corrige deux faux positifs de `auditContrast()` | v393 |
+| — | `8f968af` | COMMIT D-ter — les cinq causes du contraste restant | v394 |
+| — | `e7ebad8` | tests : resserre le cliquet baseline après D-ter (pas de code) | v394 |
+| E | `b5ea1dc` | COMMIT E — réglages en modale : notifications rapatriées, deux cases « Bientôt » | v395 |
+| F | `6508863` | COMMIT F — bandeau lit l'habilitation réelle (fix boot-order `window.__ent`) | v396 |
+| G | `95094bf` | COMMIT G — panneau ARIA : bande verte en tête, corps clair (`.aria-hero` + `.v3-hero`) | v397 |
+| I | `0e70c60` | COMMIT I — calendrier : cases riches (prénom, net/nuit, pax, flèche arr./dép.) | v398 |
+| J | `3754181` | COMMIT J — `isFirmBooking()` : documente les 74 replis morts par hoisting | v399 |
+| H | `fb433fd` | COMMIT H — bottom-nav → top-nav, ARIA hors barre, Boîte en icône header | v400 |
+
+**Note sur le sigle** : dix lettres (A→J), quinze commits git — les quatre
+correctifs (B-bis, D-bis, A-bis, D-ter) et le commit de baseline seule
+(`e7ebad8`) n'ouvrent pas de nouvelle lettre, ils corrigent ou resserrent
+la lettre en cours.
+
+## Service worker final
+
+`v400` (`sw.js`, `CACHE = 'stafflo-v400'`).
+
+## Contraste — le chiffre de départ, le chiffre final, les indéterminés
+
+- **Départ** (baseline armée au COMMIT A, avant toute correction) : de
+  **662 à 719** échecs `auditContrast()` selon la combinaison (48
+  combinaisons : 3 largeurs × 2 langues × 8 vues). `auditLabels()` : 29-30.
+- **Final** (HEAD, `tests/baseline.json` actuel) : de **86 à 94** échecs
+  selon la combinaison — soit **-87 % au pire cas, -87 % au meilleur cas**
+  (662→86, 719→94, quasi la même proportion partout). `auditLabels()` :
+  **0** sur les 48 combinaisons, à zéro depuis COMMIT B-bis.
+- **Indéterminés** (éléments sur fond en dégradé, `background-image`, non
+  mesurables par `_auditBgOf()` — catégorie distincte du cliquet,
+  informative seulement, cf. COMMIT G §6) : **25** à 390px, **71** à
+  768/1440px, stable sur les 3 runs. Ce ne sont pas des échecs — ni bons ni
+  mauvais, juste hors de portée de l'outil de mesure actuel.
+- `auditTones()` : `fautes: []` sur les 48 combinaisons depuis COMMIT C.
+- Erreurs console : `0/48`.
+- Non zéro, comme prévenu dès le rapport du COMMIT A puis reconfirmé au
+  COMMIT D : le contraste ne descend jamais à zéro dans cette série de
+  commits. Le tableau détaillé des couples restants après COMMIT D est
+  dans la section COMMIT D ci-dessous ; les cinq causes qui ont fait
+  chuter 220→86-94 sont dans COMMIT D-ter. La composition exacte du reliquat
+  actuel (86-94) n'a pas été rediagnostiquée couple par couple — seul le
+  compte global est confirmé stable.
+
+## Ce qui n'a PAS été fait, et pourquoi
+
+- **Contraste non ramené à zéro** (voir ci-dessus). Cause structurelle,
+  pas un oubli : long tail de couples à 1-7 occurrences (COMMIT D-ter),
+  plus deux angles morts documentés de l'outil de mesure lui-même
+  (`_auditBgOf()` ignore `background-image` et rejette les fonds
+  translucides sous 0,95 d'opacité — COMMIT D-ter, causes 1 et 5). Corriger
+  l'outil est un commit à part (risque de faire bouger le cliquet sur tout
+  `app.html`), volontairement pas tenté ici.
+- **Titres Cormorant en graisse 600, contours à 1,5px** (COMMIT D) :
+  scope ambigu sur 138 usages de `font-weight` répartis 300-700, classes
+  cibles (`.aicon`/`.pact`/`.chip`/`.ccard`...) qui n'existent pas dans
+  `app.html`. Pas de cible sûre identifiée, pas deviné.
+- **`#ariaFab` (orbe flottant) reste masqué** — trois règles CSS
+  `!important` non touchées (COMMIT G §0/§2). Décision produit à prendre
+  séparément, pas un effet de bord de ce portage.
+- **`.aria-hero` n'a pas été ajouté à Guests/Villa** — décision produit
+  antérieure confirmée par l'utilisateur en cours de COMMIT G, pas à
+  renverser dans un commit de couleur.
+- **Les 45 replis morts de `isFirmBooking()`** (COMMIT J) : documentés,
+  pas supprimés, pas unifiés — strangler-fig, cleanup différé (backlog).
+- **`wireV3Chips()` et `#v3HeroCounter`** (COMMIT G §4) : dead code
+  mineur commenté, pas retiré — même règle.
+- **Documentation manquante pour COMMIT E et COMMIT F** : les deux
+  portent bien le sigle dans leurs commentaires source (`grep "COMMIT E"`/
+  `"COMMIT F"` dans `app.html` le confirme), mais n'ont jamais eu leur
+  section dédiée dans ce rapport — écart de process pendant la série, pas
+  comblé rétroactivement ici pour ne pas fabriquer un récit d'itérations
+  que je n'ai pas vécu. Ce que montre le diff : COMMIT E rapatrie
+  `#notifBtn` du header vers la modale Réglages et ajoute deux cases
+  notifications désactivées « Bientôt » (aucun déclencheur n'existe
+  encore pour elles) ; COMMIT F corrige un boot-order où
+  `bootSubscription()`/`loadEntitlement()` n'étaient jamais appelées sur
+  le chemin de restauration de session (le plus fréquent), retire
+  l'ancien bandeau d'essai à compteur local et prix `€29/mois` en dur
+  (jamais raccordé à l'abonnement réel), le remplace par les bandeaux
+  réels pilotés par `window.__ent`.
+- **Architecture d'information Villa/Location** (COMMIT H, section
+  dédiée) : le document de référence place le moteur de prix (`#villaV3`)
+  comme premier sous-onglet de Villa ; l'état actuel le laisse sous
+  Clients/Location (héritage d'un travail antérieur). Écart réel, non
+  tranché — décision produit, pas mécanique.
+
+## À vérifier À LA MAIN, écran par écran
+
+**Today**
+- Alertes (`.alert-hm`) avec un vrai compte ayant des alertes actives :
+  confirmer le liseré de couleur par type (or/vert/bleu/rouille) et que le
+  survol ne fait plus disparaître la couleur (COMMIT C).
+- `Tab` dans le champ de recherche CRM : anneau doré `:focus-visible`
+  visible (COMMIT B).
+
+**ARIA (bande Today/Guests/Villa + modale)**
+- **Les deux drapeaux dormants** :
+  - `stafflo_aria_first_v1` — ON par défaut depuis v87 (`localStorage.getItem('stafflo_aria_first_v1') !== '0'`).
+    La quasi-totalité des comptes réels tournent avec ce flag ON. Effet :
+    masque `.aria-hero` classique sur Today (remplacé par `.v3-hero`,
+    désormais habillé identiquement depuis COMMIT G) ; sur Guests/Villa,
+    aucune bande ARIA n'apparaît du tout (décision produit antérieure,
+    confirmée, pas un bug).
+  - `#ariaFab` — masqué par 3 règles CSS `!important` distinctes depuis
+    v162/v167, HTML conservé pour réversibilité. Pour le réveiller :
+    retirer/adapter `#ariaFab{display:none!important}` (~l.828, ~l.2474)
+    et `#staffloShell #ariaFab{display:none!important}` (~l.2471) — décision
+    produit à part.
+- `cfgSubscriptionBtn` (modale Réglages) : ouvrir en prod/staging réel,
+  confirmer que le libellé/aria-label reflète le vrai statut
+  d'abonnement une fois `renderSubscriptionSettings()` résolu, pas juste
+  le texte de repli statique « Abonnement » (COMMIT B-bis).
+- Bandeau d'abonnement (COMMIT F) : confirmer les 4 états à l'écran avec
+  un compte réel — essai en cours (countdown), aucune formule, à
+  relancer (paiement échoué), actif (pas de bandeau).
+
+**Calendrier**
+- **Le ton « événement » n'a jamais été vu à l'écran** : aucun jour de
+  juillet 2026 (mois par défaut de la démo) ne recoupe un `MK_EVENTS`.
+  Naviguer vers un mois qui en recoupe un (ex. juin, Marrakech du Rire) et
+  confirmer visuellement la teinte `wait` sur la case concernée
+  (COMMIT I).
+- Notifications réglages : case « Arrivées et départs » cochée par défaut,
+  bouton « Activer les notifications » redemande bien la permission
+  navigateur (COMMIT E).
+
+**Villa / Clients (Location)**
+- **Écart pricing Location/Villa** : `#villaV3` (moteur de prix) vit sous
+  l'onglet Clients/Location, pas sous Villa — vérifier si c'est l'état
+  voulu ou si le document de référence (pricing en premier sous-onglet de
+  Villa) doit être suivi à la lettre. Décision produit à trancher, pas un
+  bug (COMMIT H, section « Architecture d'information »).
+- Pastilles payé/à régler (villa) : or/vert conformes aux valeurs
+  canoniques — déjà vérifié par capture (`tests/shots/villa-1440-fr.png`),
+  reconfirmer à l'œil sur un compte réel.
+
+**Réglages (modale Settings)**
+- `Tab` dans les champs iCal/IMAP et le textarea Aria Memory : anneau
+  doré visible (COMMIT B).
+- Section NOTIFICATIONS : les deux cases « Nouvelles demandes »/
+  « Messages de l'équipe » restent grisées + « Bientôt », jamais
+  cochables — confirmer qu'aucun déclencheur n'a été branché entre-temps
+  qui rendrait ce message obsolète (COMMIT E).
+
+## Captures avant/après
+
+`tests/shots/portage-before-after/` — 4 écrans (`today`, `calendar`,
+`villa`, `aria`) × 2 largeurs (390/1440) × avant/après, fr uniquement.
+« Avant » = `857b9f5` (commit juste avant COMMIT A — COMMIT A lui-même
+n'a touché aucune surface visible, cf. sa section « PHASE 4 » ci-dessous,
+donc c'est le même état visuel que juste avant COMMIT B). « Après » =
+`fb433fd` (HEAD, v400), copié depuis les captures du dernier run du
+harnais (`tests/shots/{vue}-{largeur}-fr.png`).
+
+**Kill-switch nav (`?nav2=0`)**
+- Déjà vérifié par le harnais hors captures automatiques (COMMIT H §4) :
+  restaure l'état pré-portage exact. Reconfirmer manuellement une fois sur
+  staging avant merge, l'un des rares comportements que le harnais
+  Playwright ne capture pas par défaut.
+
+---
+
 ## COMMIT A — audits (auditContrast/auditLabels/auditTones)
 
 - Porté depuis `stafflo-ui-v19.html` (lignes ~1925-2027) : `auditContrast()`,
