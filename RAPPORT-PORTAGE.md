@@ -444,3 +444,154 @@ v390 -> **v391**.
   en commentaire dans le CSS, l.60+).
 - Titres Cormorant (graisse) et contours 1,5px : scope ambigu, pas fait,
   voir section dédiée ci-dessus.
+
+## COMMIT D-bis — scission `--muted-on-light` / `--muted-on-dark` (SW v392)
+
+`--muted` servait de texte à la fois sur fond clair et sur fond sombre —
+deux corrections opposées pour un seul token, signalé comme non résolu
+au COMMIT D. Scindé en `--muted-on-light` (#706B5D, alias de l'ancien
+`--muted`) et `--muted-on-dark` (#B6B2A7, mesuré contre les deux fonds
+sombres alors repérés via `auditContrastGroups()` : #1D4D3A -> 4,56:1,
+#0F2318 -> 7,78:1). Cliquet resserré sur les 48 combinaisons, contraste
+en baisse partout (~220 -> ~214-222 selon écran), aucune régression.
+
+## COMMIT D-ter — les cinq causes du contraste restant (SW v394)
+
+Après D-bis, `auditContrastGroups()` montrait ~220 échecs par écran,
+mais concentrés sur une poignée de couples — pas 220 bugs isolés. Cinq
+causes distinctes, traitées dans ce commit :
+
+### 1. L'or comme texte sur fond clair
+
+`#C9963A` ne fait que 2,46:1 sur crème et 2,66:1 sur blanc — jamais
+suffisant pour du texte ou une icône porteuse de sens. Remplacé par
+`--gold-ink` (#8e6414, 4,89-5,27:1 selon le fond clair réel) partout où
+l'or portait du texte sur un fond vérifié clair : `.brief-title`,
+`.v5-card-rev`, `.v3-cal-when`, `.v4-market-row.is-you .v4-market-name`,
+`.v3-stat-accent`/`.v3-stat-clk:hover`, `.v3-welcome-eyebrow`,
+`.onbV3-logo em`, `.tms-due`/`.tms-go`, `#setupOneLinerProgress`/
+`#setupProgress`, le bouton « Ouvrir les réglages », `#liveFlightBtn`,
+7 icônes Tabler de `.hm-hdr-lbl`/`.v2-card-title`, les deux
+`.settings-title` inline (IA, ARIA Mémoire), le lien « réglages/
+settings », les labels de mois du calendrier (ruban + mini-calendrier),
+le countdown « DANS Nj » des guests à venir, `renderDemoMonthCard()`
+(tuile + pastille + « Reste à régler »), la pastille « 🟢 N arrivée(s) »,
+et deux règles `!important` qui écrasaient encore le fix sur
+`.tonight-price`/`.market-alert` (repointées vers `--s-gold-ink`, déjà
+défini et déjà utilisé par `.bk2-note-tag`). `.bk2-task-flag` et
+`.bk2-rota-state.todo` (`var(--s-gold)`) repointés pareil.
+
+**Volontairement laissé en or** : chaque site où le fond réel est vert
+sombre, vérifié un par un (le CSS du COMMIT D prévenait : deux erreurs de
+contexte déjà commises ce jour-là). `.af1-orb-letter` et `.aria-badge`
+(fond `.aria-hero`/`.chat-header`/`.aria-modal-hd` = vert plein) ;
+`.aria-hero-counter-num` (fond `.aria-hero`, dégradé) ; `fl-val.gold`/
+`.price-season` (vert #1B4332, déjà signalé non résolu volontairement) ;
+les deux logos "Staff**lo**" d'onboarding (`#owStep0`, `#owHeader` — fond
+`linear-gradient(...,var(--green3),...)`). Ces derniers apparaissent dans
+`auditContrastGroups()` comme « or sur crème/carte » alors que le fond
+réel est sombre : `_auditBgOf()` ne lit que `background-color`, pas
+`background-image`, et remonte donc jusqu'au premier ancêtre à
+`background-color` opaque — qui se trouve être clair. Angle mort de
+l'outil de mesure, pas un bug d'affichage ; non touché.
+
+### 2. Les gris-verts sur vert sombre
+
+Les 3 couples signalés (`rgb(141,161,153)`/`#1B4332` 4,06 ;
+`rgb(111,123,116)`/`#0F2318` 3,74 ; `rgb(118,142,132)`/`#1B4332` 3,16)
+n'étaient PAS `--muted-on-dark` — c'étaient des `rgba(255,255,255,.4)`
+et `.5` en dur (`.qv-stat-lbl`, `.qv-meals-lbl`, `.bot-nav .nav-item`,
+puis en élargissant : `.bd-lbl`, `.fl-lbl`, `.hstat-lbl`, `.crm-stat
+label`, `.price-lbl-home`, et une dizaine de labels inline — CONNEXION
+EMAIL, INTÉGRATIONS, INBOX, PRIX CE SOIR, MESSAGE PRÊT, Net vous/Par
+nuit — jamais reclassés au COMMIT D-bis). `--muted-on-dark` (#B6B2A7)
+a été re-vérifié empiriquement contre un troisième vert réel non couvert
+par D-bis, `#1B4332` (fond de `.qv-inhouse`) : 5,23:1, au-dessus des deux
+autres — la valeur du token n'était donc pas en cause. Les 18 sites
+repointés dessus (16 réels + 2 placeholders `::placeholder`, harmless).
+Cliquet : ces 3 couples ont disparu de `auditContrastGroups()`.
+
+### 3. Deux gris en dur, hors token
+
+`#8A8678` (14 sites : bouton langue onboarding, `.tms-s`, labels
+`onbV3-*`) et `#8a8a7a` (34 sites : paywall, onboarding, staff picker,
+détail lead, liste clients) ne passaient par aucune variable. Repointés
+vers `--muted-on-light` (tous vérifiés sur fond clair — cartes/panneaux
+blancs, crème ou `var(--card)`). Les usages en `background`/`border`
+(badges COLD/LOST) laissés intacts : hors périmètre (c'est la couleur de
+texte qui manquait de token, pas le badge).
+
+### 4. WhatsApp — couleur de marque tierce
+
+`#25D366` + texte blanc (1,98:1, ~10 éléments) est la couleur officielle
+WhatsApp, pas un choix de palette Stafflo — non modifiable. Exception
+ajoutée directement dans `auditContrast()` (app.html) : tout élément dont
+le fond composité tombe sur `rgb(37,211,102)` (± 2/canal) est ignoré par
+l'audit, avec commentaire expliquant pourquoi. Disparu du rapport.
+
+### 5. Blanc sur blanc, ratio 1,02 — diagnostiqué, PAS corrigé
+
+`rgb(255,255,255)` sur `rgb(255,253,248)` (carte), ~10 éléments par
+écran, ex. `16 (BUTTON)`, `→ (SPAN)`, `23 (BUTTON)`.
+
+- **Éléments exacts** : les boutons de jour du calendrier
+  (`data-cal-day="..."`, `renderRibbon()` l.~7963 et `buildRichSummary()`
+  / `cardCalendarMini` l.~34640) pour les jours arrivée/départ, plus leur
+  span flèche (`→`/`←`) imbriqué qui hérite de la même couleur.
+- **Règle qui pose le blanc** : `fg = '#fff'` — couleur en dur dans le
+  template JS (`if (info.type === 'arrival') { bg = 'rgba(60,108,17,.85)';
+  fg = '#fff'; ... }`, et `departure` avec `rgba(163,45,45,.78)`).
+- **Règle qui pose le fond** : `background:'+bg+'` — même template,
+  `rgba(60,108,17,.85)` (arrivée) ou `rgba(163,45,45,.78)` (départ) :
+  volontairement semi-transparent, pas une couleur en dur oubliée.
+- **Conditionnel ou en dur ?** En dur (littéral rgba dans le template),
+  mais c'est le fond voulu — pas un état manquant.
+- **Racine du faux positif** : `_auditBgOf()` (COMMIT A) n'accepte un
+  fond que si `c.a >= 0.95` ; à `.85`/`.78` d'opacité, il le rejette et
+  remonte à l'ancêtre suivant — la carte `.v2-card` (`--card`, quasi
+  blanche) — au lieu de composer la couleur avec ce qu'il y a dessous.
+  Résultat : blanc comparé au mauvais fond. Le rendu réel (blanc sur vert/
+  rouge à 85%/78% d'opacité, sur fond carte) est parfaitement lisible.
+- **Même famille que les 21 `aria-hero-name` du COMMIT D ?** Non — famille
+  voisine (même fonction `_auditBgOf()` en cause) mais racine différente :
+  `aria-hero-name` est un angle mort sur `background-image` (dégradé
+  jamais lu comme fond), celui-ci est un angle mort sur le SEUIL d'opacité
+  (`.85`/`.78` rejetés comme « pas assez opaque » au lieu d'être composés).
+  Deux limites distinctes du même outil de mesure, pas le même bug.
+- **Préexistant ou introduit par C/D ?** Préexistant — `renderRibbon()`/
+  `buildRichSummary()` datent d'avant le chantier contraste, et
+  `_auditBgOf()` a ce seuil `>= 0.95` depuis le COMMIT A. Rien à voir avec
+  C ou D : c'est l'audit qui vient de le révéler, pas une régression.
+  Pas touché dans ce commit (hors périmètre explicite).
+
+### Sortie du harnais (6 critères)
+
+1. `node --check` : **OK**
+2. Delta d'accolades : **-3** (inchangé)
+3. `auditContrast()` : **114-146 selon combinaison** (était 214-222 avant
+   ce commit) — cliquet resserré sur les 48 combinaisons, aucune
+   régression. Toujours pas zéro : long tail de couples à 1-3 occurrences
+   (voir `auditContrastGroups()` en direct) et les faux positifs de
+   `_auditBgOf()` documentés ci-dessus (causes 1 et 5), non retentés ici.
+4. `auditLabels()` : **0** (inchangé)
+5. `auditTones()` : `fautes: []` (inchangé)
+6. Erreurs console : **0/48**
+
+`>>> HARNAIS: VERT`.
+
+### Service worker
+
+v393 -> **v394**.
+
+### Ce qui reste douteux / à faire à la main
+
+- Long tail de `auditContrastGroups()` (couples à 1-7 occurrences,
+  fonds divers) — pas traité, pas la cause principale.
+- Cause 5 (blanc sur blanc / faux positif `_auditBgOf()` sous 0,95
+  d'opacité) : diagnostiquée, pas corrigée. Corriger proprement demande
+  de faire composer `_auditBgOf()` avec l'ancêtre au lieu de rejeter un
+  fond translucide — changement de l'audit lui-même, à faire dans un
+  commit dédié (risque de changer le compte de cliquet sur tout
+  `app.html`, pas juste ces boutons).
+- `--muted` (alias non préfixé) reste défini pour compat ; tout nouveau
+  code doit utiliser `--muted-on-light`/`--muted-on-dark` explicitement.

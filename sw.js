@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v393 (COMMIT A-bis, auditContrast() : composition transparence + détection dégradés)
-const CACHE = 'stafflo-v393';
+// Stafflo Service Worker — v394 (cinq causes du contraste, COMMIT D-ter)
+const CACHE = 'stafflo-v394';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
