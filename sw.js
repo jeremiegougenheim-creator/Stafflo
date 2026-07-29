@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v397 (panneau ARIA : bande verte en tête, corps clair, COMMIT G)
-const CACHE = 'stafflo-v397';
+// Stafflo Service Worker — v398 (calendrier : cases riches prénom/net-nuit/pax/flèche, COMMIT I)
+const CACHE = 'stafflo-v398';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

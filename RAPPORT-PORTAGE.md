@@ -814,3 +814,119 @@ v396 -> **v397**.
 - `wireV3Chips()` et le compteur `#v3HeroCounter` commenté (§4) : dead
   code mineur laissé en l'état par choix (strangler-fig), à revisiter
   seulement dans une session de cleanup dédiée.
+
+## COMMIT I — calendrier : cases riches (SW v398)
+
+### Recon d'abord (demandé explicitement après les deux surprises de G)
+
+Harnais relancé, captures `calendar-390-fr.png`/`calendar-1440-fr.png` ouvertes
+avant tout grep. Contrairement à G, **pas de piège** : un seul rendu, aucun
+drapeau ne le gouverne.
+
+- Composant affiché : `#tab-calendar` → `window.renderCalendarTab()` (une
+  seule IIFE, ~l.8230-8380) → trois hôtes : `#calTabStrip` (bande 14 jours,
+  inchangée dans ce commit), `#calTabGrid` (grille du mois — **la cible**),
+  `#calTabUpcoming` (liste, inchangée).
+- Aucun `navV2On()` ni `stafflo_aria_first_v1` autour de `renderCalendarTab`
+  ou `#tab-calendar` — confirmé par grep ciblé après la capture, pas avant.
+- Deux AUTRES calendriers existent dans le fichier, ni l'un ni l'autre visible
+  ici — notés pour mémoire, non touchés :
+  - `staffloCal` (module séparé, `#calBody`/`#calMonthLbl`) : vit dans
+    `#cardCalendarMini`, une carte de l'ancien dashboard v2 Guests —
+    doublement dormante (masquée par `#guestsV5` par défaut ET
+    `data-collapsed="1"` sur sa propre carte).
+  - `renderV3Calendar()` : liste « prochaines arrivées » sur le dashboard v3
+    de Today, pas une grille.
+  - Les cellules `data-cal-day`/`staffloCal.tap()` (clic → modale jour) sont
+    un module tiers, appelé par `onclick` sur les cases mais dont la logique
+    interne n'a pas été touchée — le clic continue de fonctionner
+    exactement comme avant.
+
+### Ce qui a changé
+
+`renderMonth(occ)` (dans l'IIFE de `renderCalendarTab`) : les cases
+(`.cal-grid-d` → **`.cal-case`**, renommée — seul usage dans tout le fichier,
+vérifié par grep avant de renommer) portent maintenant :
+
+- **Prénom en gras** : premier mot de `c.name` (`.split(/\s+/)[0]`).
+- **Net par nuit** : réutilise `nights(c)`/`netAmt(c)` (déjà les fonctions de
+  la card in-house de Today — même formule partout, y compris la bascule
+  `confirmation_email` qui prime sur prix×commission). `netAmt(c)` retourne 0
+  si `c.price` est vide — **pas de ligne prix dans ce cas**, jamais un « 0€ »
+  affiché (même garde que le `v116` de `renderTodayStatsStrip`, réutilisée
+  ici plutôt que réinventée).
+- **Icône personnes + compte** : `<i class="ti ti-users">` + `c.guests`,
+  même icône que les chips `bk2-chip` existants (cohérence, pas une nouvelle
+  convention).
+- **Flèche d'arrivée/départ** : `ti-plane-arrival`/`ti-plane-departure` (déjà
+  utilisée ailleurs pour « Prochaines arrivées ») — seulement sur les jours
+  `arr`/`dep`, absente sur un jour `stay` (pas d'événement d'arrivée/départ
+  ce jour-là).
+- **Infobulle complète** (`title` + `aria-label`, identiques) : format
+  `{j} {mois court} — {type} · {nom complet} · {pax} pers. · {prix total}€`.
+  Vérifié en conditions réelles (harnais démo) :
+  `"17 juil. — arrivée · Famille Bianchi · 6 pers. · 17 500€"`,
+  `"24 juil. — départ · Famille Bianchi · 6 pers. · 17 500€"`. Le prix de
+  l'infobulle est le **total du séjour** (`c.price`, guest-paid), distinct du
+  net/nuit affiché dans la case (host payout) — les deux se complètent au
+  lieu de répéter le même chiffre, cf. CLAUDE.md §6 (distinction guest-paid /
+  host-payout).
+- **Événement** — overlay ajouté (`isInEventWindow()`, déjà écrite pour le
+  module `staffloCal`, réutilisée telle quelle) : seulement sur un jour SANS
+  réservation (`!info`), jamais prioritaire sur une case occupée. Aucun jour
+  de juillet 2026 n'en porte (MK_EVENTS ne couvre pas ce mois) — vérifié à
+  l'écran, pas un oubli.
+- **Quatre tons (COMMIT C)** : `stay`→go, `dep`→alert, `event`→wait.
+  **Arrivée en vert plein** (`var(--green)`, blanc, 11,08:1) — volontairement
+  HORS du jeu des 4 tons (pas de `data-tone`), le jour le plus important du
+  calendrier mérite plus qu'une teinte pâle. Anneau or (`.today`,
+  `box-shadow:inset 0 0 0 2px var(--gold)`) cumulable avec n'importe lequel
+  des tons ci-dessus.
+- **Tailles** : 96px de haut ; 72px sous 860px de large (`@media(max-width:
+  860px)`) — vérifié par mesure directe (`getComputedStyle`) aux deux côtés
+  du seuil : 860px → 72px, 861px → 96px, exact.
+- **Légende** mise à jour pour refléter les nouvelles couleurs (l'ancienne
+  ne correspondait plus à rien : Arrivée était en dégradé or, Départ en
+  pêche clair — aucun rapport avec les 4 tons du COMMIT C). Ajout d'une
+  entrée « Événement », absente jusqu'ici alors que `.cal-grid-d` n'avait
+  jamais porté ce cas.
+
+Rien touché dans `render14Strip()` (bande 14 jours, restée à son format
+compact existant — pas dans le périmètre demandé) ni dans `buildOcc()`
+(la carte occupation reste construite à l'identique ; l'overlay événement
+est calculé à la volée dans la boucle de rendu, pas injecté dans la map,
+pour ne pas toucher à une fonction utilisée ailleurs par la bande 14 jours).
+
+### Sortie du harnais (6 critères)
+
+1. `node --check` : **OK**
+2. Delta d'accolades : **-3** (inchangé)
+3. `auditContrast()` : **88 (390px), 87 (768/1440px)** sur `calendar` —
+   identique à la baseline pré-commit, cliquet resserré ailleurs (les
+   anciens tokens ad hoc `--s-gold-tint`/`#f8e7d6`/`rgba(29,77,58,.18)`
+   étaient moins bien mesurés que les tokens `--t-*` déjà audités du
+   COMMIT C ; -1 échec sur plusieurs combinaisons `today`/`aria` en prime,
+   sans lien direct avec le calendrier — effet de bord positif du
+   remplacement, pas recherché).
+4. `auditLabels()` : **0** (inchangé)
+5. `auditTones()` : `fautes: []` — aucune des 3 teintes d'état (`go`/`dep`
+   alerte/`event` wait) n'est posée sur un `.aicon`/`.pact`/`.btn` ; l'arrivée
+   (vert plein) n'a délibérément pas de `data-tone`, hors du système des 4.
+6. Erreurs console : **0/48**
+
+`>>> HARNAIS: VERT`.
+
+### Service worker
+
+v397 -> **v398**.
+
+### Ce qui reste douteux / à faire à la main
+
+- Aucun jour de juillet 2026 (le mois par défaut de la démo) ne recoupe un
+  MK_EVENTS — le ton `event`/wait n'a pas pu être vérifié à l'écran, seulement
+  par lecture de code et logique (même fonction `isInEventWindow()` déjà
+  utilisée ailleurs). À re-vérifier visuellement sur un mois qui recoupe un
+  festival (ex. naviguer vers juin pour Marrakech du Rire) avant mise en prod.
+- `staffloCal.tap()` (modale au clic) n'a pas été relu en détail — le
+  comportement au clic est inchangé par construction (aucune ligne de cette
+  fonction modifiée), mais pas ré-audité pour ce commit.

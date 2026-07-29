@@ -2675,9 +2675,40 @@ body.no-frame #staffloShell .bot-nav{
 #calTabStrip .cal-day.today{background:var(--s-gold) !important;border-color:var(--s-gold) !important}
 #calTabStrip .cal-day.today,#calTabStrip .cal-day.today *{color:var(--s-green-dark) !important}
 .v2-card[data-no-collapse="1"] .v2-card-title{cursor:default !important}
-.cal-grid-d.arr{background:var(--s-gold-tint) !important;border:1.5px solid var(--s-gold) !important;font-weight:700 !important;color:#8c6622 !important}
-.cal-grid-d.stay{background:rgba(29,77,58,.18) !important;color:var(--s-green-dark) !important}
-.cal-grid-d.dep{background:#f8e7d6 !important;color:#8c6622 !important}
+/* COMMIT I — cases du calendrier mensuel (#calTabGrid), portées de simples
+   numéros de jour vers des cases riches. Quatre tons (COMMIT C) : séjour=go,
+   départ=alert, événement=wait ; arrivée=vert plein (--green), hors du jeu des
+   4 — le jour le plus important du calendrier mérite plus qu'une teinte.
+   Anneau or du jour courant (.today) indépendant du ton, cumulable avec
+   n'importe lequel des quatre. */
+.cal-case{display:flex !important;flex-direction:column !important;align-items:stretch !important;
+  justify-content:flex-start !important;text-align:left !important;height:96px !important;
+  padding:5px 6px !important;border:1px solid var(--border) !important;border-radius:var(--r-sm) !important;
+  background:#fff !important;color:var(--ink) !important;cursor:pointer !important;font-family:inherit !important;
+  overflow:hidden !important;transition:transform .1s !important}
+.cal-case:hover{transform:translateY(-1px) !important}
+.cal-case-top{display:flex !important;align-items:center !important;justify-content:space-between !important;
+  font-size:10px !important;opacity:.7 !important;line-height:1 !important}
+.cal-case-daynum{font-weight:600 !important}
+.cal-case-arrow .ti{font-size:12px !important;line-height:1 !important}
+.cal-case-name{font-size:11px !important;font-weight:700 !important;margin-top:4px !important;
+  white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;line-height:1.25 !important}
+.cal-case-meta{display:flex !important;align-items:center !important;gap:6px !important;margin-top:auto !important;
+  font-size:10px !important;line-height:1 !important;flex-wrap:wrap !important}
+.cal-case-net{font-weight:600 !important}
+.cal-case-pax{display:inline-flex !important;align-items:center !important;gap:2px !important;opacity:.85 !important}
+.cal-case-pax .ti{font-size:11px !important}
+.cal-case.stay{background:var(--t-go-bg) !important;color:var(--t-go-fg) !important;border-color:transparent !important}
+.cal-case.dep{background:var(--t-alert-bg) !important;color:var(--t-alert-fg) !important;border-color:transparent !important}
+.cal-case.event{background:var(--t-wait-bg) !important;color:var(--t-wait-fg) !important;border-color:transparent !important}
+.cal-case.arr{background:var(--green) !important;color:#fff !important;border-color:transparent !important}
+.cal-case.arr .cal-case-top,.cal-case.arr .cal-case-pax{opacity:.85 !important}
+.cal-case.today{box-shadow:inset 0 0 0 2px var(--gold) !important}
+@media(max-width:860px){
+  .cal-case{height:72px !important;padding:4px 5px !important}
+  .cal-case-name{font-size:10px !important}
+  .cal-case-meta{font-size:9px !important}
+}
 
 /* Villa pricing additive */
 .tonight-price{font-family:var(--s-serif) !important;font-size:46px !important;font-weight:500 !important;color:var(--s-gold-ink) !important;letter-spacing:-1px !important;line-height:1 !important}
@@ -6016,11 +6047,15 @@ window.renderSetupOneLiner = function(){
       </div>
     </div>
     <div class="v2-card-body" id="calTabGrid" style="padding:8px 4px 8px"></div>
+    <!-- COMMIT I — quatre tons (COMMIT C : séjour=go, départ=alert, événement=wait)
+         + arrivée en vert plein (hors des 4, le jour le plus important) + anneau
+         or du jour courant. Remplace l'ancien jeu de couleurs ad hoc. -->
     <div class="cal-legend" style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:#7a7567;padding:10px 4px 2px">
-      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);background:var(--s-gold-tint);border:1.5px solid var(--s-gold)"></span><span data-fr="Arrivée" data-en="Arrival">Arrivée</span></span>
-      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);background:#f8e7d6"></span><span data-fr="Départ" data-en="Departure">Départ</span></span>
-      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);background:rgba(29,77,58,.18)"></span><span data-fr="Séjour en cours" data-en="Stay in progress">Séjour en cours</span></span>
-      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);border:1.5px solid var(--s-gold);box-shadow:inset 0 0 0 1.5px var(--s-gold)"></span><span data-fr="Aujourd'hui" data-en="Today">Aujourd'hui</span></span>
+      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);background:var(--green)"></span><span data-fr="Arrivée" data-en="Arrival">Arrivée</span></span>
+      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);background:var(--t-alert-bg)"></span><span data-fr="Départ" data-en="Departure">Départ</span></span>
+      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);background:var(--t-go-bg)"></span><span data-fr="Séjour en cours" data-en="Stay in progress">Séjour en cours</span></span>
+      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);background:var(--t-wait-bg)"></span><span data-fr="Événement" data-en="Event">Événement</span></span>
+      <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:var(--r-xs);border:1.5px solid var(--gold);box-shadow:inset 0 0 0 1.5px var(--gold)"></span><span data-fr="Aujourd'hui" data-en="Today">Aujourd'hui</span></span>
     </div>
   </div>
 
@@ -8285,11 +8320,21 @@ window.staffloCal = staffloCal;
     parts.push('</div>');
     host.innerHTML = parts.join('');
   }
+  /* COMMIT I — cases riches (prénom/net-nuit/pax/flèche), portées ici depuis un
+     simple numéro de jour. Quatre tons (COMMIT C) : séjour=go, départ=alert,
+     événement=wait ; arrivée=vert plein, hors du jeu des 4 (plus fort qu'une
+     simple teinte — c'est le jour le plus important du calendrier). Anneau or
+     du jour courant indépendant du ton, cumulable avec n'importe lequel des 4.
+     N'invente aucun prix : nights()/netAmt() (déjà utilisées par la card
+     in-house de Today, même formule) ; si net ou nuits manquent, pas de ligne
+     prix — jamais un 0€ inventé. */
   function renderMonth(occ){
     var grid = document.getElementById('calTabGrid'); var lbl = document.getElementById('calTabMonthLbl');
     if (!grid) return;
-    var months = fr() ? ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'] : ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    var dayNames = fr() ? ['L','M','M','J','V','S','D'] : ['M','T','W','T','F','S','S'];
+    var FR = fr();
+    var months = FR ? ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'] : ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var monthsShort = FR ? ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'] : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var dayNames = FR ? ['L','M','M','J','V','S','D'] : ['M','T','W','T','F','S','S'];
     if (lbl) lbl.textContent = months[s.month] + ' ' + s.year;
     var first = new Date(s.year, s.month, 1);
     var last = new Date(s.year, s.month + 1, 0);
@@ -8304,14 +8349,46 @@ window.staffloCal = staffloCal;
       var dateObj = new Date(s.year, s.month, d);
       var key = toKey(dateObj);
       var info = occ[key];
-      var cls = 'cal-grid-d';
+      var g = info && info.guest;
+      // Un événement n'est qu'un fond, jamais prioritaire sur une réservation réelle.
+      var ev = (!info && typeof isInEventWindow === 'function') ? isInEventWindow(dateObj) : null;
+      var cls = 'cal-case';
       if (info && info.type === 'arr') cls += ' arr';
       else if (info && info.type === 'dep') cls += ' dep';
       else if (info && info.type === 'stay') cls += ' stay';
+      else if (ev) cls += ' event';
       var isToday = (key === todayKey);
-      var ttl = info && info.guest ? escAttr(info.guest.name||'') : '';
-      var extra = isToday ? 'box-shadow:inset 0 0 0 2px var(--gold);' : '';
-      parts.push('<button class="' + cls + '" data-cal-day="' + key + '" onclick="if(window.staffloCal&&staffloCal.tap)staffloCal.tap(\'' + key + '\')" title="' + ttl + '" style="border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 0;min-height:30px;font-size:11px;font-weight:' + (isToday?'700':'500') + ';cursor:pointer;font-family:inherit;background:#fff;color:var(--ink);' + extra + '">' + d + '</button>');
+      if (isToday) cls += ' today';
+      var dateLbl = d + ' ' + monthsShort[s.month];
+      var content = '<div class="cal-case-top"><span class="cal-case-daynum">' + d + '</span>';
+      var ttl = dateLbl;
+      if (g) {
+        var typeWord = info.type === 'arr' ? (FR ? 'arrivée' : 'arrival') : info.type === 'dep' ? (FR ? 'départ' : 'departure') : (FR ? 'séjour' : 'stay');
+        var arrowIcon = info.type === 'arr' ? 'ti-plane-arrival' : info.type === 'dep' ? 'ti-plane-departure' : '';
+        var firstName = (g.name || '').trim().split(/\s+/)[0] || '—';
+        var n = (typeof nights === 'function') ? nights(g) : 0;
+        var net = (typeof netAmt === 'function') ? netAmt(g) : 0;
+        var netPN = (n > 0 && net > 0) ? Math.round(net / n) : null;
+        var netStr = netPN ? netPN.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '€' : '';
+        var pax = g.guests ? (+g.guests || 0) : 0;
+        var priceTotal = (+g.price || 0) > 0 ? Math.round(g.price).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + '€' : '';
+        ttl = dateLbl + ' — ' + typeWord + ' · ' + (g.name || '') +
+          (pax ? ' · ' + pax + (FR ? ' pers.' : ' guests') : '') +
+          (priceTotal ? ' · ' + priceTotal : '');
+        content += arrowIcon ? '<span class="cal-case-arrow"><i class="ti ' + arrowIcon + '"></i></span>' : '';
+        content += '</div><div class="cal-case-name">' + escTxt(firstName) + '</div>' +
+          '<div class="cal-case-meta">' +
+          (netStr ? '<span class="cal-case-net">' + netStr + '</span>' : '') +
+          (pax ? '<span class="cal-case-pax"><i class="ti ti-users"></i>' + pax + '</span>' : '') +
+          '</div>';
+      } else if (ev) {
+        var evLabel = FR ? ev.label_fr : ev.label_en;
+        ttl = dateLbl + ' — ' + evLabel;
+        content += '</div>';
+      } else {
+        content += '</div>';
+      }
+      parts.push('<button class="' + cls + '" data-cal-day="' + key + '" onclick="if(window.staffloCal&&staffloCal.tap)staffloCal.tap(\'' + key + '\')" title="' + escAttr(ttl) + '" aria-label="' + escAttr(ttl) + '">' + content + '</button>');
     }
     parts.push('</div>');
     grid.innerHTML = parts.join('');
