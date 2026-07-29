@@ -5961,12 +5961,13 @@ window.renderSetupOneLiner = function(){
   <div class="ctrl-strip">
     <div class="cs-grp">
       <span class="cs-lbl" data-fr="SAISON" data-en="SEASON">SAISON</span>
-      <select class="cs-sel" id="season" onchange="this.dataset.autoset='manual';updatePrice()">
-        <option value="650" data-fr="Basse" data-en="Low">Basse</option>
-        <option value="750" selected data-fr="Normale" data-en="Normal">Normale</option>
-        <option value="850" data-fr="Haute" data-en="High">Haute</option>
-        <option value="950" data-fr="Très haute" data-en="Very High">Très haute</option>
-        <option value="1500">Peak</option>
+      <select class="cs-sel" id="season" disabled onchange="this.dataset.autoset='manual';updatePrice()" data-title-fr="Tarifs saisonniers non configurés" data-title-en="Seasonal rates not configured" title="Tarifs saisonniers non configurés" aria-label="Saison">
+        <!-- COMMIT R2 : plus de palier en dur ici — populateSeasonSelect() (app.html)
+             peuple ces <option> au runtime depuis cfg.priceLow/priceNormal/priceHigh/
+             priceVeryhigh/pricePeak. Tant que ces valeurs ne sont pas configurées,
+             le select reste désactivé sur ce placeholder "?" (CLAUDE.md §6) — jamais
+             de prix fabriqué. -->
+        <option value="" data-fr="?" data-en="?">?</option>
       </select>
     </div>
     <div class="cs-grp">
@@ -8351,7 +8352,7 @@ var staffloCal = (function(){
       try {
         if (typeof getPrice === 'function' && document.getElementById('season')) {
           var d = getPrice();
-          liveTonight = ' Prix calculé actuellement : ' + d.pricePN + '€/nuit (base ' + d.base + '€).';
+          if (d) liveTonight = ' Prix calculé actuellement : ' + d.pricePN + '€/nuit (base ' + d.base + '€).';
         }
       } catch(e){}
 
@@ -19548,6 +19549,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(function(){});
         // ── Pull villa_settings from Supabase, then show wizard if not onboarded ──
         pullVillaSettings().then(function() {
+          // COMMIT R2 : cfg.price* peut arriver après le premier populateSeasonSelect()
+          // (session neuve, localStorage vide) — repeupler une fois la base résolue.
+          if (typeof populateSeasonSelect === 'function') populateSeasonSelect();
+          if (typeof updatePrice === 'function') updatePrice();
           var cfg = getCfg();
           if (!cfg.onboarded) {
             // Defer slightly so the rest of the UI has rendered behind the modal
@@ -20297,6 +20302,70 @@ function isWeekendNow(date) {
   return (d === 5 || d === 6);
 }
 
+// COMMIT R2 : unique source des 5 paliers saisonniers — cfg.price* (villa_settings
+// price_low/price_normal/price_high/price_veryhigh/price_peak côté base). Ni le
+// <select id="season"> ni applyAutoPricing() ne doivent plus porter ces nombres
+// en dur ; les deux lisent cette table.
+var SEASON_TIERS = [
+  { cfgKey: 'priceLow',      key: 'low',      fr: 'Basse',      en: 'Low' },
+  { cfgKey: 'priceNormal',   key: 'normal',   fr: 'Normale',    en: 'Normal' },
+  { cfgKey: 'priceHigh',     key: 'high',     fr: 'Haute',      en: 'High' },
+  { cfgKey: 'priceVeryhigh', key: 'veryhigh', fr: 'Très haute', en: 'Very High' },
+  { cfgKey: 'pricePeak',     key: 'peak',     fr: 'Peak',       en: 'Peak' }
+];
+window.SEASON_TIERS = SEASON_TIERS;
+
+// Populate #season's <option>s at runtime from cfg.price* — never a hardcoded
+// number. If any tier hasn't resolved yet (not configured / not synced), the
+// select stays disabled on the "?" placeholder (CLAUDE.md §6) rather than
+// falling back to an invented price.
+function populateSeasonSelect() {
+  var seasonEl = document.getElementById('season');
+  if (!seasonEl) return;
+  var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+  var fr = (typeof lang !== 'undefined' && lang === 'fr');
+  var prevValue = seasonEl.value;
+  var prevAutoset = seasonEl.dataset.autoset || '';
+  var vals = SEASON_TIERS.map(function(t){
+    var v = cfg[t.cfgKey];
+    return (typeof v === 'number' && v > 0) ? v : null;
+  });
+  var complete = vals.every(function(v){ return v !== null; });
+
+  if (!complete) {
+    if (seasonEl.value !== '' || seasonEl.options.length !== 1) {
+      seasonEl.innerHTML = '<option value="" data-fr="?" data-en="?">?</option>';
+    }
+    seasonEl.disabled = true;
+    seasonEl.dataset.autoset = '';
+    seasonEl.dataset.titleFr = 'Tarifs saisonniers non configurés';
+    seasonEl.dataset.titleEn = 'Seasonal rates not configured';
+    seasonEl.dataset.ariaLabelFr = 'Tarifs saisonniers non configurés';
+    seasonEl.dataset.ariaLabelEn = 'Seasonal rates not configured';
+    seasonEl.title = fr ? seasonEl.dataset.titleFr : seasonEl.dataset.titleEn;
+    seasonEl.setAttribute('aria-label', fr ? seasonEl.dataset.ariaLabelFr : seasonEl.dataset.ariaLabelEn);
+    return;
+  }
+
+  seasonEl.disabled = false;
+  delete seasonEl.dataset.titleFr;
+  delete seasonEl.dataset.titleEn;
+  seasonEl.removeAttribute('title');
+  seasonEl.dataset.ariaLabelFr = 'Saison';
+  seasonEl.dataset.ariaLabelEn = 'Season';
+  seasonEl.setAttribute('aria-label', fr ? 'Saison' : 'Season');
+  seasonEl.innerHTML = SEASON_TIERS.map(function(t, i){
+    return '<option value="' + vals[i] + '" data-fr="' + t.fr + '" data-en="' + t.en + '">' + (fr ? t.fr : t.en) + '</option>';
+  }).join('');
+
+  // Restore a live manual selection if it still matches one of the real tier
+  // values; otherwise fall back to "normal" (was the static "selected" default).
+  var manualStillValid = prevAutoset === 'manual' && vals.indexOf(parseInt(prevValue, 10)) !== -1;
+  seasonEl.value = manualStillValid ? prevValue : String(cfg.priceNormal);
+  seasonEl.dataset.autoset = manualStillValid ? 'manual' : '';
+}
+window.populateSeasonSelect = populateSeasonSelect;
+
 function getAutoPricingMode() {
   return localStorage.getItem('stafflo_auto_pricing') !== '0'; // ON by default
 }
@@ -20350,21 +20419,34 @@ window.getAutoPricingDate = getAutoPricingDate;
 function applyAutoPricing() {
   if (!getAutoPricingMode()) return null;
   var ctxDate = getAutoPricingDate();
+  if (typeof populateSeasonSelect === 'function') populateSeasonSelect();
   var seasonEl = document.getElementById('season');
   var eventBtn = document.getElementById('t-event');
   var weekendBtn = document.getElementById('t-weekend');
 
   // 1. Season auto from month of target date
-  var suggestedSeason = 750;
+  // COMMIT R2 : seule la CLÉ de saison (low/normal/high/veryhigh/peak) est décidée
+  // ici depuis le mois — la valeur € vient de cfg.price* via populateSeasonSelect()
+  // (appelé ci-dessus), jamais d'un palier en dur. Si le select est désactivé
+  // (aucun palier réel configuré), rien à auto-définir.
+  var seasonKey = 'normal';
   var m = ctxDate.getMonth() + 1;
-  if (m === 12 || m === 1) suggestedSeason = 1500;        // Peak — Noël/AN
-  else if (m === 3 || m === 4) suggestedSeason = 850;     // Haute — Pâques
-  else if (m === 7 || m === 8) suggestedSeason = 950;     // Très haute — été
-  else if (m === 10 || m === 11) suggestedSeason = 850;   // Haute — Festival/automne
-  else if (m === 5 || m === 6) suggestedSeason = 650;     // Basse — creux
+  if (m === 12 || m === 1) seasonKey = 'peak';             // Peak — Noël/AN
+  else if (m === 3 || m === 4) seasonKey = 'high';         // Haute — Pâques
+  else if (m === 7 || m === 8) seasonKey = 'veryhigh';     // Très haute — été
+  else if (m === 10 || m === 11) seasonKey = 'high';       // Haute — Festival/automne
+  else if (m === 5 || m === 6) seasonKey = 'low';          // Basse — creux
 
-  if (seasonEl && seasonEl.dataset.autoset !== 'manual') {
-    if (parseInt(seasonEl.value) !== suggestedSeason) {
+  var suggestedSeason = null;
+  if (seasonEl && !seasonEl.disabled) {
+    var _apCfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var _apTier = SEASON_TIERS.filter(function(t){ return t.key === seasonKey; })[0];
+    var _apVal = _apTier ? _apCfg[_apTier.cfgKey] : null;
+    if (typeof _apVal === 'number' && _apVal > 0) suggestedSeason = _apVal;
+  }
+
+  if (seasonEl && !seasonEl.disabled && suggestedSeason !== null && seasonEl.dataset.autoset !== 'manual') {
+    if (parseInt(seasonEl.value, 10) !== suggestedSeason) {
       seasonEl.value = suggestedSeason;
     }
     seasonEl.dataset.autoset = 'auto';
@@ -20517,11 +20599,12 @@ function injectAutoPricingDate() {
 // Run injection once DOM ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', function(){
+    populateSeasonSelect();
     injectAutoPricingToggle();
     injectAutoPricingDate();
   });
 } else {
-  setTimeout(function(){ injectAutoPricingToggle(); injectAutoPricingDate(); }, 100);
+  setTimeout(function(){ populateSeasonSelect(); injectAutoPricingToggle(); injectAutoPricingDate(); }, 100);
 }
 
 function updatePrice() {
@@ -20529,6 +20612,27 @@ function updatePrice() {
   applyAutoPricing();
   
   const d = getPrice();
+
+  if (!d) {
+    var frU = lang === 'fr';
+    var elHeroU = document.getElementById('heroPricePN'); if (elHeroU) elHeroU.textContent = '?';
+    var elBaseU = document.getElementById('bdBase'); if (elBaseU) elBaseU.textContent = '?';
+    var elModsU = document.getElementById('bdMods'); if (elModsU) { elModsU.textContent = String.fromCharCode(8212); elModsU.style.color = ''; }
+    var elGuestsU = document.getElementById('bdGuests'); if (elGuestsU) elGuestsU.textContent = String.fromCharCode(8212);
+    var elNightsU = document.getElementById('bdNights'); if (elNightsU) elNightsU.textContent = document.getElementById('nights').value;
+    var elTotalU = document.getElementById('bdTotal'); if (elTotalU) elTotalU.textContent = '?';
+    var elCommU = document.getElementById('bdComm'); if (elCommU) elCommU.textContent = '?';
+    var commLblU = document.getElementById('bdCommLbl'); if (commLblU) commLblU.textContent = 'Airbnb ' + String.fromCharCode(8212) + ' (host fee)';
+    var elNetU = document.getElementById('bdNet'); if (elNetU) elNetU.textContent = '?';
+    var badgeU = document.getElementById('heroBadge');
+    if (badgeU) { badgeU.textContent = frU ? 'Tarifs non configurés' : 'Rates not configured'; badgeU.className = 'price-badge-home pbh-warn'; }
+    var factorModU = document.getElementById('factorMod'); if (factorModU) factorModU.textContent = frU ? 'Aucun' : 'None';
+    renderCompetitors();
+    renderScenarios(null);
+    if (typeof renderAutoBadges === 'function') renderAutoBadges();
+    return;
+  }
+
   const netPN = Math.round(d.net / d.nights);
 
   document.getElementById('heroPricePN').textContent = d.pricePN + '€';
@@ -20563,7 +20667,13 @@ function updatePrice() {
 }
 
 function getPrice() {
-  const base = parseInt(document.getElementById('season').value);
+  const seasonEl = document.getElementById('season');
+  const seasonVal = seasonEl ? parseInt(seasonEl.value, 10) : NaN;
+  // COMMIT R2 : #season n'a plus de value= en dur — tant que cfg.price* n'a pas
+  // resolu (ou est incomplet), populateSeasonSelect() laisse le select desactive
+  // sans option reelle. Pas de palier fabrique : null, jamais 0 ni 750 par defaut.
+  if (!seasonEl || isNaN(seasonVal) || seasonVal <= 0) return null;
+  const base = seasonVal;
   const nights = parseInt(document.getElementById('nights').value);
   const guests = parseInt(document.getElementById('guests').value);
   let price = base;
@@ -20622,6 +20732,13 @@ function toggleMod(k) {
 function renderCompetitors() {
   renderMarketPriceBand();
   const d = getPrice();
+  if (!d) {
+    var _fmU = lang === 'fr';
+    var _fcU = document.getElementById('factorComp'); if (_fcU) _fcU.textContent = '?';
+    var _ccU = document.getElementById('compContent');
+    if (_ccU) _ccU.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:12px;font-style:italic">' + (_fmU ? 'Tarifs saisonniers non configures.' : 'Seasonal rates not configured.') + '</div>';
+    return;
+  }
   const yourPrice = d.pricePN;
   const comps = loadSavedCompetitors();
   const allPrices = [yourPrice, ...comps.map(c => c.price)];
@@ -20762,6 +20879,12 @@ function openAllCompetitors() {
 }
 
 function renderScenarios(pricePN) {
+  if (pricePN == null) {
+    var _fsU = lang === 'fr';
+    var _scU = document.getElementById('scenarioContent');
+    if (_scU) _scU.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:12px;font-style:italic">' + (_fsU ? 'Tarifs saisonniers non configures.' : 'Seasonal rates not configured.') + '</div>';
+    return;
+  }
   const netPN = Math.round(pricePN * 0.83);
   const s = [
     {pct:'30%', nights:9, color:'#E24B4A'},
@@ -21135,7 +21258,8 @@ async function generateAlerts(weatherTemp) {
   // v113: market alert re-anchored on deterministic hotel-benchmark villaFair (honest "target" label), falls back to saved-comps avg.
   try {
     const comps = loadSavedCompetitors ? loadSavedCompetitors() : [];
-    const yourPrice = typeof getPrice === 'function' ? getPrice().pricePN : 0;
+    const _gpAlerts = (typeof getPrice === 'function') ? getPrice() : null;
+    const yourPrice = _gpAlerts ? _gpAlerts.pricePN : 0;
     var _vf = null, _benchNote = '';
     try {
       // COMMIT R : basePrice vient de cfg.basePrice (saisie propriétaire), jamais de
@@ -21718,7 +21842,8 @@ function renderMarketPriceBand() {
   const avg = Math.round(comps.reduce((s,c)=>s+c.price,0)/comps.length);
   const min = Math.min(...comps.map(c=>c.price));
   const max = Math.max(...comps.map(c=>c.price));
-  const yourPrice = getPrice ? getPrice().pricePN : 0;
+  const _gpBand = (typeof getPrice === 'function') ? getPrice() : null;
+  const yourPrice = _gpBand ? _gpBand.pricePN : 0;
   const diff = yourPrice - avg;
   const diffColor = diff < -100 ? '#97C459' : diff > 100 ? '#F09595' : 'rgba(253,246,236,.6)';
   band.innerHTML = comps.map(c => 
@@ -21732,7 +21857,8 @@ function renderMarketPriceBand() {
 function loadHomeData() {
   updatePrice();
   renderCompetitors();
-  renderScenarios(getPrice().pricePN);
+  var _gpHome = (typeof getPrice === 'function') ? getPrice() : null;
+  renderScenarios(_gpHome ? _gpHome.pricePN : null);
   renderMarketBand();
   // Generate alerts immediately with what we have
   generateAlerts(null);
@@ -21780,7 +21906,8 @@ function renderMarketBand() {
     return;
   }
   const FR = (typeof fr === 'function') ? fr() : (typeof lang !== 'undefined' && lang === 'fr');
-  const yourPrice = getPrice ? getPrice().pricePN : 0;
+  const _gpMkt = (typeof getPrice === 'function') ? getPrice() : null;
+  const yourPrice = _gpMkt ? _gpMkt.pricePN : 0;
   const avg = Math.round(comps.reduce((s,x) => s + x.price, 0) / comps.length);
   const diff = yourPrice ? yourPrice - avg : null;
   const diffColor = diff !== null ? (diff < -100 ? '#3B6D11' : diff > 100 ? '#C0392B' : 'var(--muted)') : '';
@@ -24031,6 +24158,13 @@ async function pullVillaSettings() {
     if (row.base_price) cfg.basePrice = row.base_price;
     if (typeof row.min_price === 'number' && row.min_price > 0) cfg.minPrice = row.min_price;
     if (typeof row.max_price === 'number' && row.max_price > 0) cfg.maxPrice = row.max_price;
+    // COMMIT R2 : unique source des 5 paliers saisonniers (#season) — ni value= en
+    // dur ni DEFAULT base ne doivent plus les porter, seule cette hydratation compte.
+    if (typeof row.price_low === 'number' && row.price_low > 0) cfg.priceLow = row.price_low;
+    if (typeof row.price_normal === 'number' && row.price_normal > 0) cfg.priceNormal = row.price_normal;
+    if (typeof row.price_high === 'number' && row.price_high > 0) cfg.priceHigh = row.price_high;
+    if (typeof row.price_veryhigh === 'number' && row.price_veryhigh > 0) cfg.priceVeryhigh = row.price_veryhigh;
+    if (typeof row.price_peak === 'number' && row.price_peak > 0) cfg.pricePeak = row.price_peak;
     if (row.base_capacity) cfg.baseCapacity = row.base_capacity;
     if (row.extra_guest_fee != null) cfg.extraGuestFee = row.extra_guest_fee;
     if (row.platform) cfg.platform = row.platform;
@@ -31654,7 +31788,6 @@ function startTour(){
     if (typeof getPrice !== 'function') return;
     var FR = fr();
     var p = getPrice();
-    var price = p.pricePN;
 
     // Eyebrow date (TONIGHT · 11 MAY)
     var eyebrow = $('v4HeroEyebrow');
@@ -31663,6 +31796,22 @@ function startTour(){
       var dayMonth = now.toLocaleDateString(FR?'fr-FR':'en-US', { day:'numeric', month:'short' }).toUpperCase().replace('.','');
       eyebrow.textContent = (FR ? 'CE SOIR · ' : 'TONIGHT · ') + dayMonth;
     }
+
+    // COMMIT R2 : p est null tant qu'aucun palier saisonnier reel n'est configure
+    // (cfg.price* absents/incomplets) — pas de prix fabrique, "?" explicite.
+    if (!p) {
+      var priceElN = $('v4HeroPrice');
+      if (priceElN) priceElN.textContent = '?';
+      var targetN = $('v4HeroTarget');
+      if (targetN) { targetN.classList.add('is-off'); targetN.textContent = '!'; targetN.title = FR ? 'Tarifs non configures' : 'Rates not configured'; }
+      var subN = $('v4HeroSub');
+      if (subN) subN.textContent = FR ? 'saisissez vos tarifs saisonniers' : 'enter your seasonal rates';
+      var explainN = $('v4ExplainBody');
+      if (explainN) explainN.innerHTML = FR ? 'Tarifs saisonniers non configures.' : 'Seasonal rates not configured.';
+      return;
+    }
+
+    var price = p.pricePN;
 
     var priceEl = $('v4HeroPrice');
     if (priceEl) priceEl.textContent = fmtPrice(price);
@@ -31790,7 +31939,8 @@ function startTour(){
     }
     var sorted = comps.slice().sort(function(a,b){ return (b.price||0) - (a.price||0); }).slice(0, 5);
     var avg = Math.round(sorted.reduce(function(s,c){ return s + (c.price||0); }, 0) / Math.max(1, sorted.length));
-    var yourPrice = getPrice().pricePN;
+    var _gpRows = (typeof getPrice === 'function') ? getPrice() : null;
+    var yourPrice = _gpRows ? _gpRows.pricePN : null;
     var unverifiedCount = comps.filter(function(c){ return !!c.unverified; }).length;
     var rows = sorted.map(function(c){
       var d = (c.price||0) - avg;
@@ -31803,13 +31953,13 @@ function startTour(){
                '<span class="v4-market-delta ' + dCls + '">' + sign + Math.abs(d) + '€</span>' +
              '</div>';
     }).join('');
-    var youDelta = yourPrice - avg;
+    var youDelta = yourPrice !== null ? yourPrice - avg : null;
     var youSign = youDelta > 0 ? '+' : youDelta < 0 ? '−' : '';
     var youCls = youDelta > 0 ? 'is-pos' : youDelta < 0 ? 'is-neg' : '';
     var youRow = '<div class="v4-market-row is-you">' +
                    '<span class="v4-market-name">' + (FR?'Votre villa':'Your villa') + '</span>' +
-                   '<span class="v4-market-price">' + fmtPrice(yourPrice) + '</span>' +
-                   '<span class="v4-market-delta ' + youCls + '">' + youSign + Math.abs(youDelta) + '€</span>' +
+                   '<span class="v4-market-price">' + (yourPrice !== null ? fmtPrice(yourPrice) : '?') + '</span>' +
+                   '<span class="v4-market-delta ' + youCls + '">' + (youDelta !== null ? (youSign + Math.abs(youDelta) + '€') : '') + '</span>' +
                  '</div>';
     host.innerHTML = rows + youRow;
     if (meta) meta.textContent = sorted.length + ' ' + (FR?'concurrents':'competitors') + (unverifiedCount ? (' · ' + unverifiedCount + ' ' + (FR?('non vérifié'+(unverifiedCount>1?'s':'')):'unverified')) : '');
@@ -31863,9 +32013,10 @@ function startTour(){
       // Opp 2: market positioning
       try {
         var comps = (typeof loadSavedCompetitors === 'function') ? (loadSavedCompetitors() || []) : [];
-        if (comps.length && typeof getPrice === 'function') {
+        var _gpOpp = (typeof getPrice === 'function') ? getPrice() : null;
+        if (comps.length && _gpOpp) {
           var avg = Math.round(comps.reduce(function(s,c){ return s + (c.price||0); }, 0) / comps.length);
-          var yp = getPrice().pricePN;
+          var yp = _gpOpp.pricePN;
           if (yp < avg - 100)      ops.push({ icon:'📈', title: FR?'Sous le marché':'Below market', sub:(FR?'Marché ':'Market ') + avg + '€ · ' + (FR?'remontée ':'+€') + Math.round(avg-yp) + (FR?'€ possible.':' possible.') });
           else if (yp > avg + 200) ops.push({ icon:'⚠️', title: FR?'Au-dessus du marché':'Above market', sub:(FR?'Marché ':'Market ') + avg + '€ · ' + (FR?'risque de churn last-min.':'last-min churn risk.') });
           else                     ops.push({ icon:'🎯', title: FR?'Positionnement aligné':'Aligned with market', sub:(FR?'Écart marché ':'Market gap ') + (yp>avg?'+':'') + (yp-avg) + '€.' });
@@ -31893,15 +32044,22 @@ function startTour(){
   function renderV4Scenarios(){
     if (typeof getPrice !== 'function') return;
     var p = getPrice();
-    var pricePN = p.pricePN;
-    var netRate = 1 - (p.hostFeeRate || 0.155);
     [30, 50, 70, 100].forEach(function(pct){
       var card = document.querySelector('.v4-scen[data-pct="' + pct + '"]');
       if (!card) return;
-      var nights = Math.round(30 * pct / 100);
-      var rev = Math.round(nights * pricePN * netRate);
       var bar = card.querySelector('.v4-scen-bar');
       var revEl = card.querySelector('.v4-scen-rev');
+      // COMMIT R2 : p est null tant qu'aucun palier saisonnier reel n'est
+      // configure — pas de revenu fabrique, "?" explicite.
+      if (!p) {
+        if (bar) bar.style.height = '6%';
+        if (revEl) revEl.textContent = '?';
+        return;
+      }
+      var pricePN = p.pricePN;
+      var netRate = 1 - (p.hostFeeRate || 0.155);
+      var nights = Math.round(30 * pct / 100);
+      var rev = Math.round(nights * pricePN * netRate);
       if (bar) bar.style.height = Math.max(6, pct) + '%';
       if (revEl) revEl.textContent = fmtPrice(rev);
     });
@@ -31936,6 +32094,10 @@ function startTour(){
     if (!window.StaffloSheet || typeof getPrice !== 'function') return;
     var FR = fr();
     var p = getPrice();
+    if (!p) {
+      if (typeof toast === 'function') toast(FR ? 'Configurez vos tarifs saisonniers avant de publier.' : 'Configure your seasonal rates before publishing.');
+      return;
+    }
     var price = p.pricePN;
     var cfg = safeCfg();
     var commissions = (cfg && cfg.commissions) || {};
@@ -35790,7 +35952,8 @@ function startTour(){
         var comps = (typeof loadSavedCompetitors==='function')?(loadSavedCompetitors()||[]):[];
         if (!comps.length) return '';
         var avg = Math.round(comps.reduce(function(s,x){return s+x.price;},0)/comps.length);
-        var yp = (typeof getPrice==='function')?getPrice().pricePN:0;
+        var _gpSum = (typeof getPrice==='function') ? getPrice() : null;
+        var yp = _gpSum ? _gpSum.pricePN : 0;
         var diff = yp ? yp-avg : null;
         var col = diff===null?'var(--muted)':diff<-100?'#3B6D11':diff>100?'#C0392B':'var(--muted)';
         return '<div style="padding:10px 18px 12px;display:flex;justify-content:space-between;align-items:baseline;font-size:12px"><span style="color:var(--muted);font-size:10px;letter-spacing:1px;text-transform:uppercase">Moy. '+comps.length+' villas</span><span style="font-family:Cormorant Garamond,serif;color:'+col+';font-size:18px;font-weight:500">'+avg+'€</span></div>';

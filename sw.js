@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v408 (COMMIT R : paliers de prix tolèrent l'absence de valeur, jamais de palier fabriqué)
-const CACHE = 'stafflo-v408';
+// Stafflo Service Worker — v409 (COMMIT R2 : #season n'a plus de palier € en dur, cfg.price* unique source)
+const CACHE = 'stafflo-v409';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
