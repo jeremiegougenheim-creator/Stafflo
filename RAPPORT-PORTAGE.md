@@ -1482,3 +1482,16 @@ qui aurait préservé les tailles ≥24px) :
 ### Service worker
 
 v401 -> **v402**.
+
+## COMMIT Q — prix recommandé calculé (hotel_benchmarks + market-comps, SW v405)
+
+### Décision : les nuits de départ ne comptent pas dans « nuits libres »
+
+Les nuits de départ (case `.cal-case.dep`) ne portent pas de prix
+recommandé et ne comptent pas dans « nuits libres » : le compteur mensuel
+les sous-estime donc, et le revenu potentiel avec. La décision a été prise
+pour que la grille et le compteur ne divergent jamais — une case `.dep`
+continue d'afficher le départ, pas un prix ; si le compteur la comptait
+quand même, il promettrait plus que ce que la grille montre. À rouvrir si
+la rotation même-jour (check-out le matin, nouvelle arrivée le soir sur la
+même nuit) devient un cas fréquent plutôt que marginal.

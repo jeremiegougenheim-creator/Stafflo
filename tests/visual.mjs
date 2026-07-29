@@ -160,20 +160,31 @@ async function captureOne(page, key, width, lang, openFn) {
   const labels = await auditOrSkip(page, 'auditLabels');
   const tones = await auditOrSkip(page, 'auditTones');
 
+  // COMMIT P : débordement horizontal — mesurable, donc jamais toléré, sur
+  // aucune combinaison. Pas de cliquet ici (contrairement à contraste/labels) :
+  // scrollWidth > innerWidth est un fait binaire, pas un compte qui peut
+  // légitimement varier d'une passe à l'autre.
+  const overflow = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  const overflowFail = overflow.scrollWidth > overflow.innerWidth;
+
   const shotPath = path.join(SHOTS_DIR, `${key}-${width}-${lang}.png`);
   await page.screenshot({ path: shotPath });
 
   page.off('console', onConsole);
   page.off('pageerror', onPageError);
 
-  // Hard fails: console/page errors, thrown audits, or a tone violation.
-  // Ratchet comparison (contrast/labels counts vs baseline) happens in run(),
-  // once every combo's counts are known.
-  const hardFail = tonesFailed(tones) || contrast.error || labels.error || consoleErrors.length > 0;
+  // Hard fails: console/page errors, thrown audits, a tone violation, or
+  // horizontal overflow. Ratchet comparison (contrast/labels counts vs
+  // baseline) happens in run(), once every combo's counts are known.
+  const hardFail = tonesFailed(tones) || contrast.error || labels.error || consoleErrors.length > 0 || overflowFail;
   return {
     view: key, width, lang, contrast, labels, tones, consoleErrors,
     contrastCount: auditCount(contrast), labelsCount: auditCount(labels),
     indetermineCount: indetermineCount(contrast),
+    overflow, overflowFail,
     hardFail,
   };
 }
@@ -302,6 +313,7 @@ async function run() {
     if (r.contrast.error) console.log(`    auditContrast() a levé: ${r.contrast.error}`);
     if (r.labels.error) console.log(`    auditLabels() a levé: ${r.labels.error}`);
     if (r.tones.error) console.log(`    auditTones() a levé: ${r.tones.error}`);
+    if (r.overflowFail) console.log(`    DÉBORDEMENT HORIZONTAL: scrollWidth ${r.overflow.scrollWidth} > innerWidth ${r.overflow.innerWidth}`);
     if (ratchetBad) console.log(`    RÉGRESSION cliquet: ${r.regressed.join(', ')}`);
   }
 

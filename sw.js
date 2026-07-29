@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v402 (titres de modale en 600, 8 sélecteurs, règle v19, COMMIT L)
-const CACHE = 'stafflo-v402';
+// Stafflo Service Worker — v406 (i18n nav : libellés onglets FR, icône Villa, accord pluriel toasts, COMMIT N)
+const CACHE = 'stafflo-v406';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
