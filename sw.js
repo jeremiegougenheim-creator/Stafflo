@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v402 (titres de modale en 600, 8 sélecteurs, règle v19, COMMIT L)
-const CACHE = 'stafflo-v402';
+// Stafflo Service Worker — v403 (refresh+retry 401 session, entitlement error≠none, COMMIT M)
+const CACHE = 'stafflo-v403';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

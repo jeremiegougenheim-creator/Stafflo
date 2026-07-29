@@ -19150,8 +19150,24 @@ function getAuthedHeaders(extra) {
   return h;
 }
 
-// Intercept fetch calls to Supabase to auto-inject JWT
+// Intercept fetch calls to Supabase to auto-inject JWT, and to refresh+retry once on 401.
 var _origFetch = window.fetch;
+var _staffloRefreshPromise = null; // mutualise le refresh : le refresh token Supabase est
+                                    // à usage unique, deux appels concurrents en tueraient un
+var _staffloSigningOut = false;
+function isStaffloSupabaseUrl(u) {
+  return typeof u === 'string' && u.indexOf(SB_URL) === 0;
+}
+function isStaffloSupabaseAuthUrl(u) {
+  // /auth/v1/* (token, logout...) exclu du retry : un 401 dessus ne doit jamais
+  // redéclencher un refresh (boucle avec refreshSession()/doSignOut() elles-mêmes).
+  return typeof u === 'string' && u.indexOf(SB_URL + '/auth/v1/') === 0;
+}
+function staffloForceSignOut() {
+  if (_staffloSigningOut) return;
+  _staffloSigningOut = true;
+  try { doSignOut(); } catch(e){}
+}
 window.fetch = function(url, opts) {
   opts = opts || {};
   var u = typeof url === 'string' ? url : url.url;
@@ -19167,7 +19183,36 @@ window.fetch = function(url, opts) {
       }
     }
   }
-  return _origFetch(url, opts);
+  return _origFetch(url, opts).then(function(res) {
+    // Un seul retry par requête, marqué sur l'objet opts lui-même.
+    if (res.status !== 401 || !isStaffloSupabaseUrl(u) || isStaffloSupabaseAuthUrl(u)
+        || !_stafflo_session || opts.__staffloRetried || _staffloSigningOut) {
+      return res;
+    }
+    opts.__staffloRetried = true;
+    if (!_staffloRefreshPromise) {
+      _staffloRefreshPromise = refreshSession(_stafflo_session.refresh_token).finally(function(){
+        _staffloRefreshPromise = null;
+      });
+    }
+    return _staffloRefreshPromise.then(function(newSession) {
+      if (!newSession) {
+        // Refresh token mort : pas de deuxième essai, déconnexion propre.
+        staffloForceSignOut();
+        return res;
+      }
+      if (opts.headers instanceof Headers) {
+        opts.headers.set('Authorization', 'Bearer ' + newSession.access_token);
+      } else {
+        opts.headers.Authorization = 'Bearer ' + newSession.access_token;
+      }
+      return _origFetch(url, opts).then(function(retryRes) {
+        // Encore 401 avec un token frais : la session est morte, pas un souci de timing.
+        if (retryRes.status === 401) staffloForceSignOut();
+        return retryRes;
+      });
+    });
+  });
 };
 
 // Auto-inject user_id on inserts
@@ -39768,6 +39813,13 @@ function stopAriaMic(btn) {
 
   // window.__ent = { entitled, status, trial_ends_at, current_period_end } — fail-open :
   // toute erreur réseau/RPC renvoie entitled:true plutôt que de bloquer un user payant.
+  // Trois cas pour status, pas deux : une vraie valeur (trialing/active/past_due/...),
+  // 'none' (lecture réussie, aucun abonnement — un fait), 'error' (la lecture a échoué —
+  // réseau, ou 401 encore présent après le retry+refresh de l'intercepteur fetch ; PAS la
+  // même chose que 'none'). _entLastGood retient la dernière lecture réussie pour que
+  // l'UI (renderSubscription*) puisse afficher le dernier état connu plutôt qu'un statut
+  // fantôme quand la lecture courante est en 'error'.
+  var _entLastGood = null;
   async function loadEntitlement(){
     try {
       var cfg = (typeof getCfg === 'function') ? getCfg() : {};
@@ -39777,10 +39829,11 @@ function stopAriaMic(btn) {
         headers: rpcHeaders(),
         body: '{}'
       });
-      if (!res.ok) { window.__ent = { entitled:true, status:'unknown' }; return window.__ent; }
+      if (!res.ok) { window.__ent = { entitled:true, status:'error' }; return window.__ent; }
       var data = await res.json();
-      window.__ent = (data && typeof data === 'object') ? data : { entitled:true, status:'unknown' };
-    } catch(e){ window.__ent = { entitled:true, status:'unknown' }; }
+      window.__ent = (data && typeof data === 'object') ? data : { entitled:true, status:'error' };
+      if (window.__ent.status !== 'error') _entLastGood = window.__ent;
+    } catch(e){ window.__ent = { entitled:true, status:'error' }; }
     return window.__ent;
   }
 
@@ -39829,7 +39882,9 @@ function stopAriaMic(btn) {
     var trialEl = document.getElementById('subscriptionBannerTrial');
     var pastDueEl = document.getElementById('subscriptionBannerPastDue');
     if (!trialEl && !pastDueEl) return;
-    var ent = window.__ent;
+    // status:'error' → dernier état connu (silencieux) ; sinon rien, jamais de valeur inventée.
+    var raw = window.__ent;
+    var ent = (raw && raw.status === 'error') ? _entLastGood : raw;
     if (!isSubscriptionV1() || !ent) {
       if (trialEl) trialEl.style.display = 'none';
       if (pastDueEl) pastDueEl.style.display = 'none';
@@ -39875,11 +39930,16 @@ function stopAriaMic(btn) {
     if (!sec) return;
     if (!isSubscriptionV1()) { sec.style.display = 'none'; return; }
     sec.style.display = '';
-    var s = window.__ent || { status:'none' };
+    // status:'error' → dernier état connu (silencieux) ; sinon rien, jamais de valeur inventée
+    // (même règle que le panneau marché : une case vide honnête vaut mieux qu'une valeur fausse).
+    var raw = window.__ent || { status:'none' };
+    var s = (raw.status === 'error') ? _entLastGood : raw;
     var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
     var statusEl = document.getElementById('cfgSubscriptionStatus');
     if (statusEl) {
-      if (s.status === 'active') {
+      if (!s) {
+        statusEl.textContent = '';
+      } else if (s.status === 'active') {
         var dateStr = fmtPeriodEnd(s.current_period_end, fr);
         var line = fr
           ? 'Solo · actif' + (dateStr ? ' · prochain prélèvement le ' + dateStr : '')
@@ -39891,7 +39951,6 @@ function stopAriaMic(btn) {
           past_due: fr ? 'Paiement en retard'  : 'Payment past due',
           canceled: fr ? 'Annulé'              : 'Canceled',
           revoked:  fr ? 'Révoqué'             : 'Revoked',
-          unknown:  fr ? 'Statut inconnu'      : 'Status unknown',
           none:     fr ? 'Aucun abonnement'    : 'No subscription'
         };
         statusEl.textContent = labels[s.status] || s.status || labels.none;
@@ -39899,7 +39958,7 @@ function stopAriaMic(btn) {
     }
     var btn = document.getElementById('cfgSubscriptionBtn');
     if (btn) {
-      var active = isActiveStatus(s.status);
+      var active = s ? isActiveStatus(s.status) : false;
       var btnLbl = active ? (fr ? 'Gérer mon abonnement' : 'Manage my subscription') : (fr ? 'Passer à Solo' : 'Upgrade to Solo');
       btn.textContent = btnLbl;
       btn.title = btnLbl; btn.setAttribute('aria-label', btnLbl);
