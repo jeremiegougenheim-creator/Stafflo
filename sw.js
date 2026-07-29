@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v403 (refresh+retry 401 session, entitlement error≠none, COMMIT M)
-const CACHE = 'stafflo-v403';
+// Stafflo Service Worker — v404 (header ≤400px sans chevauchement, panneau ARIA aligné .aria-hero, contrôle scrollWidth harnais, COMMIT P)
+const CACHE = 'stafflo-v404';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
