@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v399 (isFirmBooking : 5 replis divergents documentés, aucun changement de comportement, COMMIT J)
-const CACHE = 'stafflo-v399';
+// Stafflo Service Worker — v400 (top-nav : bottom-nav -> top-nav, ARIA hors barre, Boîte en icône header, sous-titres par écran, COMMIT H)
+const CACHE = 'stafflo-v400';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

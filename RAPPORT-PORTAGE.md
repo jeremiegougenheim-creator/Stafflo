@@ -1036,3 +1036,167 @@ fonction).
 ### Service worker
 
 v398 -> **v399**.
+
+## COMMIT H — bottom-nav devient top-nav (SW v400)
+
+### Recon (avant tout code)
+
+Cinq questions posées avant d'écrire une ligne :
+
+1. **Quelle nav s'affiche, id, drapeau, défaut.** `<nav class="bot-nav">`
+   (l.3565 avant ce commit), gouvernée par `navV2On()` — lit
+   `localStorage.stafflo_nav_v2`, défaut **ON** sauf opt-out explicite (le
+   défaut avait été inversé avant ce commit, cf. commentaire `v-nav2default`).
+   Confirmé par le harnais (48/48 combinaisons, 390/768/1440 × fr/en).
+2. **Boutons, libellés, destinations.** 6 boutons en DOM, 5 visibles par
+   défaut : Today→`#tab-today`, Location→`#tab-location` (pricing `#villaV3`
+   **+ Guests** `#guestsV5`, déplacés là par `applyNavV2Content()`, étapes B/E
+   d'un travail antérieur), ARIA→modale (pas un onglet), Maison→`#tab-home`
+   (charges/prestataires/tâches), Calendar→`#tab-calendar`. Guests (`nb-clients`)
+   caché, `goTab('clients')` redirige déjà vers `'location'`.
+3. **`?nav2=`.** `=1` force ON (persiste `'on'`) ; `=0` force OFF/kill-switch
+   (persiste `'off'`) ; sans paramètre, ON sauf `'off'` explicite. Aucun autre
+   drapeau ne touche la nav (`ARIA_FIRST_V1` ne scope que Today ; `opProfile`
+   ne change qu'un libellé via `data-fr-solo`).
+4. **Bouton ARIA central.** `#nb-aria`, `onclick="openAriaModal()"`, porte
+   `#nbAriaBadge`. `#ariaFab` (flottant legacy) existe toujours en HTML mais
+   reste masqué (v162/v167), confirmé inchangé.
+5. **Nav haute morte.** Oui — `nav{...}` (l.167) + `.nav-btn`/`nav .nav-btn.on`
+   (l.168-172, 1188-1194) sont les styles de l'ancienne barre sticky du haut,
+   remplacée par `.bot-nav` (commentaire explicite l.2565 pré-commit : *"The
+   bot-nav rules replace the top-sticky `<nav>` styling"*). Aucun `<nav>` sans
+   classe ne subsiste en HTML. Nuance : `nav .nav-btn` matche quand même les
+   boutons de `.bot-nav` (ils portent aussi `.nav-btn`, cf. commentaire
+   `v-item72`) — friction déjà documentée, pas touchée ici.
+
+### Corrections de cible en cours de route
+
+Le brief initial proposait de fusionner Clients dans Location et de sortir le
+pricing vers un nouveau sous-onglet Villa — la recon ci-dessus a montré que
+ces déplacements DOM existaient déjà (étapes B/E d'un travail antérieur,
+gaté par le même flag `nav2`). Deux corrections, dans l'ordre :
+
+1. D'abord réduit à « pas de fusion/séparation, seulement repositionner la
+   barre » — sur la base d'une lecture erronée voulant que Location/Clients
+   soient deux onglets distincts à re-séparer.
+2. Puis corrigé une seconde fois : **l'onglet "Location" EST l'onglet
+   "Clients" du document cible, sous un autre nom.** Ce n'était pas une
+   fusion à défaire — juste un libellé à changer. `#guestsV5`/`#guestDetailV5`
+   ne bougent pas.
+
+Portée finale, mécaniquement sûre :
+
+1. La bottom-nav devient une top-nav (repositionnement CSS seul).
+2. Renommage de libellés seulement : `nb-location` "Location"/"Rentals" ->
+   "Clients"/"Guests" ; `nb-home` : le relabel JS vers "Maison"/"Home" est
+   retiré (commenté), le bouton retombe sur son libellé HTML par défaut
+   "Villa"/"Villa" (déjà bilingue, override solo "Logement"/"Home" intact).
+3. ARIA sort de la barre (`#nb-aria` caché, même mécanisme que Guests).
+4. La Boîte devient une icône + compteur dans le header (`#hdrInboxBtn`),
+   câblée dans `updateInboxBadges()`.
+5. Sous-titre par écran, avec l'entrée `location` manquante dans `_atlMap`
+   corrigée (repérée pendant la recon).
+
+Aucune fusion, aucune séparation, aucun déplacement de contenu —
+`applyNavV2Content()`, `goTab()`, `#tab-*` : intacts.
+
+### Pourquoi le sous-titre ne vit pas dans `#activeTabLabel`
+
+Essayé d'abord là (c'est l'élément que la recon avait repéré comme portant
+déjà un nom d'onglet court). Une phrase complète ("Ce qui compte
+aujourd'hui") y casse la mise en page : c'est un flex item `nowrap` à côté
+du logo ET des icônes header (`.header-right`, qui a `overflow:hidden` et
+des enfants `flex-shrink:0`) — vu au harnais à 390px, la phrase repoussait
+les icônes hors cadre (masquées par l'overflow, pas juste rétrécies).
+Le texte court (`_atlMap`, corrigé avec l'entrée `location`) reste dans
+`#activeTabLabel` ; la phrase descriptive du document va dans un nouvel
+élément `#hdrSubtitle`, dans `#v3SubHdr` (qui a déjà la largeur pour une
+phrase : eyebrow ville + nom villa + date).
+
+### CSS : quatre régimes de positionnement, une seule règle
+
+`.bot-nav` avait sa position (bas) fixée par quatre règles qui se
+chevauchent selon la largeur — jamais une seule à modifier, seulement à
+neutraliser par spécificité (aucune des quatre n'est éditée ni supprimée) :
+
+| Contexte | Règle existante | Comportement |
+|---|---|---|
+| Mobile réel <600px (v169) | `#staffloShell .bot-nav{order:99;position:relative}` | flex-column, nav en dernier |
+| Mockup phone-frame ≥600px | `#staffloShell .bot-nav{order:99}` (même forme) | idem, dans le cadre 390px centré |
+| ≥900px / paysage <900px | `body #staffloShell .bot-nav{position:fixed;bottom:0}` | plein écran, nav hors flux |
+| **`body.no-frame`** | `body.no-frame #staffloShell .bot-nav{position:fixed;bottom:0}` | **découverte en testant, PAS un cas rare** : `document.body.className` au boot vaut `"no-frame v2-active profile-full is-v3-on is-shrunk"` — `.no-frame` est l'état par défaut de l'app réelle, le phone-frame est le mockup spécial |
+
+`#staffloShell` est `display:flex;flex-direction:column` à toutes les
+largeurs, et `.bot-nav` occupe déjà, dans le DOM, la position entre
+`#v3SubHdr` et `<main>` — elle n'apparaissait en bas que par un `order:99`
+explicite ou une sortie du flux (`position:fixed`/`absolute`). Neutraliser
+`order` (`0`) et `position` (`relative`) suffit donc à la remettre à sa
+place naturelle, sans une règle par régime.
+
+Le sélecteur retenu, `body #staffloShell.nav-v2-top .bot-nav`, a été ajusté
+une fois en pratique : une première version sans le préfixe `body` (`1 id +
+2 classes`) battait bien trois régimes sur quatre, mais perdait contre
+`body.no-frame #staffloShell .bot-nav` (`1 id + 2 classes + body`) — le
+sélecteur `body` en plus lui donnait un cran de spécificité de plus.
+Vérifié en interrogeant `getComputedStyle` + `element.matches()` en tête de
+run headless avant de conclure, pas juste calculé sur le papier.
+
+### Ce qui est commenté « superseded », pas supprimé
+
+- Libellé HTML `nb-location` ("Location"/"Rentals").
+- Bloc JS de relabel `nb-home` -> "Maison"/"Home" dans `applyNavV2()`.
+- Paragraphe de commentaire `v-nav2default` (mention "Villa→Maison" devenue
+  fausse) — annoté, pas réécrit.
+- `?nav2=` lui-même : toujours fonctionnel (kill-switch), documenté comme
+  gouvernant maintenant aussi position + libellés + retrait ARIA.
+
+### Ce qui n'a PAS été fait (exprès)
+
+- Aucun déplacement de `#guestsV5`/`#guestDetailV5`/`#villaV3`.
+- Aucune sous-navigation construite à l'intérieur de Villa.
+- Aucun changement au contenu de `#tab-home`/`#tab-location`/`#tab-clients`.
+
+### Sortie du harnais
+
+1. `node --check /tmp/all_js.js` : **OK**
+2. Delta d'accolades : **-3** (inchangé)
+3. `tests/visual.mjs` : 48/48 combinaisons **PASS**, 0 échec hors cliquet, 0
+   régression de cliquet, cliquet resserré/inchangé -> `tests/baseline.json`
+   mis à jour. Captures dans `tests/shots/`.
+4. Vérification manuelle hors harnais (le harnais ne couvre pas `?nav2=`) :
+   `?nav2=0` restaure exactement l'état pré-commit (`shellClasses:""`,
+   `navClasses:"bot-nav"`, `position:fixed`, `order:99`, `bottom:"0px"`,
+   labels visibles Today/Guests/ARIA/Villa/Calendar) — kill-switch intact.
+
+### Service worker
+
+v399 -> **v400**.
+
+## Architecture d'information — à trancher
+
+Un seul écart réel entre ce commit et le document cible, volontairement pas
+traité ici (pas un commit de contenu) :
+
+**Le document dit** : le moteur de prix (`#villaV3`) devient le premier
+sous-onglet de l'onglet Villa.
+**L'état actuel dit** : le pricing a quitté Villa pour Location/Clients
+(étape B d'un travail antérieur à ce commit, toujours en vigueur) —
+c'est-à-dire l'inverse du sens indiqué par le document.
+
+Concrètement, sous le flag par défaut (nav2 ON) :
+- Onglet **Clients** (`#tab-location`) : Guests (`#guestsV5`) **+** pricing
+  (`#villaV3`).
+- Onglet **Villa** (`#tab-home`) : charges, prestataires, tâches
+  (`#maisonV2`) — pas de pricing.
+
+Le sous-titre de l'onglet Villa ajouté par ce commit ("Prix, équipe et
+réglages") reprend le texte du document tel quel — il décrit donc la cible,
+pas le contenu réellement affiché sous cet onglet aujourd'hui. C'est le même
+écart, pas un second.
+
+Trancher entre : (a) laisser le pricing dans Clients/Location et mettre à
+jour le document/sous-titre pour refléter la réalité, ou (b) déplacer
+`#villaV3` vers Villa pour rejoindre le document — un déplacement de
+contenu, donc un commit à part, avec sa propre recon (où `#villaV3` est-il
+lu/écrit ailleurs, `applyNavV2Content()` à réviser, etc.). Pas de
+recommandation ici — décision produit, pas mécanique.

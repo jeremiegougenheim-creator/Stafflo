@@ -2475,9 +2475,13 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
   /* v83 — legacy <header> cleanup. Inside the phone-frame the row is crushed
      and most items are duplicated (stats live in #cardTodaySnap, Calendar is
      a nav tab, Settings is the avatar). Hide the redundant elements; keep
-     logo · syncDot · langSeg · avatar. CSS hide per CLAUDE.md §2. */
+     logo · syncDot · langSeg · avatar. CSS hide per CLAUDE.md §2.
+     COMMIT H — #hdrInboxBtn ajouté à l'exemption : la Boîte n'a pas d'onglet
+     nav pour la remplacer ici (contrairement aux autres hdr-btn masqués, tous
+     redondants avec un onglet), la cacher au même titre les priverait de
+     destination ≥600px. */
   #staffloShell header .hstat,
-  #staffloShell header .hdr-btn:not(#hdrAvatar),
+  #staffloShell header .hdr-btn:not(#hdrAvatar):not(#hdrInboxBtn),
   #staffloShell header .v3-mode-btn,
   #staffloShell header #sessionBadge { display: none !important; }
   /* Guest detail panel slides over the shell, not the viewport.
@@ -2627,6 +2631,43 @@ body.no-frame #staffloShell .bot-nav{
 @keyframes s-pulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.4);opacity:0}}
 /* Bot-nav lives at shell bottom — main needs bottom padding so content clears it */
 #staffloShell main{padding-bottom:104px !important}
+
+/* COMMIT H — bottom-nav devient top-nav. Gatée par navV2On() (classe .nav-v2-top
+   posée sur #staffloShell par applyNavV2(), même IIFE que .nav-v2-bar). #tab-*,
+   goTab() et applyNavV2Content() ne sont pas touchés : mêmes destinations, même
+   contenu, même nombre de boutons visibles (ARIA en moins, cf. nb-aria.nb-hidden
+   ci-dessous) — seul l'endroit où la barre s'affiche change.
+   #staffloShell est display:flex;flex-direction:column à toutes les largeurs
+   (v169 <600px, mockup ≥600px) ; .bot-nav n'y est envoyée en dernier (bas) que par
+   un order:99 explicite (l.2438/2556) ou sortie du flux par position:fixed/absolute
+   (l.1900/2528/2585) — sa position DOM réelle est déjà entre #v3SubHdr et <main>.
+   Neutraliser order + position suffit donc à la faire réapparaître en haut, à SA
+   place naturelle, sans dupliquer une règle par régime.
+   Vérifié en conditions réelles (pas juste en théorie) : `document.body.className`
+   au boot vaut "no-frame v2-active profile-full is-v3-on is-shrunk" — .no-frame
+   n'est PAS un cas rare (?frame=0), c'est l'état par défaut de l'app réelle (le
+   phone-frame mockup ≥600px est le cas spécial). Sa règle (l.2528,
+   body.no-frame #staffloShell .bot-nav) a un sélecteur "body"+2 classes — un
+   sélecteur composé sans "body" (1 id + 2 classes) ne suffit pas à la battre
+   (le type "body" en plus la fait gagner). D'où le préfixe body ci-dessous :
+   même spécificité que body.no-frame (1 id + 2 classes + body), départagé par
+   l'ordre source (cette règle est déclarée après, donc gagne). */
+body #staffloShell.nav-v2-top .bot-nav{
+  order:0 !important;
+  position:relative !important; top:auto !important; bottom:auto !important; left:auto !important; right:auto !important;
+  border-radius:0 0 var(--r-xl) var(--r-xl) !important;
+  border-top:none !important; border-bottom:1px solid rgba(255,255,255,.06) !important;
+  padding:6px 14px !important;
+  box-shadow:none !important;
+  z-index:30 !important;
+}
+body #staffloShell.nav-v2-top .bot-nav::before{ display:none !important; } /* liseré du haut : pensé pour une barre collée au bord bas, inutile ici */
+/* Plus de réserve artificielle pour une barre qui n'est plus au bord bas — le flex
+   column réserve déjà sa vraie hauteur via order:0. Les trois régimes qui
+   imposaient une réserve manuelle (base, l.2629 ; no-frame, l.2527) sont neutralisés
+   par spécificité, comme .bot-nav ci-dessus. */
+#staffloShell.nav-v2-top main{ padding-bottom:16px !important }
+body.no-frame #staffloShell.nav-v2-top main{ padding-bottom:16px !important }
 
 /* Header eyebrow / villa — only render if v3 markup uses them */
 .header-eyebrow{font-size:10px !important;letter-spacing:3px !important;text-transform:uppercase !important;color:var(--s-gold) !important;font-weight:600 !important;margin-bottom:4px !important}
@@ -3409,6 +3450,14 @@ window.addEventListener('keydown', function(e){
       <option value="fr">Français</option>
       <option value="en">English</option>
     </select>
+    <!-- COMMIT H — la Boîte quitte la nav (ARIA n'en est plus le porteur indirect,
+         cf. nb-aria.nb-hidden) : icône dédiée + compteur, câblée dans
+         updateInboxBadges() aux côtés de #ariaFabBadge/#nbAriaBadge (inchangés,
+         réversibles via ?nav2=0). -->
+    <button class="hdr-btn" id="hdrInboxBtn" onclick="showInbox()" title="Inbox" aria-label="Inbox" data-title-fr="Boîte" data-title-en="Inbox" data-aria-label-fr="Boîte" data-aria-label-en="Inbox" style="padding:5px 9px;position:relative">
+      <i class="ti ti-mail" style="font-size:13px;vertical-align:-1px"></i>
+      <span class="aria-fab-badge" id="hdrInboxBadge">0</span>
+    </button>
     <button class="hdr-btn" id="ariaMemBtn" onclick="openAriaMemoryEditor()" onmouseenter="(function(b){try{var c=(typeof getCfg==='function')?getCfg():{};var m=(c.ariaMemory||'').trim();var l=m.length;var prev=l?(m.slice(0,160)+(l>160?'…':'')):(lang==='fr'?'Vide. Cliquez pour ajouter du contexte.':'Empty. Click to add context.');b.title=prev+'\\n\\n'+l+(lang==='fr'?' caractères':' chars');}catch(e){}})(this)" title="Aria Memory" aria-label="Aria Memory" style="padding:5px 9px"><i class="ti ti-brain" style="font-size:13px;vertical-align:-1px"></i></button>
     <button class="hdr-btn" id="icalSyncBtn" onclick="openIcalSettings()" onmouseenter="(function(b){try{var c=(typeof getCfg==='function')?getCfg():{};var n=(c.icalFeeds||[]).length;var ls=c.icalLastSyncAt?new Date(c.icalLastSyncAt).toLocaleString():(lang==='fr'?'Jamais':'Never');b.title=(lang==='fr'?'Sync calendriers · ':'Calendar sync · ')+n+(lang==='fr'?' feed(s)\\nDernière sync : ':' feed(s)\\nLast sync: ')+ls;}catch(e){}})(this)" title="Sync calendars" aria-label="Sync calendars" style="padding:5px 9px"><i class="ti ti-calendar-event" style="font-size:13px;vertical-align:-1px"></i></button>
     <!-- #notifBtn déplacé vers Réglages — COMMIT E (voir #settingsModal, section NOTIFICATIONS) -->
@@ -3425,6 +3474,8 @@ window.addEventListener('keydown', function(e){
   <div style="min-width:0;flex:1">
     <div class="header-eyebrow" id="hdrEyebrow"></div>
     <div class="header-villa" id="hdrVilla" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+    <!-- COMMIT H — sous-titre par écran, alimenté par goTab() -->
+    <div id="hdrSubtitle" style="font-size:11px;color:rgba(255,255,255,.55);font-family:'Inter',sans-serif;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
   </div>
   <div id="hdrDate" style="font-size:11px;color:rgba(255,255,255,.55);font-family:'Inter',sans-serif;letter-spacing:.3px;white-space:nowrap;flex-shrink:0"></div>
 </div>
@@ -3588,7 +3639,10 @@ window.renderSoloTurnoverCard = function(){
   </button>
   <button class="nav-item nav-btn nb-hidden" id="nb-location" type="button">
     <i class="ti ti-home"></i>
-    <span data-fr="Location" data-en="Rentals">Location</span>
+    <!-- libellé "Location"/"Rentals" superseded par top-nav — COMMIT H : cet
+         onglet EST l'onglet Clients du document cible, pas un onglet séjours
+         distinct. #guestsV5/#guestDetailV5/#villaV3 restent ici, inchangés. -->
+    <span data-fr="Clients" data-en="Guests">Clients</span>
   </button>
   <button class="nav-item nav-btn" id="nb-calendar" type="button" aria-label="Calendar">
     <i class="ti ti-calendar"></i>
@@ -13535,11 +13589,15 @@ function navV2On(){
   try {
     if (new URLSearchParams(location.search).get('nav2') === '1') { localStorage.setItem('stafflo_nav_v2','on'); return true; }
     if (new URLSearchParams(location.search).get('nav2') === '0') { localStorage.setItem('stafflo_nav_v2','off'); return false; }
-    // v-nav2default : la nav v2 (Guests masqué, Location visible, Villa→Maison, pricing
-    // déplacé) était éteinte par défaut. Résultat : le fondateur testait avec ?nav2=1 et
-    // les utilisateurs voyaient une autre app — et la landing promet « votre maison » quand
-    // l'onglet s'appelait « Villa ». On inverse le défaut : ON, sauf opt-out explicite.
-    // ?nav2=0 reste le kill-switch (il écrit 'off', qui est respecté ici).
+    // v-nav2default : la nav v2 (Guests masqué, Location visible, pricing déplacé)
+    // était éteinte par défaut. Résultat : le fondateur testait avec ?nav2=1 et
+    // les utilisateurs voyaient une autre app. On inverse le défaut : ON, sauf
+    // opt-out explicite. ?nav2=0 reste le kill-switch (il écrit 'off', respecté ici).
+    // COMMIT H — superseded par top-nav : ce même flag gate maintenant AUSSI la
+    // position de la barre (bas -> haut), le retrait d'ARIA de la barre, et les
+    // libellés Clients/Villa (Location/nb-home, l.3620/3616 — "Villa→Maison" du
+    // paragraphe ci-dessus ne s'applique plus, cf. applyNavV2()). Un seul flag,
+    // un seul kill-switch pour tout revenir en arrière : ?nav2=0.
     return localStorage.getItem('stafflo_nav_v2') !== 'off';
   } catch(e){ return false; }
 }
@@ -13631,7 +13689,30 @@ function goTab(t) {
     }
   }
   var _atl = document.getElementById('activeTabLabel');
-  if (_atl) { var _atlMap = {today:lang==='fr'?'Aujourd\'hui':'Today',clients:lang==='fr'?'Guests':'Guests',home:'Villa',calendar:lang==='fr'?'Calendrier':'Calendar'}; _atl.textContent = _atlMap[t]||''; }
+  // 'location' manquait ici (l'onglet était atteint sous nav_v2 sans jamais
+  // mettre à jour ce label — l'eyebrow restait vide) ; ajouté avec le même
+  // libellé que le bouton nav (Clients/Guests, cf. nb-location, COMMIT H).
+  if (_atl) {
+    var _atlMap = {today:lang==='fr'?'Aujourd\'hui':'Today',clients:lang==='fr'?'Clients':'Guests',location:lang==='fr'?'Clients':'Guests',home:'Villa',calendar:lang==='fr'?'Calendrier':'Calendar'};
+    _atl.textContent = _atlMap[t]||'';
+  }
+  // COMMIT H — sous-titre par écran : essayé d'abord dans #activeTabLabel (l'eyebrow
+  // du header), mais c'est un flex item nowrap à côté du logo ET des icônes header —
+  // une phrase complète y écrase .header-right (icônes poussées hors cadre, vu au
+  // harnais 390px). Rendu ici à la place, dans #v3SubHdr qui a la largeur pour une
+  // phrase (déjà : eyebrow ville + nom villa + date). Libellés du document cible.
+  var _sub = document.getElementById('hdrSubtitle');
+  if (_sub) {
+    var _subFr = lang === 'fr';
+    var _subMap = {
+      today:    _subFr ? "Ce qui compte aujourd'hui"      : 'What matters today',
+      clients:  _subFr ? 'Vos séjours, passés et à venir' : 'Your stays, past and upcoming',
+      location: _subFr ? 'Vos séjours, passés et à venir' : 'Your stays, past and upcoming',
+      home:     _subFr ? 'Prix, équipe et réglages'       : 'Pricing, team and settings',
+      calendar: _subFr ? 'Occupation et arrivées du mois' : "This month's occupancy and arrivals"
+    };
+    _sub.textContent = _subMap[t] || '';
+  }
   localStorage.setItem('stafflo_tab', t);
   applyHdrCover(t);
 }
@@ -19230,20 +19311,32 @@ document.addEventListener('DOMContentLoaded', function() {
     host.style.display = '';
   }
   window.renderTodayMaisonSummary = renderTodayMaisonSummary;
-  // Applique la nav v2 si le flag est on : Guests masqué, Location visible, label Maison.
+  // Applique la nav v2 si le flag est on : Guests masqué, Location (= l'onglet
+  // Clients du document cible, COMMIT H) visible.
   (function applyNavV2(){
     if (typeof navV2On !== 'function' || !navV2On()) return;
     var g = document.getElementById('nb-clients'); if (g) g.classList.add('nb-hidden');
     var bn = document.querySelector('.bot-nav'); if (bn) bn.classList.add('nav-v2-bar');
     var l = document.getElementById('nb-location'); if (l) l.classList.remove('nb-hidden');
-    var hl = document.querySelector('#nb-home .nb-home-lbl');
-    if (hl) {
-      hl.setAttribute('data-fr','Maison');
-      hl.setAttribute('data-en','Home');
-      var _isEn = (typeof lang !== 'undefined' && lang === 'en');
-      hl.textContent = _isEn ? 'Home' : 'Maison';
-    }
+    // Relabel nb-home -> "Maison"/"Home" superseded par top-nav — COMMIT H : le
+    // document cible veut "Villa" (le libellé par défaut du bouton, déjà bilingue
+    // Villa/Villa avec l'override solo Logement/Home intact) — plus besoin de le
+    // réécrire ici. Bloc conservé commenté, pas supprimé (strangler-fig).
+    // var hl = document.querySelector('#nb-home .nb-home-lbl');
+    // if (hl) {
+    //   hl.setAttribute('data-fr','Maison');
+    //   hl.setAttribute('data-en','Home');
+    //   var _isEn = (typeof lang !== 'undefined' && lang === 'en');
+    //   hl.textContent = _isEn ? 'Home' : 'Maison';
+    // }
     if (typeof applyLang === 'function') { try { applyLang(); } catch(e){} }
+    // COMMIT H — top-nav : la même barre (mêmes destinations/contenu, goTab()
+    // et applyNavV2Content() intacts) migre du bas vers le haut (CSS .nav-v2-top,
+    // voir commentaire l.2630). ARIA sort de la barre : sur Today le bloc vert
+    // (.aria-hero/.v3-hero, COMMIT G) le porte déjà ; ailleurs c'est le FAB
+    // #ariaFab, masqué depuis v162 — décision inchangée, pas rouverte ici.
+    var shell = document.getElementById('staffloShell'); if (shell) shell.classList.add('nav-v2-top');
+    var ariaBtn = document.getElementById('nb-aria'); if (ariaBtn) ariaBtn.classList.add('nb-hidden');
   })();
   applyNavV2Content();
   var _nbCal = document.getElementById('nb-calendar');
@@ -25682,11 +25775,19 @@ function updateInboxBadges(count) {
     fab.textContent = count;
     fab.classList.toggle('show', count > 0);
   }
-  // v162 — même badge sur l'orbe nav (#nb-aria) : un seul A doré qui porte le compteur
+  // v162 — même badge sur l'orbe nav (#nb-aria) : un seul A doré qui porte le compteur.
+  // #nb-aria est masqué depuis COMMIT H (top-nav) mais reste câblé — réversible via ?nav2=0.
   var nbBadge = document.getElementById('nbAriaBadge');
   if (nbBadge) {
     nbBadge.textContent = count > 99 ? '99+' : count;
     nbBadge.classList.toggle('show', count > 0);
+  }
+  // COMMIT H — la Boîte a maintenant sa propre icône dans le header, plus besoin
+  // de passer par le badge ARIA pour la voir.
+  var hdrBadge = document.getElementById('hdrInboxBadge');
+  if (hdrBadge) {
+    hdrBadge.textContent = count > 99 ? '99+' : count;
+    hdrBadge.classList.toggle('show', count > 0);
   }
 }
 
@@ -29666,6 +29767,8 @@ window.addEventListener('DOMContentLoaded', function() {
         <div>
           <div style="font-size:9px;letter-spacing:3px;color:var(--muted-on-dark);margin-bottom:2px">INBOX</div>
           <div style="font-family:'Cormorant Garamond',serif;font-size:17px;color:#fff;font-weight:300">Inbox</div>
+          <!-- COMMIT H — sous-titre, même texte que le document cible pour la Boîte -->
+          <div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:2px" data-fr="Emails Airbnb, Booking, direct" data-en="Airbnb, Booking, direct emails">Emails Airbnb, Booking, direct</div>
         </div>
         <button onclick="reconcileNowWithFeedback()" title="Réconcilier les paiements Airbnb" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:0 10px;height:28px;border-radius:var(--r-lg);font-size:11px;cursor:pointer;margin-right:6px">💸 Réconcilier</button>
         <button onclick="closeInbox()" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
