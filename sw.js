@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v406 (i18n nav : libellés onglets FR, icône Villa, accord pluriel toasts, COMMIT N)
-const CACHE = 'stafflo-v406';
+// Stafflo Service Worker — v407 (fix: FetchEvent network error sur ?onboarding=1, cache navigations avec ignoreSearch)
+const CACHE = 'stafflo-v407';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
@@ -52,8 +52,10 @@ self.addEventListener('fetch', e => {
     hostname.includes('openai')
   ) return;
 
+  const isNav = e.request.mode === 'navigate' || url.includes('.html');
+
   e.respondWith(
-    caches.match(e.request).then(cached => {
+    caches.match(e.request, isNav ? { ignoreSearch: true } : undefined).then(cached => {
       const fresh = fetch(e.request).then(res => {
         // Only cache successful same-origin or CDN responses
         if (res.ok && res.type !== 'opaque') {
@@ -61,7 +63,10 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => c.put(e.request, clone)).catch(() => {});
         }
         return res;
-      }).catch(() => cached);
+      }).catch(() =>
+        cached ||
+        caches.match('./app.html').then(shell => shell || Response.error())
+      );
       return cached || fresh;
     })
   );
