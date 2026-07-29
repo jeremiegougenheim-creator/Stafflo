@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v400 (top-nav : bottom-nav -> top-nav, ARIA hors barre, Boîte en icône header, sous-titres par écran, COMMIT H)
-const CACHE = 'stafflo-v400';
+// Stafflo Service Worker — v401 (signal Mawazine wait->go + ordre onglets Calendrier/Villa, règle v19, COMMIT K)
+const CACHE = 'stafflo-v401';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
