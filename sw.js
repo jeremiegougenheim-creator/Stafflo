@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v417 (COMMIT V4 : grammaire v19 sur l'onglet Clients)
-const CACHE = 'stafflo-v417';
+// Stafflo Service Worker — v418 (COMMIT V4b : mise en conformité guidelines v19)
+const CACHE = 'stafflo-v418';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
