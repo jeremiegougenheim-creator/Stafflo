@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v413 (COMMIT R6 : l'objectif de revenu cesse d'être inventé — badge 700/500 masqué sans cfg.revenueTarget réel, "Cible X€+" d'ARIA explains gardée contre la circularité comme au R5)
-const CACHE = 'stafflo-v413';
+// Stafflo Service Worker — v414 (COMMIT V1 : grammaire v19 portée sur la card "Ce qui compte aujourd'hui" du tab Today)
+const CACHE = 'stafflo-v414';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
