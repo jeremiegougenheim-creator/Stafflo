@@ -8340,7 +8340,9 @@ var staffloCal = (function(){
       var mn = c.minPrice || null;
       var mx = c.maxPrice || null;
       var bc = c.baseCapacity || 8;
-      var eg = (typeof c.extraGuestFee === 'number') ? c.extraGuestFee : 50;
+      // COMMIT R4 : meme traitement que getPrice() — extraGuestFee absent =
+      // pas de supplement invente, jamais un repli 50€ divergent.
+      var eg = (typeof c.extraGuestFee === 'number') ? c.extraGuestFee : 0;
       var pf = c.platform || 'airbnb';
       var pfFee = (pf === 'airbnb') ? '15.5%' : (pf === 'booking') ? '15%' : '0%';
       var villaName = c.villa || 'Villa';
@@ -20724,16 +20726,24 @@ function getPrice() {
     }
   }
 
-  // Floor/cap from user config (cfg.minPrice / cfg.maxPrice). Fallback 720€ floor.
+  // COMMIT R4 : floor/cap uniquement si cfg.minPrice/maxPrice sont reellement
+  // declares — aucun compte n'a de DEFAULT en base pour min_price (aucune
+  // surface de saisie ne l'ecrit avant ce commit), donc l'ancien repli 720€
+  // ecrasait l'ancre de TOUTE villa au monde. Sans plancher declare, le prix
+  // reste l'ancre arrondie a 50, jamais une constante inventee.
   var _cfg = (typeof getCfg === 'function') ? getCfg() : {};
-  var floor = (typeof _cfg.minPrice === 'number' && _cfg.minPrice > 0) ? _cfg.minPrice : 720;
+  var floor = (typeof _cfg.minPrice === 'number' && _cfg.minPrice > 0) ? _cfg.minPrice : null;
   var cap   = (typeof _cfg.maxPrice === 'number' && _cfg.maxPrice > 0) ? _cfg.maxPrice : null;
-  price = Math.max(floor, Math.round(price / 50) * 50);
+  price = Math.round(price / 50) * 50;
+  if (floor) price = Math.max(floor, price);
   if (cap) price = Math.min(cap, price);
-  
-  // Guest supplement: cfg.extraGuestFee/person above cfg.baseCapacity (defaults 50€ above 8)
-  var perGuest = (typeof _cfg.extraGuestFee === 'number') ? _cfg.extraGuestFee : 50;
-  var capGuest = (typeof _cfg.baseCapacity === 'number' && _cfg.baseCapacity > 0) ? _cfg.baseCapacity : 8;
+
+  // Guest supplement: cfg.extraGuestFee/person above cfg.baseCapacity. Sans
+  // l'une des deux valeurs reellement declarees, pas de supplement invente —
+  // perGuest=0 et capGuest=Infinity garantissent guestExtra=0 quelle que soit
+  // celle des deux qui manque.
+  var perGuest = (typeof _cfg.extraGuestFee === 'number' && _cfg.extraGuestFee >= 0) ? _cfg.extraGuestFee : 0;
+  var capGuest = (typeof _cfg.baseCapacity === 'number' && _cfg.baseCapacity > 0) ? _cfg.baseCapacity : Infinity;
   const guestExtra = guests > capGuest ? (guests - capGuest) * perGuest : 0;
   const pricePN = price + guestExtra;
   const gross = pricePN * nights;
@@ -21328,7 +21338,12 @@ async function generateAlerts(weatherTemp) {
         else if (pct > 25) alerts.push({type:'info',
           title:'📈 ' + pct + '% ' + (_vf?(fr?'au-dessus de la cible':'above target'):(fr?'au-dessus du marché':'above market')),
           sub: (fr?'Vous: ':'You: ') + yourPrice + '€ · ' + _refLbl + _ref + '€ · ' + (fr?'Vérifiez votre taux de remplissage.':'Check your occupancy rate.') + _benchNote});
-        else alerts.push({type:'good',
+        // COMMIT R4 : la coche verte ('good') est une validation — elle ne
+        // s'affiche que si _ref vient d'un historique reel (avgMarket, des
+        // comps enregistres). _vf est une cible calculee, jamais une donnee
+        // observee (cf. commentaire l.21315) : alignee dessus, c'est un avis
+        // ('info'), pas une validation.
+        else alerts.push({type: _vf ? 'info' : 'good',
           title:'📊 ' + (fr?'Prix compétitif':'Competitive price') + ' — ' + yourPrice + '€ (' + (pct>=0?'+':'') + pct + '% ' + _vsLbl + ')',
           sub: _refLblAvg + _ref + '€' + _benchNote});
       }
@@ -26429,6 +26444,10 @@ var TIER_DISPLAY_LABELS = {
   '5_star_boutique': { label_fr: '5★ boutique', label_en: '5★ boutique' },
   '5_star_palace':   { label_fr: '5★ palace',   label_en: '5★ palace'  }
 };
+// COMMIT R4 : scope='region_adr' n'a pas de tier en base (hotel_benchmarks.tier
+// est NULL — c'est une moyenne TOUS hotels, pas une categorie). Ne jamais lui
+// coller un libelle "4★ premium" invente : le libellé dit ce que c'est.
+var REGION_AVERAGE_LABEL = { label_fr: 'Moyenne régionale, toutes catégories', label_en: 'Regional average, all categories' };
 
 // COMMIT Q : hotelPerRoom vient désormais de window._villaHotelRates
 // (résolu par refreshVillaHotelRates() depuis public.hotel_benchmarks —
@@ -26445,7 +26464,10 @@ function computeHotelBenchmark(opts) {
   var rates = window._villaHotelRates;
   if (!rates || !rates.ok) return null;
 
-  var tier = opts.tier || rates.tier || inferVillaTier(basePrice, bedrooms);
+  // scope='region_adr' : rates.tier est NULL en base (moyenne tous hotels).
+  // Pas de categorie a inferer dans ce cas — inferVillaTier() ne s'applique
+  // qu'en city_curated, ou chaque ligne est reellement une categorie.
+  var tier = opts.tier || rates.tier || (rates.scope === 'region_adr' ? null : inferVillaTier(basePrice, bedrooms));
   var seasonKey = getSeasonKey(date);
   var hotelPerRoom = rates.seasonRates[seasonKey];
   if (!hotelPerRoom) return null;
@@ -26462,7 +26484,7 @@ function computeHotelBenchmark(opts) {
 
   return {
     tier: tier,
-    tierLabel: TIER_DISPLAY_LABELS[tier] || TIER_DISPLAY_LABELS['5_star_boutique'],
+    tierLabel: tier ? (TIER_DISPLAY_LABELS[tier] || TIER_DISPLAY_LABELS['5_star_boutique']) : REGION_AVERAGE_LABEL,
     seasonKey: seasonKey,
     hotelPerRoom: hotelPerRoom,
     bedroomsHotel: bedroomsHotel,

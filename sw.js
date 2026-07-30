@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v410 (COMMIT R3 : les 5 paliers se calculent depuis l'ancre + la forme saisonnière)
-const CACHE = 'stafflo-v410';
+// Stafflo Service Worker — v411 (COMMIT R4 : le prix cesse d'être écrasé par des constantes — plancher 720€, supplément 50€/8 et tier region_adr fabriqués retirés)
+const CACHE = 'stafflo-v411';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
