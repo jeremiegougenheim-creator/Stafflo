@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v412 (COMMIT R5 : la coche de la carte de prix cesse de mentir — badge masqué sans floor/cap réels, cible circulaire retirée)
-const CACHE = 'stafflo-v412';
+// Stafflo Service Worker — v413 (COMMIT R6 : l'objectif de revenu cesse d'être inventé — badge 700/500 masqué sans cfg.revenueTarget réel, "Cible X€+" d'ARIA explains gardée contre la circularité comme au R5)
+const CACHE = 'stafflo-v413';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

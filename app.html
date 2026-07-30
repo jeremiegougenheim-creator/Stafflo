@@ -20653,7 +20653,7 @@ function updatePrice() {
     var commLblU = document.getElementById('bdCommLbl'); if (commLblU) commLblU.textContent = 'Airbnb ' + String.fromCharCode(8212) + ' (host fee)';
     var elNetU = document.getElementById('bdNet'); if (elNetU) elNetU.textContent = '?';
     var badgeU = document.getElementById('heroBadge');
-    if (badgeU) { badgeU.textContent = frU ? 'Tarifs non configurés' : 'Rates not configured'; badgeU.className = 'price-badge-home pbh-warn'; }
+    if (badgeU) { badgeU.style.display = ''; badgeU.textContent = frU ? 'Tarifs non configurés' : 'Rates not configured'; badgeU.className = 'price-badge-home pbh-warn'; }
     var factorModU = document.getElementById('factorMod'); if (factorModU) factorModU.textContent = frU ? 'Aucun' : 'None';
     renderCompetitors();
     renderScenarios(null);
@@ -20678,9 +20678,21 @@ function updatePrice() {
   document.getElementById('bdNet').textContent = Math.round(d.net).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f') + '€';
 
   const badge = document.getElementById('heroBadge');
-  if (netPN >= 700) { badge.textContent = lang==='fr' ? 'Au-dessus objectif ✓' : 'Above target ✓'; badge.className = 'price-badge-home pbh-good'; }
-  else if (netPN >= 500) { badge.textContent = lang==='fr' ? 'Objectif atteint' : 'Target reached'; badge.className = 'price-badge-home pbh-good'; }
-  else { badge.textContent = lang==='fr' ? 'Sous objectif' : 'Below target'; badge.className = 'price-badge-home pbh-warn'; }
+  // COMMIT R6 : 700/500 etaient des seuils fabriques, aucun proprietaire ne les
+  // a fixes — l'app jugeait sa propre performance contre un repere invente. Un
+  // objectif de revenu est une decision du proprietaire (cfg.revenueTarget),
+  // jamais une constante ni une derivation de base_price. Absent -> badge masque.
+  if (badge) {
+    var _cfgR6 = (typeof getCfg === 'function') ? getCfg() : {};
+    var _revenueTarget = (typeof _cfgR6.revenueTarget === 'number' && _cfgR6.revenueTarget > 0) ? _cfgR6.revenueTarget : null;
+    if (_revenueTarget == null) {
+      badge.style.display = 'none';
+    } else {
+      badge.style.display = '';
+      if (netPN >= _revenueTarget) { badge.textContent = lang==='fr' ? 'Objectif atteint' : 'Target reached'; badge.className = 'price-badge-home pbh-good'; }
+      else { badge.textContent = lang==='fr' ? 'Sous objectif' : 'Below target'; badge.className = 'price-badge-home pbh-warn'; }
+    }
+  }
 
   const activeMods = [];
   if (d.appliedMods.event) activeMods.push('Événement +15%');
@@ -32074,7 +32086,17 @@ function startTour(){
         if (p.appliedMods.longstay) parts.push('−20% ' + (FR?'long séjour (≥14n)':'long stay (≥14n)'));
       }
       if (p.guestExtra) parts.push('+' + fmtPrice(p.guestExtra) + ' ' + (FR?'invités sup.':'extra guests'));
-      parts.push((FR?'Cible':'Target') + ' ' + (p.cap ? ((p.floor||0)+'€–'+p.cap+'€') : ((p.floor||0)+'€+')));
+      // COMMIT R6 pt.2 : meme garde que R5 pt.3 sur la sous-ligne (l.32040) —
+      // "Cible X€+" ici utilisait p.floor/p.cap sans le test de circularite,
+      // hors perimetre du R5. Quand un seul repere est declare et qu'il a
+      // lui-meme clampe price a sa valeur, la ligne ne fait que repeter le
+      // prix affiche juste au-dessus : on la retire dans ce cas precis.
+      if (p.floor || p.cap) {
+        var _boundsSetE = (p.floor ? 1 : 0) + (p.cap ? 1 : 0);
+        var _singleBoundE = _boundsSetE === 1 ? (p.floor || p.cap) : null;
+        var _circularE = _boundsSetE === 1 ? (price === _singleBoundE) : (p.floor === p.cap && price === p.floor);
+        if (!_circularE) parts.push((FR?'Cible':'Target') + ' ' + (p.cap ? ((p.floor||0)+'€–'+p.cap+'€') : ((p.floor||0)+'€+')));
+      }
       parts.push('<span style="color:#C9963A;font-weight:600">' + (FR?'Total':'Total') + ' : ' + fmtPrice(price) + '/n · ' + (FR?'net après Airbnb':'net after Airbnb') + ' ' + fmtPrice(price * (1 - (p.hostFeeRate||0))) + '</span>');
       // COMMIT R3 : les 5 paliers peuvent être plats (basePrice partout) tant que
       // computeSeasonTiers() n'a pas résolu de forme réelle pour cette ville — le
