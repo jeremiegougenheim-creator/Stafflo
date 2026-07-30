@@ -3686,7 +3686,13 @@ window.addEventListener('keydown', function(e){
       <path d="M21 14.5c-.6-1.5-2.4-2.3-4.4-2.1-2 .2-3.4 1.3-3.4 2.7 0 1.3 1.4 1.9 3.1 2.3l1.6.4c1.9.4 3.4 1.1 3.4 2.6 0 1.6-1.8 2.7-3.9 2.7s-3.9-.9-4.4-2.4" stroke="#C9963A" stroke-width="1.4" stroke-linecap="round" fill="none"/>
     </svg>
     <span class="logo-word">Staff<em>lo</em></span></a>
-  <span id="activeTabLabel" style="font-family:'DM Sans',sans-serif;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:#C9963A;pointer-events:none;text-align:center">Today</span>
+  <!-- COMMIT X0 : masqué, pas supprimé (strangler-fig) — redondant avec la nav
+       du bas, qui marque déjà l'onglet actif en doré ; occupait la place la
+       plus chère du header (entre le logo et .hdr-user-badge, qui débordait
+       à 390px faute de place) pour ne rien apprendre de plus. goTab() continue
+       de mettre à jour son textContent (#_atlMap), au cas où il soit un jour
+       réaffiché. -->
+  <span id="activeTabLabel" style="display:none;font-family:'Inter',sans-serif;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:#C9963A;pointer-events:none;text-align:center">Today</span>
   <div class="header-right">
   <div id="sessionBadge" style="font-size:10px;opacity:.75;margin-right:8px"></div>
     <div class="sync-dot" id="syncDot" onclick="syncNow()" title="Supabase sync"></div>
@@ -3890,7 +3896,10 @@ window.renderSoloTurnoverCard = function(){
     <span class="nb-home-lbl" data-fr="Villa" data-en="Villa" data-fr-solo="Logement" data-en-solo="Home">Villa</span>
   </button>
   <button class="nav-item nav-btn nb-hidden" id="nb-location" type="button">
-    <i class="ti ti-home"></i>
+    <!-- COMMIT X0 : ti-home → ti-users. Ce bouton EST l'onglet Clients (cf.
+         commentaire ci-dessous) — il portait l'icône maison de son ancien nom
+         "Location", en collision avec #nb-home. #nb-home garde ti-home. -->
+    <i class="ti ti-users"></i>
     <!-- libellé "Location"/"Rentals" superseded par top-nav — COMMIT H : cet
          onglet EST l'onglet Clients du document cible, pas un onglet séjours
          distinct. #guestsV5/#guestDetailV5/#villaV3 restent ici, inchangés. -->
@@ -5030,7 +5039,7 @@ window.renderSoloTurnoverCard = function(){
 </div>
 
 <!-- ═══ DEMO MODE BANNER ═════════════════════════════════════ -->
-<div id="demoBanner" style="display:none;background:#FAEEDA;padding:8px 14px;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid rgba(186,117,23,.25);font-family:'DM Sans',sans-serif">
+<div id="demoBanner" style="display:none;background:#FAEEDA;padding:8px 14px;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid rgba(186,117,23,.25);font-family:'Inter',sans-serif">
   <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#5A3800;min-width:0;flex:1">
     <span style="flex-shrink:0;font-size:13px"><i class="ti ti-sparkles"></i></span>
     <span data-fr="Mode démo · explorez avec des données fictives" data-en="Demo mode · explore with sample data" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Mode démo · explorez avec des données fictives</span>
@@ -20061,6 +20070,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(function(){});
         // ── Pull villa_settings from Supabase, then show wizard if not onboarded ──
         pullVillaSettings().then(function() {
+          // COMMIT X0 : setHdr() (bande #hdrVilla) n'était appelé qu'à
+          // DOMContentLoaded/+0/+1500ms — jamais rappelé une fois cfg.villa
+          // hydraté depuis Supabase par pullVillaSettings(), qui est async et
+          // résout après ces trois échéances en conditions réelles (auth +
+          // réseau). Résultat : le header retombait sur le fallback littéral
+          // 'Villa' au lieu de villa_name ('Villa DarJ'), alors que la donnée
+          // était bien en base et bien hydratée en mémoire (cfg.villa) — un
+          // défaut de rendu, pas de donnée.
+          if (typeof window.setHdr === 'function') { try { window.setHdr(); } catch(e){} }
           // COMMIT R2 : cfg.price* peut arriver après le premier populateSeasonSelect()
           // (session neuve, localStorage vide) — repeupler une fois la base résolue.
           if (typeof populateSeasonSelect === 'function') populateSeasonSelect();
