@@ -24843,10 +24843,30 @@ async function pushVillaSettings(cfg) {
     // recalculé une fois verrouillé. Ecrit dans le cfg local + repeuple le
     // select AVANT le PATCH, pour que payload et l'UI locale voient les mêmes
     // valeurs.
+    // COMMIT Y1 : cinq paliers tous égaux à base_price ne sont pas un résultat,
+    // c'est un calcul qui n'a pas eu ses entrées (hotel_benchmarks ou
+    // city_season_profiles non résolus — RLS, réseau, course). Les écrire
+    // écraserait silencieusement une vraie valeur déjà en base par une absence
+    // déguisée en donnée (motif connu de la maison). Le garde ne bloque QUE
+    // ces 5 colonnes ; le reste du push part normalement.
+    var _tiersFlat = false;
     if (typeof cfg.basePrice === 'number' && cfg.basePrice > 0 && typeof computeSeasonTiers === 'function') {
       try {
         var _tiers = await computeSeasonTiers(cfg);
         if (_tiers) {
+          _tiersFlat = _tiers.low === cfg.basePrice && _tiers.normal === cfg.basePrice &&
+                       _tiers.high === cfg.basePrice && _tiers.veryhigh === cfg.basePrice &&
+                       _tiers.peak === cfg.basePrice;
+          if (_tiersFlat) {
+            var _hb = window._villaHotelRates;
+            var _csp = window._citySeasonProfile;
+            var _callerStack = (new Error()).stack || '';
+            var _callerLines = _callerStack.split('\n').slice(1, 3).map(function(l){ return l.trim(); }).join(' <- ');
+            console.warn('[pushVillaSettings] paliers plats retirés du payload — base_price=' + cfg.basePrice +
+              ' · bande hôtelière résolue=' + (!!(_hb && _hb.ok)) + (_hb && !_hb.ok ? (' (raison=' + _hb.reason + ')') : '') +
+              ' · profil de ville résolu=' + (!!(_csp && _csp.ok)) + (_csp && !_csp.ok ? (' (raison=' + _csp.reason + ')') : '') +
+              ' · appelant=' + _callerLines);
+          }
           var _manual = cfg.priceManual || {};
           if (!_manual.low) cfg.priceLow = _tiers.low;
           if (!_manual.normal) cfg.priceNormal = _tiers.normal;
@@ -24873,11 +24893,11 @@ async function pushVillaSettings(cfg) {
       base_price: cfg.basePrice || undefined,
       min_price: (typeof cfg.minPrice === 'number') ? cfg.minPrice : undefined,
       max_price: (typeof cfg.maxPrice === 'number') ? cfg.maxPrice : undefined,
-      price_low: (typeof cfg.priceLow === 'number') ? cfg.priceLow : undefined,
-      price_normal: (typeof cfg.priceNormal === 'number') ? cfg.priceNormal : undefined,
-      price_high: (typeof cfg.priceHigh === 'number') ? cfg.priceHigh : undefined,
-      price_veryhigh: (typeof cfg.priceVeryhigh === 'number') ? cfg.priceVeryhigh : undefined,
-      price_peak: (typeof cfg.pricePeak === 'number') ? cfg.pricePeak : undefined,
+      price_low: (!_tiersFlat && typeof cfg.priceLow === 'number') ? cfg.priceLow : undefined,
+      price_normal: (!_tiersFlat && typeof cfg.priceNormal === 'number') ? cfg.priceNormal : undefined,
+      price_high: (!_tiersFlat && typeof cfg.priceHigh === 'number') ? cfg.priceHigh : undefined,
+      price_veryhigh: (!_tiersFlat && typeof cfg.priceVeryhigh === 'number') ? cfg.priceVeryhigh : undefined,
+      price_peak: (!_tiersFlat && typeof cfg.pricePeak === 'number') ? cfg.pricePeak : undefined,
       base_capacity: cfg.baseCapacity || undefined,
       extra_guest_fee: cfg.extraGuestFee != null ? cfg.extraGuestFee : undefined,
       platform: cfg.platform || undefined,
