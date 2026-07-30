@@ -32011,15 +32011,24 @@ function startTour(){
     var priceEl = $('v4HeroPrice');
     if (priceEl) priceEl.textContent = fmtPrice(price);
 
-    // Target badge — green check if within floor/cap, red off-target otherwise
+    // Target badge — green check if within floor/cap, red off-target otherwise.
+    // COMMIT R5 : floor/cap sont null (pas de repli 720) des qu'aucun des deux
+    // n'est declare — "price>=0 && price<=Infinity" serait alors toujours vrai
+    // et la coche ne testerait plus rien. Sans repere reel, l'element est masque
+    // plutot que d'afficher un test toujours vrai.
     var target = $('v4HeroTarget');
     if (target) {
-      var floor = p.floor || 0;
-      var cap = p.cap || Infinity;
-      var ok = price >= floor && price <= cap;
-      target.classList.toggle('is-off', !ok);
-      target.textContent = ok ? '✓' : '!';
-      target.title = ok ? (FR?'Dans la cible':'On target') : (FR?'Hors cible':'Off target');
+      if (!p.floor && !p.cap) {
+        target.style.display = 'none';
+      } else {
+        target.style.display = '';
+        var floor = p.floor || 0;
+        var cap = p.cap || Infinity;
+        var ok = price >= floor && price <= cap;
+        target.classList.toggle('is-off', !ok);
+        target.textContent = ok ? '✓' : '!';
+        target.title = ok ? (FR?'Dans la cible':'On target') : (FR?'Hors cible':'Off target');
+      }
     }
 
     // Sub line — season + per night + target
@@ -32028,7 +32037,17 @@ function startTour(){
       var seasonEl = document.getElementById('season');
       var seasonText = seasonEl && seasonEl.selectedOptions && seasonEl.selectedOptions[0] ? seasonEl.selectedOptions[0].textContent : '';
       var bits = [seasonText, FR?'par nuit':'per night'];
-      if (p.floor || p.cap) bits.push((FR?'cible':'target') + ' ' + (p.cap ? ((p.floor||0)+'€–'+p.cap+'€') : ((p.floor||0)+'€+')));
+      if (p.floor || p.cap) {
+        // COMMIT R5 pt.3 : quand un seul repere (floor OU cap) est declare et
+        // qu'il a lui-meme clampe price a sa valeur, "cible X€+" ne fait que
+        // repeter le prix affiche juste au-dessus — affirmation circulaire,
+        // on la retire. Un vrai intervalle (floor ET cap distincts) reste
+        // affiche : au moins une des deux bornes reste une info reelle.
+        var _boundsSet = (p.floor ? 1 : 0) + (p.cap ? 1 : 0);
+        var _singleBound = _boundsSet === 1 ? (p.floor || p.cap) : null;
+        var _circular = _boundsSet === 1 ? (price === _singleBound) : (p.floor === p.cap && price === p.floor);
+        if (!_circular) bits.push((FR?'cible':'target') + ' ' + (p.cap ? ((p.floor||0)+'€–'+p.cap+'€') : ((p.floor||0)+'€+')));
+      }
       sub.textContent = bits.filter(Boolean).join(' · ').toLowerCase();
     }
 

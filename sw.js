@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v411 (COMMIT R4 : le prix cesse d'être écrasé par des constantes — plancher 720€, supplément 50€/8 et tier region_adr fabriqués retirés)
-const CACHE = 'stafflo-v411';
+// Stafflo Service Worker — v412 (COMMIT R5 : la coche de la carte de prix cesse de mentir — badge masqué sans floor/cap réels, cible circulaire retirée)
+const CACHE = 'stafflo-v412';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
