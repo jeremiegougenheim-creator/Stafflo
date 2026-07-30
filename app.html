@@ -4480,20 +4480,51 @@ window.renderSoloTurnoverCard = function(){
   /* ── Card: Calendar Next-4 ── */
   function renderV3Calendar(){
     var list = document.getElementById('v3CalList');
+    var pill = document.getElementById('v3CalCount');
+    var footBtn = document.getElementById('v3CalFooterBtn');
+    var iconEl = document.getElementById('v3CalIcon');
     if (!list || typeof clients === 'undefined') return;
     var FR = fr();
+    if (iconEl && typeof iconFor === 'function') iconEl.innerHTML = iconFor('calendar-event');
     var today = todayMidnight();
-    var next = clients.filter(firm).filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
-                      .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); })
-                      .slice(0,4);
+    // COMMIT W2 : total AVANT le slice(0,4) — la pastille et le pied du
+    // footer partagent ce même nombre. Avant ce commit, l.5209 affichait
+    // « 4 prochains » en dur pendant que #v3VillaStats (juste au-dessus)
+    // affichait le vrai total : deux nombres contradictoires sur le même écran.
+    var upcoming = clients.filter(firm).filter(function(c){ return c.arrival && new Date(c.arrival) >= today; })
+                      .sort(function(a,b){ return new Date(a.arrival) - new Date(b.arrival); });
+    var total = upcoming.length;
+    var next = upcoming.slice(0,4);
     if (!next.length) {
-      // Zero-state (no séjour ever, same predicate as v3WelcomeCard) gets the ARIA-paste
-      // nudge; accounts with past-but-no-upcoming stays keep the generic empty copy.
-      var emptyTxt = isZeroState()
+      // Zero-état (no séjour ever, same predicate as v3WelcomeCard) réutilise
+      // l'action ARIA-paste déjà branchée (openForm, même que v3MattersEmptyCta) ;
+      // les comptes avec des séjours passés mais rien à venir gardent le lien
+      // calendrier existant (goTab), déjà réel — jamais un bouton inerte.
+      if (pill) pill.style.display = 'none';
+      if (footBtn) footBtn.style.display = 'none';
+      var zero = isZeroState();
+      var emptyTxt = zero
         ? (FR?'Aucun séjour pour l\'instant. Collez une conversation ci-dessus — ARIA crée la fiche.':'No stays yet. Paste a conversation above — ARIA creates the record.')
         : (FR?'Aucune arrivée à venir':'No upcoming arrivals');
-      list.innerHTML = '<li style="padding:10px 0;color:#6B6760;font-size:12.5px;font-style:italic">' + emptyTxt + '</li>';
+      var ctaTxt = zero ? (FR?'Ajouter un séjour →':'Add a stay →') : (FR?'Voir calendrier →':'View calendar →');
+      list.innerHTML = '<li class="v19-empty">' +
+          '<span>' + escapeHtml(emptyTxt) + '</span> ' +
+          '<button type="button" id="v3CalEmptyCta">' + escapeHtml(ctaTxt) + '</button>' +
+        '</li>';
+      var emptyCta = document.getElementById('v3CalEmptyCta');
+      if (emptyCta) emptyCta.addEventListener('click', function(){
+        if (zero) { if (typeof openForm === 'function') openForm(); }
+        else if (typeof goTab === 'function') goTab('calendar');
+      });
       return;
+    }
+    if (pill) { pill.style.display = ''; pill.textContent = total; }
+    if (footBtn) {
+      footBtn.style.display = '';
+      var footTxt = FR ? ('Voir les ' + total + ' →') : ('View all ' + total + ' →');
+      footBtn.setAttribute('data-fr', 'Voir les ' + total + ' →');
+      footBtn.setAttribute('data-en', 'View all ' + total + ' →');
+      footBtn.textContent = footTxt;
     }
     list.innerHTML = next.map(function(c){
       var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
@@ -4584,7 +4615,12 @@ window.renderSoloTurnoverCard = function(){
     var list = document.getElementById('v3OpsList');
     var counter = document.getElementById('v3OpsCount');
     var prog = document.getElementById('v3OpsProgress');
+    var iconEl = document.getElementById('v3OpsIcon');
     if (!list) return;
+    if (iconEl && typeof iconFor === 'function') iconEl.innerHTML = iconFor('checklist');
+    // COMMIT W2 recon : buildOpsItems() retourne toujours 6 items (une des 4
+    // branches phase, jamais un tableau vide) — pas d'état vide possible ici,
+    // donc rien à convertir en .v19-empty pour cette carte.
     var built = buildOpsItems();
     var gid = built.ctx.guest ? built.ctx.guest.id : '';
     var phase = built.ctx.phase;
@@ -5203,28 +5239,34 @@ window.renderSoloTurnoverCard = function(){
 
     <!-- COL SIDE: Calendar + Ops -->
     <div class="v3-col-side">
-      <section class="v3-card v3-card-cal" id="v3CardCal" aria-label="Calendar — next 4">
-        <header class="v3-card-hd">
+      <section class="v3-card v3-card-cal v19-card" id="v3CardCal" aria-label="Calendar — next 4">
+        <header class="v3-card-hd v19-card__h">
+          <span class="v19-card__i" id="v3CalIcon" aria-hidden="true"></span>
           <h3 class="v3-card-title" data-fr="Calendrier" data-en="Calendar">Calendrier</h3>
-          <span class="v3-card-meta" data-fr="4 prochains" data-en="Next 4">4 prochains</span>
+          <span class="v3-card-meta v19-pill v19-pill--gold" id="v3CalCount" style="display:none">—</span>
         </header>
-        <ul class="v3-card-list" id="v3CalList">
-          <li class="v3-skel"></li><li class="v3-skel"></li>
-        </ul>
+        <div class="v3-card-body v19-card__b">
+          <ul class="v3-card-list" id="v3CalList">
+            <li class="v3-skel"></li><li class="v3-skel"></li>
+          </ul>
+        </div>
         <footer class="v3-card-ft">
-          <button class="v3-card-link" onclick="goTab('calendar')" data-fr="Voir calendrier →" data-en="View calendar →">Voir calendrier →</button>
+          <button class="v3-card-link" id="v3CalFooterBtn" type="button" onclick="goTab('calendar')" data-fr="Voir calendrier →" data-en="View calendar →">Voir calendrier →</button>
         </footer>
       </section>
 
-      <section class="v3-card v3-card-ops" id="v3CardOps" aria-label="Today's ops">
-        <header class="v3-card-hd">
+      <section class="v3-card v3-card-ops v19-card" id="v3CardOps" aria-label="Today's ops">
+        <header class="v3-card-hd v19-card__h">
+          <span class="v19-card__i" id="v3OpsIcon" aria-hidden="true"></span>
           <h3 class="v3-card-title" data-fr="Ops du jour" data-en="Today's ops">Ops du jour</h3>
-          <span class="v3-card-meta" id="v3OpsCount">0/0</span>
+          <span class="v3-card-meta v19-pill v19-pill--gold" id="v3OpsCount">0/0</span>
         </header>
-        <div class="v3-progress"><div class="v3-progress-bar" id="v3OpsProgress" style="width:0%"></div></div>
-        <ul class="v3-card-list" id="v3OpsList">
-          <li class="v3-skel"></li><li class="v3-skel"></li>
-        </ul>
+        <div class="v3-card-body v19-card__b">
+          <div class="v3-progress"><div class="v3-progress-bar" id="v3OpsProgress" style="width:0%"></div></div>
+          <ul class="v3-card-list" id="v3OpsList">
+            <li class="v3-skel"></li><li class="v3-skel"></li>
+          </ul>
+        </div>
       </section>
     </div>
   </div>

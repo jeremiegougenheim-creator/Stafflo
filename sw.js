@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v419 (COMMIT W1 : ARIA conforme v19 — orbe, mesures, tagline)
-const CACHE = 'stafflo-v419';
+// Stafflo Service Worker — v420 (COMMIT W2 : Aujourd'hui — grammaire v19 sur Calendrier/Ops)
+const CACHE = 'stafflo-v420';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
