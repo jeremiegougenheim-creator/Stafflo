@@ -4018,8 +4018,13 @@ window.renderSoloTurnoverCard = function(){
     if (typeof clients === 'undefined') return { items:[], moreCount:0, oppCount:0 };
     var FR = fr();
     var today = todayMidnight();
+    var todayEnd = new Date(today.getTime()); todayEnd.setHours(23,59,59,999);
     var firmList = clients.filter(firm);
     var items = [];
+    // item_key = <action_état>:<client_id>:<date_ancre ISO du séjour> — jamais la date
+    // du jour (la clé changerait chaque matin), jamais le client seul (un « fait » sur
+    // juillet masquerait septembre). deadline = borne de report (COMMIT V2).
+    function anchorDate(iso){ return String(iso||'').slice(0,10); }
 
     firmList.forEach(function(c){
       if (!c.departure) return;
@@ -4029,7 +4034,8 @@ window.renderSoloTurnoverCard = function(){
           title_fr:'Départ '+(c.name||''), title_en:'Departing '+(c.name||''),
           sub_fr:'Checkout + message d\'avis', sub_en:'Checkout + review message',
           title:(FR?'Départ ':'Departing ')+(c.name||''), sub:(FR?'Checkout + message d\'avis':'Checkout + review message'),
-          client:c, cta:(FR?'Envoyer message départ':'Send checkout message') });
+          client:c, cta:(FR?'Envoyer message départ':'Send checkout message'),
+          key:'departure:'+c.id+':'+anchorDate(c.departure), deadline: todayEnd });
       }
     });
     firmList.forEach(function(c){
@@ -4040,7 +4046,8 @@ window.renderSoloTurnoverCard = function(){
           title_fr:'Arrivée '+(c.name||''), title_en:'Arriving '+(c.name||''),
           sub_fr:'Brief staff + welcome', sub_en:'Brief staff + welcome',
           title:(FR?'Arrivée ':'Arriving ')+(c.name||''), sub:(FR?'Brief staff + welcome':'Brief staff + welcome'),
-          client:c, cta:(FR?'✍️ Rédiger le welcome':'✍️ Draft welcome'), action:'welcome' });
+          client:c, cta:(FR?'✍️ Rédiger le welcome':'✍️ Draft welcome'), action:'welcome',
+          key:'arrival:'+c.id+':'+anchorDate(c.arrival), deadline: todayEnd });
       }
     });
     firmList.forEach(function(c){
@@ -4053,7 +4060,8 @@ window.renderSoloTurnoverCard = function(){
           title_fr:'Mi-séjour · '+(c.name||''), title_en:'Mid-stay · '+(c.name||''),
           sub_fr:nLeft+' nuits restantes', sub_en:nLeft+' nights left',
           title:(FR?'Mi-séjour · ':'Mid-stay · ')+(c.name||''), sub:nLeft+(FR?' nuits restantes':' nights left'),
-          client:c, cta:(FR?'Check-in mi-séjour':'Mid-stay check-in') });
+          client:c, cta:(FR?'Check-in mi-séjour':'Mid-stay check-in'),
+          key:'midstay:'+c.id+':'+anchorDate(c.arrival), deadline: dep });
       }
     });
     firmList.forEach(function(c){
@@ -4065,7 +4073,8 @@ window.renderSoloTurnoverCard = function(){
           title_fr:'Arrivée J+'+d+' · '+(c.name||''), title_en:'Arrival J+'+d+' · '+(c.name||''),
           sub_fr:'Briefer staff, courses, message', sub_en:'Brief staff, groceries, message',
           title:(FR?'Arrivée J+':'Arrival J+')+d+' · '+(c.name||''), sub:(FR?'Briefer staff, courses, message':'Brief staff, groceries, message'),
-          client:c, cta:(FR?'✍️ Rédiger le welcome':'✍️ Draft welcome'), action:'welcome' });
+          client:c, cta:(FR?'✍️ Rédiger le welcome':'✍️ Draft welcome'), action:'welcome',
+          key:'arrival-prep:'+c.id+':'+anchorDate(c.arrival), deadline: arr });
       }
     });
     var p1 = items.filter(function(x){return x.tier==='p1';}).slice(0,3);
@@ -4073,18 +4082,140 @@ window.renderSoloTurnoverCard = function(){
     var opps = [];
     var nextNew = firmList.filter(function(c){ return c.arrival && new Date(c.arrival)>today; }).sort(function(a,b){ return new Date(a.arrival)-new Date(b.arrival);})[0];
     if (nextNew) {
+      var nextArr = new Date(nextNew.arrival); nextArr.setHours(0,0,0,0);
       opps.push({ tier:'opp', tone:'go', icon:'✨',
         title_fr:'Opportunité · '+firstName(nextNew.name), title_en:'Opportunity · '+firstName(nextNew.name),
         sub_fr:'Anticipez un message de bienvenue premium pour le prochain séjour', sub_en:'Send an early premium welcome for the next stay',
         title:(FR?'Opportunité · ':'Opportunity · ')+firstName(nextNew.name), sub:(FR?'Anticipez un message de bienvenue premium pour le prochain séjour':'Send an early premium welcome for the next stay'),
-        client:nextNew, cta:(FR?'✍️ Rédiger le welcome':'✍️ Draft welcome'), action:'welcome' });
+        client:nextNew, cta:(FR?'✍️ Rédiger le welcome':'✍️ Draft welcome'), action:'welcome',
+        key:'opportunity:'+nextNew.id+':'+anchorDate(nextNew.arrival), deadline: nextArr });
     }
     var finalList = p1.concat(p2).concat(opps.slice(0,1));
     var moreCount = Math.max(0, items.length - p1.length - p2.length);
     return { items: finalList, moreCount: moreCount, oppCount: opps.length };
   }
 
-  function renderV3WhatMatters(){
+  // ── COMMIT V2 : persistance Fait/Plus tard — public.derived_item_state ──
+  // PK (owner_id, item_key), RLS auth.uid()=owner_id. Lecture/écriture génériques,
+  // valables pour n'importe quel item (matters aujourd'hui, et au-delà si réutilisé).
+  async function fetchDerivedItemState(){
+    try {
+      if (typeof isAuthed !== 'function' || !isAuthed()) return {};
+      var r = await fetch(SB_URL + '/rest/v1/derived_item_state?select=item_key,status,snoozed_until', {
+        headers: authHeaders()
+      });
+      if (!r.ok) return {};
+      var rows = await r.json();
+      var map = {};
+      (rows||[]).forEach(function(row){ if (row && row.item_key) map[row.item_key] = row; });
+      return map;
+    } catch(e) { console.warn('[v3 matters] fetchDerivedItemState', e); return {}; }
+  }
+  async function upsertDerivedItemState(itemKey, patch){
+    var uid = (typeof getUserId === 'function') ? getUserId() : null;
+    if (!uid) throw new Error('not authed');
+    var body = Object.assign({ owner_id: uid, item_key: itemKey, updated_at: new Date().toISOString() }, patch);
+    var r = await fetch(SB_URL + '/rest/v1/derived_item_state?on_conflict=owner_id,item_key', {
+      method: 'POST',
+      headers: Object.assign({}, authHeaders(), { 'Prefer': 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { var t = await r.text(); throw new Error('HTTP '+r.status+' '+t.slice(0,150)); }
+  }
+
+  // Préréglages Plus tard, convention Gmail/Todoist. Filtrés à l'affichage :
+  // seuls les préréglages dont le réveil tombe AVANT l'échéance propre de l'item
+  // (it.deadline) sont proposés — on ne reporte jamais au-delà de l'événement concerné.
+  function computeSnoozePresets(deadline){
+    var now = new Date();
+    var plus4 = new Date(now.getTime() + 4*3600000);
+    var today18 = new Date(now); today18.setHours(18,0,0,0);
+    var laterToday = (today18 > now && today18 < plus4) ? today18 : plus4;
+    var tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1); tomorrow.setHours(8,0,0,0);
+    var nextMon = new Date(now);
+    var addDays = ((1 - nextMon.getDay() + 7) % 7) || 7;
+    nextMon.setDate(nextMon.getDate() + addDays); nextMon.setHours(8,0,0,0);
+    var presets = [
+      { fr:'Plus tard aujourd\'hui', en:'Later today', at: laterToday },
+      { fr:'Demain', en:'Tomorrow', at: tomorrow },
+      { fr:'La semaine prochaine', en:'Next week', at: nextMon }
+    ];
+    return presets.filter(function(p){ return !deadline || p.at < deadline; });
+  }
+
+  function _snoozeInputValue(d){
+    var pad = function(n){ return String(n).padStart(2,'0'); };
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+  // Sélecteur de date dédié (ne réutilise pas staffloPrompt — pas de champ datetime-local
+  // dans son API, et on ne touche pas aux composants partagés existants pour ça).
+  function openSnoozeDatePicker(it, row){
+    var FR = fr();
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(15,35,24,.5);z-index:10060;display:flex;align-items:center;justify-content:center;padding:20px';
+    var nowVal = _snoozeInputValue(new Date(Date.now()+60000));
+    var maxAttr = it.deadline ? ' max="'+_snoozeInputValue(it.deadline)+'"' : '';
+    wrap.innerHTML =
+      '<div style="background:#FAF6EE;border-radius:var(--r-lg);max-width:340px;width:100%;padding:22px 22px 18px;box-shadow:0 20px 60px rgba(15,35,24,.3)">'
+      + '<div style="font-family:\'Cormorant Garamond\',serif;font-size:20px;font-weight:600;color:#0F2318;margin-bottom:12px">' + (FR?'Choisir une date':'Choose a date') + '</div>'
+      + '<input id="_snoozeDt" type="datetime-local" min="'+nowVal+'"'+maxAttr+' value="'+nowVal+'" style="width:100%;border:1px solid rgba(15,35,24,.15);border-radius:var(--r-md);padding:12px 14px;font-size:14px;box-sizing:border-box" />'
+      + '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">'
+      +   '<button id="_snoozeCancel" style="background:#F4EFE3;color:#1D4D3A;border:1px solid rgba(15,35,24,.1);border-radius:var(--r-md);padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer">' + (FR?'Annuler':'Cancel') + '</button>'
+      +   '<button id="_snoozeOk" style="background:#0F2318;color:#E9D7A8;border:none;border-radius:var(--r-md);padding:10px 20px;font-size:13px;font-weight:600;cursor:pointer">' + (FR?'Reporter':'Snooze') + '</button>'
+      + '</div></div>';
+    document.body.appendChild(wrap);
+    var inp = wrap.querySelector('#_snoozeDt');
+    var close = function(){ try { document.body.removeChild(wrap); } catch(e){} };
+    wrap.querySelector('#_snoozeCancel').onclick = close;
+    wrap.addEventListener('click', function(e){ if (e.target === wrap) close(); });
+    wrap.querySelector('#_snoozeOk').onclick = function(){
+      var v = inp.value;
+      close();
+      if (!v) return;
+      var d = new Date(v);
+      if (isNaN(d.getTime())) return;
+      applySnooze(it, d, row);
+    };
+  }
+  function openSnoozeMenu(btn, it, row){
+    var FR = fr();
+    var presets = computeSnoozePresets(it.deadline);
+    var menuItems = presets.map(function(p){
+      return { label: (FR?p.fr:p.en), fn: function(){ applySnooze(it, p.at, row); } };
+    });
+    menuItems.push({ label: (FR?'Choisir une date':'Choose a date'), fn: function(){ openSnoozeDatePicker(it, row); } });
+    if (typeof staffloMore === 'function') staffloMore(btn, menuItems);
+  }
+  // Écriture optimiste : la ligne disparaît immédiatement, la requête part ensuite.
+  // Échec → renderV3WhatMatters() la fait réapparaître (aucun état n'a été persisté) + toast.
+  function applySnooze(it, atDate, row){
+    var FR = fr();
+    if (row && row.parentNode) row.remove();
+    upsertDerivedItemState(it.key, { status:'snoozed', snoozed_until: atDate.toISOString(), done_at: null })
+      .catch(function(err){
+        console.warn('[v3 matters] snooze failed', err);
+        if (typeof toast === 'function') toast(FR ? '✗ Report échoué — réessayez' : '✗ Snooze failed — try again');
+        renderV3WhatMatters();
+      });
+  }
+  function applyDone(it, row){
+    var FR = fr();
+    if (row && row.parentNode) row.remove();
+    upsertDerivedItemState(it.key, { status:'done', done_at: new Date().toISOString(), snoozed_until: null })
+      .catch(function(err){
+        console.warn('[v3 matters] done failed', err);
+        if (typeof toast === 'function') toast(FR ? '✗ Échec — réessayez' : '✗ Failed — try again');
+        renderV3WhatMatters();
+      });
+  }
+  function _fmtSnoozedUntil(iso, FR){
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(FR?'fr-FR':'en-US',{day:'numeric',month:'short'}) + ' ' +
+           d.toLocaleTimeString(FR?'fr-FR':'en-US',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  async function renderV3WhatMatters(){
     var body = document.getElementById('v3MattersBody');
     var meta = document.getElementById('v3MattersCount');
     var foot = document.getElementById('v3MattersFooter');
@@ -4095,17 +4226,42 @@ window.renderSoloTurnoverCard = function(){
     var FR = fr();
     if (iconEl && typeof iconFor === 'function') iconEl.innerHTML = iconFor('🎯');
     var built = buildMattersItems();
-    var items = built.items;
+    var stateMap = await fetchDerivedItemState();
+    var now = new Date();
+    var items = [];
+    var snoozedItems = [];
+    built.items.forEach(function(it){
+      var st = it.key ? stateMap[it.key] : null;
+      if (st && st.status === 'done') return; // fait — disparaît, aucune trace affichée
+      if (st && st.status === 'snoozed' && st.snoozed_until && new Date(st.snoozed_until) > now) {
+        snoozedItems.push(Object.assign({}, it, { _snoozedUntil: st.snoozed_until }));
+        return; // masqué tant que snoozed_until n'est pas passé
+      }
+      items.push(it); // pas d'état, ou snooze expiré → réapparaît normalement
+    });
+    var reportesHtml = '';
+    if (snoozedItems.length) {
+      reportesHtml = '<div class="v19-reportes" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line2, rgba(26,18,8,.06));font-family:Inter,sans-serif;font-size:12px;color:var(--muted)">' +
+          '<span data-fr="'+snoozedItems.length+' reportés" data-en="'+snoozedItems.length+' snoozed">'+(FR?snoozedItems.length+' reportés':snoozedItems.length+' snoozed')+'</span>' +
+          ' · <button type="button" id="v3MattersReportesToggle" style="background:none;border:none;padding:0;color:var(--gold-ink);font-weight:500;text-decoration:underline;cursor:pointer;font:inherit" data-fr="voir" data-en="view">'+(FR?'voir':'view')+'</button>' +
+          '<div id="v3MattersReportesList" style="display:none;margin-top:8px">' +
+            snoozedItems.map(function(it){
+              return '<div style="padding:4px 0">' + escapeHtml(it.title) + ' — <span data-fr="revient '+escapeHtml(_fmtSnoozedUntil(it._snoozedUntil,true))+'" data-en="back '+escapeHtml(_fmtSnoozedUntil(it._snoozedUntil,false))+'">' + (FR?'revient ':'back ') + escapeHtml(_fmtSnoozedUntil(it._snoozedUntil, FR)) + '</span></div>';
+            }).join('') +
+          '</div>' +
+        '</div>';
+    }
     if (!items.length) {
       // v19-empty : jamais un « 0 », toujours une phrase + une action (openForm existant).
       body.innerHTML = '<div class="v19-empty">' +
           '<span data-fr="Rien d\'urgent. ARIA surveille." data-en="Nothing urgent. ARIA is watching.">' + (FR?'Rien d\'urgent. ARIA surveille.':'Nothing urgent. ARIA is watching.') + '</span> ' +
           '<button type="button" id="v3MattersEmptyCta" data-fr="Ajouter un séjour →" data-en="Add a stay →">' + (FR?'Ajouter un séjour →':'Add a stay →') + '</button>' +
-        '</div>';
+        '</div>' + reportesHtml;
       if (meta) meta.style.display = 'none';
       if (foot) foot.style.display = 'none';
       var emptyCta = document.getElementById('v3MattersEmptyCta');
       if (emptyCta) emptyCta.addEventListener('click', function(){ if (typeof openForm === 'function') openForm(); });
+      wireReportesToggle();
       return;
     }
     if (meta) { meta.style.display = ''; meta.textContent = items.length + (FR?' items':' items'); }
@@ -4124,12 +4280,20 @@ window.renderSoloTurnoverCard = function(){
             'data-title-fr="ARIA" data-title-en="ARIA" data-aria-label-fr="Demander à ARIA" data-aria-label-en="Ask ARIA">' +
             '<i class="ti ti-sparkles"></i></button>';
       }
+      pacts += '<button type="button" class="v19-pact" data-pact="done" data-v3-prio-idx="' + i + '" ' +
+          'title="' + (FR?'Fait':'Done') + '" aria-label="' + (FR?'Marquer comme fait':'Mark as done') + '" ' +
+          'data-title-fr="Fait" data-title-en="Done" data-aria-label-fr="Marquer comme fait" data-aria-label-en="Mark as done">' +
+          '<i class="ti ti-check"></i></button>';
+      pacts += '<button type="button" class="v19-pact" data-pact="snooze" data-v3-prio-idx="' + i + '" ' +
+          'title="' + (FR?'Plus tard':'Later') + '" aria-label="' + (FR?'Reporter':'Snooze') + '" ' +
+          'data-title-fr="Plus tard" data-title-en="Later" data-aria-label-fr="Reporter" data-aria-label-en="Snooze">' +
+          '<i class="ti ti-clock"></i></button>';
       return '<div class="v19-prio v19-prio--'+it.tone+'" data-v3-prio-idx="'+i+'">' +
                '<div class="v19-prio__t" data-fr="'+escapeHtml(it.title_fr)+'" data-en="'+escapeHtml(it.title_en)+'">'+escapeHtml(it.title)+'</div>' +
                '<div class="v19-prio__d" data-fr="'+escapeHtml(it.sub_fr)+'" data-en="'+escapeHtml(it.sub_en)+'">'+escapeHtml(it.sub)+'</div>' +
                '<div class="v19-pacts">' + pacts + '</div>' +
              '</div>';
-    }).join('') + '</div>';
+    }).join('') + '</div>' + reportesHtml;
     body.querySelectorAll('.v19-prio').forEach(function(el){
       el.addEventListener('click', function(e){
         if (e.target.closest('.v19-pact')) return;
@@ -4157,11 +4321,37 @@ window.renderSoloTurnoverCard = function(){
         openAriaModal('send welcome message to ' + (it.client.name || ''));
       });
     });
+    body.querySelectorAll('.v19-pact[data-pact="done"]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var i = parseInt(btn.getAttribute('data-v3-prio-idx'), 10);
+        var it = items[i];
+        var row = btn.closest('.v19-prio');
+        if (!it || !it.key) return;
+        applyDone(it, row);
+      });
+    });
+    body.querySelectorAll('.v19-pact[data-pact="snooze"]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var i = parseInt(btn.getAttribute('data-v3-prio-idx'), 10);
+        var it = items[i];
+        var row = btn.closest('.v19-prio');
+        if (!it || !it.key || !row) return;
+        openSnoozeMenu(btn, it, row);
+      });
+    });
     if (foot) {
       var hasMore = built.moreCount > 0 || built.oppCount > 1;
       foot.style.display = hasMore ? '' : 'none';
       if (moreCountEl) moreCountEl.textContent = built.moreCount;
       if (oppsMetaEl) oppsMetaEl.textContent = built.oppCount ? ('· ' + built.oppCount + (FR?' opportunités':' opportunities')) : '';
+    }
+    wireReportesToggle();
+    function wireReportesToggle(){
+      var t = document.getElementById('v3MattersReportesToggle');
+      var l = document.getElementById('v3MattersReportesList');
+      if (t && l) t.addEventListener('click', function(){ l.style.display = (l.style.display === 'none') ? '' : 'none'; });
     }
   }
 

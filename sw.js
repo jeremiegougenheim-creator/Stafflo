@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v414 (COMMIT V1 : grammaire v19 portée sur la card "Ce qui compte aujourd'hui" du tab Today)
-const CACHE = 'stafflo-v414';
+// Stafflo Service Worker — v415 (COMMIT V2 : Fait et Plus tard persistés — public.derived_item_state)
+const CACHE = 'stafflo-v415';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
