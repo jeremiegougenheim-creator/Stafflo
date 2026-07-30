@@ -2115,7 +2115,9 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v4-market-row.is-you .v4-market-name { font-weight:700; color:#8e6414; }
 .v4-market-price { flex-shrink:0; font-family:'Cormorant Garamond',Georgia,serif; font-size:14px; font-weight:600; color:#0F2318; }
 .v4-market-delta { flex-shrink:0; width:62px; text-align:right; font-family:'DM Sans','Inter',sans-serif; font-size:11.5px; font-weight:600; }
-.v4-market-delta.is-pos { color:#639922; }
+/* COMMIT X1 : #639922 mesurait 3.44:1 sur blanc — jamais exercé avant que
+   la démo ait un prix réel à comparer (COMMIT X1 pt.1). #4d7a1a passe (5.10:1). */
+.v4-market-delta.is-pos { color:#4d7a1a; }
 .v4-market-delta.is-neg { color:#A32D2D; }
 /* COMMIT 8 — thin-data honesty on owner-entered competitor panels */
 .v4-market-unverified { flex-shrink:0; margin-left:6px; font-size:9.5px; letter-spacing:.3px; text-transform:uppercase; color:#A57930; background:rgba(201,150,58,.14); border-radius:var(--r-xs); padding:1px 5px; }
@@ -6607,7 +6609,7 @@ window.renderSetupOneLiner = function(){
 
     <div class="hm-card">
       <div class="hm-hdr">
-        <div class="hm-hdr-lbl"><i class="ti ti-plane" style="color:var(--gold-ink)"></i> Vols RAK</div>
+        <div class="hm-hdr-lbl"><i class="ti ti-plane" style="color:var(--gold-ink)"></i> Vols RAK<span id="flightsDemoTag" style="display:none;font-weight:400;color:var(--muted);font-size:10px;margin-left:4px" data-fr="(exemple)" data-en="(example)">(exemple)</span></div>
         <div style="display:flex;gap:3px">
           <button class="mod-pill active" id="flt-arr" onclick="showTab('arr')" style="padding:2px 7px;font-size:9px">ARR</button>
           <button class="mod-pill" id="flt-dep" onclick="showTab('dep')" style="padding:2px 7px;font-size:9px">DEP</button>
@@ -6618,6 +6620,7 @@ window.renderSetupOneLiner = function(){
       <div class="hm-body" style="padding:10px 14px">
         <div style="display:flex;gap:6px;margin-bottom:8px">
           <input id="flightSearch" placeholder="Paris, CDG..." oninput="renderFlights()" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:12px;font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);">
+          <!-- COMMIT X1 : masqué en démo par loadDemoData() (jamais fetchLiveFlights, quota AviationStack partagé) -->
           <button onclick="fetchLiveFlights()" id="liveFlightBtn" style="background:none;border:1px solid rgba(201,150,58,.4);border-radius:var(--r-sm);padding:5px 8px;font-size:9px;cursor:pointer;color:var(--gold-ink);white-space:nowrap">↻ Live (<span id="reqCount">?</span>/100)</button>
         </div>
         <div id="liveFlightStatus" style="display:none;font-size:10px;padding:5px 8px;border-radius:var(--r-xs);margin-bottom:6px;background:#FAEEDA;color:#854F0B"></div>
@@ -8503,6 +8506,26 @@ function loadDemoData() {
 
   window._demoMode = true;
 
+  // COMMIT X1 — semer l'ENTRÉE du moteur de prix, pas sa sortie. Sans ça,
+  // getVillaConfig().basePrice reste null (rien à saisir dans un compte démo)
+  // et toute la chaîne (5 paliers, benchmark hôtel, comparaison marché) reste
+  // vide silencieusement. Rien d'autre n'est écrit : pas de paliers, pas de
+  // benchmark — ils doivent se CALCULER depuis ces 4 valeurs (voir PHASE 4).
+  // EN MÉMOIRE UNIQUEMENT : setCfg() = localStorage.setItem, aucun appel
+  // réseau (vérifié par grep — ni pushVillaSettings/pushToSupabase/
+  // safePushToSupabase/pushOneField ne sont dans la pile d'appel de
+  // loadDemoData()). N'écrase jamais une valeur déjà saisie par le visiteur.
+  if (isDemoMode()) {
+    var _dCfg = getCfg();
+    var _dCfgChanged = false;
+    if (!_dCfg.city) { _dCfg.city = 'Marrakech'; _dCfgChanged = true; }
+    if (!_dCfg.villaKey) { _dCfg.villaKey = 'marrakech'; _dCfgChanged = true; }
+    if (!_dCfg.bedrooms) { _dCfg.bedrooms = 5; _dCfgChanged = true; }
+    if (!_dCfg.maxGuests) { _dCfg.maxGuests = 10; _dCfgChanged = true; }
+    if (typeof _dCfg.basePrice !== 'number' || _dCfg.basePrice <= 0) { _dCfg.basePrice = 950; _dCfgChanged = true; }
+    if (_dCfgChanged) setCfg(_dCfg);
+  }
+
   try { if (typeof renderAll === 'function') renderAll(); } catch(e){}
   // Full surface refresh — calendar, alerts, brief, signals counter, hero —
   // so demo content appears immediately on the ?demo=1 overlay path too.
@@ -8518,20 +8541,33 @@ function loadDemoData() {
   window._weatherData = { temp: 24, condition: 'Ensoleillé', icon: '☀️', min: 18, max: 27, humidity: 45, wind: 12 };
   // Vols RAK : démo 7 arrivées AUJ, 12 DEM
   window._flightData = { todayCount: 7, tomorrowCount: 12 };
-  // Compétiteurs (Marrakech) — affichés dans peek summary "Concurrents"
+  // COMMIT X1 — carte VOLS : horaires habituels RAK (déjà statiques,
+  // RAK_ARRIVALS/RAK_DEPARTURES, jamais live), étiquetés "(exemple)" et sans
+  // bouton "↻ Live" en démo — jamais d'appel fetchLiveFlights() (quota
+  // AviationStack partagé, cf. le garde dans la fonction elle-même).
   try {
-    var existingComps = JSON.parse(localStorage.getItem('stafflo_competitors') || '[]');
-    if (!existingComps.length) {
-      var demoComps = [
-        { name: 'Villa 5ch Palmeraie (Airbnb)', price: 850, source: 'Airbnb' },
-        { name: 'Villa 5ch staff Booking', price: 920, source: 'Booking' },
-        { name: 'Dar Tahira — 5ch Amelkis', price: 980, source: 'Villanovo' },
-        { name: 'Dar Julina — 6ch Palmeraie', price: 1200, source: 'Villanovo' },
-        { name: 'Le Collectionist 5ch', price: 2100, source: 'Le Collectionist' }
-      ];
-      try { localStorage.setItem('stafflo_competitors', JSON.stringify(demoComps)); } catch(e){}
-    }
+    var flTag = document.getElementById('flightsDemoTag');
+    var flBtn = document.getElementById('liveFlightBtn');
+    if (flTag) flTag.style.display = '';
+    if (flBtn) flBtn.style.display = 'none';
+    if (typeof renderFlights === 'function') renderFlights();
   } catch(e){}
+  // COMMIT X1 — l'ancien seed "Compétiteurs" ici écrivait dans
+  // localStorage['stafflo_competitors'], une clé que RIEN ne lit : la carte
+  // Concurrents réelle lit 'darj_competitors' (loadSavedCompetitors(),
+  // l.21488+). Ce bloc n'a donc jamais fonctionné, ET il utilisait des noms
+  // d'agences réelles (Villanovo, Le Collectionist) — double faute. Je ne
+  // l'ai PAS remplacé par un seed dans 'darj_competitors' : ce fichier porte
+  // déjà la trace d'un incident exactement de cette forme — v115 a purgé un
+  // seed similaire de loadSavedCompetitors() car il avait fui dans l'alerte
+  // ET dans le prompt prix envoyé à l'IA pour de VRAIS comptes (voir
+  // commentaire l.21489 : "DEFAULT_COMPETITORS ... was source of fake comps
+  // leaking into card + alert + price prompt"). Réintroduire un seed dans
+  // 'darj_competitors' rouvrirait ce risque, cette fois via
+  // maybeWriteMarketSnapshot() qui POST vers market_snapshots pour tout
+  // utilisateur authentifié. Le fallback vit donc dans loadSavedCompetitors()
+  // elle-même (voir plus bas), gardé par isDemoMode(), jamais écrit en
+  // localStorage — donc jamais lisible par un compte réel.
 
   console.log('[demo] 8 clients + 5 inbox emails merged. window._demoMode=true. Reload without ?demo=1 to clear.');
 }
@@ -21379,9 +21415,12 @@ function renderCompetitors() {
       <div style="font-size:11px;color:var(--text3)">Moyenne marché : <strong style="color:var(--text)">${Math.round(avgMarket).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')}EUR</strong></div>
     </div>
     <div class="comp-item" style="background:rgba(201,168,76,.08);border-radius:var(--r-sm);padding:8px 10px;margin-bottom:4px">
-      <div class="comp-name" style="color:#BA7517;font-weight:500">Villa DarJ (vous)</div>
+      <!-- COMMIT X1 : #BA7517 mesurait 3.45:1 sur ce fond \u2014 jamais exerc\u00e9
+           avant que la d\u00e9mo ait un prix r\u00e9el \u00e0 afficher ici (COMMIT X1 pt.1).
+           var(--gold-ink) passe (4.89:1). -->
+      <div class="comp-name" style="color:var(--gold-ink);font-weight:500">Villa DarJ (vous)</div>
       <div class="comp-bar"><div class="comp-fill comp-you" style="width:${Math.round(yourPrice/maxPrice*100)}%"></div></div>
-      <div class="comp-price" style="color:#BA7517">${Math.round(yourPrice).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')}EUR</div>
+      <div class="comp-price" style="color:var(--gold-ink)">${Math.round(yourPrice).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')}EUR</div>
       <div style="font-size:10px;color:#3B6D11;min-width:40px;text-align:right">ref</div>
     </div>
     ${comps.map(c => {
@@ -21483,11 +21522,29 @@ function saveCompetitors() {
   renderCompetitors();
 }
 
+/* COMMIT X1 — 3 comparables génériques pour la démo, jamais un nom d'agence
+   ou de villa réelle, cohérents avec la bande 5★ boutique (basePrice 950€
+   seedé dans loadDemoData()). Vivent EN MÉMOIRE uniquement, retournés par
+   loadSavedCompetitors() ci-dessous sous garde isDemoMode() — jamais écrits
+   dans 'darj_competitors' (voir le commentaire dans loadDemoData() : c'est
+   précisément la clé que v115 a nettoyée après une fuite de comps fictifs
+   dans l'alerte et le prompt prix pour de vrais comptes). */
+var DEMO_COMPETITORS_FALLBACK = [
+  { name: 'Villa 5 ch · Palmeraie', price: 890, source: 'Airbnb', _demo: true },
+  { name: 'Riad 4 ch · Médina', price: 620, source: 'Booking', _demo: true },
+  { name: 'Villa 6 ch · Route d\'Amizmiz', price: 1050, source: 'Direct', _demo: true }
+];
+
 function loadSavedCompetitors() {
   try {
     const saved = localStorage.getItem('darj_competitors');
-    return saved ? JSON.parse(saved) : []; /* v115: no seed fallback — empty unless real comps saved. DEFAULT_COMPETITORS kept as dead-code below for reference (was source of "Dar Tahira"/fake comps leaking into card + alert + price prompt) */
-  } catch(e) { return []; }
+    if (saved) return JSON.parse(saved);
+  } catch(e) {}
+  /* v115: no seed fallback in localStorage — empty unless real comps saved.
+     DEFAULT_COMPETITORS kept as dead-code below for reference (was source of
+     "Dar Tahira"/fake comps leaking into card + alert + price prompt). */
+  if (typeof isDemoMode === 'function' && isDemoMode()) return DEMO_COMPETITORS_FALLBACK;
+  return [];
 }
 
 function openAllCompetitors() {
@@ -22394,6 +22451,18 @@ function showDay(day) {
 }
 
 async function fetchLiveFlights() {
+  // COMMIT X1 — jamais d'appel AviationStack en démo : quota 100 req/mois,
+  // un prospect curieux le vide pour de vrais comptes. Le bouton "↻ Live"
+  // est aussi masqué en démo (voir markup #liveFlightBtn) — ce garde est la
+  // ligne de défense si le bouton est atteint par un autre chemin.
+  // NB : `lang` ici, pas `fr` — `fr` (bare, sans parenthèses) plante par
+  // ReferenceError dans cette portée (même bug pré-existant que renderFlights()
+  // l.22371 et loadWeather() l.22242, non touché, hors scope X1).
+  if (typeof isDemoMode === 'function' && isDemoMode()) {
+    var _flFr = (typeof lang !== 'undefined') && lang === 'fr';
+    if (typeof toast === 'function') toast(_flFr ? 'Mode démo · horaires habituels affichés, pas de données live' : 'Demo mode · usual schedule shown, no live data');
+    return;
+  }
   const count = getReqCount();
   if (count >= 100) {
     alert(fr?'Quota mensuel atteint (100 requêtes). Recharge le 1er du mois prochain.':'Monthly quota reached (100 requests). Resets on the 1st of next month.');
@@ -22544,7 +22613,10 @@ function renderMarketBand() {
   const unverifiedCount = comps.filter(function(x){ return !!x.unverified; }).length;
   let rows = sortedComps.map(x => {
     const tag = x.unverified ? ('<span class="v4-market-unverified" data-fr="non vérifié" data-en="unverified">' + (FR?'non vérifié':'unverified') + '</span>') : '';
-    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 18px;border-bottom:1px solid rgba(0,0,0,.04);font-size:12px"><span style="color:var(--ink);font-weight:500">' + x.name.split('—')[0].trim().slice(0,20) + tag + '</span><span style="color:var(--gold);font-weight:600;font-family:Cormorant Garamond,serif;font-size:13px">' + x.price + '€</span></div>';
+    // COMMIT X1 : var(--gold) sur fond quasi blanc mesure 2.61:1 — jamais
+    // exercé par le harnais avant que la démo ait un basePrice réel à
+    // comparer (COMMIT X1 pt.1). var(--gold-ink) passe (5.19:1 sur ce fond).
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 18px;border-bottom:1px solid rgba(0,0,0,.04);font-size:12px"><span style="color:var(--ink);font-weight:500">' + x.name.split('—')[0].trim().slice(0,20) + tag + '</span><span style="color:var(--gold-ink);font-weight:600;font-family:Cormorant Garamond,serif;font-size:13px">' + x.price + '€</span></div>';
   }).join('');
   /* COMMIT 8 — under 3 saved comps isn't a market average; disclose instead of implying one. */
   let noteHtml = '';
@@ -32696,7 +32768,11 @@ function startTour(){
       // d'état vide sans action). Or = action, jamais une couleur de ton d'état.
       var _cfgR3 = (typeof getCfg === 'function') ? getCfg() : {};
       if (!_cfgR3.priceShapeKnown) {
-        parts.push('<span style="color:var(--muted);font-size:11px">' +
+        // COMMIT X1 : var(--muted) (gris pour fond clair) mesurait 2.78:1 sur
+        // #v4ExplainBody, qui est sombre (.v4-explain-body, cream translucide
+        // par défaut) — jamais exercé avant que priceShapeKnown soit atteint
+        // en démo (COMMIT X1 pt.1). var(--muted-on-dark) passe (6.97:1).
+        parts.push('<span style="color:var(--muted-on-dark);font-size:11px">' +
           (FR ? 'Saisonnalité inconnue pour cette ville — prix identique toute l\'année' : 'Unknown seasonality for this city — same price year-round') +
           ' · <span style="color:var(--gold);cursor:pointer;text-decoration:underline" onclick="if(typeof openSettings===\'function\')openSettings()">' +
           (FR ? 'Réglages' : 'Settings') + '</span></span>');
