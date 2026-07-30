@@ -3282,6 +3282,17 @@ body.profile-solo #soloTurnoverCard { display: block; }
   font-family:'Inter',sans-serif;transition:background .15s;
 }
 .sheet__ic-btn:hover{background:rgba(26,18,8,.1)}
+
+/* ── COMMIT V4 — Clients : ton "alert" (declined), absent du set V1
+   (hot/wait/house/go). Même famille chromatique que --hot (négatif/à
+   traiter) ; la distinction visuelle vient du dim déjà appliqué aux
+   dossiers déclinés (opacity, logique inchangée), pas d'une couleur neuve. */
+.v19-prio--alert{border-left-color:var(--warn); background:var(--t-alert-bg)}
+/* Net du séjour — Cormorant, jamais Inter, jamais gras (règle v19). */
+.v19-prio__net{
+  font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:500;
+  color:var(--ink);margin-top:2px;
+}
 </style>
 </head>
 <body>
@@ -6097,14 +6108,17 @@ window.renderSetupOneLiner = function(){
 </div>
 
 <!-- Stats clients (row 100% — Inbox déjà couvert par mini Inbox en haut) -->
+<!-- COMMIT V4 : .v2-card → .v19-card (sous-titre "Performance" retiré, redondant
+     avec l'eyebrow "Stats" du nouvel en-tête). Contenu/ids inchangés. -->
 <div class="row row-100">
-  <div class="v2-card">
-    <div class="v2-card-hd">
-      <div class="v2-card-title"><i class="ti ti-chart-bar"></i> <span data-fr="Stats" data-en="Stats">Stats</span><span style="margin-left:8px;font-size:10px;color:var(--muted);font-weight:400;letter-spacing:1px;text-transform:uppercase" data-fr="Performance" data-en="Performance">Performance</span></div>
+  <div class="v19-card">
+    <div class="v19-card__h">
+      <span class="v19-card__i" id="crmStatsIcon" aria-hidden="true"></span>
+      <h3 data-fr="Stats" data-en="Stats">Stats</h3>
       <button class="v2-icon-btn" onclick="event.stopPropagation();openForm()" title="Nouveau" aria-label="Nouveau client" data-title-fr="Nouveau" data-title-en="New" data-aria-label-fr="Nouveau client" data-aria-label-en="New guest">+</button>
     </div>
-    <div class="v2-card-body">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:14px 16px">
+    <div class="v19-card__b">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <div style="text-align:center;padding:10px 6px;border-right:1px solid var(--border)"><div style="font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;color:var(--ink);line-height:1" id="crmCount">0</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-top:4px" data-fr="GUESTS" data-en="GUESTS">GUESTS</div></div>
         <div style="text-align:center;padding:10px 6px;border-right:1px solid var(--border)"><div style="font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;color:var(--gold);line-height:1" id="crmNet">0€</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-top:4px" data-fr="NET TOTAL" data-en="TOTAL NET">NET TOTAL</div></div>
         <div style="text-align:center;padding:10px 6px"><div style="font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;color:var(--ink);line-height:1" id="crmAvg">—</div><div style="font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-top:4px" data-fr="MOY/NUIT" data-en="AVG/NIGHT">MOY/NUIT</div></div>
@@ -6112,6 +6126,14 @@ window.renderSetupOneLiner = function(){
     </div>
   </div>
 </div>
+<script>
+(function _crmStatsIcon(){
+  var el = document.getElementById('crmStatsIcon');
+  if (!el) return;
+  if (typeof iconFor !== 'function') { setTimeout(_crmStatsIcon, 200); return; }
+  el.innerHTML = iconFor('📊');
+})();
+</script>
 
   <!-- Search + filters (kept inline, not in v2-card) -->
   <input class="crm-search" id="crmSearch" oninput="renderClients()" placeholder="🔍 Rechercher..." data-placeholder-fr="🔍 Rechercher..." data-placeholder-en="🔍 Search...">
@@ -6129,18 +6151,23 @@ window.renderSetupOneLiner = function(){
     </button>
   </div>
 
+  <!-- COMMIT V4 : pastille .v19-pill par filtre (span vide, rempli avec le compte
+       réel par renderClients() → applySubfilterPills(); voir la fonction). Le
+       libellé passe dans un span dédié : data-fr/en jamais sur le BUTTON lui-même
+       (applyLang() réécrit le textContent entier des BUTTON quel que soit le
+       nombre d'enfants — même piège qu'au COMMIT V3 sur le bouton Réconcilier). -->
   <div class="crm-subfilters" id="subClients" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-    <button class="cf-btn" data-f="all" onclick="setFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
-    <button class="cf-btn" data-f="current" onclick="setFilter('current',this)" data-fr="En cours" data-en="Current">En cours</button>
-    <button class="cf-btn on" data-f="upcoming" onclick="setFilter('upcoming',this)" data-fr="À venir" data-en="Upcoming">À venir</button>
-    <button class="cf-btn" data-f="past" onclick="setFilter('past',this)" data-fr="📁 Historique" data-en="📁 History">📁 Historique</button>
+    <button class="cf-btn" data-f="all" onclick="setFilter('all',this)"><span data-fr="Tous" data-en="All">Tous</span><span class="cf-btn-pill v19-pill v19-pill--gold" style="display:none;margin-left:5px"></span></button>
+    <button class="cf-btn" data-f="current" onclick="setFilter('current',this)"><span data-fr="En cours" data-en="Current">En cours</span><span class="cf-btn-pill v19-pill v19-pill--gold" style="display:none;margin-left:5px"></span></button>
+    <button class="cf-btn on" data-f="upcoming" onclick="setFilter('upcoming',this)"><span data-fr="À venir" data-en="Upcoming">À venir</span><span class="cf-btn-pill v19-pill v19-pill--gold" style="display:none;margin-left:5px"></span></button>
+    <button class="cf-btn" data-f="past" onclick="setFilter('past',this)"><span data-fr="📁 Historique" data-en="📁 History">📁 Historique</span><span class="cf-btn-pill v19-pill v19-pill--gold" style="display:none;margin-left:5px"></span></button>
   </div>
 
   <div class="crm-subfilters" id="subPipeline" style="display:none;gap:6px;margin-bottom:12px;flex-wrap:wrap">
-    <button class="cf-btn on" data-f="all" onclick="setFilter('all',this)" data-fr="Tous" data-en="All">Tous</button>
-    <button class="cf-btn" data-f="inquiry" onclick="setFilter('inquiry',this)" data-fr="💬 Actifs" data-en="💬 Active">💬 Actifs</button>
-    <button class="cf-btn" data-f="quoted" onclick="setFilter('quoted',this)" data-fr="📋 Devis envoyés" data-en="📋 Quoted">📋 Devis envoyés</button>
-    <button class="cf-btn" data-f="declined" onclick="setFilter('declined',this)" data-fr="❌ Refusés" data-en="❌ Declined">❌ Refusés</button>
+    <button class="cf-btn on" data-f="all" onclick="setFilter('all',this)"><span data-fr="Tous" data-en="All">Tous</span><span class="cf-btn-pill v19-pill v19-pill--gold" style="display:none;margin-left:5px"></span></button>
+    <button class="cf-btn" data-f="inquiry" onclick="setFilter('inquiry',this)"><span data-fr="💬 Actifs" data-en="💬 Active">💬 Actifs</span><span class="cf-btn-pill v19-pill v19-pill--gold" style="display:none;margin-left:5px"></span></button>
+    <button class="cf-btn" data-f="quoted" onclick="setFilter('quoted',this)"><span data-fr="📋 Devis envoyés" data-en="📋 Quoted">📋 Devis envoyés</span><span class="cf-btn-pill v19-pill v19-pill--gold" style="display:none;margin-left:5px"></span></button>
+    <button class="cf-btn" data-f="declined" onclick="setFilter('declined',this)"><span data-fr="❌ Refusés" data-en="❌ Declined">❌ Refusés</span><span class="cf-btn-pill v19-pill v19-pill--gold" style="display:none;margin-left:5px"></span></button>
   </div>
 
   <div id="clientList"></div>
@@ -12644,6 +12671,37 @@ function renderStaysBar() {
   });
 }
 
+// COMMIT V4 — pastilles réelles des sous-filtres CRM (.v19-pill). Zéro → masquée,
+// jamais un "(0)". Lecture seule : ne recalcule rien que renderClients() n'ait déjà.
+function applySubfilterPills(counts) {
+  ['subClients', 'subPipeline'].forEach(function(containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('.cf-btn').forEach(function(btn) {
+      var f = btn.getAttribute('data-f');
+      var pill = btn.querySelector('.cf-btn-pill');
+      if (!pill) return;
+      var n = counts[f];
+      if (n) { pill.textContent = n; pill.style.display = ''; }
+      else { pill.style.display = 'none'; }
+    });
+  });
+}
+
+// COMMIT V4 — le ton .v19-prio vient de l'ÉTAT (bookingStatus / getStatus),
+// jamais de l'action. getStatus/isRequestStatus restent inchangées ; ce n'est
+// qu'un aiguillage vers un nom de classe CSS.
+function v19PrioTone(cl) {
+  var bs = cl.bookingStatus;
+  if (bs === 'declined') return 'alert';
+  if (bs === 'inquiry' || bs === 'lead' || bs === 'pending' || bs === 'quoted') return 'wait';
+  var s = getStatus(cl);
+  if (s === 'current') return 'house';
+  if (s === 'upcoming') return 'wait';
+  if (s === 'past') return 'go';
+  return 'wait'; // nodate — non listé par la tâche, retenu comme neutre par défaut
+}
+
 function renderClients() {
   var fr = lang === 'fr';
   var searchEl = document.getElementById('crmSearch');
@@ -12665,6 +12723,21 @@ function renderClients() {
              (x.source||'').toLowerCase().indexOf(search) !== -1;
     });
   }
+
+  // COMMIT V4 — comptes réels pour les pastilles .v19-pill des sous-filtres.
+  // Lecture seule sur `list` à ce stade (mainTab + recherche déjà appliqués,
+  // crmFilter pas encore) : mêmes prédicats que les branches crmFilter
+  // ci-dessous, dupliqués ici en lecture seule plutôt que d'altérer leur logique.
+  applySubfilterPills({
+    all:      mainTab === 'pipeline' ? list.length : list.filter(function(x){ return getStatus(x) !== 'past'; }).length,
+    current:  list.filter(function(x){ return getStatus(x) === 'current'; }).length,
+    upcoming: list.filter(function(x){ return getStatus(x) === 'upcoming'; }).length,
+    past:     list.filter(function(x){ return getStatus(x) === 'past'; }).length,
+    inquiry:  list.filter(function(x){ var bs=x.bookingStatus; return bs==='inquiry'||bs==='lead'||bs==='pending'; }).length,
+    quoted:   list.filter(function(x){ return x.bookingStatus === 'quoted'; }).length,
+    declined: list.filter(function(x){ return x.bookingStatus === 'declined'; }).length
+  });
+
   if (crmFilter === 'all') {
     // In Clients tab "all" excludes past; in Pipeline tab "all" keeps all leads
     if (mainTab !== 'pipeline') list = list.filter(function(x){ return getStatus(x) !== 'past'; });
@@ -12694,8 +12767,13 @@ function renderClients() {
   if (!el) { console.error('[Stafflo] clientList NOT FOUND'); return; }
 
   if (!list.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏡</div><div style="font-size:15px">' +
-      (fr ? 'Aucun client' : 'No guests') + '</div></div>';
+    el.innerHTML = '<div class="v19-empty" style="text-align:center">' +
+      '<span id="crmEmptyIcon" aria-hidden="true" style="display:block;font-size:28px;margin-bottom:6px;opacity:.5"></span>' +
+      '<span data-fr="Aucun client" data-en="No guests">' + (fr?'Aucun client':'No guests') + '</span><br>' +
+      '<button type="button" onclick="if(typeof openForm===\'function\')openForm()" data-fr="Ajouter un séjour →" data-en="Add a stay →">' + (fr?'Ajouter un séjour →':'Add a stay →') + '</button>' +
+      '</div>';
+    var crmEmptyIcon = document.getElementById('crmEmptyIcon');
+    if (crmEmptyIcon && typeof iconFor === 'function') crmEmptyIcon.innerHTML = iconFor('🏡');
     updateCrmCounts();
     return;
   }
@@ -12705,15 +12783,15 @@ function renderClients() {
   // there's no real ARRIVÉE/NIGHTS/NET yet.
   function leadCardHtml(cl) {
     var score = getLeadScore(cl);
-    var initial = ((cl.name||'?').charAt(0)).toUpperCase();
 
     var styles = {
-      hot:  { bg:'#ffe5e5',                color:'#a33030', label:'HOT',  border:'#e24b4a', dim:'' },
-      warm: { bg:'rgba(201,150,58,.15)',   color:'#8a6520', label:'WARM', border:'#C9963A', dim:'' },
-      cold: { bg:'rgba(138,138,122,.15)',  color:'#5a5a4a', label:'COLD', border:'#8a8a7a', dim:'' },
-      lost: { bg:'rgba(138,138,122,.1)',   color:'var(--muted-on-light)', label:'LOST', border:'#8a8a7a', dim:'opacity:.6;' }
+      hot:  { bg:'#ffe5e5',                color:'#a33030', label:'HOT' },
+      warm: { bg:'rgba(201,150,58,.15)',   color:'#8a6520', label:'WARM' },
+      cold: { bg:'rgba(138,138,122,.15)',  color:'#5a5a4a', label:'COLD' },
+      lost: { bg:'rgba(138,138,122,.1)',   color:'var(--muted-on-light)', label:'LOST' }
     };
-    var sty = styles[score] || { bg:'rgba(201,150,58,.15)', color:'#8a6520', label:(cl.bookingStatus||'LEAD').toUpperCase(), border:'#C9963A', dim:'' };
+    var sty = styles[score] || { bg:'rgba(201,150,58,.15)', color:'#8a6520', label:(cl.bookingStatus||'LEAD').toUpperCase() };
+    var dimStyle = score === 'lost' ? 'opacity:.6' : '';
 
     var d = daysSinceUpdate(cl);
     var engagement;
@@ -12735,24 +12813,17 @@ function renderClients() {
     }
 
     var hasPhone = !!(cl.phone && cl.phone.trim());
-    var waBtnHtml = hasPhone
-      ? '<button onclick="event.stopPropagation();smartWhatsApp(\'lead\',\'' + cl.id + '\')" title="WhatsApp" style="width:36px;height:36px;border-radius:50%;background:#25D366;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0">' +
-        '<i class="ti ti-brand-whatsapp" style="color:white;font-size:18px"></i>' +
-      '</button>'
+    var pacts = hasPhone
+      ? '<button type="button" class="v19-pact" onclick="event.stopPropagation();smartWhatsApp(\'lead\',\'' + cl.id + '\')" title="WhatsApp" aria-label="WhatsApp" data-title-fr="WhatsApp" data-title-en="WhatsApp" data-aria-label-fr="WhatsApp" data-aria-label-en="WhatsApp"><i class="ti ti-brand-whatsapp"></i></button>'
       : '';
+    pacts += '<button type="button" class="v19-pact" title="' + (fr?'Ouvrir la fiche':'Open profile') + '" aria-label="' + (fr?'Ouvrir la fiche':'Open profile') + '" data-title-fr="Ouvrir la fiche" data-title-en="Open profile" data-aria-label-fr="Ouvrir la fiche" data-aria-label-en="Open profile"><i class="ti ti-chevron-right"></i></button>';
 
-    return '<div data-id="' + cl.id + '" data-lead="1" style="cursor:pointer;background:white;border-radius:var(--r-lg);border:1px solid rgba(15,35,24,.08);border-left:3px solid ' + sty.border + ';padding:14px 16px;display:flex;align-items:center;gap:12px;transition:all .15s;margin-bottom:10px;' + sty.dim + '" ' +
-      'onmouseover="this.style.boxShadow=\'0 4px 12px rgba(15,35,24,.08)\'" onmouseout="this.style.boxShadow=\'none\'">' +
-      '<div style="width:40px;height:40px;border-radius:50%;background:#0F2318;color:white;display:flex;align-items:center;justify-content:center;font-family:Inter,sans-serif;font-size:14px;font-weight:600;flex-shrink:0">' + initial + '</div>' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">' +
-          '<span style="font-family:Inter,sans-serif;font-size:14px;font-weight:600;color:#0F2318">' + (cl.name||'?') + '</span>' +
-          '<span style="font-size:10px;padding:2px 6px;border-radius:var(--r-xs);background:' + sty.bg + ';color:' + sty.color + ';font-weight:600">' + sty.label + '</span>' +
-        '</div>' +
-        '<div style="font-family:Inter,sans-serif;font-size:12px;color:var(--muted-on-light)">' + engagement + ' · ' + datesText + '</div>' +
+    return '<div class="v19-prio v19-prio--wait" data-id="' + cl.id + '" data-lead="1" style="cursor:pointer' + (dimStyle?';'+dimStyle:'') + '">' +
+      '<div class="v19-prio__t">' + (cl.name||'?') +
+        ' <span style="font-size:10px;padding:2px 6px;border-radius:var(--r-xs);background:' + sty.bg + ';color:' + sty.color + ';font-weight:600;vertical-align:middle">' + sty.label + '</span>' +
       '</div>' +
-      waBtnHtml +
-      '<i class="ti ti-chevron-right" style="color:var(--muted-on-light);font-size:18px;flex-shrink:0"></i>' +
+      '<div class="v19-prio__d">' + engagement + ' · ' + datesText + (cl.source ? ' · ' + cl.source : '') + '</div>' +
+      '<div class="v19-pacts">' + pacts + '</div>' +
     '</div>';
   }
 
@@ -12765,15 +12836,8 @@ function renderClients() {
     if (bs === 'inquiry' || bs === 'lead' || bs === 'quoted') {
       return leadCardHtml(cl);
     }
-    var s = getStatus(cl);
     var n = nights(cl);
     var net = netAmt(cl);
-    var bClass = s==='inquiry' ? 'badge-inquiry' : s==='current' ? 'badge-current' :
-                 s==='upcoming' ? 'badge-upcoming' : s==='past' ? 'badge-past' : 'badge-nodate';
-    var bText  = s==='inquiry'  ? ('💬 ' + (fr?'Demande':'Inquiry')) :
-                 s==='current'  ? ('🟢 ' + (fr?'En cours':'Current')) :
-                 s==='upcoming' ? (fr?'À venir':'Upcoming') :
-                 s==='past'     ? (fr?'Passé':'Past') : (fr?'Sans date':'No date');
     // SES-safe number format
     var netStr = net ? (Math.round(net).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f') + '€') : '';
     // 4-tier heat badge: HOT / WARM / COLD / LOST (strikethrough)
@@ -12812,20 +12876,15 @@ function renderClients() {
       }
     }
 
-    // Stage-colored left border + dimming for declined / lost / cold
+    // Dimming for declined / lost / cold — preserved, tone now carries the color.
     var lstage = getLeadStage(cl);
-    var borderColor = lstage === 'inquiry'  ? '#C9963A'
-                    : lstage === 'quoted'   ? '#5DCAA5'
-                    : lstage === 'declined' ? '#e24b4a'
-                    : (lstage === 'confirmed' || lstage === 'in-stay' || lstage === 'departed') ? '#1d6b45'
-                    : '';
-    var cardStyle = 'position:relative;' + (borderColor ? ('border-left:3px solid ' + borderColor + ';') : '');
-    if (lstage === 'declined') cardStyle += 'opacity:.6;';
-    if (score === 'lost')      cardStyle += 'opacity:.55;';
-    else if (score === 'cold') cardStyle += 'opacity:.85;';
+    var dimStyle = lstage === 'declined' ? 'opacity:.6'
+                  : score === 'lost'     ? 'opacity:.55'
+                  : score === 'cold'     ? 'opacity:.85' : '';
 
-    // Contextual WhatsApp pill — only when we have a phone number.
-    var waBtn = '';
+    // Contextual WhatsApp pact — only when we have a phone number, dynamic
+    // label preserved as title/aria-label (icon-only 44px .v19-pact).
+    var pacts = '';
     var hasPhone = !!(cl.phone && cl.phone.trim());
     if (hasPhone) {
       var isInquiry = cl.bookingStatus === 'inquiry' || cl.bookingStatus === 'lead' ||
@@ -12844,28 +12903,27 @@ function renderClients() {
         else                            waLabel = fr ? 'Contacter' : 'Contact';
       }
       var waKind = isInquiry ? 'lead' : 'guest';
-      waBtn = '<button onclick="event.stopPropagation();smartWhatsApp(\'' + waKind + '\',\'' + cl.id + '\')" title="' + waLabel + '" style="position:absolute;bottom:10px;right:10px;display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:#25D366;color:white;border:none;border-radius:var(--r-sm);font-size:10px;font-family:Inter,sans-serif;font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12)">' +
-        '<svg width="11" height="11" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>' + waLabel +
-      '</button>';
+      pacts += '<button type="button" class="v19-pact" onclick="event.stopPropagation();smartWhatsApp(\'' + waKind + '\',\'' + cl.id + '\')" title="' + waLabel + '" aria-label="' + waLabel + '"><i class="ti ti-brand-whatsapp"></i></button>';
     }
+    pacts += '<button type="button" class="v19-pact" title="' + (fr?'Ouvrir la fiche':'Open profile') + '" aria-label="' + (fr?'Ouvrir la fiche':'Open profile') + '" data-title-fr="Ouvrir la fiche" data-title-en="Open profile" data-aria-label-fr="Ouvrir la fiche" data-aria-label-en="Open profile"><i class="ti ti-chevron-right"></i></button>';
 
-    return '<div class="client-card ' + s + '" data-id="' + cl.id + '"' + (cardStyle ? (' style="' + cardStyle + '"') : '') + '>' +
-      '<div class="cc-top">' +
-        '<div class="cc-avatar">' + initials(cl.name) + '</div>' +
-        '<div>' +
-          '<div class="cc-name">' + (cl.name||'') + scoreBadge + '</div>' +
-          '<div class="cc-sub">' + (cl.nat||'') + (cl.source ? ' · ' + cl.source : '') + (noReply ? ' · ' + noReply : '') + '</div>' +
-        '</div>' +
-        '<span class="cc-badge ' + bClass + '">' + bText + '</span>' +
-      '</div>' +
-      '<div class="cc-grid">' +
-        '<div class="cc-item"><label>' + (fr?'ARRIVÉE':'ARRIVAL') + '</label><span>' + fmtDate(cl.arrival, true) + '</span></div>' +
-        '<div class="cc-item"><label>' + (fr?'NUITS':'NIGHTS') + '</label><span>' + (n||'—') + '</span></div>' +
-        '<div class="cc-item"><label>' + (fr?'PERS.':'GUESTS') + '</label><span>' + (cl.guests||'—') + '</span></div>' +
-        (cl.is_comp ? '<div class="cc-item"><label>' + (fr?'TARIF':'RATE') + '</label><span style="color:var(--gold);font-weight:600">🎁 ' + (fr?'Offert':'Comp') + '</span></div>' : '<div class="cc-item"><label>' + (fr?'NET VOUS':'YOUR NET') + '</label><span class="net"' + (netStr ? '' : ' style="color:#B5754A;font-style:italic"') + '>' + (netStr || (fr?'— € à saisir':'— to fill in')) + '</span></div>') +
-      '</div>' +
+    // Dates, nuits, source — le net a sa propre ligne (Cormorant, jamais gras).
+    var descParts = [];
+    if (cl.arrival || cl.departure) descParts.push(fmtDate(cl.arrival, true) + ' → ' + fmtDate(cl.departure, true));
+    if (n) descParts.push(n + (fr?' nuits':' nights'));
+    if (cl.source) descParts.push(cl.source);
+    var descText = descParts.length ? descParts.join(' · ') : (fr?'Sans date':'No date');
+
+    var netLineHtml = cl.is_comp
+      ? '<div class="v19-prio__net" style="color:var(--gold);font-weight:600">🎁 ' + (fr?'Offert':'Comp') + '</div>'
+      : '<div class="v19-prio__net"' + (netStr ? '' : ' style="color:#B5754A;font-style:italic"') + '>' + (netStr || (fr?'— € à saisir':'— to fill in')) + '</div>';
+
+    return '<div class="v19-prio v19-prio--' + v19PrioTone(cl) + '" data-id="' + cl.id + '" style="cursor:pointer' + (dimStyle?';'+dimStyle:'') + '">' +
+      '<div class="v19-prio__t">' + (cl.name||'') + scoreBadge + '</div>' +
+      '<div class="v19-prio__d">' + descText + (noReply ? ' · ' + noReply : '') + '</div>' +
+      netLineHtml +
+      '<div class="v19-pacts">' + pacts + '</div>' +
       (extraAction || '') +
-      waBtn +
     '</div>';
   }
 
