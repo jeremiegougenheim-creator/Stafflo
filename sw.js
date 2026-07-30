@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v415 (COMMIT V2 : Fait et Plus tard persistés — public.derived_item_state)
-const CACHE = 'stafflo-v415';
+// Stafflo Service Worker — v416 (COMMIT V3 : Inbox passe au patron .sheet clair)
+const CACHE = 'stafflo-v416';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

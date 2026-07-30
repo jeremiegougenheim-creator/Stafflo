@@ -1486,9 +1486,9 @@ nav .nav-btn.on {
 @media(max-width:768px){ .cmp-actions { opacity:1 !important; } }
 .ic-act-btn { width:24px;height:24px;border:none;background:none;cursor:pointer;border-radius:var(--r-xs);font-size:13px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);transition:color .15s,background .15s;padding:0; }
 .ic-act-btn:hover { background:var(--gold-light);color:var(--gold); }
-.inbox-filter-tab { padding:4px 12px;border-radius:var(--r-xl);border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);font-size:11px;cursor:pointer;color:rgba(255,255,255,.7);transition:all .15s;white-space:nowrap;font-family:var(--sans);font-weight:500; }
-.inbox-filter-tab.active { background:#fff;color:var(--green3);border-color:transparent;font-weight:600; }
-.inbox-filter-tab:hover:not(.active) { background:rgba(255,255,255,.15); }
+.inbox-filter-tab { padding:4px 12px;border-radius:var(--r-xl);border:1px solid var(--line, rgba(26,18,8,.1));background:var(--line2, rgba(26,18,8,.06));font-size:11px;cursor:pointer;color:var(--gm, #1d4d3a);transition:all .15s;white-space:nowrap;font-family:var(--sans);font-weight:500; }
+.inbox-filter-tab.active { background:var(--gm, #1d4d3a);color:#fff;border-color:transparent;font-weight:600; }
+.inbox-filter-tab:hover:not(.active) { background:rgba(26,18,8,.1); }
 .cmp-unread-dot {
   display: inline-block;
   width: 6px; height: 6px;
@@ -3243,6 +3243,45 @@ body.profile-solo #soloTurnoverCard { display: block; }
   text-decoration:underline;text-underline-offset:2px;
   background:none;border:none;padding:0;cursor:pointer;font:inherit;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   .sheet — patron v19, modale CLAIRE (listes, réglages). Distinct de
+   .asheet (fond --green3, réservé aux surfaces de conversation ARIA) —
+   ne pas appliquer .sheet à une surface de conversation, ni l'inverse.
+   COMMIT V3 : porté depuis le diagnostic Inbox (#inboxModal), pensé
+   pour être réutilisé par d'autres modales listes/réglages ensuite.
+   ════════════════════════════════════════════════════════════════════ */
+.sheet-veil{
+  position:fixed;inset:0;
+  background:rgba(15,35,24,.42);
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+  z-index:9996;display:flex;align-items:center;justify-content:center;padding:24px;
+}
+.sheet{
+  background:var(--cream);border-radius:var(--r-lg);
+  width:100%;max-width:560px;max-height:85vh;overflow:hidden;
+  display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.4);
+}
+.sheet__h{padding:16px 18px 0;flex-shrink:0}
+.sheet__eyebrow{
+  font-family:'Inter',sans-serif;font-size:11.5px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--gm);font-weight:600;
+}
+.sheet__title{
+  font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:400;
+  letter-spacing:.06em;color:var(--ink);
+}
+.sheet__sub{font-size:11px;color:var(--muted);margin-top:2px}
+.sheet__b{
+  flex:1;overflow-y:auto;padding:14px 18px 0;background:var(--cream);
+  display:flex;flex-direction:column;gap:10px;min-height:96px;
+}
+.sheet__f{flex-shrink:0;padding:12px 18px 16px;border-top:1px solid var(--line2)}
+.sheet__ic-btn{
+  background:rgba(26,18,8,.06);border:none;color:var(--gm);cursor:pointer;
+  font-family:'Inter',sans-serif;transition:background .15s;
+}
+.sheet__ic-btn:hover{background:rgba(26,18,8,.1)}
 </style>
 </head>
 <body>
@@ -31011,27 +31050,43 @@ window.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- ══ EMAIL INBOX MODAL ════════════════════════════════════ -->
-<div id="inboxModal" style="display:none;position:fixed;inset:0;background:rgba(10,25,15,.7);z-index:9996;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeInbox()">
-  <div style="background:var(--card);border-radius:var(--r-lg);width:100%;max-width:640px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.4)">
-    <div style="background:var(--green3);padding:16px 20px 0;flex-shrink:0">
+<!-- COMMIT V3 : patron .sheet clair (jamais .asheet — réservé aux surfaces ARIA) -->
+<div id="inboxModal" class="sheet-veil" style="display:none" onclick="if(event.target===this)closeInbox()">
+  <div class="sheet">
+    <div class="sheet__h">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div>
-          <div style="font-size:9px;letter-spacing:3px;color:var(--muted-on-dark);margin-bottom:2px">INBOX</div>
-          <div style="font-family:'Cormorant Garamond',serif;font-size:24px;color:#fff;font-weight:600;letter-spacing:.01em">Inbox</div>
+          <div class="sheet__eyebrow">INBOX</div>
+          <div class="sheet__title">Inbox</div>
           <!-- COMMIT H — sous-titre, même texte que le document cible pour la Boîte -->
-          <div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:2px" data-fr="Emails Airbnb, Booking, direct" data-en="Airbnb, Booking, direct emails">Emails Airbnb, Booking, direct</div>
+          <div class="sheet__sub" data-fr="Emails Airbnb, Booking, direct" data-en="Airbnb, Booking, direct emails">Emails Airbnb, Booking, direct</div>
         </div>
-        <button onclick="reconcileNowWithFeedback()" title="Réconcilier les paiements Airbnb" style="background:rgba(255,255,255,.12);border:none;color:#fff;padding:0 10px;height:28px;border-radius:var(--r-lg);font-size:11px;cursor:pointer;margin-right:6px">💸 Réconcilier</button>
-        <button onclick="closeInbox()" style="background:rgba(255,255,255,.12);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer">✕</button>
+        <button class="sheet__ic-btn" onclick="reconcileNowWithFeedback()" style="height:28px;padding:0 10px;border-radius:var(--r-lg);font-size:11px;display:inline-flex;align-items:center;gap:5px;margin-right:6px" title="Réconcilier les paiements Airbnb" aria-label="Réconcilier les paiements Airbnb" data-title-fr="Réconcilier les paiements Airbnb" data-title-en="Reconcile Airbnb payments" data-aria-label-fr="Réconcilier les paiements Airbnb" data-aria-label-en="Reconcile Airbnb payments">
+          <span id="_inboxReconcileIcon" aria-hidden="true"></span>
+          <span data-fr="Réconcilier" data-en="Reconcile">Réconcilier</span>
+        </button>
+        <button class="sheet__ic-btn" onclick="closeInbox()" style="width:28px;height:28px;border-radius:50%;font-size:14px;display:inline-flex;align-items:center;justify-content:center" title="Fermer" aria-label="Fermer" data-title-fr="Fermer" data-title-en="Close" data-aria-label-fr="Fermer" data-aria-label-en="Close">
+          <span id="_inboxCloseIcon" aria-hidden="true"></span>
+        </button>
       </div>
       <div id="inboxModalTabs" style="display:flex;gap:6px;padding-bottom:12px;flex-wrap:wrap"></div>
     </div>
 
-    <div style="overflow-y:auto;flex:1;padding:0 16px 12px;background:#FAFAF6">
-      <div id="inboxListLegacy" style="font-size:13px;color:var(--muted);padding-top:8px" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
+    <div class="sheet__b">
+      <div id="inboxListLegacy" style="font-size:13px;color:var(--muted)" data-fr="Chargement..." data-en="Loading...">Chargement...</div>
     </div>
   </div>
 </div>
+<script>
+(function _inboxSheetIcons(){
+  var rc = document.getElementById('_inboxReconcileIcon');
+  var cl = document.getElementById('_inboxCloseIcon');
+  if (!rc && !cl) return;
+  if (typeof iconFor !== 'function') { setTimeout(_inboxSheetIcons, 200); return; }
+  if (rc) rc.innerHTML = iconFor('💸');
+  if (cl) cl.innerHTML = iconFor('✖');
+})();
+</script>
 
 <!-- ══ ARIA FLOATING BUBBLE (always visible, all tabs) ════════ -->
 <button class="aria-fab" id="ariaFab" onclick="openAriaModal()" title="ARIA AI" aria-label="Open ARIA AI assistant">
@@ -37040,9 +37095,9 @@ function startTour(){
         if (!els.length) return;
 
         if (!rows || !rows.length) {
-          setHtml('<div style="color:var(--muted);font-size:12px;padding:24px 12px;text-align:center;line-height:1.6">' +
-            (fr ? '📭 Aucun email reçu pour le moment.' : '📭 No emails yet.') +
-            '<br><span style="opacity:.7">' + (fr ? 'Configurez le transfert depuis Gmail / Outlook' : 'Set up forwarding from Gmail / Outlook') + '</span>' +
+          setHtml('<div class="v19-empty" style="text-align:center">' +
+            '<span data-fr="Aucun email reçu pour le moment." data-en="No emails yet.">' + (fr?'Aucun email reçu pour le moment.':'No emails yet.') + '</span><br>' +
+            '<button type="button" onclick="if(typeof showEmailConnectModal===\'function\')showEmailConnectModal()" data-fr="Configurer le transfert →" data-en="Set up forwarding →">' + (fr?'Configurer le transfert →':'Set up forwarding →') + '</button>' +
             '</div>');
           return;
         }
@@ -37068,7 +37123,8 @@ function startTour(){
             {k:'trash',lbl:'🗑',c:counts.trash}
           ];
           tabsEl.innerHTML = tabs.map(function(t){
-            return '<button class="inbox-filter-tab'+(mf===t.k?' active':'')+'" onclick="window._inboxModalFilter=\''+t.k+'\';if(typeof loadInboxEmails===\'function\')loadInboxEmails(true)">'+t.lbl+(t.c?' <span style=\"opacity:.6\">('+t.c+')</span>':'')+'</button>';
+            var pill = t.c ? ' <span class="v19-pill v19-pill--gold">'+t.c+'</span>' : '';
+            return '<button class="inbox-filter-tab'+(mf===t.k?' active':'')+'" onclick="window._inboxModalFilter=\''+t.k+'\';if(typeof loadInboxEmails===\'function\')loadInboxEmails(true)">'+t.lbl+pill+'</button>';
           }).join('');
         }
 
@@ -37115,9 +37171,18 @@ function startTour(){
         }
 
         var isTrashView = mf === 'trash';
+        var emptyLabel = mf==='trash' ? (fr?'Corbeille vide':'Trash empty')
+                        : mf==='unread' ? (fr?'Aucun non lu':'No unread')
+                        : (fr?'Aucun email':'No emails');
+        // Action réelle : bascule vers un autre onglet en réutilisant le même mécanisme
+        // que les boutons d'onglet ci-dessus (window._inboxModalFilter + loadInboxEmails).
+        var emptyJump = (mf === 'inbox')
+          ? { k:'archived', fr:'Voir les archivés →', en:'See archived →' }
+          : { k:'inbox', fr:'Voir tous les emails →', en:'See all emails →' };
         var modalHtml = filtered.length
           ? filtered.map(function(r){ return _renderRow(r, isTrashView); }).join('')
-          : '<div style="text-align:center;padding:28px;color:var(--muted)"><div style="font-size:24px;margin-bottom:6px;opacity:.4">📭</div><div style="font-size:13px">'+(mf==='trash'?(fr?'Corbeille vide':'Trash empty'):mf==='unread'?(fr?'Aucun non lu':'No unread'):(fr?'Aucun email':'No emails'))+'</div></div>';
+          : '<div class="v19-empty" style="text-align:center">' + emptyLabel + '<br>' +
+            '<button type="button" onclick="window._inboxModalFilter=\''+emptyJump.k+'\';if(typeof loadInboxEmails===\'function\')loadInboxEmails(true)">'+(fr?emptyJump.fr:emptyJump.en)+'</button></div>';
         var dashRows = rows.filter(function(r){ return r.status !== 'trash' && !r.archived_at; });
         var dashHtml = dashRows.map(function(r){ return _renderRow(r, false); }).join('');
 
