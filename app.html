@@ -10756,7 +10756,13 @@ async function reconcileConfirmationBreakdowns() {
     if (!sig || !sig.confirmation_code) continue;
 
     var guestTotalM = body.match(/TOTAL\s*\(EUR\)[^\d]*([\d.,]+)/i);
-    var roomFeeM    = body.match(/room fee[^\d]*([\d.,]+)/i);
+    // COMMIT Z3 : ancré après HOST PAYOUT pour ne jamais lire une ligne du
+    // bloc GUEST PAID (TOTAL (EUR) inclut les frais de service voyageur,
+    // jamais versés au propriétaire — le net vient toujours de HOST PAYOUT).
+    // Deux libellés observés sur les 21 emails de confirmation/rappel :
+    // "N-night room fee" (20/21) et "Total Stay Price" (Nico, 1/21) — aucun
+    // troisième. Une seule regex, alternative de libellés.
+    var roomFeeM    = body.match(/HOST PAYOUT.*?(?:\d+-night room fee|Total Stay Price)[^\d]*([\d.,]+)/i);
     var adjM        = body.match(/adjustment\s*(-?)[^\d]*([\d.,]+)/i);
     var hostFeeM    = body.match(/Host service fee\s*\(([\d.]+)%[^)]*\)\s*(-?)[^\d]*([\d.,]+)/i);
     var netM        = body.match(/YOU EARN[^\d]*([\d.,]+)/i);
@@ -33420,10 +33426,11 @@ function startTour(){
     var byChannel = {};
     firmList.forEach(function(c){
       var nights = (c.arrival && c.departure) ? Math.round((new Date(c.departure) - new Date(c.arrival))/86400000) : 0;
-      var commPct = +c.commission || 0;
-      // c.price is the TOTAL stay price (matches netAmt at the header). Do NOT
-      // multiply by nights — that inflated v5 NET TOTAL by ~avg-nights-per-stay.
-      var net = (+c.price || 0) * (1 - commPct/100);
+      // COMMIT Z3 : netAmt() au lieu de price×(1-commission%) — préfère le
+      // net réconcilié depuis "YOU EARN" (c.details.financial) quand il
+      // existe, comme le NET du header (updateHeaderStats()) le fait déjà.
+      // L'ancien calcul ignorait purement et simplement la réconciliation.
+      var net = netAmt(c);
       totalNet += net;
       totalNights += nights;
       var src = c.source || (fr()?'Direct':'Direct');
