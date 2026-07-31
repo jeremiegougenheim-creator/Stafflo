@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v420 (COMMIT W2 : Aujourd'hui — grammaire v19 sur Calendrier/Ops)
-const CACHE = 'stafflo-v420';
+// Stafflo Service Worker — v421 (COMMIT Z3 : grossRoomFee ancré HOST PAYOUT, renderPerf via netAmt)
+const CACHE = 'stafflo-v421';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
