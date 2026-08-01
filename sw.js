@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v421 (COMMIT Z3 : grossRoomFee ancré HOST PAYOUT, renderPerf via netAmt)
-const CACHE = 'stafflo-v421';
+// Stafflo Service Worker — v422 (COMMIT W5 : bump sw)
+const CACHE = 'stafflo-v422';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
