@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v422 (COMMIT W5 : bump sw)
-const CACHE = 'stafflo-v422';
+// Stafflo Service Worker — v423 (COMMIT CC : accents latéraux biseautés en pseudo-élément)
+const CACHE = 'stafflo-v423';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
