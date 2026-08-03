@@ -41,6 +41,10 @@ self.addEventListener('fetch', e => {
   // Only handle GET
   if (e.request.method !== 'GET') return;
 
+  // livret.html is consulted rarely and always online — never cache it,
+  // so it never serves a stale version to a client.
+  if (url.includes('livret.html')) return;
+
   // Skip external APIs — let them go directly to network
   const { hostname } = new URL(url);
   if (

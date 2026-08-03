@@ -2764,6 +2764,25 @@ body #staffloShell.nav-v2-top .bot-nav::before{ display:none !important; } /* li
 #staffloShell.nav-v2-top main{ padding-bottom:16px !important }
 body.no-frame #staffloShell.nav-v2-top main{ padding-bottom:16px !important }
 
+/* COMMIT CC — nav-v2-top ≥900px : cadrer la barre sur l'axe v175 (1100px).
+   Ne PAS retirer padding-left/right de la règle globale ci-dessus (l.2750) :
+   son raccourci `padding:6px 14px` gagne aujourd'hui sur
+   body.no-frame #staffloShell .bot-nav (l.2627, base 640px, non gatée par
+   media query) par ordre source à spécificité égale (body+id+2classes des
+   deux côtés). Si on retire padding-left/right de l.2750, ce n'est PAS v175
+   (body+id+1classe, donc spécificité INFÉRIEURE à la règle no-frame) qui
+   reprend la main — c'est la règle no-frame, avec sa base 640px au lieu de
+   1100px (vérifié empiriquement : 400px de padding au lieu de 170px sur
+   1440px). D'où cet override ciblé, même sélecteur donc même spécificité que
+   l.2750, gagne par ordre source (déclaré après), et ne s'applique qu'à
+   ≥900px — <900px reste géré par le raccourci de l.2750, inchangé. */
+@media (min-width:900px) {
+  body #staffloShell.nav-v2-top .bot-nav{
+    padding-left:max(24px, calc((100% - 1100px) / 2)) !important;
+    padding-right:max(24px, calc((100% - 1100px) / 2)) !important;
+  }
+}
+
 /* Header eyebrow / villa — only render if v3 markup uses them */
 .header-eyebrow{font-size:10px !important;letter-spacing:3px !important;text-transform:uppercase !important;color:var(--s-gold) !important;font-weight:600 !important;margin-bottom:4px !important}
 .header-villa{font-family:var(--s-serif) !important;font-size:22px !important;font-weight:400 !important;color:#fff !important}
@@ -2953,6 +2972,24 @@ body.no-frame #staffloShell.nav-v2-top main{ padding-bottom:16px !important }
 #v3SubHdr{position:relative;padding-left:76px;background-color:#0F2318;background-position:center;background-size:cover;background-repeat:no-repeat;border-bottom:1px solid rgba(201,150,58,.5)}
 #v3SubHdr::before{content:"";position:absolute;left:20px;top:50%;transform:translateY(-50%);width:44px;height:44px;background:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='6' fill='%23C9963A' fill-opacity='.14' stroke='%23C9963A' stroke-opacity='.45'/><path d='M12 4 L20 19 L17 19 L15 15 L9 15 L7 19 L4 19 Z' fill='%23C9963A'/><path d='M10.3 12 L13.7 12 L12 8.5 Z' fill='%230F2318'/><circle cx='12' cy='6' r='1.5' fill='%23C9963A'/></svg>") center/contain no-repeat}
 @media(max-width:520px){#v3SubHdr{padding-left:68px}#v3SubHdr::before{width:38px;height:38px;left:16px}}
+
+/* COMMIT CC — hero ≥900px : cadré sur le même axe que main/header/bot-nav
+   (v175, 1100px). Le padding-left inline d'origine (76px, réserve fixe pour
+   l'emblème ::before à left:20px) a été retiré du markup (l.~3814) — c'était
+   la cause racine du désalignement, jamais couvert par v175 puisque
+   #v3SubHdr n'est pas #staffloShell > header. La règle de base ci-dessus
+   (padding-left:76px, non-!important) reste le défaut <900px, identique à
+   avant. Ici : +76px conserve la réserve de l'emblème, ::before se déplace
+   du même montant pour rester solidaire du titre. */
+@media (min-width:900px) {
+  body #staffloShell #v3SubHdr{
+    padding-left:calc(max(24px, (100% - 1100px) / 2) + 76px) !important;
+    padding-right:max(24px, calc((100% - 1100px) / 2)) !important;
+  }
+  body #staffloShell #v3SubHdr::before{
+    left:max(24px, calc((100% - 1100px) / 2)) !important;
+  }
+}
 
 /* ═══ v89 — Guests tab ruthless dedup ═══════════════════════════════════
    Keep only #guestsV5 (the v5 hi-fi layout: current guest hero, NET/AVG/
@@ -3792,7 +3829,7 @@ window.addEventListener('keydown', function(e){
 </header>
 
 <!-- v3 sub-header band — editorial eyebrow + villa + date. Sits outside the flex header row. -->
-<div id="v3SubHdr" style="padding:6px 20px 14px 76px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+<div id="v3SubHdr" style="padding-top:6px;padding-right:20px;padding-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px">
   <div style="min-width:0;flex:1">
     <div class="header-eyebrow" id="hdrEyebrow"></div>
     <div class="header-villa" id="hdrVilla" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
@@ -6224,6 +6261,7 @@ window.renderSetupOneLiner = function(){
   <div class="v5d-cta-row v19-pacts">
     <button class="v19-pact" id="v5dMessageBtn"  type="button" title="Message" aria-label="Message" data-title-fr="Message" data-title-en="Message" data-aria-label-fr="Message" data-aria-label-en="Message"><i class="ti ti-send"></i></button>
     <button class="v19-pact" id="v5dAskAriaBtn"  type="button" title="ARIA" aria-label="Demander à ARIA" data-title-fr="ARIA" data-title-en="ARIA" data-aria-label-fr="Demander à ARIA" data-aria-label-en="Ask ARIA"><i class="ti ti-sparkles"></i></button>
+    <button class="v19-pact" id="v5dLivretBtn"  type="button" title="Livret d'accueil" aria-label="Livret d'accueil" data-title-fr="Livret d'accueil" data-title-en="Welcome booklet" data-aria-label-fr="Livret d'accueil" data-aria-label-en="Welcome booklet" style="display:none"><i class="ti ti-notebook"></i></button>
   </div>
 </div>
 <!-- Row 1: ARIA slim search bar -->
@@ -33809,6 +33847,32 @@ function startTour(){
     try { if (typeof pushToSupabase === 'function') pushToSupabase(c); } catch(e){}
   }
 
+  /* arrival/departure are free-text columns, not dates — only format when
+     both match YYYY-MM-DD; otherwise omit (livret field stays editable). */
+  var MONTHS_FR = ['JAN','FEV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DEC'];
+  function fmtStayDates(arrival, departure){
+    var iso = /^\d{4}-\d{2}-\d{2}/;
+    if (!arrival || !departure || !iso.test(arrival) || !iso.test(departure)) return '';
+    var a = new Date(arrival.slice(0,10) + 'T12:00:00');
+    var d = new Date(departure.slice(0,10) + 'T12:00:00');
+    if (isNaN(a) || isNaN(d)) return '';
+    var yy = String(d.getFullYear()).slice(-2);
+    var left = a.getDate() + ' ' + MONTHS_FR[a.getMonth()];
+    var right = d.getDate() + ' ' + MONTHS_FR[d.getMonth()] + ' ' + yy;
+    return left + ' – ' + right;
+  }
+
+  function livretUrl(c){
+    var p = new URLSearchParams();
+    if (c.name) p.set('guest', c.name);
+    var dt = fmtStayDates(c.arrival, c.departure);
+    if (dt) p.set('dates', dt);
+    var pax = (parseInt(c.adults,10)||0) + (parseInt(c.children,10)||0);
+    if (pax) p.set('pax', String(pax));
+    p.set('lang', 'bi');
+    return 'livret.html?' + p.toString();
+  }
+
   var state = { step: 0, clientId: null };
   var TABS = ['stay','prefs','journal'];
 
@@ -34507,6 +34571,12 @@ function startTour(){
       if (typeof openAriaModal === 'function') openAriaModal(prefill);
       else if (window.StaffloSheet) StaffloSheet.open({ title:'ARIA', body:prefill, primaryCTA:'OK' });
     };
+    var livretBtn = $('v5dLivretBtn');
+    if (livretBtn) {
+      var firm = typeof isFirmBooking === 'function' ? isFirmBooking(c) : true;
+      livretBtn.style.display = firm ? '' : 'none';
+      livretBtn.onclick = function(){ window.open(livretUrl(c), '_blank', 'noopener'); };
+    }
   }
 
   /* ── Master renderer — called by openGuestDetailV5 ── */
