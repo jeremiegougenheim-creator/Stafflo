@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v423 (COMMIT CC : accents latéraux biseautés en pseudo-élément)
-const CACHE = 'stafflo-v423';
+// Stafflo Service Worker — v424 (livret + fx)
+const CACHE = 'stafflo-v424';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
