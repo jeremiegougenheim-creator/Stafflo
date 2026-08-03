@@ -9373,6 +9373,18 @@ function getCfg() {
     // Operation profile — 'full' (Maison) | 'light' (Léger) | 'solo' (Solo).
     // Default 'full' = current behavior. No UI is gated on this yet.
     cfg.operation_profile = cfg.operation_profile || 'full';
+    // v-fx-eur : migration additive pour les comptes dont cfg.exchange_rates
+    // est déjà enregistré (DEFAULT_EXCHANGE_RATES seul ne les touche pas).
+    // Complète UNIQUEMENT les clés manquantes parmi EUR/MAD/USD/THB — jamais
+    // d'écrasement d'une valeur existante (saisie manuelle incluse), jamais
+    // de résurrection d'une devise retirée par le propriétaire.
+    if (cfg.exchange_rates && typeof cfg.exchange_rates === 'object') {
+      var fxChanged = false;
+      ['EUR','MAD','USD','THB'].forEach(function(code){
+        if (!(code in cfg.exchange_rates)) { cfg.exchange_rates[code] = DEFAULT_EXCHANGE_RATES[code]; fxChanged = true; }
+      });
+      if (fxChanged) { try { localStorage.setItem('stafflo_cfg', JSON.stringify(cfg)); } catch(e) {} }
+    }
     return cfg;
   } catch(e) {
     return { sbUrl: SB_URL, supabaseUrl: SB_URL, sbKey: SB_ANON, supabaseKey: SB_ANON, supabaseAnonKey: SB_ANON, operation_profile: 'full' };
@@ -9410,8 +9422,8 @@ var DEFAULT_MEAL_CATEGORIES = [
 ];
 
 var DEFAULT_EXCHANGE_RATES = {
-  GBP: 0.86, USD: 1.09, MAD: 10.8, CHF: 0.94,
-  SAR: 4.09, AED: 4.00, CAD: 1.49
+  EUR: 1, GBP: 0.86, USD: 1.15, MAD: 10.7, CHF: 0.94,
+  SAR: 4.09, AED: 4.00, CAD: 1.49, THB: 38.4
 };
 
 function getMealCategories() {
