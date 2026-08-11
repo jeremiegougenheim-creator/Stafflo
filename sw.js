@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v424 (livret + fx)
-const CACHE = 'stafflo-v424';
+// Stafflo Service Worker — v425 (fix: 5 onclick JSON.stringify escaping)
+const CACHE = 'stafflo-v425';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
