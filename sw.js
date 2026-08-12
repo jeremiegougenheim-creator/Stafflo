@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v425 (fix: 5 onclick JSON.stringify escaping)
-const CACHE = 'stafflo-v425';
+// Stafflo Service Worker — v426 (fix: openClientModal → openDetail, line 5063)
+const CACHE = 'stafflo-v426';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
