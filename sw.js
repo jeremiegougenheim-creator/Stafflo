@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v426 (fix: openClientModal → openDetail, line 5063)
-const CACHE = 'stafflo-v426';
+// Stafflo Service Worker — v427 (AA1 — écran Villa sous-onglets)
+const CACHE = 'stafflo-v427';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

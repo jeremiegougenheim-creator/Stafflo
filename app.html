@@ -15,6 +15,15 @@
     RÉACTIVER: repointer --serif vers 'Cormorant Garamond' ligne ~955. Le @font-face et
               les .woff2 restent chargés, intacts.
 
+  [vAA1] applyNavV2Content() : déplacement de #villaV3 vers #tab-location
+    OÙ      : function applyNavV2Content() (~ligne 20151), bloc "var pricing = ..."
+    POURQUOI: COMMIT AA1 — écran Villa à sous-onglets (Prix/Équipe/Entretien/Sync/
+              Mémoire). #villaV3 vit désormais sous #villaPanePrix (dans #tab-home),
+              plus dans Location. setVillaTab() en est l'unique propriétaire du
+              parentNode. #tab-location ne garde que #guestsV5 (Clients).
+    RÉACTIVER: décommenter le bloc "locTab.appendChild(pricing)", et neutraliser à la
+              place l'appel à setVillaTab('prix') dans goTab('home').
+
   (ajouter les futures neutralisations ici, une ligne par item)
 ═══════════════════════════════════════════════════════════════════
 -->
@@ -3196,6 +3205,16 @@ body.profile-solo #soloTurnoverCard { display: block; }
 /* Same specificity as the v86 #tab-home > *:not(#villaV3) rule (line ~2543), later in
    source order → wins. Only takes effect once JS adds .nav-v2-on under the nav_v2 flag. */
 #staffloShell #tab-home > #maisonV2.nav-v2-on{display:block !important}
+/* COMMIT AA1 — same escape pattern for the Villa v19 shell. #villaShellV19 is a
+   direct child of #tab-home so v86 hides it by default; setVillaTab() adds
+   .nav-v2-on (same class #maisonV2 uses) once nav_v2 is confirmed on. */
+#staffloShell #tab-home > #villaShellV19.nav-v2-on{display:block !important}
+.v19-segs{display:flex;gap:6px;overflow-x:auto;padding:10px 16px;-ms-overflow-style:none;scrollbar-width:none}
+.v19-segs::-webkit-scrollbar{display:none}
+.v19-seg{flex:0 0 auto;display:flex;align-items:center;gap:5px;min-height:44px;padding:0 13px;border:none;background:transparent;border-radius:var(--r-md);font-family:'Inter',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--muted-on-light);cursor:pointer;white-space:nowrap}
+.v19-seg i{font-size:15px}
+.v19-seg.on{color:var(--gm);background:rgba(201,150,58,.12)}
+.v19-seg.on i{color:#C9963A}
 #todayMaisonSummary .tms-card{position:relative;overflow:hidden;background:#fff;border:.5px solid rgba(15,35,24,.1);border-radius:var(--r-md);padding:14px 15px 14px 18px;cursor:pointer;display:flex;align-items:center;gap:10px}
 #todayMaisonSummary .tms-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:#C9963A}
 #todayMaisonSummary .tms-card.paid::before{background:#1D4D3A}
@@ -6395,6 +6414,21 @@ window.renderSetupOneLiner = function(){
 
 <!-- ═══ MY HOME AI ═══════════════════════════════════════ -->
 <div class="tab" id="tab-home">
+
+<!-- COMMIT AA1 — écran Villa v19 (viewVilla() l.1573) : coque à sous-onglets
+     Prix/Équipe/Entretien/Sync/Mémoire. Un seul wrapper direct-child de #tab-home
+     (échappe à la règle v86 via .nav-v2-on, même pattern que #maisonV2 ci-dessous) ;
+     ses enfants ne sont plus des direct-children de #tab-home et échappent donc
+     naturellement à v86. Additif — rien retiré de #maisonV2 ni #villaV3.
+     JS : window.setVillaTab() (~ligne 20230). Équipe/Sync/Mémoire = AA2/AA3. -->
+<div id="villaShellV19" style="display:none">
+  <div class="v19-segs" id="villaSegs" role="tablist"></div>
+  <div id="villaPanePrix"></div>
+  <div id="villaPaneEquipe" style="display:none"></div>
+  <div id="villaPaneEntretien" style="display:none"></div>
+  <div id="villaPaneSync" style="display:none"></div>
+  <div id="villaPaneMemo" style="display:none"></div>
+</div>
 
 <!-- nav_v2 étape C : contenu MAISON (charges · prestataires · tâches), déplacés ici
      sous flag depuis Today (#v3DemoMonth) et depuis leurs emplacements légacy
@@ -14504,6 +14538,10 @@ function goTab(t) {
       // Nav v2 : #tab-home = MAISON (le pricing est parti dans Location, étape B).
       var vv3 = document.getElementById('villaV3'); if (vv3 && vv3.parentNode && vv3.parentNode.id === 'tab-home') vv3.style.display = 'none';
       try { if (typeof window.renderMaisonInto === 'function') window.renderMaisonInto(); } catch(e){}
+      // COMMIT AA1 — écran Villa v19 : sous-nav Prix/Équipe/Entretien/Sync/Mémoire.
+      // Rend la coque, active le dernier sous-onglet visité (défaut 'prix'),
+      // et déplace #villaV3/#maisonV2 dans leur panneau respectif.
+      try { if (typeof window.setVillaTab === 'function') window.setVillaTab(window.villaTab || 'prix'); } catch(e){}
     } else {
       try { loadHomeData(); setTimeout(renderVillaOpsExtra, 300); if (typeof renderPrestataires === 'function') setTimeout(renderPrestataires, 100); if (typeof renderMaisonTasks === 'function') setTimeout(renderMaisonTasks, 150); } catch(e) { console.error('loadHomeData error:', e); }
       // COMMIT Q : #villaV3 (pricing) vit ici quand navV2 est off.
@@ -20152,9 +20190,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeof navV2On !== 'function' || !navV2On()) return;
     var pricing = document.getElementById('villaV3');
     var locTab = document.getElementById('tab-location');
-    if (pricing && locTab && pricing.parentNode !== locTab) {
-      locTab.appendChild(pricing);   // déplace tout le bloc pricing dans Location
-    }
+    // COMMIT AA1 — GRAVEYARD (voir ledger en tête de fichier) : ce déplacement
+    // vers #tab-location est neutralisé. #villaV3 vit désormais sous
+    // #villaPanePrix (écran Villa, sous-onglet Prix) via setVillaTab().
+    // if (pricing && locTab && pricing.parentNode !== locTab) {
+    //   locTab.appendChild(pricing);   // déplace tout le bloc pricing dans Location
+    // }
     // Nav v2 étape E : Guests absorbé dans Rentals, en tête (avant le pricing).
     // insertBefore plutôt qu'appendChild : déterministe même si applyNavV2Content()
     // est rappelée plusieurs fois dans un ordre imprévisible (l'ancien double
@@ -20208,6 +20249,60 @@ document.addEventListener('DOMContentLoaded', function() {
     try { if (typeof renderMaisonTasks === 'function') renderMaisonTasks(); } catch(e){}
   }
   window.renderMaisonInto = renderMaisonInto;
+  // COMMIT AA1 — écran Villa v19 (viewVilla() l.1573) : coque à sous-onglets.
+  // ready:false = pane vide (AA2/AA3) — pas de bouton tant qu'il n'y a rien à montrer
+  // (règle 2 : pas d'état vide bidon). Passer à true suffit à l'activer plus tard.
+  var VILLA_TABS_V19 = [
+    { key: 'prix',       fr: 'Prix',       en: 'Price',   icon: 'ti-currency-euro', ready: true  },
+    { key: 'equipe',     fr: 'Équipe',     en: 'Team',    icon: 'ti-user-check',    ready: false },
+    { key: 'entretien',  fr: 'Entretien',  en: 'Upkeep',  icon: 'ti-tools',         ready: true  },
+    { key: 'sync',       fr: 'Sync',       en: 'Sync',    icon: 'ti-calendar-event',ready: false },
+    { key: 'memo',       fr: 'Mémoire',    en: 'Memory',  icon: 'ti-brain',         ready: false }
+  ];
+  window.villaTab = 'prix';
+  function renderVillaSegs(){
+    var host = document.getElementById('villaSegs');
+    if (!host) return;
+    host.innerHTML = VILLA_TABS_V19.filter(function(t){ return t.ready; }).map(function(t){
+      return '<button type="button" class="v19-seg' + (window.villaTab === t.key ? ' on' : '') + '" data-villatab="' + t.key + '">' +
+        '<i class="ti ' + t.icon + '"></i>' +
+        '<span data-fr="' + t.fr + '" data-en="' + t.en + '">' + t.fr + '</span>' +
+      '</button>';
+    }).join('');
+    host.querySelectorAll('.v19-seg').forEach(function(btn){
+      btn.addEventListener('click', function(){ setVillaTab(btn.getAttribute('data-villatab')); });
+    });
+    if (typeof applyLang === 'function') applyLang();
+  }
+  function setVillaTab(k){
+    var known = VILLA_TABS_V19.some(function(t){ return t.key === k && t.ready; });
+    if (!known) k = 'prix';
+    window.villaTab = k;
+    var shell = document.getElementById('villaShellV19');
+    if (shell) { shell.classList.add('nav-v2-on'); shell.style.display = ''; }
+    // Déplacement idempotent — même pattern que applyNavV2Content()/renderMaisonInto().
+    var pricePane = document.getElementById('villaPanePrix');
+    var villaV3 = document.getElementById('villaV3');
+    if (pricePane && villaV3 && villaV3.parentNode !== pricePane) pricePane.appendChild(villaV3);
+    var entretienPane = document.getElementById('villaPaneEntretien');
+    var maisonV2 = document.getElementById('maisonV2');
+    if (entretienPane && maisonV2 && maisonV2.parentNode !== entretienPane) entretienPane.appendChild(maisonV2);
+    ['villaPanePrix','villaPaneEquipe','villaPaneEntretien','villaPaneSync','villaPaneMemo'].forEach(function(id){
+      var pane = document.getElementById(id);
+      if (!pane) return;
+      pane.style.display = (id === 'villaPane' + k.charAt(0).toUpperCase() + k.slice(1)) ? '' : 'none';
+    });
+    if (villaV3) villaV3.style.display = (k === 'prix') ? '' : 'none';
+    if (k === 'prix' && typeof refreshVillaPricing === 'function') {
+      refreshVillaPricing().then(function(){
+        try { if (typeof v2RenderHero === 'function') v2RenderHero(); } catch(e){}
+        try { if (typeof renderAirroiMarketCard === 'function') renderAirroiMarketCard(); } catch(e){}
+      });
+    }
+    if (k === 'entretien' && typeof renderMaisonInto === 'function') renderMaisonInto();
+    renderVillaSegs();
+  }
+  window.setVillaTab = setVillaTab;
   // Nav v2 étape D : carte résumé cliquable sur le Today, à la place du détail complet
   // des charges (qui vit dans l'onglet Maison depuis l'étape C). Mêmes chiffres que la
   // carte détaillée — dérivés de getMaisonTotals(), qui lit la même source que
