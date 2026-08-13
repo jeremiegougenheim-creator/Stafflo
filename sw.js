@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v439 (fix ARIA quick-action chips not sending)
-const CACHE = 'stafflo-v439';
+// Stafflo Service Worker — v440 (Préparation checklist rows clickable)
+const CACHE = 'stafflo-v440';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
