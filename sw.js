@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v441 (fix ariaQuickAction l.39628 missing who_arrives/staff_brief/weather branches)
-const CACHE = 'stafflo-v441';
+// Stafflo Service Worker — v442 (ARIA chips: next arrivals + price for a period, no auto-send on price)
+const CACHE = 'stafflo-v442';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
