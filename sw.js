@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v440 (Préparation checklist rows clickable)
-const CACHE = 'stafflo-v440';
+// Stafflo Service Worker — v441 (fix ariaQuickAction l.39628 missing who_arrives/staff_brief/weather branches)
+const CACHE = 'stafflo-v441';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
