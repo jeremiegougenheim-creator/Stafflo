@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v434 (add Duplicate to client actions menu)
-const CACHE = 'stafflo-v434';
+// Stafflo Service Worker — v435 (fix bottom sheet z-index behind guest detail)
+const CACHE = 'stafflo-v435';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
