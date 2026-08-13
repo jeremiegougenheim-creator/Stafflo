@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v437 (fix price field label: net payout not gross)
-const CACHE = 'stafflo-v437';
+// Stafflo Service Worker — v438 (fix "Prix brut" labels in guest detail + CSV export)
+const CACHE = 'stafflo-v438';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
