@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v435 (fix bottom sheet z-index behind guest detail)
-const CACHE = 'stafflo-v435';
+// Stafflo Service Worker — v436 (fix modal-bg z-index behind guest detail)
+const CACHE = 'stafflo-v436';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
