@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v432 (fix: saveClient no longer wipes fields absent from form)
-const CACHE = 'stafflo-v432';
+// Stafflo Service Worker — v433 (wire password eye + client actions menu)
+const CACHE = 'stafflo-v433';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
