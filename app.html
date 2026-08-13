@@ -13930,6 +13930,7 @@ function saveClient() {
   const name = document.getElementById('fName').value.trim();
   if (!name) { toast(lang==='fr'?'Nom requis':'Name required'); return; }
   const id = document.getElementById('fId').value;
+  var _prev = id ? (clients.find(function(c){return c.id===id}) || {}) : {};
   const client = {
     id: id || Date.now().toString(),
     name, nat: document.getElementById('fNat').value,
@@ -13944,10 +13945,10 @@ function saveClient() {
     phone: document.getElementById('fPhone').value.trim(),
     notes: document.getElementById('fNotes').value.trim(),
     bookingStatus: document.getElementById('fBookingStatus')?.value || 'confirmed',
-    payStatus: '',
+    payStatus: (_prev.payStatus || ''),
     createdAt: id ? (clients.find(c=>c.id===id)?.createdAt || new Date().toISOString()) : new Date().toISOString()
   };
-  if (id) { const idx = clients.findIndex(c=>c.id===id); if(idx>=0) clients[idx]=client; else clients.unshift(client); }
+  if (id) { const idx = clients.findIndex(c=>c.id===id); if(idx>=0) clients[idx]=Object.assign({}, _prev, client); else clients.unshift(client); }
   else clients.unshift(client);
   saveLocal(); pushToSupabase(client); closeForm(); renderAll();
   toast(lang==='fr'?'✓ Enregistré':'✓ Saved');

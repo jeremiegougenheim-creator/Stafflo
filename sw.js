@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v431 (extend forwarded-sender filter to 3 remaining email_inbox queries)
-const CACHE = 'stafflo-v431';
+// Stafflo Service Worker — v432 (fix: saveClient no longer wipes fields absent from form)
+const CACHE = 'stafflo-v432';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
