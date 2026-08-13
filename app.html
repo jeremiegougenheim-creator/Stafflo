@@ -11028,13 +11028,14 @@ async function reconcileConfirmationBreakdowns() {
       var mergedDetails = Object.assign({}, client.details || {});
       mergedDetails.financial = financial;
 
-      // Source price from the confirmation too (guest total, not the room-fee
-      // brut) — same guard as details.financial: only from a reconciled
-      // confirmation, per record, idempotent via bookingRef above. If
-      // guestTotal wasn't parsed, leave the client's existing price untouched
-      // rather than null it — no source means no write, never a fabricated gap.
+      // Source price from the confirmation too — the NET payout (financial.net,
+      // same value written to details.financial.net above), not the guest total:
+      // price = net payout, commission = 0 on verified data (project rule, see
+      // the same pattern at the crm_clients insert around l.11188). Same guard
+      // as details.financial: only from a reconciled confirmation, per record,
+      // idempotent via bookingRef above.
       var patchBody = { details: mergedDetails };
-      if (financial.guestTotal != null) patchBody.price = financial.guestTotal;
+      if (financial.net != null) { patchBody.price = financial.net; patchBody.commission = 0; }
 
       var pr; try { pr = await fetch(cfg.sbUrl + '/rest/v1/crm_clients?id=eq.' + encodeURIComponent(client.id), {
         method: 'PATCH',
@@ -11044,7 +11045,7 @@ async function reconcileConfirmationBreakdowns() {
       if (pr.ok) {
         reconciled++;
         client.details = mergedDetails;
-        if (patchBody.price != null) client.price = patchBody.price;
+        if (patchBody.price != null) { client.price = patchBody.price; client.commission = patchBody.commission; }
       }
     }
   }

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v427 (AA1 — écran Villa sous-onglets)
-const CACHE = 'stafflo-v427';
+// Stafflo Service Worker — v428 (fix: reconcile writes net payout to price)
+const CACHE = 'stafflo-v428';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
