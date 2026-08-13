@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v429 (Inbox fallback card: clean body + expandable)
-const CACHE = 'stafflo-v429';
+// Stafflo Service Worker — v430 (reconcile: include forwarded confirmation emails)
+const CACHE = 'stafflo-v430';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
