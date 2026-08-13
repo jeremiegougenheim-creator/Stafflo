@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v433 (wire password eye + client actions menu)
-const CACHE = 'stafflo-v433';
+// Stafflo Service Worker — v434 (add Duplicate to client actions menu)
+const CACHE = 'stafflo-v434';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

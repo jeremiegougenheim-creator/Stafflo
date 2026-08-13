@@ -13845,8 +13845,41 @@ function openClientMenu() {
   var body = document.createElement('div');
   body.innerHTML =
     '<button type="button" style="display:block;width:100%;text-align:left;padding:14px 4px;border:none;border-bottom:1px solid #E5DCC8;background:none;font-family:inherit;font-size:15px;color:#0F2318;cursor:pointer" onclick="StaffloSheet.close();openForm(\'' + id + '\')">' + (fr?'✎ Modifier':'✎ Edit') + '</button>' +
+    '<button type="button" style="display:block;width:100%;text-align:left;padding:14px 4px;border:none;border-bottom:1px solid #E5DCC8;background:none;font-family:inherit;font-size:15px;color:#0F2318;cursor:pointer" onclick="openClientDuplicateMenu(\'' + id + '\')">' + (fr?'⧉ Dupliquer':'⧉ Duplicate') + '</button>' +
     '<button type="button" style="display:block;width:100%;text-align:left;padding:14px 4px;border:none;background:none;font-family:inherit;font-size:15px;color:#A32D2D;cursor:pointer" onclick="StaffloSheet.close();deleteClient(\'' + id + '\')">' + (fr?'🗑 Supprimer':'🗑 Delete') + '</button>';
   window.StaffloSheet.open({ title: fr?'Actions':'Actions', body: body });
+}
+
+function openClientDuplicateMenu(id) {
+  if (!window.StaffloSheet) return;
+  var fr = lang === 'fr';
+  var body = document.createElement('div');
+  body.innerHTML =
+    '<button type="button" style="display:block;width:100%;text-align:left;padding:14px 4px;border:none;border-bottom:1px solid #E5DCC8;background:none;font-family:inherit;font-size:15px;color:#0F2318;cursor:pointer" onclick="StaffloSheet.close();duplicateClient(\'' + id + '\',\'client\')">' + (fr?'👤 Nouveau séjour, même client':'👤 New stay, same guest') + '</button>' +
+    '<button type="button" style="display:block;width:100%;text-align:left;padding:14px 4px;border:none;background:none;font-family:inherit;font-size:15px;color:#0F2318;cursor:pointer" onclick="StaffloSheet.close();duplicateClient(\'' + id + '\',\'sejour\')">' + (fr?'📋 Copier tout le séjour':'📋 Copy whole stay') + '</button>';
+  window.StaffloSheet.open({ title: fr?'Dupliquer':'Duplicate', body: body });
+}
+
+function duplicateClient(id, mode) {
+  var src = clients.find(function(c){ return c.id === id; });
+  if (!src) return;
+  var copy = Object.assign({}, src);
+  copy.id = Date.now().toString();
+  copy.createdAt = new Date().toISOString();
+  delete copy.details; // details.financial is tied to a specific bookingRef — never carried forward
+  copy.bookingStatus = 'inquiry';
+  copy.arrival = '';
+  copy.departure = '';
+  if (mode === 'client') {
+    copy.price = 0;
+    copy.commission = 0;
+    copy.payStatus = '';
+  } else if (mode !== 'sejour') {
+    return;
+  }
+  copy._draft = true; // scratch entry so openForm() can find it — stripped on save or on cancel
+  clients.unshift(copy);
+  openForm(copy.id);
 }
 
 function closeDetail() {
@@ -13907,6 +13940,8 @@ function openForm(id) {
 }
 
 function closeForm() {
+  clients = clients.filter(function(c){ return !c._draft; });
+  if (typeof renderAll === 'function') renderAll();
   document.getElementById('formModal').classList.remove('on');
   document.body.style.overflow = '';
 }
@@ -13961,6 +13996,8 @@ function saveClient() {
     payStatus: (_prev.payStatus || ''),
     createdAt: id ? (clients.find(c=>c.id===id)?.createdAt || new Date().toISOString()) : new Date().toISOString()
   };
+  delete client._draft;
+  delete _prev._draft;
   if (id) { const idx = clients.findIndex(c=>c.id===id); if(idx>=0) clients[idx]=Object.assign({}, _prev, client); else clients.unshift(client); }
   else clients.unshift(client);
   saveLocal(); pushToSupabase(client); closeForm(); renderAll();
