@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v430 (reconcile: include forwarded confirmation emails)
-const CACHE = 'stafflo-v430';
+// Stafflo Service Worker — v431 (extend forwarded-sender filter to 3 remaining email_inbox queries)
+const CACHE = 'stafflo-v431';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
