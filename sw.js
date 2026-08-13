@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v428 (fix: reconcile writes net payout to price)
-const CACHE = 'stafflo-v428';
+// Stafflo Service Worker — v429 (Inbox fallback card: clean body + expandable)
+const CACHE = 'stafflo-v429';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

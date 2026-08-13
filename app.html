@@ -38196,11 +38196,23 @@ function startTour(){
             fbCard.style.borderLeftColor = 'var(--gold)';
             var subj = cleanRow.subject || (fr?'(sans objet)':'(no subject)');
             var sender = (cleanRow.from_name || cleanRow.from_email || '?').split('<')[0].trim();
-            var bodyPreview = (cleanRow.body||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim().slice(0,400);
+            // Même chaîne de nettoyage que buildEmailAnalysisPromptV6 (l.37984-37987) —
+            // sinon cette carte affiche du HTML brut/boilerplate Airbnb que le LLM,
+            // lui, ne voit jamais.
+            var bodyClean = cleanRow.body || '';
+            if (typeof htmlToText === 'function') bodyClean = htmlToText(bodyClean);
+            if (typeof cleanEmailBoilerplate === 'function') bodyClean = cleanEmailBoilerplate(bodyClean);
+            bodyClean = fixMojibake(bodyClean).trim();
+            var bodyShort = bodyClean.slice(0, 200);
+            var bodyMore = bodyClean.length > bodyShort.length;
+            var bodyFull = bodyClean.slice(0, 2500);
             fbCard.innerHTML = '<div style="font-size:11px;color:var(--gold);font-weight:700;margin-bottom:6px">⚠ '+(fr?'Analyse AI indisponible':'AI analysis unavailable')+'</div>' +
               '<div style="font-weight:600;margin-bottom:4px">'+sender+'</div>' +
               '<div style="font-size:12px;font-weight:600;margin-bottom:6px">'+subj+'</div>' +
-              '<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px">'+bodyPreview+(bodyPreview.length>=400?'…':'')+'</div>' +
+              '<details style="margin-bottom:8px">' +
+                '<summary style="font-size:11px;color:var(--muted);line-height:1.5;cursor:pointer">' + _esc(bodyShort) + (bodyMore ? '… <span style="color:var(--gold);font-weight:600">'+(fr?'voir l\'email complet':'view full email')+'</span>' : '') + '</summary>' +
+                (bodyMore ? '<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;white-space:pre-wrap">' + _esc(bodyFull) + (bodyClean.length>2500?'…':'') + '</div>' : '') +
+              '</details>' +
               '<button onclick="this.disabled=true;this.textContent=\''+(fr?'Réessai…':'Retrying…')+'\';handleInboxEmailFull(window._lastEmailRow,{})" style="background:var(--gold);color:var(--green3);border:none;border-radius:var(--r-sm);padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🔄 '+(fr?'Réessayer':'Retry')+'</button>';
             msgsErr.appendChild(fbCard);
             window._lastEmailRow = cleanRow;
