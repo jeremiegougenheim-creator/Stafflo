@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v436 (fix modal-bg z-index behind guest detail)
-const CACHE = 'stafflo-v436';
+// Stafflo Service Worker — v437 (fix price field label: net payout not gross)
+const CACHE = 'stafflo-v437';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
