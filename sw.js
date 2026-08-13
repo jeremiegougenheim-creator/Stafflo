@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v438 (fix "Prix brut" labels in guest detail + CSV export)
-const CACHE = 'stafflo-v438';
+// Stafflo Service Worker — v439 (fix ARIA quick-action chips not sending)
+const CACHE = 'stafflo-v439';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
