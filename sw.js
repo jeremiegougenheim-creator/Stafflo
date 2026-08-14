@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v443 (who_arrives prompt no longer trips staff_brief intent match)
-const CACHE = 'stafflo-v443';
+// Stafflo Service Worker — v444 (price parser no longer silently defaults to current month on unrecognised period)
+const CACHE = 'stafflo-v444';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

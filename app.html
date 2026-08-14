@@ -36523,13 +36523,21 @@ function startTour(){
           if (!_pComps.length) {
             var _MON={jan:1,janv:1,fev:2,fevr:2,feb:2,mars:3,mar:3,avr:4,apr:4,mai:5,may:5,jun:6,juin:6,jul:7,juil:7,aug:8,aout:8,sep:9,sept:9,oct:10,nov:11,dec:12,noel:12,an:1};
             var _pDate=new Date();
+            var _pMatched=false;
             /* v130: fêtes (jour de l'an/réveillon/noël/nouvel an) → Peak direct (28 déc). AVANT les mois : ces mots échouaient le lookup _MON (slice donnait "jou"/"noë"). */
             if(/no[eë]l|r[eé]veillon|nouvel\s+an|jour\s+de\s+l['' ]?an|saint.?sylvestre|31\s+d[eé]c|1er\s+janvier|premier\s+janvier|new\s*year|christmas|xmas/i.test(text)){
               _pDate=new Date(_pDate.getFullYear(),11,28);
               if(_pDate<new Date())_pDate.setFullYear(_pDate.getFullYear()+1);
+              _pMatched=true;
             } else {
               var _mM=text.toLowerCase().match(/\b(jan(?:uary|vier)?|f(?:eb(?:ruary)?|[eé]v(?:rier)?)|mar(?:ch|s)?|a(?:pr(?:il)?|vr(?:il)?)|ma[yi]|ju(?:ne?|in?)|ju(?:ly?|il(?:let)?)|au?(?:g(?:ust)?|[oû]t)|sep(?:t(?:ember|embre)?)?|oct(?:ober|obre)?|nov(?:ember|embre)?|dec(?:ember)?|d[eé]c(?:embre)?)\b/);
-              if(_mM){var _mk=_mM[1].slice(0,3).toLowerCase().replace(/[éè]/g,'e').replace('û','u');var _mn=_MON[_mk];if(_mn){_pDate=new Date(_pDate.getFullYear(),_mn-1,15);if(_pDate<new Date())_pDate.setFullYear(_pDate.getFullYear()+1);}}
+              if(_mM){var _mk=_mM[1].slice(0,3).toLowerCase().replace(/[éè]/g,'e').replace('û','u');var _mn=_MON[_mk];if(_mn){_pDate=new Date(_pDate.getFullYear(),_mn-1,15);if(_pDate<new Date())_pDate.setFullYear(_pDate.getFullYear()+1);_pMatched=true;}}
+            }
+            if(!_pMatched && !/ce\s+mois|this\s+month|maintenant|\bnow\b/i.test(text)){
+              var _pNoMatch=fr?'Je n\'ai pas reconnu la période. Précisez un mois (ex : « prix pour octobre ») ou une occasion (Noël, Nouvel An).':'I didn\'t recognise the period. Give me a month (e.g. "price for October") or an occasion (Christmas, New Year).';
+              var _ptypNM=document.getElementById('chatTyping');if(_ptypNM)_ptypNM.style.display='none';
+              addChatBubble('ai',_pNoMatch,[]);
+              return;
             }
             var _pm=_pDate.getMonth()+1,_pd=_pDate.getDate(),_pp,_pl;
             if((_pm===12&&_pd>=21)||(_pm===1&&_pd<=2)){_pp=1500;_pl=fr?'Peak (Noël/NY)':'Peak (Christmas/NY)';}
