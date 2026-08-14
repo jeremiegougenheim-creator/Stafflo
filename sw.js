@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v444 (price parser no longer silently defaults to current month on unrecognised period)
-const CACHE = 'stafflo-v444';
+// Stafflo Service Worker — v445 (upcoming arrivals no longer routed into pricing branch)
+const CACHE = 'stafflo-v445';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

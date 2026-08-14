@@ -36515,10 +36515,11 @@ function startTour(){
         }
 
         // Price-intent grounding — route typed price questions through the same curated-comps prompt as the button (no invention, single-villa).
+        var _isArrivals = /\b(arriv[ée]es? [àa] venir|prochaines? arriv[ée]es?|upcoming arrivals|next arrivals|qui arrive|who arrives)\b/i.test(text);
         var _isPrice = /\b(prix|tarif|price|rate|combien|how much)\b/i.test(text) || /(€|\$)\s*\d|\d+\s*(€|\$|\/nuit|\/night|per night)/i.test(text);
         /* v127 — Pricing honnête : si 0 comparable → réponse déterministe (grille saison villa),
            pas de LLM. L'LLM invente même avec STRICT RULE. "Mesuré, pas modélisé." */
-        if (_isPrice) {
+        if (_isPrice && !_isArrivals) {
           var _pComps = (typeof loadSavedCompetitors==='function') ? (loadSavedCompetitors()||[]) : [];
           if (!_pComps.length) {
             var _MON={jan:1,janv:1,fev:2,fevr:2,feb:2,mars:3,mar:3,avr:4,apr:4,mai:5,may:5,jun:6,juin:6,jul:7,juil:7,aug:8,aout:8,sep:9,sept:9,oct:10,nov:11,dec:12,noel:12,an:1};
@@ -40364,6 +40365,9 @@ window._setNotifPref = function(key, val){ try { window._notifPrefs[key] = !!val
       return { kind: 'all' };
     }
     
+    if (/\b(arriv[ée]es? [àa] venir|prochaines? arriv[ée]es?|upcoming arrivals|next arrivals)\b/i.test(t))
+      return { kind: 'upcoming_confirmed' };
+
     // Specific date arrivals
     if (/\b(qui arrive|who arrives|qui part|who leaves|who departs|who is coming)\b/.test(t)) {
       if (/\b(demain|tomorrow)\b/.test(t)) return { kind: 'arriving_on', offset: 1 };
