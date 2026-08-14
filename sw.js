@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v445 (upcoming arrivals no longer routed into pricing branch)
-const CACHE = 'stafflo-v445';
+// Stafflo Service Worker — v446 (housekeeping brief chip targets next arrival, not today)
+const CACHE = 'stafflo-v446';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
