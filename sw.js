@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v447 (staff_brief chip split: team brief + reply to guest)
-const CACHE = 'stafflo-v447';
+// Stafflo Service Worker — v448 (staff_brief chip bypasses CRM router via explicit intent flag)
+const CACHE = 'stafflo-v448';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
