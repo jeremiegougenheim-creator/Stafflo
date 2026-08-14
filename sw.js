@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v448 (staff_brief chip bypasses CRM router via explicit intent flag)
-const CACHE = 'stafflo-v448';
+// Stafflo Service Worker — v449 (response card copy has execCommand fallback, edit button hidden without waKey)
+const CACHE = 'stafflo-v449';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

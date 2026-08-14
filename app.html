@@ -38591,14 +38591,17 @@ function startTour(){
               });
             }
 
-            var editBtn = document.createElement('button');
-            editBtn.type = 'button';
-            editBtn.className = 'sr-btn sr-btn-edit';
-            editBtn.textContent = fr?'✏️ Éditer':'✏️ Edit';
-            editBtn.addEventListener('click', function(e) {
-              e.stopPropagation(); e.preventDefault();
-              if (typeof editPendingWA === 'function' && waKey) editPendingWA(waKey, editBtn);
-            });
+            var editBtn = null;
+            if (waKey) {
+              editBtn = document.createElement('button');
+              editBtn.type = 'button';
+              editBtn.className = 'sr-btn sr-btn-edit';
+              editBtn.textContent = fr?'✏️ Éditer':'✏️ Edit';
+              editBtn.addEventListener('click', function(e) {
+                e.stopPropagation(); e.preventDefault();
+                if (typeof editPendingWA === 'function' && waKey) editPendingWA(waKey, editBtn);
+              });
+            }
 
             var copyBtn = document.createElement('button');
             copyBtn.type = 'button';
@@ -38608,11 +38611,15 @@ function startTour(){
               e.stopPropagation(); e.preventDefault();
               navigator.clipboard.writeText(resp.text).then(function() {
                 _toast('📋 ' + (fr?'Copié':'Copied'));
+              }).catch(function() {
+                var ta = document.createElement('textarea'); ta.value = resp.text; ta.style.position='fixed'; ta.style.opacity='0';
+                document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+                _toast('📋 ' + (fr?'Copié':'Copied'));
               });
             });
 
             if (sendBtn) actions.appendChild(sendBtn);
-            actions.appendChild(editBtn);
+            if (editBtn) actions.appendChild(editBtn);
             actions.appendChild(copyBtn);
             expanded.appendChild(txt);
             expanded.appendChild(actions);
