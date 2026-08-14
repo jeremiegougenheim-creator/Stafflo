@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v442 (ARIA chips: next arrivals + price for a period, no auto-send on price)
-const CACHE = 'stafflo-v442';
+// Stafflo Service Worker — v443 (who_arrives prompt no longer trips staff_brief intent match)
+const CACHE = 'stafflo-v443';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
