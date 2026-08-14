@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v446 (housekeeping brief chip targets next arrival, not today)
-const CACHE = 'stafflo-v446';
+// Stafflo Service Worker — v447 (staff_brief chip split: team brief + reply to guest)
+const CACHE = 'stafflo-v447';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
