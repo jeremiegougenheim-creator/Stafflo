@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v449 (response card copy has execCommand fallback, edit button hidden without waKey)
-const CACHE = 'stafflo-v449';
+// Stafflo Service Worker — v450 (pullVillaSettings hydrates email_connection from Supabase, symmetric to commissions fix)
+const CACHE = 'stafflo-v450';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

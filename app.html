@@ -25239,6 +25239,27 @@ async function pullVillaSettings() {
     var rows = await r.json();
     if (!Array.isArray(rows) || !rows.length) return;
     var row = rows[0];
+
+    /* v450 : email_connection n'était jamais relu depuis Supabase.
+       saveEmailConnection() l'écrit (refresh_token confirmé en base), mais
+       pullVillaSettings() ne l'hydratait pas et sortait en early-return dès que
+       le local était onboardé. La connexion Gmail ne vivait donc qu'en
+       localStorage → perdue à chaque purge / nouveau navigateur / réinstall PWA,
+       imposant un re-consentement OAuth complet alors que la base est intacte.
+       Même bug que commissions (v-item50). Purement additif : on n'hydrate que si
+       le local n'a pas de refresh_token — jamais d'écrasement d'une session locale.
+       Placé AVANT les early-returns : la connexion email est indépendante de
+       l'état d'onboarding. */
+    try {
+      var _rec = row.email_connection || null;
+      var _lec = cfg.email_connection || null;
+      if (_rec && _rec.refresh_token && (!_lec || !_lec.refresh_token)) {
+        cfg.email_connection = _rec;
+        setCfg(cfg);
+        try { if (typeof renderInboxConnectionStatus === 'function') renderInboxConnectionStatus(); } catch(e) {}
+      }
+    } catch(e) { console.warn('email_connection hydrate:', e); }
+
     // Only hydrate if remote has been onboarded (otherwise defaults from trigger may be wrong)
     if (!row.onboarded) return;
     // Local has been onboarded too → don't overwrite (local is current source of truth in session)
