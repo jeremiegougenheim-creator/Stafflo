@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v451 (onboarding account form: DOM-source-of-truth on submit + explicit validation message, fixes silent autofill failure)
-const CACHE = 'stafflo-v451';
+// Stafflo Service Worker — v452 (no-session landing shows auth gate instead of forcing onboarding tunnel)
+const CACHE = 'stafflo-v452';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
