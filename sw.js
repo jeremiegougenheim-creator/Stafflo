@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v450 (pullVillaSettings hydrates email_connection from Supabase, symmetric to commissions fix)
-const CACHE = 'stafflo-v450';
+// Stafflo Service Worker — v451 (onboarding account form: DOM-source-of-truth on submit + explicit validation message, fixes silent autofill failure)
+const CACHE = 'stafflo-v451';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

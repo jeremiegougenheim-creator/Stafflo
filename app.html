@@ -32300,8 +32300,18 @@ window.addEventListener('DOMContentLoaded', function() {
   // (même chemin que le gate d'auth existant, app.html:6817) : pas de nouveau client,
   // pas de nouvelle fonction d'auth. complete() n'est appelée qu'après succès confirmé.
   async function submitOnbAccount(){
-    var email = (state.data.email || '').trim();
-    var pw = acctPwDraft || '';
+    // v-authfill : l'autofill navigateur/gestionnaire de mots de passe n'émet pas
+    // toujours d'événement `input` — state.data.email et acctPwDraft restaient donc
+    // vides alors que les champs étaient visuellement remplis, et next() sortait en
+    // silence. Le DOM est la source de vérité au moment du submit ; l'état reste en
+    // repli pour ne rien casser des chemins existants.
+    var _emailEl = $('onbV3AcctEmail');
+    var _pwEl = $('onbV3AcctPw');
+    var email = ((_emailEl && _emailEl.value) || state.data.email || '').trim();
+    var pw = (_pwEl && _pwEl.value) || acctPwDraft || '';
+    // Resynchronise l'état pour les écrans suivants (récap, persistance).
+    if (email) { state.data.email = email; }
+    if (pw) { acctPwDraft = pw; }
     var btn = $('onbV3AcctSubmit');
     var msg = $('onbV3AcctMsg');
     if (btn) { btn.disabled = true; btn.textContent = fr() ? 'Création…' : 'Creating…'; }
@@ -32718,7 +32728,30 @@ window.addEventListener('DOMContentLoaded', function() {
     var acctForm = $('onbV3AcctForm');
     // preventDefault + next() : réutilise l'intercepteur de next() (validité + submitOnbAccount())
     // au lieu de dupliquer la logique sur le submit du form.
-    if (acctForm) acctForm.addEventListener('submit', function(e){ e.preventDefault(); next(); });
+    // v-authfill : avant de déléguer à next(), on resynchronise l'état depuis le DOM
+    // (cas autofill) et on affiche une raison explicite si la validation bloque.
+    // Sans ça, une soumission invalide ne produit strictement aucun retour visible.
+    if (acctForm) acctForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      var em = $('onbV3AcctEmail'), pwf = $('onbV3AcctPw');
+      if (em && em.value) { state.data.email = em.value.trim(); }
+      if (pwf && pwf.value) { acctPwDraft = pwf.value; }
+      applyStep(true);
+      var msgEl = $('onbV3AcctMsg');
+      var emVal = (state.data.email || '').trim();
+      if (!emVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emVal)) {
+        if (msgEl) { msgEl.style.color = '#A32D2D'; msgEl.textContent = fr() ? 'Entrez une adresse email valide.' : 'Enter a valid email address.'; }
+        if (em) em.focus();
+        return;
+      }
+      if (!acctPwDraft || acctPwDraft.length < 8) {
+        if (msgEl) { msgEl.style.color = '#A32D2D'; msgEl.textContent = fr() ? 'Mot de passe : 8 caractères minimum.' : 'Password: 8 characters minimum.'; }
+        if (pwf) pwf.focus();
+        return;
+      }
+      if (msgEl) msgEl.textContent = '';
+      next();
+    });
 
     // Swipe nav on stage
     bindSwipe();
