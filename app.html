@@ -42736,5 +42736,350 @@ function auditTones(){
 }
 window.auditTones = auditTones;
 </script>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   ENTRETIEN — Tour de maison mensuel (Said)
+   Additif : nouvelle card en tête de #maisonV2 (onglet Villa ›
+   Entretien), câblée sur renderMaisonInto() par wrap (pattern déjà
+   utilisé pour renderMaisonReal/renderTodayV3All). Said continue de
+   reporter par WhatsApp — c'est Jérémie qui saisit côté owner.
+   ════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+
+  var TOURNEE_ITEMS = ['arrosage','piscine','fuites','electricite','electromenager','nuisibles','chambres','jardin'];
+  var TOURNEE_LABELS = {
+    arrosage:       { fr:'Arrosage',        en:'Watering' },
+    piscine:        { fr:'Piscine',         en:'Pool' },
+    fuites:         { fr:'Fuites',          en:'Leaks' },
+    electricite:    { fr:'Électricité',     en:'Electrical' },
+    electromenager: { fr:'Électroménager',  en:'Appliances' },
+    nuisibles:      { fr:'Nuisibles',       en:'Pests' },
+    chambres:       { fr:'Chambres',        en:'Bedrooms' },
+    jardin:         { fr:'Jardin',          en:'Garden' }
+  };
+  var GREEN_DARK = '#0F2318', GREEN_MID = '#1D4D3A';
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function firstOfMonth(d){ d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-01'; }
+  function monthLabel(period, fr){
+    var d = new Date((period || firstOfMonth()) + 'T12:00:00');
+    return d.toLocaleDateString(fr ? 'fr-FR' : 'en-US', { month:'long', year:'numeric' });
+  }
+
+  function buildTourneeTemplate(monthLabelStr){
+    return [
+      'Tour de maison — ' + monthLabelStr,
+      'Arrosage : OK / problème',
+      'Piscine : OK / problème',
+      'Fuites : OK / problème',
+      'Électricité : OK / problème',
+      'Électroménager : OK / problème',
+      'Nuisibles : OK / problème',
+      'Chambres : OK / problème',
+      'Jardin : OK / problème',
+      'À acheter ce mois-ci :'
+    ].join('\n');
+  }
+  window.buildTourneeTemplate = buildTourneeTemplate;
+
+  /* Said (majordome actif) — mis en cache pour la session, réutilisable par la
+     card Budget délégué (commit 2) via window.fetchSaidStaff. */
+  var _saidCache = null;
+  async function fetchSaidStaff(){
+    if (_saidCache) return _saidCache;
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      if (!cfg.sbUrl || !cfg.sbKey) return null;
+      var r = await fetch(cfg.sbUrl + '/rest/v1/staff?role=eq.majordome&active=eq.true&select=id,name,wa&limit=1', { headers: sbHdrs(cfg.sbKey) });
+      if (!r.ok) return null;
+      var rows = await r.json();
+      _saidCache = (rows && rows[0]) || null;
+      return _saidCache;
+    } catch(e){ return null; }
+  }
+  window.fetchSaidStaff = fetchSaidStaff;
+  window.clearSaidStaffCache = function(){ _saidCache = null; };
+
+  function waNumberFromStaffOrCfg(staffRow, cfg){
+    var raw = (staffRow && staffRow.wa) || cfg.staff_phone || '';
+    return raw.replace(/[\s\-+()]/g,'');
+  }
+
+  async function sendTourneeReminder(){
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var staffRow = await fetchSaidStaff();
+    var num = waNumberFromStaffOrCfg(staffRow, cfg);
+    var text = buildTourneeTemplate(monthLabel(firstOfMonth(), fr));
+    var url = num ? ('https://wa.me/' + num + '?text=' + encodeURIComponent(text)) : ('https://wa.me/?text=' + encodeURIComponent(text));
+    window.open(url, '_blank');
+  }
+
+  async function loadCurrentTournee(){
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      if (!cfg.sbUrl || !cfg.sbKey) return null;
+      var r = await fetch(cfg.sbUrl + '/rest/v1/maison_tournees?period_month=eq.' + firstOfMonth() + '&select=*', { headers: sbHdrs(cfg.sbKey) });
+      if (!r.ok) return null;
+      var rows = await r.json();
+      return (rows && rows[0]) || null;
+    } catch(e){ return null; }
+  }
+
+  async function loadPastTournees(){
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      if (!cfg.sbUrl || !cfg.sbKey) return [];
+      var r = await fetch(cfg.sbUrl + '/rest/v1/maison_tournees?period_month=neq.' + firstOfMonth()
+        + '&select=period_month,items,problems_note&order=period_month.desc&limit=12', { headers: sbHdrs(cfg.sbKey) });
+      if (!r.ok) return [];
+      return await r.json();
+    } catch(e){ return []; }
+  }
+
+  function countProblems(items){
+    if (!items) return 0;
+    return Object.keys(items).filter(function(k){ return items[k] === 'probleme'; }).length;
+  }
+
+  async function openMoisPrecedentsTournee(){
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    if (typeof openFicheV1 !== 'function') return;
+    var rows = await loadPastTournees();
+    var rowsKv = rows.length
+      ? rows.map(function(t){
+          var n = countProblems(t.items);
+          var val = n === 0 ? (fr?'Tout OK':'All OK') : (n + (fr ? ' problème(s)' : ' issue(s)'));
+          return [monthLabel(t.period_month, fr), val];
+        })
+      : [[fr?'Aucun historique':'No history', '—']];
+    openFicheV1({
+      kicker: fr ? 'Tour de maison' : 'House walk-through',
+      title: fr ? 'Mois précédents' : 'Previous months',
+      rows: rowsKv,
+      source: fr
+        ? 'Chaque tournée est soumise par Said et saisie côté propriétaire — lecture seule, aucune ligne inventée.'
+        : 'Each walk-through is submitted by Said and entered on the owner side — read-only, no invented row.'
+    });
+  }
+
+  async function saveSaidWa(inputEl){
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    var val = inputEl ? (inputEl.value||'').trim().replace(/[\s\-()]/g,'') : '';
+    if (!val) return;
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      var staffRow = await fetchSaidStaff();
+      if (!cfg.sbUrl || !cfg.sbKey || !staffRow || !staffRow.id) return;
+      var r = await fetch(cfg.sbUrl + '/rest/v1/staff?id=eq.' + encodeURIComponent(staffRow.id), {
+        method: 'PATCH',
+        headers: Object.assign({}, sbHdrs(cfg.sbKey), { 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({ wa: val })
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      _saidCache = null;
+      if (typeof toast === 'function') toast(fr ? '✓ Numéro enregistré' : '✓ Number saved');
+      renderTourneeCard();
+    } catch(e){ if (typeof toast === 'function') toast(fr?'⚠ Erreur':'⚠ Error'); console.warn('[saveSaidWa]', e); }
+  }
+
+  async function saveTournee(sheet){
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    var items = {};
+    TOURNEE_ITEMS.forEach(function(k){
+      var row = sheet.querySelector('[data-item-row="'+k+'"]');
+      var val = row ? row.getAttribute('data-selected') : '';
+      if (val === 'ok' || val === 'probleme') items[k] = val;
+    });
+    var problemsNote = (document.getElementById('tourneeProblemsNote')||{}).value || '';
+    var shoppingList = (document.getElementById('tourneeShoppingList')||{}).value || '';
+    var submittedBy = (document.getElementById('tourneeSubmittedBy')||{}).value || 'Said';
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      if (!cfg.sbUrl || !cfg.sbKey) { if (typeof toast==='function') toast(fr?'Non connecté':'Not connected'); return; }
+      var r = await fetch(cfg.sbUrl + '/rest/v1/maison_tournees?on_conflict=owner_id,period_month', {
+        method: 'POST',
+        headers: Object.assign({}, sbHdrs(cfg.sbKey), { 'Prefer': 'resolution=merge-duplicates,return=representation' }),
+        body: JSON.stringify({
+          period_month: firstOfMonth(),
+          submitted_by: submittedBy.trim() || 'Said',
+          items: items,
+          problems_note: problemsNote.trim() || null,
+          shopping_list: shoppingList.trim() || null
+        })
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      var m = document.getElementById('tourneeFormModal'); if (m) m.remove();
+      if (typeof toast === 'function') toast(fr ? '✓ Tour de maison enregistré' : '✓ Walk-through saved');
+      renderTourneeCard();
+    } catch(e){ if (typeof toast === 'function') toast(fr?'⚠ Erreur':'⚠ Error'); console.warn('[saveTournee]', e); }
+  }
+
+  function openTourneeForm(existing){
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    var ex = document.getElementById('tourneeFormModal'); if (ex) ex.remove();
+    var items = (existing && existing.items) || {};
+
+    function segBtn(k, val, txt){
+      return '<button type="button" class="tournee-seg" data-item="'+k+'" data-val="'+val+'" style="flex:1;padding:8px 4px;font-size:12px;font-weight:600;border-radius:var(--r-sm);border:1.5px solid var(--border);cursor:pointer;background:var(--paper);color:var(--muted)">'+txt+'</button>';
+    }
+    var itemsHtml = TOURNEE_ITEMS.map(function(k){
+      var lbl = fr ? TOURNEE_LABELS[k].fr : TOURNEE_LABELS[k].en;
+      return '<div style="margin-bottom:10px">' +
+        '<div style="font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:5px">'+lbl+'</div>' +
+        '<div style="display:flex;gap:6px" data-item-row="'+k+'">' +
+          segBtn(k,'ok', fr?'OK':'OK') + segBtn(k,'probleme', fr?'Problème':'Issue') + segBtn(k,'', '—') +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    var hasProblem = TOURNEE_ITEMS.some(function(k){ return items[k] === 'probleme'; });
+
+    var el = document.createElement('div');
+    el.id = 'tourneeFormModal';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.5);z-index:10001;display:flex;align-items:flex-end;justify-content:center';
+    el.onclick = function(e){ if (e.target === el) el.remove(); };
+    el.innerHTML = '<div style="background:var(--card);border-radius:var(--r-lg) var(--r-lg) 0 0;padding:20px 16px 32px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto;box-shadow:0 -4px 32px rgba(0,0,0,.25)">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+        '<div style="font-family:Cormorant Garamond,serif;font-size:18px;font-weight:600;color:var(--ink)">'+(fr?'Tour de maison — ':'House walk-through — ')+monthLabel(firstOfMonth(), fr)+'</div>' +
+        '<button onclick="document.getElementById(\'tourneeFormModal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1">✕</button>' +
+      '</div>' +
+      itemsHtml +
+      '<div class="field" id="tourneeProblemsNoteWrap" style="display:'+(hasProblem?'':'none')+'"><label>'+(fr?'Détail des problèmes':'Problem details')+'</label><textarea id="tourneeProblemsNote">'+(existing&&existing.problems_note?esc(existing.problems_note):'')+'</textarea></div>' +
+      '<div class="field"><label>'+(fr?'À acheter ce mois-ci':'Shopping list')+'</label><textarea id="tourneeShoppingList">'+(existing&&existing.shopping_list?esc(existing.shopping_list):'')+'</textarea></div>' +
+      '<div class="field"><label>'+(fr?'Saisi par':'Submitted by')+'</label><input id="tourneeSubmittedBy" value="'+(existing&&existing.submitted_by?esc(existing.submitted_by):'Said')+'"></div>' +
+      '<button id="tourneeBtnSave" style="width:100%;margin-top:6px;padding:12px;background:var(--green3);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">'+(fr?'Enregistrer':'Save')+'</button>' +
+    '</div>';
+    document.body.appendChild(el);
+
+    function paint(row, val){
+      row.querySelectorAll('.tournee-seg').forEach(function(b){
+        var on = b.getAttribute('data-val') === val;
+        b.style.background = on ? (val === 'probleme' ? 'var(--t-alert-bg)' : val === 'ok' ? 'var(--t-go-bg)' : 'var(--paper)') : 'var(--paper)';
+        b.style.color = on ? (val === 'probleme' ? 'var(--t-alert-fg)' : val === 'ok' ? 'var(--t-go-fg)' : 'var(--muted)') : 'var(--muted)';
+      });
+    }
+    TOURNEE_ITEMS.forEach(function(k){
+      var row = el.querySelector('[data-item-row="'+k+'"]');
+      if (!row) return;
+      var initVal = items[k] || '';
+      row.setAttribute('data-selected', initVal);
+      paint(row, initVal);
+    });
+    el.querySelectorAll('.tournee-seg').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var k = btn.getAttribute('data-item');
+        var val = btn.getAttribute('data-val');
+        var row = el.querySelector('[data-item-row="'+k+'"]');
+        row.setAttribute('data-selected', val);
+        paint(row, val);
+        var anyProblem = TOURNEE_ITEMS.some(function(kk){
+          var r2 = el.querySelector('[data-item-row="'+kk+'"]');
+          return r2 && r2.getAttribute('data-selected') === 'probleme';
+        });
+        var wrap = document.getElementById('tourneeProblemsNoteWrap');
+        if (wrap) wrap.style.display = anyProblem ? '' : 'none';
+      });
+    });
+
+    document.getElementById('tourneeBtnSave').addEventListener('click', function(){ saveTournee(el); });
+  }
+
+  async function renderTourneeCard(){
+    if (typeof navV2On !== 'function' || !navV2On()) return;
+    var host = document.getElementById('maisonV2');
+    if (!host) return;
+    var card = document.getElementById('tourneeCardHost');
+    if (!card) { card = document.createElement('div'); card.id = 'tourneeCardHost'; }
+    if (host.firstChild !== card) host.insertBefore(card, host.firstChild);
+
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+    var t = await loadCurrentTournee();
+    var staffRow = await fetchSaidStaff();
+    var num = waNumberFromStaffOrCfg(staffRow, cfg);
+
+    var html = '<div style="background:#FAF6EE;border:1px solid var(--border);border-radius:var(--r-lg);padding:18px;box-shadow:var(--shadow);margin-bottom:12px">';
+    html += '<div style="font-family:Cormorant Garamond,serif;font-size:19px;color:'+GREEN_DARK+';line-height:1.2">'+(fr?'Tour de maison':'House walk-through')+'</div>';
+
+    if (!t) {
+      html += '<div style="font-size:13px;color:var(--muted);margin:8px 0 14px">'+(fr?'Pas de tour de maison ce mois-ci.':'No walk-through this month yet.')+'</div>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+      html += '<button id="tourneeBtnRemind" type="button" style="flex:1;min-width:170px;padding:10px 14px;background:none;color:'+GREEN_MID+';border:1.5px solid var(--border);border-radius:var(--r-md);font-size:12.5px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">'+(fr?'Envoyer le rappel à Said':'Send reminder to Said')+'</button>';
+      html += '<button id="tourneeBtnFill" type="button" style="flex:1;min-width:170px;padding:10px 14px;background:'+GREEN_DARK+';color:#E9D7A8;border:none;border-radius:var(--r-md);font-size:12.5px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">'+(fr?'Saisir le tour de ce mois':'Fill this month’s walk-through')+'</button>';
+      html += '</div>';
+    } else {
+      var problems = TOURNEE_ITEMS.filter(function(k){ return t.items && t.items[k] === 'probleme'; });
+      html += '<div style="font-size:12px;color:'+GREEN_MID+';margin:3px 0 10px">'+(fr?'Soumis par ':'Submitted by ')+esc(t.submitted_by||'Said')+' · '+monthLabel(t.period_month, fr)+'</div>';
+      if (problems.length) {
+        html += problems.map(function(k){
+          var lbl = TOURNEE_LABELS[k] ? (fr?TOURNEE_LABELS[k].fr:TOURNEE_LABELS[k].en) : k;
+          return '<div data-tone="alert" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r-sm);margin-bottom:6px;font-size:13px;font-weight:600">⚠ '+lbl+'</div>';
+        }).join('');
+        if (t.problems_note) html += '<div style="font-size:12.5px;color:var(--ink);margin:4px 0 10px">'+esc(t.problems_note)+'</div>';
+      } else {
+        html += '<div data-tone="go" style="display:inline-block;padding:5px 10px;border-radius:var(--r-sm);font-size:12px;font-weight:600;margin-bottom:10px">'+(fr?'Tout est OK ✓':'Everything OK ✓')+'</div>';
+      }
+      if (t.shopping_list) {
+        html += '<div style="font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);font-weight:600;margin:8px 0 4px">'+(fr?'À acheter':'Shopping list')+'</div>';
+        html += '<div style="font-size:13px;color:var(--ink);white-space:pre-wrap;margin-bottom:10px">'+esc(t.shopping_list)+'</div>';
+      }
+      html += '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:6px">';
+      html += '<button id="tourneeBtnEdit" type="button" style="padding:9px 14px;background:none;color:'+GREEN_MID+';border:1.5px solid var(--border);border-radius:var(--r-md);font-size:12.5px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">'+(fr?'Modifier':'Edit')+'</button>';
+      html += '<span id="tourneeBtnPast" style="font-size:12px;color:var(--muted);text-decoration:underline;cursor:pointer">'+(fr?'Mois précédents':'Previous months')+'</span>';
+      html += '</div>';
+    }
+
+    if (!num) {
+      html += '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)">';
+      html += '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">'+(fr?'Numéro WhatsApp de Said manquant — requis pour le rappel.':'Said’s WhatsApp number is missing — required for the reminder.')+'</div>';
+      html += '<div style="display:flex;gap:6px">';
+      html += '<input id="tourneeWaInput" placeholder="+212 6XX XXX XXX" style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);font-size:12.5px;font-family:DM Sans,sans-serif">';
+      html += '<button id="tourneeWaSave" type="button" style="padding:8px 12px;background:var(--green3);color:#fff;border:none;border-radius:var(--r-sm);font-size:12px;font-weight:600;cursor:pointer">'+(fr?'Enregistrer':'Save')+'</button>';
+      html += '</div></div>';
+    }
+
+    html += '</div>';
+    card.innerHTML = html;
+
+    var bRemind = document.getElementById('tourneeBtnRemind');
+    if (bRemind) bRemind.addEventListener('click', sendTourneeReminder);
+    var bFill = document.getElementById('tourneeBtnFill');
+    if (bFill) bFill.addEventListener('click', function(){ openTourneeForm(null); });
+    var bEdit = document.getElementById('tourneeBtnEdit');
+    if (bEdit) bEdit.addEventListener('click', function(){ openTourneeForm(t); });
+    var bPast = document.getElementById('tourneeBtnPast');
+    if (bPast) bPast.addEventListener('click', openMoisPrecedentsTournee);
+    var bWaSave = document.getElementById('tourneeWaSave');
+    if (bWaSave) bWaSave.addEventListener('click', function(){ saveSaidWa(document.getElementById('tourneeWaInput')); });
+  }
+  window.renderTourneeCard = renderTourneeCard;
+
+  /* Wrap plutôt que modifier — même pattern que renderMaisonReal/renderTodayV3All :
+     après le rendu original de la zone Entretien, notre card se place en tête.
+     renderMaisonInto() n'existe qu'une fois le DOMContentLoaded de la ligne ~20213
+     passé (il y est défini) — ce script, lui, tourne pendant le parsing, avant.
+     Même garde readyState + retry que les autres hooks tardifs de ce fichier
+     (ex. l.9374 tryRender). */
+  (function installTourneeWrap(){
+    if (typeof window.renderMaisonInto !== 'function') {
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installTourneeWrap);
+      else setTimeout(installTourneeWrap, 200);
+      return;
+    }
+    if (window.renderMaisonInto.__tourneeWrapped) return;
+    var _origRenderMaisonIntoTournee = window.renderMaisonInto;
+    var wrapped = function(){
+      var r = _origRenderMaisonIntoTournee.apply(this, arguments);
+      try { renderTourneeCard(); } catch(e){ console.warn('[renderTourneeCard]', e); }
+      return r;
+    };
+    wrapped.__tourneeWrapped = true;
+    window.renderMaisonInto = wrapped;
+  })();
+})();
+</script>
 </body>
 </html>

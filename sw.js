@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v453 (ARIA feedback 👍/👎 pushed to Supabase in parallel with localStorage)
-const CACHE = 'stafflo-v453';
+// Stafflo Service Worker — v454 (tour de maison mensuel Said — card Entretien)
+const CACHE = 'stafflo-v454';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
