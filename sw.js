@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v454 (tour de maison mensuel Said — card Entretien)
-const CACHE = 'stafflo-v454';
+// Stafflo Service Worker — v455 (budget délégué Said — card Budget)
+const CACHE = 'stafflo-v455';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

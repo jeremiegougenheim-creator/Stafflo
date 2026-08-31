@@ -43081,5 +43081,179 @@ window.auditTones = auditTones;
   })();
 })();
 </script>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   BUDGET DÉLÉGUÉ (Said) — commit 2
+   Additif : nouvelle card sous « Tour de maison » dans #maisonV2
+   (onglet Villa › Entretien), câblée sur renderMaisonInto() par
+   double-wrap (au-dessus du wrap Tournée, commit 1). Réutilise
+   window.fetchSaidStaff() (déjà exposé par le commit 1) plutôt que
+   de re-résoudre le staff Said.
+
+   Écart volontaire avec le brief initial, vérifié contre le schéma
+   réel (maison_charges_status_check / maison_charges_category_check) :
+   - status: 'paid' n'existe pas côté DB → 'paye' (seules valeurs
+     acceptées : 'a_regler' | 'paye').
+   - category: 'depense_deleguee' n'existe pas côté DB → 'autre'
+     (seules valeurs acceptées : salaire | prestataire | facture |
+     entretien | autre). Le filtre de lecture compense en croisant
+     category=autre ET staff_id=Said, pour ne pas mélanger avec
+     d'éventuelles autres charges 'autre' non liées à ce budget.
+   ════════════════════════════════════════════════════════════════ */
+(function(){
+  'use strict';
+
+  var SAID_BUDGET_CAP = 1000; // MAD — en dur en v1, ship > polish
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function firstOfMonth(d){ d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-01'; }
+  function mad(a){ return Math.round(a||0).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ') + ' MAD'; }
+  function todayISO(){ var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+
+  /* Protocole « Villa DarJ — organisation du travail » : seuils 500/1000 MAD.
+     status mappé sur l'enum réel de maison_charges (a_regler | paye) —
+     voir note d'écart en tête de fichier. */
+  function classifyDepense(amount){
+    if (amount <= 500)  return { status:'paye',     label_fr:'Auto (Said)', tone:'go'   };
+    if (amount <= 1000) return { status:'a_regler', label_fr:'À valider',   tone:'wait' };
+    return                     { status:'a_regler', label_fr:'Devis requis', tone:'alert', devisRequired:true };
+  }
+  window.classifyDepense = classifyDepense;
+
+  async function fetchDepensesDeleguees(saidId){
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      if (!cfg.sbUrl || !cfg.sbKey || !saidId) return [];
+      var r = await fetch(cfg.sbUrl + '/rest/v1/maison_charges?category=eq.autre&staff_id=eq.' + encodeURIComponent(saidId)
+        + '&period_month=eq.' + firstOfMonth() + '&select=*&order=created_at.desc', { headers: sbHdrs(cfg.sbKey) });
+      if (!r.ok) return [];
+      return await r.json();
+    } catch(e){ return []; }
+  }
+
+  async function saveDepense(sheet, saidId){
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    var label = ((document.getElementById('depLabel')||{}).value || '').trim();
+    var amount = parseFloat((document.getElementById('depAmount')||{}).value);
+    var date = (document.getElementById('depDate')||{}).value || todayISO();
+    if (!label || !(amount > 0)) { if (typeof toast === 'function') toast(fr ? 'Libellé et montant requis' : 'Label and amount required'); return; }
+    var cls = classifyDepense(amount);
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      if (!cfg.sbUrl || !cfg.sbKey) { if (typeof toast==='function') toast(fr?'Non connecté':'Not connected'); return; }
+      var r = await fetch(cfg.sbUrl + '/rest/v1/maison_charges', {
+        method: 'POST',
+        headers: Object.assign({}, sbHdrs(cfg.sbKey), { 'Prefer': 'return=minimal' }),
+        body: JSON.stringify({
+          label: label, category: 'autre', payee: 'Said', staff_id: saidId,
+          amount: amount, currency: 'MAD', period_month: firstOfMonth(), due_date: date,
+          status: cls.status,
+          note: cls.devisRequired ? ('DEVIS REQUIS — ' + label) : null
+        })
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      var m = document.getElementById('depFormModal'); if (m) m.remove();
+      if (typeof toast === 'function') toast(fr ? '✓ Dépense enregistrée' : '✓ Expense saved');
+      renderBudgetCard();
+    } catch(e){ if (typeof toast === 'function') toast(fr?'⚠ Erreur':'⚠ Error'); console.warn('[saveDepense]', e); }
+  }
+
+  function openDepenseForm(saidId){
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    var ex = document.getElementById('depFormModal'); if (ex) ex.remove();
+    var el = document.createElement('div');
+    el.id = 'depFormModal';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(10,25,15,.5);z-index:10001;display:flex;align-items:flex-end;justify-content:center';
+    el.onclick = function(e){ if (e.target === el) el.remove(); };
+    el.innerHTML = '<div style="background:var(--card);border-radius:var(--r-lg) var(--r-lg) 0 0;padding:20px 16px 32px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto;box-shadow:0 -4px 32px rgba(0,0,0,.25)">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+        '<div style="font-family:Cormorant Garamond,serif;font-size:18px;font-weight:600;color:var(--ink)">'+(fr?'Ajouter une dépense':'Add an expense')+'</div>' +
+        '<button onclick="document.getElementById(\'depFormModal\').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1">✕</button>' +
+      '</div>' +
+      '<div class="field"><label>'+(fr?'Libellé':'Label')+'</label><input id="depLabel" placeholder="'+(fr?'ex. Ampoules jardin':'e.g. Garden bulbs')+'"></div>' +
+      '<div class="field"><label>'+(fr?'Montant (MAD)':'Amount (MAD)')+'</label><input id="depAmount" type="number" min="0" placeholder="0"></div>' +
+      '<div class="field"><label>'+(fr?'Date':'Date')+'</label><input id="depDate" type="date" value="'+todayISO()+'"></div>' +
+      '<button id="depBtnSave" style="width:100%;margin-top:6px;padding:12px;background:var(--green3);color:#fff;border:none;border-radius:var(--r-md);font-size:14px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">'+(fr?'Enregistrer':'Save')+'</button>' +
+    '</div>';
+    document.body.appendChild(el);
+    setTimeout(function(){ var i = document.getElementById('depLabel'); if (i) i.focus(); }, 80);
+    document.getElementById('depBtnSave').addEventListener('click', function(){ saveDepense(el, saidId); });
+  }
+
+  async function renderBudgetCard(){
+    if (typeof navV2On !== 'function' || !navV2On()) return;
+    var host = document.getElementById('maisonV2');
+    if (!host) return;
+    var card = document.getElementById('budgetCardHost');
+    if (!card) { card = document.createElement('div'); card.id = 'budgetCardHost'; }
+    var tourneeHost = document.getElementById('tourneeCardHost');
+    if (tourneeHost && tourneeHost.parentNode === host) {
+      if (card.previousSibling !== tourneeHost) host.insertBefore(card, tourneeHost.nextSibling);
+    } else if (card.parentNode !== host) {
+      host.insertBefore(card, host.firstChild);
+    }
+
+    var fr = (typeof lang === 'undefined') || lang === 'fr';
+    var GREEN_DARK = '#0F2318', GREEN_MID = '#1D4D3A';
+    var staffRow = (typeof window.fetchSaidStaff === 'function') ? await window.fetchSaidStaff() : null;
+    var saidId = staffRow && staffRow.id;
+    var rows = saidId ? await fetchDepensesDeleguees(saidId) : [];
+    var total = rows.filter(function(x){ return x.amount != null; }).reduce(function(s,x){ return s + Number(x.amount); }, 0);
+    var solde = SAID_BUDGET_CAP - total;
+    var soldeTone = solde < 300 ? 'alert' : 'go';
+
+    var html = '<div style="background:#FAF6EE;border:1px solid var(--border);border-radius:var(--r-lg);padding:18px;box-shadow:var(--shadow);margin-bottom:12px">';
+    html += '<div style="font-family:Cormorant Garamond,serif;font-size:19px;color:'+GREEN_DARK+';line-height:1.2">'+(fr?'Budget délégué (Said)':'Delegated budget (Said)')+'</div>';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 14px">';
+    html += '<div style="font-size:12.5px;color:'+GREEN_MID+'">'+(fr?'Dépensé ce mois : ':'Spent this month: ')+'<b>'+mad(total)+'</b>'+(fr?' / plafond ':' / cap ')+mad(SAID_BUDGET_CAP)+'</div>';
+    html += '<span data-tone="'+soldeTone+'" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:var(--r-sm);white-space:nowrap">'+(fr?'Solde ':'Balance ')+mad(solde)+'</span>';
+    html += '</div>';
+
+    if (!rows.length) {
+      html += '<div style="font-size:13px;color:var(--muted);margin-bottom:12px">'+(fr?'Aucune dépense déléguée ce mois-ci.':'No delegated expense this month yet.')+'</div>';
+    } else {
+      html += rows.map(function(x){
+        var cls = classifyDepense(Number(x.amount)||0);
+        var d = x.due_date || (x.created_at ? String(x.created_at).slice(0,10) : '');
+        return '<div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--border)">'
+          + '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#1A1208">'+esc(x.label||'')+'</div>'
+          + (d ? '<div style="font-size:11px;color:#7a7567">'+esc(d)+'</div>' : '')+'</div>'
+          + '<div style="text-align:right;white-space:nowrap"><div style="font-family:Cormorant Garamond,serif;font-size:15px;color:'+GREEN_MID+'">'+mad(x.amount)+'</div>'
+          + '<span data-tone="'+cls.tone+'" style="font-size:10px;font-weight:600;border-radius:var(--r-sm);padding:3px 9px">'+esc(cls.label_fr)+'</span></div>'
+          + '</div>';
+      }).join('');
+    }
+
+    html += '<button id="depBtnAdd" type="button" style="width:100%;margin-top:12px;padding:10px 14px;background:'+GREEN_DARK+';color:#E9D7A8;border:none;border-radius:var(--r-md);font-size:12.5px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif">+ '+(fr?'Ajouter une dépense':'Add an expense')+'</button>';
+    html += '</div>';
+    card.innerHTML = html;
+
+    var bAdd = document.getElementById('depBtnAdd');
+    if (bAdd) bAdd.addEventListener('click', function(){ openDepenseForm(saidId); });
+  }
+  window.renderBudgetCard = renderBudgetCard;
+
+  /* Double-wrap au-dessus du wrap Tournée (commit 1) — même garde readyState
+     + retry, même raison : renderMaisonInto() n'existe qu'après le
+     DOMContentLoaded de la ligne ~20213, ce script tourne pendant le parsing. */
+  (function installBudgetWrap(){
+    if (typeof window.renderMaisonInto !== 'function') {
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installBudgetWrap);
+      else setTimeout(installBudgetWrap, 200);
+      return;
+    }
+    if (window.renderMaisonInto.__budgetWrapped) return;
+    var _origRenderMaisonIntoBudget = window.renderMaisonInto;
+    var wrapped = function(){
+      var r = _origRenderMaisonIntoBudget.apply(this, arguments);
+      try { renderBudgetCard(); } catch(e){ console.warn('[renderBudgetCard]', e); }
+      return r;
+    };
+    wrapped.__budgetWrapped = true;
+    window.renderMaisonInto = wrapped;
+  })();
+})();
+</script>
 </body>
 </html>
