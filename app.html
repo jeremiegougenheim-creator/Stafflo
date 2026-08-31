@@ -39839,6 +39839,29 @@ function startTour(){
 (function(){
   'use strict';
 
+  /* ── Step 4b (add-on) : pousse 👍/👎 vers Supabase (table `feedback`,
+     déjà en place, owner_id auto via auth.uid()). Additif — le localStorage
+     existant n'est pas touché, ceci s'ajoute en parallèle. Fire-and-forget,
+     jamais bloquant, jamais d'exception remontée à l'appelant. ── */
+  async function pushAriaFeedback(kind, text, why){
+    try {
+      var cfg = (typeof getCfg === 'function') ? getCfg() : {};
+      if (!cfg.sbUrl || !cfg.sbKey) return;
+      var ctx = { source: 'aria_modal', lang: (typeof lang!=='undefined'?lang:null) };
+      if (why) ctx.why = why;
+      await fetch(cfg.sbUrl + '/rest/v1/feedback', {
+        method: 'POST',
+        headers: sbHdrs(cfg.sbKey),
+        body: JSON.stringify({
+          kind: 'aria_' + kind,
+          message: text || '',
+          rating: kind === 'up' ? 1 : (kind === 'down' ? -1 : null),
+          context: ctx
+        })
+      });
+    } catch(e){}
+  }
+
   /* ── Step 4: Feedback buttons on each Aria bubble ── */
   function injectFeedback(bubble){
     if (!bubble || bubble.dataset.fbReady) return;
@@ -39889,6 +39912,7 @@ function startTour(){
         // Keep only last 60 entries
         if (fbArr.length > 60) fbArr = fbArr.slice(-60);
         localStorage.setItem('stafflo_aria_feedback', JSON.stringify(fbArr));
+        if (kind === 'up') pushAriaFeedback(kind, fbTxt, null);
       } catch(e){}
       // Visual confirmation
       var both = bar.querySelectorAll('[data-fb="up"],[data-fb="down"]');
@@ -39909,6 +39933,7 @@ function startTour(){
               localStorage.setItem('stafflo_aria_feedback', JSON.stringify(arr));
             } catch(e){}
           }
+          pushAriaFeedback('down', fbTxt, (why && why.trim()) ? why.trim() : null);
         }, 300);
       }
     });

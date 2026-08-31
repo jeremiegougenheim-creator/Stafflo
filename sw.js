@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v452 (no-session landing shows auth gate instead of forcing onboarding tunnel)
-const CACHE = 'stafflo-v452';
+// Stafflo Service Worker — v453 (ARIA feedback 👍/👎 pushed to Supabase in parallel with localStorage)
+const CACHE = 'stafflo-v453';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
