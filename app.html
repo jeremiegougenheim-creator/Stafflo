@@ -30373,9 +30373,12 @@ window.addEventListener('DOMContentLoaded', function() {
     var system, user;
     switch(action.purpose){
       case 'welcome':
-        system = lng === 'fr'
-          ? 'Tu rédiges un message WhatsApp de bienvenue chaleureux et personnel pour un guest qui a réservé une villa de luxe. 4-6 lignes max, ton chaleureux mais pas mielleux. Signe "'+owner+'". Pas d\'emojis excessifs (1-2 max).'
-          : 'You write a warm, personal WhatsApp welcome message for a guest who booked a luxury villa. 4-6 lines max, warm but not cheesy. Sign "'+owner+'". No excessive emojis (1-2 max).';
+        var memW = (ctx.ariaMemory || '').trim();
+        var villaFactsW = memW ? '\n\n'+(lng==='fr'?'=== INFOS VILLA (mentionne UNIQUEMENT si pertinent, n\'invente rien d\'autre) ===\n':'=== VILLA INFO (mention ONLY if relevant, never invent anything else) ===\n')+memW.slice(0,800) : '';
+        system = (lng === 'fr'
+          ? 'Tu rédiges un message WhatsApp de bienvenue chaleureux et personnel pour un guest qui a réservé '+villa+'. 4-6 lignes max, ton chaleureux mais pas mielleux, jamais commercial. Tu peux citer UN détail concret de la villa (piscine, terrasse, staff) UNIQUEMENT s\'il figure dans les infos ci-dessous — sinon reste général. N\'invente JAMAIS un équipement, un lieu ou un service non mentionné. Signe "'+owner+'". Pas d\'emojis excessifs (1-2 max).'
+          : 'You write a warm, personal WhatsApp welcome message for a guest who booked '+villa+'. 4-6 lines max, warm but not cheesy, never salesy. You may mention ONE concrete villa detail (pool, terrace, staff) ONLY if it appears in the info below — otherwise stay general. NEVER invent an amenity, place, or service not mentioned. Sign "'+owner+'". No excessive emojis (1-2 max).'
+        ) + villaFactsW;
         user = (lng==='fr'?'Guest: ':'Guest: ')+firstName+' ('+g.name+')\n'
              + 'Dates: '+dates+' ('+nights+(lng==='fr'?' nuits':' nights')+')\n'
              + 'Villa: '+villa+'\n'
@@ -30387,8 +30390,8 @@ window.addEventListener('DOMContentLoaded', function() {
         break;
       case 'request_phone':
         system = lng === 'fr'
-          ? 'Tu rédiges un message WhatsApp court et chaleureux pour demander le numéro de téléphone à un guest qui arrive bientôt. 2-3 lignes. Signe "'+owner+'".'
-          : 'You write a short warm WhatsApp message asking a guest for their phone number before arrival. 2-3 lines. Sign "'+owner+'".';
+          ? 'Tu rédiges un message WhatsApp court et chaleureux pour demander le numéro de téléphone à un guest qui arrive bientôt (utile pour coordonner l\'arrivée et le transport). 2-3 lignes. N\'invente pas d\'autre raison. Signe "'+owner+'".'
+          : 'You write a short warm WhatsApp message asking a guest for their phone number before arrival (useful to coordinate arrival and transport). 2-3 lines. Do not invent another reason. Sign "'+owner+'".';
         user = 'Guest: '+firstName+'\nDates: '+dates+'\nVilla: '+villa;
         break;
       case 'reply_inquiry':
@@ -30471,7 +30474,13 @@ window.addEventListener('DOMContentLoaded', function() {
                  : 'WhatsApp brief format for Said + Faiza + Bouchra, with clear sections.');
         break;
       case 'shopping_list':
-        system = 'Tu génères une liste de courses pratique pour Faiza (chef) et Bouchra (housekeeping) en fonction du profil du guest. Format WhatsApp avec bullets. En français.';
+        system = [
+          'Tu génères une liste de courses pratique pour Faiza (chef) et Bouchra (housekeeping), à partir du profil du guest ci-dessous.',
+          'Format WhatsApp avec bullets, groupés par catégorie : Frigo/Petit-déj, Boissons, Bébé/Enfants (si présent), Divers.',
+          'Chaque catégorie doit avoir au moins 1 item concret.',
+          'N\'invente JAMAIS une allergie, un régime ou une préférence qui n\'est pas mentionné dans les notes ci-dessous. Si une info manque pour personnaliser, écris "à confirmer" plutôt que de deviner.',
+          'En français.'
+        ].join('\n');
         user = 'Guest: '+firstName+'\nVoyageurs: '+(g.guests||'?')+'\n'
              + 'Dates: '+dates+'\n'
              + (fam.hasInfant ? '⚠️ Bébé présent — penser lait infantile, couches, eau minérale\n' : '')
@@ -30481,9 +30490,18 @@ window.addEventListener('DOMContentLoaded', function() {
              + '\nGénère la liste de courses prioritaire.';
         break;
       case 'weather_activities':
-        system = 'Tu donnes un brief court (5-7 lignes) sur la météo prévue pour les dates du séjour à Marrakech, et tu suggères 2-3 activités/recommandations à transmettre au guest selon la météo (piscine, hammam, sortie souks, médina, Atlas). Format pour le owner, pas pour le guest. En français.';
-        user = 'Guest: '+firstName+'\nDates Marrakech: '+dates+'\nVoyageurs: '+(g.guests||'?')+(fam.isFamily?' (famille)':'')+'\n'
-             + 'Donne le brief.';
+        var wd = (typeof window!=='undefined' && window._weatherData) ? window._weatherData : null;
+        var wLine = wd
+          ? (lng==='fr'
+              ? 'Dernière mesure météo connue à Marrakech (PAS une prévision pour les dates du séjour) : '+wd.temp+'°C, '+wd.condition+', min '+wd.min+'°C / max '+wd.max+'°C.'
+              : 'Latest known Marrakech weather reading (NOT a forecast for the stay dates): '+wd.temp+'°C, '+wd.condition+', min '+wd.min+'°C / max '+wd.max+'°C.')
+          : (lng==='fr' ? 'Aucune donnée météo disponible actuellement.' : 'No weather data currently available.');
+        system = lng === 'fr'
+          ? 'Tu rédiges un brief court (5-7 lignes) pour le owner sur la météo et des activités à proposer au guest à Marrakech. RÈGLE ABSOLUE : utilise UNIQUEMENT la donnée météo fournie ci-dessous. N\'invente JAMAIS un chiffre de température ou une condition différente. Si la donnée est absente, dis-le explicitement au lieu de deviner. Suggère ensuite 2-3 activités adaptées à ce climat général (piscine, hammam, souks, médina, excursion Atlas).'
+          : 'You write a short brief (5-7 lines) for the owner about weather and activities to suggest to the guest in Marrakech. ABSOLUTE RULE: use ONLY the weather data provided below. NEVER invent a temperature figure or a different condition. If the data is missing, say so explicitly instead of guessing. Then suggest 2-3 activities fitting this general climate (pool, hammam, souks, medina, Atlas day trip).';
+        user = 'Guest: '+firstName+'\n'+(lng==='fr'?'Dates Marrakech: ':'Marrakech dates: ')+dates+'\n'+(lng==='fr'?'Voyageurs: ':'Travelers: ')+(g.guests||'?')+(fam.isFamily?(lng==='fr'?' (famille)':' (family)'):'')+'\n'
+             + wLine + '\n'
+             + (lng==='fr'?'Donne le brief.':'Write the brief.');
         break;
       default:
         system = 'Réponse courte et utile.';

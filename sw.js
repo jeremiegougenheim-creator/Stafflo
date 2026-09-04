@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v455 (budget délégué Said — card Budget)
-const CACHE = 'stafflo-v455';
+// Stafflo Service Worker — v456 (renforcement prompts ARIA — anti-invention)
+const CACHE = 'stafflo-v456';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
