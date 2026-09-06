@@ -30022,6 +30022,53 @@ window.addEventListener('DOMContentLoaded', function() {
     return { sender: sender.trim(), message: message.trim() };
   }
 
+  // Emails de MESSAGE guest (express@airbnb.com). cleanEmailBoilerplate ne vise
+  // que les emails de réservation ; ceux-ci ont un bruit entièrement différent,
+  // dont un doublon intégral du message en langue d'origine. Mesuré sur un cas
+  // réel : 1 478 caractères dont 444 utiles.
+  function cleanAirbnbGuestMessage(text, subject){
+    if (!text) return text;
+    var t = text;
+
+    // 1. Pied de page Airbnb : adresse légale et préférences → tout ce qui suit
+    t = t.replace(/Airbnb\s+Ireland\s+UC[\s\S]*$/i, '');
+    t = t.replace(/Update\s+your\s+email\s+preferences[\s\S]*$/i, '');
+
+    // 2. Bloc récapitulatif du logement (dates/heures/voyageurs) — déjà en fiche
+    t = t.replace(/Villa\s*-\s*Entire\s+home[\s\S]*$/i, '');
+    t = t.replace(/\bCheck-?in\s+Check-?out\b[\s\S]*$/i, '');
+
+    // 3. Doublon de traduction automatique : Airbnb répète le message dans la
+    //    langue d'origine. Le lecteur en a déjà lu la version traduite.
+    t = t.replace(/Automatically\s+translated\s+from\s+original\s+message:[\s\S]*$/i, '');
+    t = t.replace(/Traduit\s+automatiquement\s+du\s+message\s+d[’']origine\s*:[\s\S]*$/i, '');
+
+    // 4. Sujet répété en capitales en tête de corps. On ne peut pas comparer au
+    //    sujet tel quel : l'entête dit "RE: Reservation for ..." là où le corps
+    //    dit "RESERVATION FOR ...". On normalise (sans RE:/FWD:, sans casse,
+    //    espaces souples) avant de comparer.
+    if (subject) {
+      var norm = subject.replace(/^\s*(RE|FWD?|TR)\s*:\s*/i, '').trim();
+      if (norm.length > 12) {
+        var esc = norm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+        t = t.replace(new RegExp('^\\s*(?:for\\s+)?' + esc, 'i'), '');
+      }
+    }
+
+    // 5. Mentions de service
+    t = t.replace(/For\s+your\s+protection\s+and\s+safety[^.]*\.\s*/gi, '');
+    t = t.replace(/\bReply\s*$/i, '');
+    // Étiquette de rôle Airbnb : "ELINE Booker", "JEREMIE Host". Non ancrée en
+    // début de ligne : après suppression du sujet, le tout se retrouve souvent
+    // au milieu d'une ligne unique.
+    t = t.replace(/\b[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’-]{1,20}(?:\s+[A-ZÀ-Ÿ][A-ZÀ-Ÿ'’-]{1,20})?\s+(Booker|Host|Guest|Co-?Host)\b\s*/g, '');
+
+    // 6. Caractères de remplacement (emojis cassés par le décodage)
+    t = t.replace(/�/g, '');
+
+    return t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   // ──────────────── Nettoyeur Airbnb / Booking ────────────────
   function cleanEmailBoilerplate(text){
     if (!text || text.length < 200) return text;
@@ -38234,6 +38281,7 @@ function startTour(){
             var bodyText = bodyRaw;
             if (typeof htmlToText === 'function') bodyText = htmlToText(bodyText);
             if (typeof cleanEmailBoilerplate === 'function') bodyText = cleanEmailBoilerplate(bodyText);
+            if (typeof cleanAirbnbGuestMessage === 'function') bodyText = cleanAirbnbGuestMessage(bodyText, cleanRow.subject);
             bodyText = bodyText.replace(/\[?https?:\/\/[^\s\]\)]{40,}\]?/g, '');
             bodyText = bodyText.replace(/%\w+%/g, '');
             bodyText = bodyText.replace(/You can also respond by replying directly to this email\.?\s*/gi, '');

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v458 (fix poignée grise collée en bas — sheet desktop)
-const CACHE = 'stafflo-v458';
+// Stafflo Service Worker — v459 (nettoyage corps email guest Airbnb)
+const CACHE = 'stafflo-v459';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
