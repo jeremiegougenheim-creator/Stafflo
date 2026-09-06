@@ -38683,6 +38683,29 @@ function startTour(){
           }
           if (tmplText) {
             responses.unshift({ label: isDirect ? 'Template Direct' : 'Template Airbnb', tone: 'professional', text: tmplText });
+            // Option combinée : la réponse contextuelle du modèle (déjà en
+            // position 1 après l'unshift ci-dessus, la plus pertinente pour
+            // ce que le client a réellement écrit) + les blocs standard du
+            // template (repas/règles). Sans elle, aucune option ne fait les
+            // deux — le propriétaire recollait deux options à la main.
+            // Le motif couvre les deux libellés existants ("Repas :" côté
+            // Airbnb, "Notre service repas :" côté Direct) pour ne pas
+            // dupliquer le texte des blocs : ils restent la même chaîne que
+            // celle déjà présente dans tmplText, donc pas de divergence.
+            if (responses.length > 1) {
+              var ctxReply = responses[1] && responses[1].text;
+              var blocksMatch = tmplText.match(/\n(?:Notre service repas|Repas|Our food service|Food service)\s*:[\s\S]*$/i);
+              if (ctxReply && blocksMatch) {
+                var ownerEsc = ownerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                var sigRe = new RegExp('\\n*(?:Best regards|Bien à vous|Cordialement|Merci),?\\s*\\n*' + ownerEsc + '\\s*$', 'i');
+                var ctxBody = ctxReply.replace(sigRe, '').trim();
+                responses.splice(1, 0, {
+                  label: fr ? 'Réponse complète' : 'Full reply',
+                  tone: 'professional',
+                  text: ctxBody + '\n\n' + blocksMatch[0].replace(/^\n+/, '')
+                });
+              }
+            }
           }
         }
         if (responses.length) {

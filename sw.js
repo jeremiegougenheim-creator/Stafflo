@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v460 (libellé "Voir l'original" sur la carte email)
-const CACHE = 'stafflo-v460';
+// Stafflo Service Worker — v461 (option Réponse complète — email guest)
+const CACHE = 'stafflo-v461';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
