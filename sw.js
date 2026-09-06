@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v457 (fix boutons pied de fiche guest — modale ARIA)
-const CACHE = 'stafflo-v457';
+// Stafflo Service Worker — v458 (fix poignée grise collée en bas — sheet desktop)
+const CACHE = 'stafflo-v458';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
