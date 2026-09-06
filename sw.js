@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v456 (renforcement prompts ARIA — anti-invention)
-const CACHE = 'stafflo-v456';
+// Stafflo Service Worker — v457 (fix boutons pied de fiche guest — modale ARIA)
+const CACHE = 'stafflo-v457';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
