@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v459 (nettoyage corps email guest Airbnb)
-const CACHE = 'stafflo-v459';
+// Stafflo Service Worker — v460 (libellé "Voir l'original" sur la carte email)
+const CACHE = 'stafflo-v460';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
