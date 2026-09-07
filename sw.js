@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v461 (option Réponse complète — email guest)
-const CACHE = 'stafflo-v461';
+// Stafflo Service Worker — v462 (corps d'email lisible — UTF-8 réel, paragraphes, préheader/footer, v7)
+const CACHE = 'stafflo-v462';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
