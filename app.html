@@ -19175,8 +19175,14 @@ async function syncGmailDirect(opts) {
           return '';
         };
         body = extractBody(msg.payload);
-        // Strip HTML tags for clean text
-        var bodyText = body.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        // v7 (2026-09-06) : décodage UTF-8 réel + paragraphes conservés via
+        // StaffloEmailText. L'ancien chemin (atob Latin-1 + /\s+/ → ' ') cassait
+        // « à » et &nbsp; en "Ã " / "Â " (→ � à l'affichage) et aplatissait tout.
+        // Il reste en repli si le module est absent ou renvoie vide.
+        var _legacyBodyText = function(){ return body.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); };
+        var bodyText = '';
+        try { if (window.StaffloEmailText) bodyText = window.StaffloEmailText.bodyFromGmailPayload(msg.payload); } catch(e){ bodyText = ''; }
+        if (!bodyText) bodyText = _legacyBodyText();
         // Truncate to 10KB max
         if (bodyText.length > 10000) bodyText = bodyText.slice(0, 10000);
 
@@ -19562,7 +19568,11 @@ async function forcePullAllEmails(btn) {
           return '';
         };
         var body = extractBody(msg.payload);
-        var bodyText = body.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+        // v7 (2026-09-06) : même chemin que syncGmailDirect — UTF-8 réel + paragraphes, ancien chemin en repli.
+        var _legacyBodyText2 = function(){ return body.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim(); };
+        var bodyText = '';
+        try { if (window.StaffloEmailText) bodyText = window.StaffloEmailText.bodyFromGmailPayload(msg.payload); } catch(e){ bodyText = ''; }
+        if (!bodyText) bodyText = _legacyBodyText2();
         if (bodyText.length > 10000) bodyText = bodyText.slice(0, 10000);
 
         var _fromLow2 = (fromEmail || '').toLowerCase();
@@ -31753,6 +31763,14 @@ window.addEventListener('DOMContentLoaded', function() {
     };
   }
 
+  // v7 (2026-09-06) — exposés pour le patch v6 (script séparé) : ses gardes
+  // `typeof cleanEmailBoilerplate === 'function'` étaient toujours fausses,
+  // donc footer Airbnb, tracking et préheader arrivaient bruts à l'écran et
+  // dans le prompt. htmlToText n'est PAS exposé (il aplatit les paragraphes) :
+  // la conversion HTML→texte passe désormais par StaffloEmailText.
+  if (typeof cleanEmailBoilerplate === 'function' && !window.cleanEmailBoilerplate) window.cleanEmailBoilerplate = cleanEmailBoilerplate;
+  if (typeof cleanAirbnbGuestMessage === 'function' && !window.cleanAirbnbGuestMessage) window.cleanAirbnbGuestMessage = cleanAirbnbGuestMessage;
+
 })();
 </script>
 
@@ -38090,6 +38108,192 @@ function startTour(){
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════
+     STAFFLO EMAIL TEXT v7 — 2026-09-06
+     Un seul point de vérité : email Gmail → texte lisible (UTF-8 réel,
+     paragraphes conservés, préheader/footer retirés). Consommé par
+     l'ingestion Gmail et par le patch v6 (« Voir l'original » + prompt).
+     Additif : chaque site d'appel garde l'ancien chemin en repli.
+     Évals : tests/evals-email-body.md
+     ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(function staffloEmailText(){
+  'use strict';
+  if (window.StaffloEmailText) return;
+
+  // Caractères invisibles : préheader Airbnb (&zwnj; &#847; &#65279;), soft-hyphen,
+  // et U+FFFD produit par un décodage raté. Jamais du contenu.
+  var INVISIBLE = /[\u200B-\u200D\u2060\uFEFF\u00AD\u034F\uFFFD]/g;
+  var HAS_TAG = /<[a-z!\/][^>]*>/i;
+
+  function decodeB64Url(data, charset){
+    if (!data) return '';
+    var b64 = String(data).replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    var bin;
+    try { bin = atob(b64); } catch(e){ return ''; }
+    if (typeof TextDecoder === 'undefined') return bin;
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var cs = String(charset || 'utf-8').replace(/["']/g, '').toLowerCase();
+    try { return new TextDecoder(cs, { fatal: false }).decode(bytes); }
+    catch(e){
+      try { return new TextDecoder('utf-8', { fatal: false }).decode(bytes); }
+      catch(e2){ return bin; }
+    }
+  }
+
+  function partCharset(part){
+    try {
+      var h = (part.headers || []).find(function(x){ return /^content-type$/i.test(x.name || ''); });
+      var m = h && /charset\s*=\s*"?([\w\-]+)/i.exec(h.value || '');
+      return m ? m[1] : 'utf-8';
+    } catch(e){ return 'utf-8'; }
+  }
+
+  function decodeEntities(s){
+    return String(s)
+      .replace(/&(nbsp|#160);/gi, ' ')
+      .replace(/&(zwnj|zwj);/gi, '')
+      .replace(/&#(\d+);/g, function(_, n){ var c = parseInt(n, 10); return c >= 32 ? String.fromCodePoint(c) : ''; })
+      .replace(/&#x([0-9a-f]+);/gi, function(_, h){ var c = parseInt(h, 16); return c >= 32 ? String.fromCodePoint(c) : ''; })
+      .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'").replace(/&euro;/gi, '€').replace(/&amp;/gi, '&');
+  }
+
+  // Normalise sans aplatir : espaces horizontaux seulement, \n conservés.
+  function normalizeText(t){
+    t = String(t || '').replace(/\r\n?/g, '\n').replace(INVISIBLE, '').replace(/\u00A0/g, ' ');
+    t = t.split('\n').map(function(l){ return l.replace(/[ \t\f\v]+/g, ' ').trim(); }).join('\n');
+    return t.replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  function htmlToTextBlocks(html){
+    if (!html) return '';
+    var t = String(html);
+    if (!HAS_TAG.test(t)) return normalizeText(t);
+    t = t.replace(/<!--[\s\S]*?-->/g, '');
+    t = t.replace(/<(style|script|head|title)[^>]*>[\s\S]*?<\/\1>/gi, '');
+    // Blocs cachés (préheader, miroir de texte) — display:none uniquement,
+    // sur div/span/p : les tables de mise en page ne sont jamais touchées.
+    t = t.replace(/<(div|span|p)\b[^>]*style\s*=\s*"[^"]*display\s*:\s*none[^"]*"[^>]*>[\s\S]*?<\/\1>/gi, '');
+    t = t.replace(/<br\s*\/?>/gi, '\n');
+    t = t.replace(/<\/(p|div|h[1-6]|li|tr|blockquote|section|article|header|footer|pre|table|ul|ol)>/gi, '\n\n');
+    t = t.replace(/<\/(td|th)>/gi, '  ');
+    t = t.replace(/<li\b[^>]*>/gi, '• ');
+    t = t.replace(/<[^>]+>/g, '');
+    return normalizeText(decodeEntities(t));
+  }
+
+  // Lignes déjà en base, aplaties par l'ancienne ingestion (aucun \n) : on
+  // restitue les titres Airbnb en capitales (≥3 mots, ≥6 lettres) comme
+  // paragraphes. N'insère QUE des sauts de ligne — jamais un mot.
+  var CAPS_RUN = /(^|\s)((?:[A-ZÀ-Ý0-9][A-ZÀ-Ý0-9'’\-]*[?!:.,]*\s+){2,}[A-ZÀ-Ý0-9][A-ZÀ-Ý0-9'’\-]*[?!:.,]*)(?=\s|$)/g;
+  function reflowLegacy(t){
+    if (!t || t.indexOf('\n') !== -1) return t;
+    return t.replace(CAPS_RUN, function(m, lead, run){
+      var letters = (run.match(/[A-ZÀ-Ý]/g) || []).length;
+      if (letters < 6) return m;
+      return '\n\n' + run.trim() + '\n';
+    });
+  }
+
+  // "Ã " (octet C3 suivi d'un espace) est impossible en UTF-8 valide : c'est
+  // l'ancienne ingestion qui a remplacé \u00A0, 2e octet de « à », par ' '.
+  // Idem "Â " pour &nbsp;. On restitue l'octet avant fixMojibake.
+  function repairLegacyMojibake(s){
+    if (!s || !/[ÃÂ] /.test(s)) return s;
+    return String(s)
+      .replace(/Ã (?=[,.;:!?)\]])/g, 'Ã\u00A0')
+      .replace(/Ã (?=\S)/g, 'Ã\u00A0 ')
+      .replace(/Ã $/g, 'Ã\u00A0')
+      .replace(/Â /g, 'Â\u00A0');
+  }
+
+  function baseClean(raw){
+    var t = repairLegacyMojibake(raw || '');
+    if (typeof window.fixMojibake === 'function') t = window.fixMojibake(t);
+    t = htmlToTextBlocks(t);
+    return reflowLegacy(t);
+  }
+
+  // Affichage « Voir l'original » : tout ce qui est déjà en fiche ou purement
+  // technique est retiré (footer légal, bloc dates, tracking).
+  function toReadable(raw, subject){
+    var t = baseClean(raw);
+    if (typeof window.cleanEmailBoilerplate === 'function') t = window.cleanEmailBoilerplate(t);
+    if (typeof window.cleanAirbnbGuestMessage === 'function') t = window.cleanAirbnbGuestMessage(t, subject || '');
+    t = t.replace(/\[?https?:\/\/[^\s\]\)]{40,}\]?/g, '').replace(/%\w+%/g, '');
+    t = t.replace(/You can also respond by replying directly to this email\.?\s*/gi, '');
+    t = t.replace(/Get the app\.?\s*The fastest[\s\S]*?Airbnb\.?\s*/gi, '');
+    t = t.replace(/Review\s+(?:\[.*?\]\s*)?Reply\s+(?:\[.*?\]\s*)?/gi, '');
+    return normalizeText(t);
+  }
+
+  // Texte pour le LLM : mêmes règles que l'ancien pipeline (l.~31033) —
+  // boilerplate retiré, bloc dates/voyageurs CONSERVÉ (parseEmailSignals et
+  // l'extracteur en dépendent). cleanAirbnbGuestMessage n'est jamais appliqué ici.
+  function toPromptText(raw){
+    var t = baseClean(raw);
+    if (typeof window.cleanEmailBoilerplate === 'function') t = window.cleanEmailBoilerplate(t);
+    t = t.replace(/\[?https?:\/\/[^\s\]\)]{40,}\]?/g, '').replace(/%\w+%/g, '');
+    return normalizeText(t);
+  }
+
+  function esc(s){ return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+  var HEAD_LINE = /^[A-ZÀ-Ý0-9][A-ZÀ-Ý0-9\s'’?!:,.\-]*$/;
+
+  // Paragraphes + titres Airbnb en capitales → HTML échappé.
+  function toDisplayHtml(text){
+    return String(text || '').split(/\n{2,}/).map(function(p){
+      p = p.trim();
+      if (!p) return '';
+      var lines = p.split('\n');
+      var first = lines[0];
+      var isHead = first.length <= 80 && first.split(/\s+/).length >= 2 && HEAD_LINE.test(first) && /[A-ZÀ-Ý]{2}/.test(first);
+      var out = '';
+      if (isHead) { out += '<div class="seh-h">' + esc(first) + '</div>'; lines = lines.slice(1); }
+      if (lines.length) out += '<p class="seh-p">' + lines.map(esc).join('<br>') + '</p>';
+      return out;
+    }).join('');
+  }
+
+  // Ingestion Gmail : choisit la partie (text/plain d'abord, comme avant),
+  // décode en UTF-8 réel, conserve les paragraphes.
+  function bodyFromGmailPayload(payload){
+    var pick = function(part){
+      if (!part) return null;
+      if (part.body && part.body.data) return part;
+      if (part.parts) {
+        var plain = part.parts.find(function(p){ return p.mimeType === 'text/plain'; });
+        var html  = part.parts.find(function(p){ return p.mimeType === 'text/html'; });
+        var multi = part.parts.find(function(p){ return p.mimeType && p.mimeType.indexOf('multipart') === 0; });
+        if (plain && plain.body && plain.body.data) return plain;
+        if (html && html.body && html.body.data) return html;
+        if (multi) return pick(multi);
+      }
+      return null;
+    };
+    var part = pick(payload);
+    if (!part) return '';
+    var raw = decodeB64Url(part.body.data, partCharset(part));
+    return htmlToTextBlocks(raw);
+  }
+
+  window.StaffloEmailText = {
+    decodeB64Url: decodeB64Url,
+    htmlToTextBlocks: htmlToTextBlocks,
+    normalizeText: normalizeText,
+    reflowLegacy: reflowLegacy,
+    repairLegacyMojibake: repairLegacyMojibake,
+    toReadable: toReadable,
+    toPromptText: toPromptText,
+    toDisplayHtml: toDisplayHtml,
+    bodyFromGmailPayload: bodyFromGmailPayload
+  };
+})();
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════
      STAFFLO PATCH v6 — 2026-05-08
      Clean redesign: card hierarchy, LEAD button in header, no ghost chips.
      This OVERRIDES v5.x for the email handling pipeline.
@@ -38191,8 +38395,13 @@ function startTour(){
       if (memo) memBlock = '\n\n=== INFOS RÉFÉRENCE ===\n' + memo.slice(0, 2500) + '\n=== FIN ===\n';
     } catch(e){}
     var cleanBody = (row.body || '');
+    if (window.StaffloEmailText) {
+      // v7 : idempotent sur un texte déjà propre ; garde le bloc dates/voyageurs.
+      cleanBody = window.StaffloEmailText.toPromptText(cleanBody);
+    } else {
     if (typeof htmlToText === 'function') cleanBody = htmlToText(cleanBody);
     if (typeof cleanEmailBoilerplate === 'function') cleanBody = cleanEmailBoilerplate(cleanBody);
+    }
     cleanBody = cleanBody.replace(/\[?https?:\/\/[^\s\]\)]{40,}\]?/g, '').replace(/%\w+%/g, '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 2500);
     var responsesBlock = isReviewReq ? [
       '  "responses": [',
@@ -38279,6 +38488,15 @@ function startTour(){
             var sentDate = _fmtSentDate(cleanRow, fr);
             var bodyRaw = (cleanRow.body || '').trim();
             var bodyText = bodyRaw;
+            var bodyForAI = null;
+            if (window.StaffloEmailText) {
+              // v7 (2026-09-06) : un seul point de vérité — UTF-8 réel, paragraphes,
+              // préheader/footer retirés, lignes legacy réparées. Affichage et prompt
+              // divergent volontairement : le prompt GARDE le bloc dates/voyageurs
+              // (parseEmailSignals + extracteur en dépendent). Évals : tests/evals-email-body.md
+              bodyText  = window.StaffloEmailText.toReadable(row.body || '', cleanRow.subject);
+              bodyForAI = window.StaffloEmailText.toPromptText(row.body || '');
+            } else {
             if (typeof htmlToText === 'function') bodyText = htmlToText(bodyText);
             if (typeof cleanEmailBoilerplate === 'function') bodyText = cleanEmailBoilerplate(bodyText);
             if (typeof cleanAirbnbGuestMessage === 'function') bodyText = cleanAirbnbGuestMessage(bodyText, cleanRow.subject);
@@ -38288,7 +38506,8 @@ function startTour(){
             bodyText = bodyText.replace(/Get the app\.?\s*The fastest[\s\S]*?Airbnb\.?\s*/gi, '');
             bodyText = bodyText.replace(/Review\s+(?:\[.*?\]\s*)?Reply\s+(?:\[.*?\]\s*)?/gi, '');
             bodyText = bodyText.replace(/\n{3,}/g, '\n\n').replace(/\s{3,}/g, ' ').trim();
-            cleanRow.body = bodyText;
+            }
+            cleanRow.body = (bodyForAI !== null) ? bodyForAI : bodyText;
             var subjectShort = (cleanRow.subject || (fr?'(sans sujet)':'(no subject)'));
             var subjectTrunc = subjectShort.length > 50 ? subjectShort.slice(0, 50) + '…' : subjectShort;
 
@@ -38315,7 +38534,7 @@ function startTour(){
                     (fromShort && fromShort !== senderName ? ' <span style="opacity:.6">&lt;' + _esc(fromShort) + '&gt;</span>' : '') + '</span></div>' +
                   (sentDate ? '<div class="seh-meta-row"><span class="seh-meta-label">' + (fr?'Date':'Date') + '</span><span class="seh-meta-val">' + _esc(sentDate) + '</span></div>' : '') +
                   '<div class="seh-meta-row"><span class="seh-meta-label">' + (fr?'Sujet':'Subject') + '</span><span class="seh-meta-val seh-meta-strong">' + _esc(subjectShort) + '</span></div>' +
-                  (bodyText ? '<div class="seh-original">' + _esc(bodyText) + '</div>' : '') +
+                  (bodyText ? '<div class="seh-original">' + (window.StaffloEmailText ? window.StaffloEmailText.toDisplayHtml(bodyText) : _esc(bodyText)) + '</div>' : '') +
                 '</div>' +
               '</details>';
             msgs.appendChild(headerCard);
@@ -38410,8 +38629,12 @@ function startTour(){
             // sinon cette carte affiche du HTML brut/boilerplate Airbnb que le LLM,
             // lui, ne voit jamais.
             var bodyClean = cleanRow.body || '';
+            if (window.StaffloEmailText) {
+              bodyClean = window.StaffloEmailText.toReadable(bodyClean, cleanRow.subject); // v7
+            } else {
             if (typeof htmlToText === 'function') bodyClean = htmlToText(bodyClean);
             if (typeof cleanEmailBoilerplate === 'function') bodyClean = cleanEmailBoilerplate(bodyClean);
+            }
             bodyClean = fixMojibake(bodyClean).trim();
             var bodyShort = bodyClean.slice(0, 200);
             var bodyMore = bodyClean.length > bodyShort.length;
@@ -38923,17 +39146,30 @@ function startTour(){
     }
     .seh-original {
       margin-top: 10px;
-      padding: 12px;
+      padding: 14px 16px;
       background: #FAF7F0;
       border-radius: var(--r-sm);
-      font-size: 12px;
-      line-height: 1.55;
+      font-size: 13px;
+      line-height: 1.6;
       color: var(--ink);
       white-space: pre-wrap;
-      max-height: 280px;
+      max-width: 62ch;
+      max-height: 340px;
       overflow-y: auto;
       border: 1px solid rgba(201, 150, 58, .15);
     }
+    /* v7 — paragraphes + titres Airbnb (StaffloEmailText.toDisplayHtml) */
+    .seh-original .seh-p { margin: 0 0 10px; white-space: normal; }
+    .seh-original .seh-p:last-child { margin-bottom: 0; }
+    .seh-original .seh-h {
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      font-weight: 700;
+      color: var(--gm, var(--muted));
+      margin: 12px 0 4px;
+      white-space: normal;
+    }
+    .seh-original .seh-h:first-child { margin-top: 0; }
 
     /* ── Main analysis card ── */
     .stafflo-email-card {
