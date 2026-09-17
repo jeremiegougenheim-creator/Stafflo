@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v466 (livret.html mis à jour — pdfFilename)
-const CACHE = 'stafflo-v466';
+// Stafflo Service Worker — v467 (livret.html mis à jour — Pavillon 2 / WC privatif)
+const CACHE = 'stafflo-v467';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
