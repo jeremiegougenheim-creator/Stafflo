@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v464 (livret.html mis à jour)
-const CACHE = 'stafflo-v464';
+// Stafflo Service Worker — v465 (livret.html mis à jour — hostPhone)
+const CACHE = 'stafflo-v465';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
