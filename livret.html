@@ -486,12 +486,49 @@ function render(){
   const l = q.get('lang');
   if (l && ['fr','en','bi'].includes(l)) document.getElementById('l').value = l;
   /* ?print=1 ouvre directement la fenêtre d'impression, une fois le rendu fait. */
-  if (q.get('print') === '1') setTimeout(() => window.print(), 600);
+  if (q.get('print') === '1') setTimeout(() => {
+    if (typeof printWithName === 'function') printWithName(); else window.print();
+  }, 600);
 })();
 
 ['g','d','p','l'].forEach(id =>
   document.getElementById(id).addEventListener('input', render));
-document.getElementById('print').addEventListener('click', () => window.print());
+
+/* Nom du PDF — les navigateurs reprennent document.title comme nom de fichier
+   par defaut a l'impression. On le remplace juste avant d'imprimer, puis on le
+   restaure : l'onglet garde son titre normal le reste du temps.
+   Forme : Prenom_29SEP-2OCT26_10pers
+   Les caracteres interdits dans un nom de fichier (/ \ : * ? " < > |) sont
+   retires, les tirets longs ramenes a un tiret simple, les espaces supprimes
+   — sinon Chrome et Safari les remplacent chacun a leur maniere. */
+const DEFAULT_TITLE = document.title;
+
+function pdfFilename(){
+  const clean = v => String(v || '').trim()
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/[\/\\:*?"<>|]/g, '')
+    .replace(/\s+/g, '');
+  const g = clean(document.getElementById('g').value);
+  const d = clean(document.getElementById('d').value);
+  const p = clean(document.getElementById('p').value);
+  const parts = [g, d, p ? p + 'pers' : ''].filter(Boolean);
+  return parts.length ? parts.join('_') : DEFAULT_TITLE;
+}
+
+function printWithName(){
+  document.title = pdfFilename();
+  window.print();
+}
+/* Restaure apres coup. afterprint n'est pas emis partout (Safari ancien) :
+   le setTimeout sert de filet, il ne gene pas si l'evenement arrive. */
+window.addEventListener('afterprint', () => { document.title = DEFAULT_TITLE; });
+/* Cmd+P direct, sans passer par le bouton. */
+window.addEventListener('beforeprint', () => { document.title = pdfFilename(); });
+
+document.getElementById('print').addEventListener('click', () => {
+  printWithName();
+  setTimeout(() => { document.title = DEFAULT_TITLE; }, 3000);
+});
 render();
 </script>
 </body>
