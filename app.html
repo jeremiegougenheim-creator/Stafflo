@@ -21702,8 +21702,15 @@ function getPrice() {
   var floor = (typeof _cfg.minPrice === 'number' && _cfg.minPrice > 0) ? _cfg.minPrice : null;
   var cap   = (typeof _cfg.maxPrice === 'number' && _cfg.maxPrice > 0) ? _cfg.maxPrice : null;
   price = Math.round(price / 50) * 50;
+  // Le prix tel qu'il sort de la cascade base+modificateurs, AVANT que le
+  // plancher/plafond ne le contraigne. Sans cette valeur, la ventilation
+  // "ARIA explique" affiche une base et des modificateurs qui ne mènent pas
+  // au total montré — un écart inexplicable pour le owner.
+  const priceBeforeBounds = price;
   if (floor) price = Math.max(floor, price);
   if (cap) price = Math.min(cap, price);
+  const floorApplied = floor ? (priceBeforeBounds < floor) : false;
+  const capApplied   = cap   ? (priceBeforeBounds > cap)   : false;
 
   // Guest supplement: cfg.extraGuestFee/person above cfg.baseCapacity. Sans
   // l'une des deux valeurs reellement declarees, pas de supplement invente —
@@ -21720,7 +21727,7 @@ function getPrice() {
   const comm = Math.round(gross * hostFeeRate);
   const net = gross - comm;
   
-  return {base, price, pricePN, guestExtra, nights, guests, gross, comm, net, hostFeeRate, floor, cap, appliedMods};
+  return {base, price, pricePN, guestExtra, nights, guests, gross, comm, net, hostFeeRate, floor, cap, appliedMods, priceBeforeBounds, floorApplied, capApplied};
 }
 
 function toggleMod(k) {
@@ -33292,6 +33299,21 @@ function startTour(){
         if (p.appliedMods.weekend)  rows.push(v4Row(FR?'Week-end':'Weekend', '+50€'));
         if (p.appliedMods.lastmin)  rows.push(v4Row(FR?'Last minute':'Last minute', '−15%'));
         if (p.appliedMods.longstay) rows.push(v4Row(FR?'Long séjour (≥14n)':'Long stay (14n+)', '−20%'));
+      }
+      // Le plancher/plafond (cfg.minPrice/maxPrice) peut relever ou abaisser le
+      // prix APRÈS la cascade base+modificateurs. Sans cette ligne, la
+      // ventilation montre "Base 390€ +15%" puis une commission calculée sur
+      // 500€ : le owner voit une arithmétique qui ne tombe pas juste. On ne
+      // l'affiche que si la contrainte a réellement mordu — sinon rien à
+      // expliquer. La ligne "Cible" plus bas reste supprimée dans ce cas par
+      // son garde anti-redondance (price === bound), ce qui est correct : cette
+      // ligne-ci la remplace en disant précisément ce qui s'est passé.
+      if (p.floorApplied) {
+        rows.push(v4Row(FR?'Plancher':'Floor', fmtPrice(p.floor),
+          (FR?'remonté depuis ':'raised from ') + fmtPrice(p.priceBeforeBounds)));
+      } else if (p.capApplied) {
+        rows.push(v4Row(FR?'Plafond':'Cap', fmtPrice(p.cap),
+          (FR?'abaissé depuis ':'lowered from ') + fmtPrice(p.priceBeforeBounds)));
       }
       if (p.guestExtra) rows.push(v4Row(FR?'Personnes en plus':'Extra guests', '+' + fmtPrice(p.guestExtra)));
       // COMMIT R6 pt.2 : meme garde que R5 pt.3 sur la sous-ligne (l.32040) —
