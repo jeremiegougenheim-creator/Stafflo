@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v462 (corps d'email lisible — UTF-8 réel, paragraphes, préheader/footer, v7)
-const CACHE = 'stafflo-v462';
+// Stafflo Service Worker — v464 (livret.html mis à jour)
+const CACHE = 'stafflo-v464';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
