@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v472 (livret.html mis à jour — marges A4)
-const CACHE = 'stafflo-v472';
+// Stafflo Service Worker — v473 (livret.html mis à jour — marge titre)
+const CACHE = 'stafflo-v473';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
