@@ -68,9 +68,9 @@ h2::before{content:"◆";color:var(--terracotta);font-size:13px;margin-right:9px
 h3{font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:2.6px;
    text-transform:uppercase;color:var(--terracotta);margin:12px 0 5px}
 
-ul{margin:6px 0;padding-left:18px}
-li{font-size:13px;line-height:1.55;margin-bottom:0}
-p{font-size:13px;line-height:1.6;margin:5px 0}
+ul{margin:9px 0;padding-left:18px}
+li{font-size:13px;line-height:1.55;margin-bottom:5px}
+p{font-size:13px;line-height:1.6;margin:8px 0}
 .en{font-style:italic;color:var(--muted);display:block;font-size:12.2px;line-height:1.5;margin-top:0}
 
 /* Chambres */
@@ -135,9 +135,9 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
      inchangee. */
   h2{margin:22px 0 5px;font-size:20px;padding-bottom:4px}
   h3{margin:9px 0 4px}
-  p{margin:5px 0;line-height:1.48}
-  ul{margin:5px 0}
-  li{margin-bottom:0;line-height:1.42}
+  p{margin:7px 0;line-height:1.48}
+  ul{margin:8px 0}
+  li{margin-bottom:4px;line-height:1.42}
   .en{line-height:1.4;font-size:11.8px}
   .lede{line-height:1.5}
   .cover{padding:10px 0 18px}
@@ -217,8 +217,8 @@ const T = {
   leisure:['Loisirs & bien-être','Leisure & Wellness'],
   houseRules:['Règles de la maison','House Rules'],
   menu:['Menu & spécialités de la maison','House Menu & Specialties'],
-  menuIntro:["Une sélection de plats préparés à la maison pendant votre séjour. Pour chaque service, le groupe choisit ensemble une entrée, un plat et un dessert — c'est ce qui permet à la cuisine de tout préparer frais.\nDites-nous vos choix à l'avance, et signalez-nous tôt toute allergie ou restriction alimentaire : nous nous adapterons.",
-             "A selection of dishes cooked at the house during your stay. For each service the group chooses one starter, one main and one dessert together — this is what allows the kitchen to prepare everything fresh.\nLet us know your choices in advance, and tell us early of any allergies or dietary restrictions: we will adapt."],
+  menuIntro:["Une sélection de plats préparés à la maison pendant votre séjour.\nPour chaque service, le groupe choisit ensemble une entrée, un plat et un dessert — c'est ce qui permet à la cuisine de tout préparer frais.\nDites-nous vos choix à l'avance, et signalez-nous tôt toute allergie ou restriction alimentaire : nous nous adapterons.",
+             "A selection of dishes cooked at the house during your stay.\nFor each service the group chooses one starter, one main and one dessert together — this is what allows the kitchen to prepare everything fresh.\nLet us know your choices in advance, and tell us early of any allergies or dietary restrictions: we will adapt."],
   brk:['Petit-déjeuner — inclus chaque jour','Breakfast — included daily'],
   saidLine:[VILLA.staff+', majordome — votre premier contact sur place',VILLA.staff+', house manager — your first point of contact on site'],
   hostLine:["En dernier recours, si Saïd n'est pas joignable",'As a last resort, if Saïd cannot be reached'],
@@ -444,9 +444,33 @@ const listOf = arr => '<ul>' + arr.map(x => '<li>' + t(x) + '</li>').join('') + 
    texte dans esc(), on ne peut donc pas injecter la balise avant.
    En bilingue, seule la ligne francaise est mise en gras : la traduction est
    deja distinguee par son italique, la doubler alourdirait. */
+/* Met en valeur ce qu'on cherche en parcourant une ligne : un prix, une
+   heure, un delai. Volontairement restreint — si tout est en gras, plus rien
+   ne l'est. Applique APRES l'etiquette pour ne jamais imbriquer deux balises. */
+const EMPH = [
+  /(\d{1,4}\s?MAD)/g,                       // 400 MAD
+  /(\d{1,2}h(?:\d{2})?)/g,                   // 9h00, 16h, 10h30
+  /(\d{1,2}(?::\d{2})?\s?(?:am|pm))/gi,      // 9:00 am, 4 pm
+  /(\d{1,2}\s?h\b)/g,                        // 48 h
+  /(\b(?:la veille|the day before)\b)/gi,
+  /(\b(?:2 jours à l'avance|2 days ahead)\b)/gi,
+  /(\b(?:chaque jour|every day)\b)/gi,
+  /(\b(?:une fois par semaine|once a week)\b)/gi,
+  /(\b10 (?:personnes|people)\b)/gi,
+  /(une entrée, un plat et un dessert|one starter, one main and one dessert)/gi,
+  /(toute allergie ou restriction alimentaire|any allergies or dietary restrictions)/gi,
+  /((?:deux|two) nourrissons en berceau|two infants in cots)/gi
+];
+function emph(txt){
+  let out = txt;
+  EMPH.forEach(re => { out = out.replace(re, '<strong>$1</strong>'); });
+  /* garde-fou : jamais deux <strong> imbriques */
+  return out.replace(/<strong>([^<]*)<strong>/g, '<strong>$1').replace(/<\/strong><\/strong>/g, '</strong>');
+}
 function labelled(escaped){
   const m = escaped.match(/^([^:]{2,40}\s*:)/);
-  return m ? '<strong>' + m[1] + '</strong>' + escaped.slice(m[1].length) : escaped;
+  return m ? '<strong>' + m[1] + '</strong>' + emph(escaped.slice(m[1].length))
+           : emph(escaped);
 }
 function tLabelled(pair){
   const fr = pair[0], en = pair[1] === undefined ? pair[0] : pair[1];
@@ -504,7 +528,7 @@ function render(){
 
   /* ── Page 2 : chambres ── */
   h += '<div class="page"><h2>' + ti(T.rooms) + '</h2>';
-  h += '<p>' + t(T.roomsIntro) + '</p>';
+  h += '<p>' + emph(t(T.roomsIntro)) + '</p>';
   ROOMS.forEach((r, i) => {
     h += '<div class="room"><div class="rn">' + (i+1) + '</div><div class="rb">' +
          (r.tag ? '<div class="tag">' + ti(r.tag) + '</div>' : '') +
@@ -513,28 +537,28 @@ function render(){
          '<b>' + ti(T.bath) + '</b> ' + ti(r.bath) + '<br>' +
          t(r.d) + '</div></div></div>';
   });
-  h += '<h3>' + ti(T.goodToKnow) + '</h3>' + listOf(GOOD_TO_KNOW) + '</div>';
+  h += '<h3>' + ti(T.goodToKnow) + '</h3>' + listOfLabelled(GOOD_TO_KNOW) + '</div>';
 
   /* ── Page 3 : regles de la maison, page dediee ── */
   h += '<div class="page"><h2>' + ti(T.houseRules) + '</h2>';
-  h += listOf(RULES) + '</div>';
+  h += listOfLabelled(RULES) + '</div>';
 
   /* ── Page 3 : repas, loisirs, règles ── */
   h += '<div class="page"><h2>' + ti(T.meals) + '</h2>';
-  h += '<p>' + t(T.mealsIntro) + '</p>';
+  h += '<p>' + emph(t(T.mealsIntro)) + '</p>';
   h += '<table><thead><tr><th>' + ti(T.thMeal) + '</th><th>' + ti(T.th16) + '</th><th>' +
        ti(T.th710) + '</th><th>' + ti(T.thHours) + '</th></tr></thead><tbody>';
   MEALS.forEach(m => {
     h += '<tr><td>' + ti(m.n) + '</td><td>' + ti(m.a) + '</td><td>' + ti(m.b) +
          '</td><td>' + ti(m.h) + '</td></tr>';
   });
-  h += '</tbody></table><div class="note">' + listOf(MEAL_NOTES) + '</div>';
-  h += '<div class="callout">' + t(T.earlyBrk) + '</div>';
-  h += '<h2>' + ti(T.leisure) + '</h2>' + listOf(LEISURE) + '</div>';
+  h += '</tbody></table><div class="note">' + listOfLabelled(MEAL_NOTES) + '</div>';
+  h += '<div class="callout">' + emph(t(T.earlyBrk)) + '</div>';
+  h += '<h2>' + ti(T.leisure) + '</h2>' + listOfLabelled(LEISURE) + '</div>';
 
   /* ── Page 4 : menu ── */
   h += '<div class="page"><h2>' + ti(T.menu) + '</h2>';
-  h += '<p>' + t(T.menuIntro) + '</p>';
+  h += '<p>' + emph(t(T.menuIntro)) + '</p>';
   h += '<h3>' + ti(T.brk) + '</h3>' + listOf(BREAKFAST);
   h += '<h3>' + ti(T.starters) + '</h3>' + listOf(STARTERS);
   h += '<h3>' + ti(T.mains) + '</h3>' + listOf(MAINS);

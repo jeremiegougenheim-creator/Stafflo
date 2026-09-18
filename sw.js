@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v475 (livret.html mis à jour — blanchisseur / berceau)
-const CACHE = 'stafflo-v475';
+// Stafflo Service Worker — v476 (livret.html mis à jour — emphase prix/horaires)
+const CACHE = 'stafflo-v476';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
