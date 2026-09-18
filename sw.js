@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v473 (livret.html mis à jour — marge titre)
-const CACHE = 'stafflo-v473';
+// Stafflo Service Worker — v474 (livret.html mis à jour — staff Saïd / casse 400 MAD)
+const CACHE = 'stafflo-v474';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
