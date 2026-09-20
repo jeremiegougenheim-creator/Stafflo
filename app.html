@@ -30707,6 +30707,19 @@ window.addEventListener('DOMContentLoaded', function() {
     try { inp.focus(); } catch(e){}
   }
 
+  // Lien tôt, PDF tard : le lien du livret est ajouté au message de bienvenue
+  // par du code déterministe (même fonction que la fiche client et les cartes
+  // matters, jamais reconstruit), pas demandé au LLM — une URL n'est jamais
+  // une valeur à faire écrire par le modèle.
+  function _appendLivretLink(a, content){
+    if (!a || a.purpose !== 'welcome' || !a.guest || typeof window.livretUrl !== 'function') return content;
+    try {
+      var abs = new URL(window.livretUrl(a.guest), location.href).href;
+      var label = fr() ? 'Livret d\'accueil : ' : 'Welcome booklet: ';
+      return content + '\n\n' + label + abs;
+    } catch(e) { return content; }
+  }
+
   // Génère le contenu d'une action via LLM puis montre les boutons d'envoi
   window.ariaSmartActionGenerate = async function(groupId, idx, btn){
     var actions = (window._ariaPendingActions||{})[groupId];
@@ -30725,6 +30738,7 @@ window.addEventListener('DOMContentLoaded', function() {
       var p = buildAiPrompt(a);
       var content = await window.callBestAI(a.ai_task, p.system, p.user, 600);
       content = (content||'').trim();
+      content = _appendLivretLink(a, content);
       // Affiche le résultat
       var resEl = document.querySelector('.aria-smart-result[data-group="'+groupId+'"][data-idx="'+idx+'"]');
       if (resEl){
@@ -30803,7 +30817,7 @@ window.addEventListener('DOMContentLoaded', function() {
     try {
       var p = buildAiPrompt(a);
       var content = await window.callBestAI(a.ai_task, p.system, p.user, 600);
-      a.generated_content = (content||'').trim();
+      a.generated_content = _appendLivretLink(a, (content||'').trim());
       // Re-render le résultat
       var resEl = document.querySelector('.aria-smart-result[data-group="'+groupId+'"][data-idx="'+idx+'"]');
       if (resEl){
@@ -34451,6 +34465,7 @@ function startTour(){
     window.open(livretUrl(c), '_blank', 'noopener');
   }
   window.openLivretAction = openLivretAction;
+  window.livretUrl = livretUrl;
 
   var state = { step: 0, clientId: null };
   var TABS = ['stay','prefs','journal'];

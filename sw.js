@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v478 (livret : action réutilisable sur fiche client + cartes "Ce qui compte aujourd'hui")
-const CACHE = 'stafflo-v478';
+// Stafflo Service Worker — v479 (livret : lien dans le message de bienvenue genere)
+const CACHE = 'stafflo-v479';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
