@@ -4506,6 +4506,15 @@ window.renderSoloTurnoverCard = function(){
             'data-title-fr="ARIA" data-title-en="ARIA" data-aria-label-fr="Demander à ARIA" data-aria-label-en="Ask ARIA">' +
             '<i class="ti ti-sparkles"></i></button>';
       }
+      // Livret pact : uniquement si la carte est rattachée à une réservation
+      // (toujours vrai ici — built.items vient de firmList — mais on garde le
+      // garde-fou plutôt que d'ouvrir un livret vide).
+      if (it.client && it.client.id) {
+        pacts += '<button type="button" class="v19-pact" data-pact="livret" data-v3-prio-idx="' + i + '" ' +
+            'title="' + (FR?'Livret d\'accueil':'Welcome booklet') + '" aria-label="' + (FR?'Ouvrir le livret d\'accueil':'Open welcome booklet') + '" ' +
+            'data-title-fr="Livret d\'accueil" data-title-en="Welcome booklet" data-aria-label-fr="Ouvrir le livret d\'accueil" data-aria-label-en="Open welcome booklet">' +
+            '<i class="ti ti-notebook"></i></button>';
+      }
       pacts += '<button type="button" class="v19-pact" data-pact="done" data-v3-prio-idx="' + i + '" ' +
           'title="' + (FR?'Fait':'Done') + '" aria-label="' + (FR?'Marquer comme fait':'Mark as done') + '" ' +
           'data-title-fr="Fait" data-title-en="Done" data-aria-label-fr="Marquer comme fait" data-aria-label-en="Mark as done">' +
@@ -4545,6 +4554,15 @@ window.renderSoloTurnoverCard = function(){
         var it = items[i];
         if (!it || !it.client || typeof openAriaModal !== 'function') return;
         openAriaModal('send welcome message to ' + (it.client.name || ''));
+      });
+    });
+    body.querySelectorAll('.v19-pact[data-pact="livret"]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var i = parseInt(btn.getAttribute('data-v3-prio-idx'), 10);
+        var it = items[i];
+        if (!it || !it.client || typeof window.openLivretAction !== 'function') return;
+        window.openLivretAction(it.client);
       });
     });
     body.querySelectorAll('.v19-pact[data-pact="done"]').forEach(function(btn){
@@ -34425,6 +34443,15 @@ function startTour(){
     return 'livret.html?' + p.toString();
   }
 
+  // Action livret unique, appelée depuis la fiche client et depuis les cartes
+  // "Ce qui compte aujourd'hui" (autre bloc <script>) — exposée sur window pour
+  // que livretUrl() ne soit jamais dupliquée ailleurs.
+  function openLivretAction(c){
+    if (!c) return;
+    window.open(livretUrl(c), '_blank', 'noopener');
+  }
+  window.openLivretAction = openLivretAction;
+
   var state = { step: 0, clientId: null };
   var TABS = ['stay','prefs','journal'];
 
@@ -35127,7 +35154,7 @@ function startTour(){
     if (livretBtn) {
       var firm = typeof isFirmBooking === 'function' ? isFirmBooking(c) : true;
       livretBtn.style.display = firm ? '' : 'none';
-      livretBtn.onclick = function(){ window.open(livretUrl(c), '_blank', 'noopener'); };
+      livretBtn.onclick = function(){ openLivretAction(c); };
     }
   }
 

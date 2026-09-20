@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v477 (livret : pax/langue depuis la réservation, plus de défaut 10/bi)
-const CACHE = 'stafflo-v477';
+// Stafflo Service Worker — v478 (livret : action réutilisable sur fiche client + cartes "Ce qui compte aujourd'hui")
+const CACHE = 'stafflo-v478';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
