@@ -34209,14 +34209,100 @@ function startTour(){
     return left + ' – ' + right;
   }
 
+  /* Nombre de voyageurs du livret — adults+children s'ils sont renseignés
+     (colonnes récentes, souvent vides), sinon repli sur guests (rempli par
+     le formulaire manuel et l'import iCal). null si rien n'est connu :
+     jamais un total inventé (livret.html affiche alors le champ vide). */
+  function resolveLivretPax(c){
+    c = c || {};
+    var ac = (parseInt(c.adults,10)||0) + (parseInt(c.children,10)||0);
+    if (ac > 0) return ac;
+    var g = parseInt(c.guests,10);
+    return (g > 0) ? g : null;
+  }
+
+  /* Langue du livret — regex uniquement, aucun appel LLM, jamais le nom du
+     client. Priorité : pays/drapeau (nat) > indicatif téléphonique > 1er
+     message. Signaux absents ou contradictoires → bilingue ('bi'), jamais
+     'fr'/'en' par défaut. Fonction volontairement isolée (aucune variable
+     externe) pour rester testable par tests/evals-livret-lang.mjs. */
+  function detectLivretLang(input){
+    input = input || {};
+    var COUNTRIES = [
+      { flag:'🇫🇷', code:'33',  lang:'fr' },
+      { flag:'🇬🇧', code:'44',  lang:'en' },
+      { flag:'🇩🇪', code:'49',  lang:'en' },
+      { flag:'🇪🇸', code:'34',  lang:'en' },
+      { flag:'🇮🇹', code:'39',  lang:'en' },
+      { flag:'🇳🇱', code:'31',  lang:'en' },
+      { flag:'🇭🇰', code:'852', lang:'en' },
+      { flag:'🇸🇦', code:'966', lang:'en' },
+      { flag:'🇦🇪', code:'971', lang:'en' },
+      { flag:'🇨🇦', code:'1',   lang:'bi' },
+      { flag:'🇧🇪', code:'32',  lang:'bi' },
+      { flag:'🇨🇭', code:'41',  lang:'bi' },
+      { flag:'🇲🇦', code:'212', lang:'bi' },
+      { flag:'🇱🇺', code:'352', lang:'bi' },
+      { flag:'🇲🇨', code:'377', lang:'bi' }
+    ];
+
+    function fromNat(nat){
+      if (!nat) return null;
+      var hit = COUNTRIES.find(function(c){ return nat.indexOf(c.flag) !== -1; });
+      return hit ? hit.lang : null;
+    }
+
+    function fromPhone(phone){
+      if (!phone) return null;
+      var digits = String(phone).replace(/[^\d+]/g,'');
+      if (digits.charAt(0) !== '+') return null;
+      var byLen = COUNTRIES.slice().sort(function(a,b){ return b.code.length - a.code.length; });
+      for (var i = 0; i < byLen.length; i++){
+        if (digits.indexOf('+' + byLen[i].code) === 0) return byLen[i].lang;
+      }
+      // indicatif non listé ci-dessus : traité comme non-francophone (repli 'en').
+      return /^\+\d{6,15}$/.test(digits) ? 'en' : null;
+    }
+
+    function fromMessage(message){
+      if (!message) return null;
+      var f = (String(message).match(/\b(bonjour|merci|nous|arriverons|vous)\b/gi) || []).length;
+      var e = (String(message).match(/\b(hello|hi|thank|we|arrive|you)\b/gi) || []).length;
+      if (f + e < 3 || f === e) return null;
+      return f > e ? 'fr' : 'en';
+    }
+
+    var votes = [fromNat(input.nat), fromPhone(input.phone), fromMessage(input.message)].filter(Boolean);
+    if (!votes.length) return 'bi';
+    return votes.every(function(v){ return v === votes[0]; }) ? votes[0] : 'bi';
+  }
+
+  /* Premier message accessible pour un client — même source que renderComms
+     (_clientMessages puis c.messages), trié par date connue quand elle existe. */
+  function firstLivretMessageText(msgs){
+    if (!msgs || typeof msgs !== 'object') return '';
+    var items = Object.keys(msgs).map(function(k){
+      var v = msgs[k];
+      return { text: typeof v === 'string' ? v : ((v && v.text) || ''), at: v && v.at };
+    }).filter(function(it){ return it.text; });
+    if (!items.length) return '';
+    items.sort(function(a,b){
+      var ta = a.at ? new Date(a.at).getTime() : Infinity;
+      var tb = b.at ? new Date(b.at).getTime() : Infinity;
+      return ta - tb;
+    });
+    return items[0].text;
+  }
+
   function livretUrl(c){
     var p = new URLSearchParams();
     if (c.name) p.set('guest', c.name);
     var dt = fmtStayDates(c.arrival, c.departure);
     if (dt) p.set('dates', dt);
-    var pax = (parseInt(c.adults,10)||0) + (parseInt(c.children,10)||0);
+    var pax = resolveLivretPax(c);
     if (pax) p.set('pax', String(pax));
-    p.set('lang', 'bi');
+    var msgs = (window._clientMessages && window._clientMessages[c.id]) || c.messages || null;
+    p.set('lang', detectLivretLang({ nat: c.nat, phone: c.phone, message: firstLivretMessageText(msgs) }));
     return 'livret.html?' + p.toString();
   }
 

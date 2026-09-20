@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v476 (livret.html mis à jour — emphase prix/horaires)
-const CACHE = 'stafflo-v476';
+// Stafflo Service Worker — v477 (livret : pax/langue depuis la réservation, plus de défaut 10/bi)
+const CACHE = 'stafflo-v477';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
