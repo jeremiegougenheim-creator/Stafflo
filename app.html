@@ -34246,10 +34246,30 @@ function startTour(){
       { flag:'🇲🇨', code:'377', lang:'bi' }
     ];
 
+    // Pays en toutes lettres (FR/EN), en plus des drapeaux — nécessaire depuis que
+    // "nat" peut contenir un pays extrait tel quel d'un e-mail/fiche Airbnb
+    // (ex. "United Kingdom") plutôt que la nationalité choisie dans le select
+    // (ex. "🇬🇧 Britannique"). Pays non listé ci-dessous → null, jamais une
+    // supposition (aucune entrée fr/en par défaut).
+    var COUNTRY_NAMES = [
+      { lang:'fr', names:['france'] },
+      { lang:'bi', names:['belgique','belgium','suisse','switzerland','canada','maroc','morocco','luxembourg','monaco'] },
+      { lang:'en', names:['royaume-uni','royaume uni','united kingdom','pays-bas','pays bas','netherlands',
+                           'allemagne','germany','espagne','spain','italie','italy',
+                           'états-unis','etats-unis','united states','hong kong',
+                           'arabie saoudite','saudi arabia',
+                           'émirats arabes unis','emirats arabes unis','uae','émirats','emirats'] }
+    ];
+
     function fromNat(nat){
       if (!nat) return null;
       var hit = COUNTRIES.find(function(c){ return nat.indexOf(c.flag) !== -1; });
-      return hit ? hit.lang : null;
+      if (hit) return hit.lang;
+      var low = String(nat).toLowerCase();
+      var nameHit = COUNTRY_NAMES.find(function(g){
+        return g.names.some(function(n){ return low.indexOf(n) !== -1; });
+      });
+      return nameHit ? nameHit.lang : null;
     }
 
     function fromPhone(phone){
@@ -34275,6 +34295,105 @@ function startTour(){
     var votes = [fromNat(input.nat), fromPhone(input.phone), fromMessage(input.message)].filter(Boolean);
     if (!votes.length) return 'bi';
     return votes.every(function(v){ return v === votes[0]; }) ? votes[0] : 'bi';
+  }
+
+  /* Parseurs purs Airbnb (regex uniquement, jamais de LLM, jamais d'I/O) — extraient
+     ce qui est écrit dans le texte, jamais une déduction depuis un nom/prix/date.
+     Champ absent du texte source = null. Isolés pour rester testables par
+     tests/evals-airbnb-guests.mjs. Ne rattachent ni n'écrivent rien : Commit 2
+     s'occupe du rattachement par code exact et de l'écriture dans la fiche. */
+  function parseAirbnbConfirmationEmail(texte){
+    var out = { code:null, total:null, adults:null, children:null, infants:null,
+                residence:null, country:null, firstMessage:null, flags:[] };
+    if (!texte) return out;
+    var t = String(texte).replace(/<[^>]+>/g,' ').replace(/\xA0/g,' ').replace(/\s+/g,' ').trim();
+
+    // E-mail de modification ("reservation change") : ne porte pas les chiffres
+    // de la réservation d'origine — aucun champ n'en est déduit, juste signalé.
+    if (/reservation change has been accepted|votre r[ée]servation a [ée]t[ée] modifi[ée]e/i.test(t)) {
+      out.flags.push('modifiée — à reconfirmer');
+      return out;
+    }
+
+    var codeM = t.match(/CONFIRMATION CODE\s*[:\n]?\s*([A-Z0-9]{8,12})/i)
+             || t.match(/reservations\/details\/([A-Z0-9]{6,})/);
+    if (codeM) out.code = codeM[1].trim();
+
+    // Total = bloc GUESTS/VOYAGEURS de l'e-mail de confirmation, réservataire inclus.
+    var gM = t.match(/(?:GUESTS|VOYAGEURS)\s*[:\n]?\s*(\d+)\s+adult[s]?(?:,?\s*(\d+)\s+child(?:ren)?)?(?:,?\s*(\d+)\s+infant[s]?)?/i);
+    if (gM) {
+      out.adults = parseInt(gM[1],10) || 0;
+      out.children = gM[2] ? (parseInt(gM[2],10)||0) : 0;
+      out.infants = gM[3] ? (parseInt(gM[3],10)||0) : 0;
+      out.total = out.adults + out.children; // bébés jamais comptés dans le total
+    } else {
+      out.flags.push('total introuvable');
+    }
+
+    // Lieu de résidence : ligne sous "Identity verified · N reviews", avant le
+    // message du client ("Hi <prénom>,"). Pays = dernier segment, tel quel.
+    var resM = t.match(/Identity verified[\s\S]*?reviews?\s+([A-Za-zÀ-ÿ'\-,\s]+?)(?=\s+(?:Hi|Bonjour|Hello)\b)/i);
+    if (resM) {
+      out.residence = resM[1].trim();
+      out.country = out.residence.split(',').pop().trim();
+    }
+
+    // Premier message du client, entre "Hi <prénom>," et "Send <prénom> a Message".
+    var msgM = t.match(/Hi\s+[A-Za-zÀ-ÿ]+,\s*([\s\S]+?)\s*Send\s+[A-Za-zÀ-ÿ]+\s+a\s+Message/i);
+    if (msgM) out.firstMessage = msgM[1].trim();
+
+    return out;
+  }
+
+  function parseAirbnbReservationPage(texte){
+    var out = { code:null, total:null, adults:null, children:null, infants:null,
+                residence:null, country:null, firstMessage:null, flags:[] };
+    if (!texte) return out;
+    var t = String(texte).replace(/<[^>]+>/g,' ').replace(/\xA0/g,' ').replace(/\s+/g,' ').trim();
+
+    var codeM = t.match(/Confirmation code\s*[:\n]?\s*([A-Z0-9]{8,12})/i);
+    if (codeM) out.code = codeM[1].trim();
+
+    // Total explicite = "Groupe de N", réservataire inclus.
+    var groupeM = t.match(/Groupe de\s+(\d+)\s+r[ée]serv[ée]/i);
+    var groupeTotal = groupeM ? parseInt(groupeM[1],10) : null;
+
+    // Ligne d'accompagnants "+N" puis "X adulte(s), Y enfant(s)" — réservataire
+    // EXCLU : total = 1 + X + Y, jamais X + Y seul.
+    var accM = t.match(/\+\s*(\d+)\D+?(\d+)\s+adultes?,?\s*(\d+)?\s*enfants?/i)
+            || t.match(/\+\s*(\d+)\D+?(\d+)\s+adults?,?\s*(\d+)?\s*children?/i);
+    var accAdults = null, accChildren = null, breakdownTotal = null;
+    if (accM){
+      var accN = parseInt(accM[1],10);
+      accAdults = parseInt(accM[2],10) || 0;
+      accChildren = accM[3] ? (parseInt(accM[3],10)||0) : 0;
+      if (accN !== accAdults + accChildren) {
+        out.flags.push('écart accompagnants : +' + accN + ' vs ' + accAdults + ' adulte(s) + ' + accChildren + ' enfant(s)');
+      }
+      breakdownTotal = 1 + accAdults + accChildren;
+    }
+
+    if (groupeTotal != null) {
+      out.total = groupeTotal;
+      if (breakdownTotal != null && breakdownTotal !== groupeTotal) {
+        out.flags.push('écart total : Groupe de ' + groupeTotal + ' vs 1+accompagnants ' + breakdownTotal);
+      }
+    } else if (breakdownTotal != null) {
+      out.total = breakdownTotal;
+    } else {
+      out.flags.push('total introuvable');
+    }
+
+    if (accM) { out.adults = 1 + accAdults; out.children = accChildren; }
+
+    // Lieu de résidence : "Lieu de résidence : Ville, Pays". Pays = dernier segment.
+    var resM = t.match(/Lieu de r[ée]sidence\s*:\s*([A-Za-zÀ-ÿ'\-,\s]+?)(?=\s+(?:Confirmation|\+\d|Groupe)\b|\s*$)/i);
+    if (resM) {
+      out.residence = resM[1].trim();
+      out.country = out.residence.split(',').pop().trim();
+    }
+
+    return out;
   }
 
   /* Premier message accessible pour un client — même source que renderComms
