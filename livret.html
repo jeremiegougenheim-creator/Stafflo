@@ -225,8 +225,8 @@ const T = {
   maps:['Voir sur Google Maps','View on Google Maps'],
   practical:['Informations pratiques','Practical Information'],
   rooms:['Les 5 chambres','The 5 Bedrooms'],
-  roomsIntro:["Cinq chambres de plain-pied, pour 10 personnes au maximum — les enfants comptent dans ce total. Nous pouvons accueillir en plus jusqu'à deux nourrissons en berceau, sans supplément.\nDeux pavillons indépendants complètent la maison principale.\nNous préparons les lits avant votre arrivée selon la composition du groupe — merci de nous indiquer à l'avance le nombre de couples et de personnes seules.",
-              "Five ground-floor bedrooms, for up to 10 people maximum — children count towards this total. We can also welcome up to two infants in cots, at no extra charge.\nTwo independent pavilions complete the main house.\nWe prepare the beds before your arrival according to the group: please let us know in advance how many couples and single guests."],
+  roomsIntro:["Cinq chambres de plain-pied, pour 10 personnes au maximum — les enfants comptent dans ce total. Au-delà de 8 personnes, un supplément de 50 € par jour s'applique. Nous pouvons accueillir en plus jusqu'à deux nourrissons en berceau, sans supplément.\nDeux pavillons indépendants complètent la maison principale.\nNous préparons les lits avant votre arrivée selon la composition du groupe — merci de nous indiquer à l'avance le nombre de couples et de personnes seules.",
+              "Five ground-floor bedrooms, for up to 10 people maximum — children count towards this total. Above 8 guests, a supplement of 50 € per day applies. We can also welcome up to two infants in cots, at no extra charge.\nTwo independent pavilions complete the main house.\nWe prepare the beds before your arrival according to the group: please let us know in advance how many couples and single guests."],
   bed:['Lit','Bed'], bath:['Salle de bain','Bathroom'],
   goodToKnow:['Bon à savoir','Good to know'],
   meals:['Repas & horaires de service','Meal Times & Service'],
@@ -328,7 +328,7 @@ const GOOD_TO_KNOW = [
 // Points detaches de l'ancien paragraphe mealNote : cinq informations sans
 // rapport entre elles y etaient tassees, aucune ne ressortait.
 const MEAL_NOTES = [
-  ['Prix par groupe : préparation, service et vaisselle. Courses au prix réel, sur présentation du ticket (envoyé par WhatsApp) — comptez environ 40 à 80 MAD par personne selon les plats. À titre indicatif, pour un groupe de 8, un repas revient à environ 130 à 170 MAD par personne, courses comprises.','Prices per group: cooking, service and washing up. Groceries at cost, with the receipt sent by WhatsApp — allow about 40 to 80 MAD per person depending on the dishes. As a guide, for a group of 8, a meal comes to about 130 to 170 MAD per person, groceries included.'],
+  ['Prix par groupe : préparation, service et vaisselle. Courses au prix réel, sur présentation du ticket (envoyé par WhatsApp) — comptez environ 40 à 80 MAD par personne selon les plats.','Prices per group: cooking, service and washing up. Groceries at cost, with the receipt sent by WhatsApp — allow about 40 to 80 MAD per person depending on the dishes.'],
   ['Course alimentaire : +300 MAD de logistique par session.','Grocery run: +300 MAD logistics per session.'],
   ['Jours fériés marocains : la préparation est facturée au double, au tarif de notre prestataire.','Moroccan public holidays: cooking is charged at double rate, as per our provider\'s rates.'],
   ['Merci de choisir les menus déjeuner & dîner au moins 2 jours à l\'avance.','Please choose lunch & dinner menus at least 2 days ahead.'],
@@ -545,6 +545,19 @@ function linksOf(arr){
 
 
 
+/* Estimation par personne — depend du groupe (pax), absent de l'URL -> se
+   comporte comme avant (groupe de 8, 130 a 170 MAD). */
+function mealEstimateText(pax){
+  const p = pax ? parseInt(pax, 10) : 8;
+  const prep = p <= 6 ? 600 : 700;
+  const bas  = Math.round((prep + p * 40) / p / 10) * 10;
+  const haut = Math.round((prep + p * 80) / p / 10) * 10;
+  return [
+    ' À titre indicatif, pour un groupe de ' + p + ', un repas revient à environ ' + bas + ' à ' + haut + ' MAD par personne, courses comprises.',
+    ' As a guide, for a group of ' + p + ', a meal comes to about ' + bas + ' to ' + haut + ' MAD per person, groceries included.'
+  ];
+}
+
 function render(){
   const guest = document.getElementById('g').value.trim() || '—';
   const dates = document.getElementById('d').value.trim();
@@ -614,7 +627,10 @@ function render(){
     h += '<tr><td>' + ti(m.n) + '</td><td>' + ti(m.a) + '</td><td>' + ti(m.b) +
          '</td><td>' + ti(m.h) + '</td></tr>';
   });
-  h += '</tbody></table><div class="note">' + listOfLabelled(MEAL_NOTES) + '</div>';
+  const mealNotes = MEAL_NOTES.map(x => x.slice());
+  const est = mealEstimateText(pax);
+  mealNotes[0] = [mealNotes[0][0] + est[0], mealNotes[0][1] + est[1]];
+  h += '</tbody></table><div class="note">' + listOfLabelled(mealNotes) + '</div>';
   h += '<div class="callout">' + emph(t(T.earlyBrk)) + '</div>';
   h += '<h2>' + ti(T.leisure) + '</h2>' + listOfLabelled(LEISURE) + '</div>';
 
