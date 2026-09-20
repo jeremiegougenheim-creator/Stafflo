@@ -6234,6 +6234,7 @@ window.renderSetupOneLiner = function(){
         <h4 class="v5d-h4" data-fr="Argent" data-en="Money">Money</h4>
         <div class="v5d-money" id="v5dMoney"></div>
         <div id="v5dGuestNote" hidden></div>
+        <div id="v5dLivretStatus" hidden></div>
         <h4 class="v5d-h4" data-fr="Résumé ARIA" data-en="ARIA summary">ARIA summary</h4>
         <div class="v5d-aria-summary" id="v5dAriaSummary">
           <div class="v5d-skel" style="height:80px"></div>
@@ -34463,6 +34464,18 @@ function startTour(){
   function openLivretAction(c){
     if (!c) return;
     window.open(livretUrl(c), '_blank', 'noopener');
+    c.details = c.details || {};
+    c.details.livretSentAt = new Date().toISOString();
+    persistClient(c);
+    if (state.clientId === c.id) renderLivretStatus(c);
+  }
+  // Annule le marquage « envoyé » — cas où le livret n'a été ouvert que pour
+  // relecture. Seul chemin, avec openLivretAction, à écrire ce champ.
+  function cancelLivretSent(c){
+    if (!c || !c.details) return;
+    delete c.details.livretSentAt;
+    persistClient(c);
+    renderLivretStatus(c);
   }
   window.openLivretAction = openLivretAction;
   window.livretUrl = livretUrl;
@@ -34775,6 +34788,26 @@ function startTour(){
     host.hidden = false;
   }
 
+  // Mention « Livret envoyé le JJ/MM » + annuler — seule surface qui lit
+  // c.details.livretSentAt (écrit uniquement par openLivretAction/cancelLivretSent).
+  function renderLivretStatus(c){
+    var host = document.getElementById('v5dLivretStatus');
+    if (!host) return;
+    var FR = fr();
+    var sentAt = c.details && c.details.livretSentAt;
+    if (!sentAt) { host.hidden = true; host.innerHTML = ''; return; }
+    var d = new Date(sentAt);
+    var dateLbl = isNaN(d) ? '' : (String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0'));
+    host.className = 'v5d-guest-note';
+    host.innerHTML =
+      '<div class="v5d-guest-note-h">📓 ' + (FR ? 'Livret envoyé le ' : 'Booklet sent on ') + dateLbl + '</div>' +
+      '<button type="button" id="v5dLivretCancelBtn" style="background:none;border:none;padding:0;color:var(--gold-ink);font-weight:500;text-decoration:underline;cursor:pointer;font:inherit;font-size:12px">' +
+        (FR ? 'Annuler' : 'Undo') + '</button>';
+    host.hidden = false;
+    var cancelBtn = document.getElementById('v5dLivretCancelBtn');
+    if (cancelBtn) cancelBtn.onclick = function(){ cancelLivretSent(c); };
+  }
+
   function renderStay(c){
     var FR = fr();
     var grid = $('v5dStayGrid');
@@ -34821,6 +34854,7 @@ function startTour(){
     renderOpenPoints(c);
     renderMoney(c, net, _netEstime, _fin, nights);
     renderGuestNote(c);
+    renderLivretStatus(c);
     renderHeroWhen(c);
     renderNowAction(c);
     // Checklists — reuse the v3_ops storage from Today v3

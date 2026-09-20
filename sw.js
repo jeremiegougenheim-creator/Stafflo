@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v479 (livret : lien dans le message de bienvenue genere)
-const CACHE = 'stafflo-v479';
+// Stafflo Service Worker — v480 (livret : marquage envoye sur fiche client)
+const CACHE = 'stafflo-v480';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
