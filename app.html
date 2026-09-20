@@ -8263,6 +8263,46 @@ function showAuthGate() {
     '</div>';
   document.body.appendChild(gate);
 
+  // Auto-login apres remplissage par un gestionnaire de mots de passe
+  // (Apple Passwords / Touch ID / iCloud Keychain) : ces extensions ne
+  // dispatchent pas toujours d'evenement 'input', d'ou le polling plutot
+  // qu'un listener. Une frappe clavier reelle desarme definitivement le
+  // mecanisme ; une seule tentative par chargement de page (flag `fired`)
+  // pour ne jamais boucler sur un mot de passe enregistre invalide.
+  (function autoSubmitOnAutofill() {
+    var email = document.getElementById('authEmail');
+    var pwd   = document.getElementById('authPassword');
+    if (!email || !pwd) return;
+
+    var userTyped = false;
+    var fired = false;
+
+    ['keydown','paste'].forEach(function(evt){
+      [email, pwd].forEach(function(el){
+        el.addEventListener(evt, function(){ userTyped = true; });
+      });
+    });
+
+    var t = setInterval(function () {
+      if (fired) { clearInterval(t); return; }
+      if (userTyped) return;                       // saisie manuelle → on ne touche à rien
+      var p = pwd.value || '';
+      if (p) {
+        var det = pwd.closest('details');
+        if (det && !det.open) det.open = true;      // deplie si le champ etait cache
+      }
+      var e = (email.value || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return;
+      if (p.length < 6) return;
+      fired = true;
+      clearInterval(t);
+      handleAuthLogin();                           // handler existant, ne pas dupliquer la logique
+    }, 200);
+
+    // Securite : on arrete le polling apres 2 min
+    setTimeout(function(){ clearInterval(t); }, 120000);
+  })();
+
   // Enter key submits
   setTimeout(function(){
     var emailEl = document.getElementById('authEmail');
