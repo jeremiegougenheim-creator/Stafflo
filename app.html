@@ -4303,6 +4303,44 @@ window.renderSoloTurnoverCard = function(){
           key:'arrival-prep:'+c.id+':'+anchorDate(c.arrival), deadline: arr });
       }
     });
+    // COMMIT LIVRET-MATTERS : rappel d'envoi tant que le livret n'est pas marqué
+    // envoyé (c.details.livretSentAt, écrit par openLivretAction/cancelLivretSent,
+    // autre bloc <script>). Une seule carte par réservation même si plusieurs
+    // fenêtres se chevauchent : un OR unique décide "en avant", jamais un push
+    // par fenêtre qui dupliquerait la carte.
+    firmList.forEach(function(c){
+      if (c.details && c.details.livretSentAt) return; // déjà envoyé, aucune carte
+      var arr = c.arrival ? new Date(c.arrival) : null; if (arr) arr.setHours(0,0,0,0);
+      var dep = c.departure ? new Date(c.departure) : null; if (dep) dep.setHours(0,0,0,0);
+      if (arr && arr < today) return;                  // arrivée déjà passée
+      if (!arr && dep && dep < today) return;           // filet : séjour déjà terminé, arrivée inconnue
+      var dArr = arr ? Math.round((arr - today)/86400000) : null;
+      // createdAt = approximation de la date de réservation/confirmation : Stafflo
+      // n'a pas encore de date de confirmation dédiée. À remplacer par la date
+      // extraite des e-mails de confirmation Airbnb quand cet extracteur existera.
+      var created = c.createdAt ? new Date(c.createdAt) : null;
+      var dCreated = created ? Math.round((today - created)/86400000) : null;
+      // Arrivée OU confirmation inconnue → jamais mise en avant, aucune date supposée.
+      var known = (dArr != null) && (dCreated != null);
+      var highlighted = known && (
+        (dCreated >= 0 && dCreated < 15) ||
+        (dArr >= 28 && dArr <= 30) ||
+        (dArr >= 13 && dArr <= 15) ||
+        (dArr <= 7)
+      );
+      var pdfPhase = (dArr != null) && dArr <= 7;
+      // tone toujours 'wait' (contraste --muted validé sur ce fond ; --t-alert-bg
+      // du tone 'hot' échoue de justesse, 4.48:1 < 4.5:1 requis) — la mise en avant
+      // vient uniquement du tier (rang p1 vs p2), pas d'une couleur dédiée.
+      items.push({ tier: highlighted?'p1':'p2', tone:'wait', icon:'📓',
+        title_fr:'Livret · '+(c.name||''), title_en:'Booklet · '+(c.name||''),
+        sub_fr: pdfPhase ? 'Envoyer le PDF du livret' : 'Envoyer le lien du livret',
+        sub_en: pdfPhase ? 'Send the booklet PDF' : 'Send the booklet link',
+        title:(FR?'Livret · ':'Booklet · ')+(c.name||''),
+        sub: pdfPhase ? (FR?'Envoyer le PDF du livret':'Send the booklet PDF') : (FR?'Envoyer le lien du livret':'Send the booklet link'),
+        client:c, cta:(FR?'📓 Ouvrir le livret':'📓 Open the booklet'), action:'livret',
+        key:'livret:'+c.id+':'+anchorDate(c.arrival || c.createdAt || ''), deadline: arr });
+    });
     var p1 = items.filter(function(x){return x.tier==='p1';}).slice(0,3);
     var p2 = items.filter(function(x){return x.tier==='p2';}).slice(0,2);
     var opps = [];

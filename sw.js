@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v480 (livret : marquage envoye sur fiche client)
-const CACHE = 'stafflo-v480';
+// Stafflo Service Worker — v481 (livret : carte de rappel dans Ce qui compte aujourd'hui)
+const CACHE = 'stafflo-v481';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
