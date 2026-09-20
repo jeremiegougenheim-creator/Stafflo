@@ -466,6 +466,14 @@ const CAFES = [
 let LANG = 'bi';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const mapUrl = n => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(n + ' Marrakech');
+/* wa.me veut le numero international sans + ni espaces ; "(0)" est un prefixe
+   de composition nationale, pas un chiffre du numero -> retire avant le strip. */
+const waDigits = raw => raw.replace(/\(0\)/g, '').replace(/\D/g, '');
+const waLink = raw => 'https://wa.me/' + waDigits(raw);
+/* Linkifie en tel: les numeros deja presents dans un texte deja echappe
+   (aucun caractere de ces numeros n'a besoin d'echappement HTML). */
+const linkifyTel = html => html.replace(/\+\d[\d \-]{5,}\d/g,
+  m => '<a href="tel:+' + m.replace(/\D/g, '') + '">' + m + '</a>');
 
 /* t([fr,en]) — rend selon la langue ; en bilingue, l'anglais passe sous le français,
    et disparaît quand les deux textes sont identiques. */
@@ -536,7 +544,7 @@ const colsOf = arr => '<ul class="cols">' + arr.map(x => '<li>' + t(x) + '</li>'
 
 function linksOf(arr){
   return '<ul class="links">' + arr.map(x =>
-    '<li><b>' + ti(x.n) + '</b> — ' + t(x.d) +
+    '<li><b>' + ti(x.n) + '</b> — ' + linkifyTel(t(x.d)) +
     ' <a href="' + mapUrl(x.n[0]) + '" target="_blank" rel="noopener">' + ti(T.map) + '</a>' +
     (x.url ? ' · <a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + ti(T.site) + '</a>' : '') +
     '</li>'
@@ -586,9 +594,9 @@ function render(){
   h += '<div class="infobox">' +
        '<div><span class="k">Wi-Fi</span> · ' + ti(T.net) + ' : ' + esc(VILLA.wifi.net) +
        ' · ' + ti(T.pass) + ' : ' + esc(VILLA.wifi.pass) + '</div>' +
-       '<div><span class="k">' + ti(T.saidLine) + '</span><br>WhatsApp / SMS : ' + esc(VILLA.said) + '</div>' +
+       '<div><span class="k">' + ti(T.saidLine) + '</span><br>WhatsApp / SMS : <a href="' + waLink(VILLA.said) + '" target="_blank" rel="noopener">' + esc(VILLA.said) + '</a></div>' +
        '<div class="host-fallback">' + ti(T.hostLine) + ' — ' + ti(T.hostName) +
-       ' · WhatsApp ' + esc(VILLA.hostPhone) + '</div>' +
+       ' · WhatsApp <a href="' + waLink(VILLA.hostPhone) + '" target="_blank" rel="noopener">' + esc(VILLA.hostPhone) + '</a></div>' +
        '<div>Villa Dar J — ' + esc(VILLA.address) +
        ' <a href="' + mapUrl('Villa Dar J ' + VILLA.address) + '" target="_blank" rel="noopener">' + ti(T.maps) + '</a></div>' +
        '</div>';
