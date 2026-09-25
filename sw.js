@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v481 (livret : carte de rappel dans Ce qui compte aujourd'hui)
-const CACHE = 'stafflo-v481';
+// Stafflo Service Worker — v483 (livret : tarifs MAD corrigés)
+const CACHE = 'stafflo-v483';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
