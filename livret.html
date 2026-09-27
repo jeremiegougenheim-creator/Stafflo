@@ -343,8 +343,8 @@ const MEAL_NOTES = [
 
 const MEALS = [
   {n:['Petit-déjeuner','Breakfast'], a:['Inclus','Included'], b:['Inclus','Included'], h:['9h00 – 10h30','9:00 am – 10:30 am']},
-  {n:['Brunch, déjeuner ou dîner','Brunch, lunch or dinner'], a:['650 MAD','650 MAD'], b:['850 MAD','850 MAD'], h:['Brunch dès 10h30 (sur demande) · Déjeuner 12h30 – 14h30 · Dîner 19h30 – 21h30','Brunch from 10:30 am (on request) · Lunch 12:30 – 2:30 pm · Dinner 7:30 – 9:30 pm']},
-  {n:['Goûter','Afternoon tea'], a:['300 MAD','300 MAD'], b:['400 MAD','400 MAD'], h:['17h00 – 18h30 (sur demande)','5:00 – 6:30 pm (on request)']}
+  {n:['Brunch, déjeuner ou dîner (sur demande)','Brunch, lunch or dinner (on request)'], a:['650 MAD','650 MAD'], b:['850 MAD','850 MAD'], h:['Brunch dès 10h30 · Déjeuner 12h30 – 14h30 · Dîner 19h30 – 21h30','Brunch from 10:30 am · Lunch 12:30 – 2:30 pm · Dinner 7:30 – 9:30 pm']},
+  {n:['Goûter (sur demande)','Afternoon tea (on request)'], a:['300 MAD','300 MAD'], b:['400 MAD','400 MAD'], h:['16h30 – 18h00','4:30 – 6:00 pm']}
 ];
 
 const LEISURE = [
@@ -535,7 +535,10 @@ const listOf = arr => '<ul>' + arr.map(x => '<li>' + t(x) + '</li>').join('') + 
    heure, un delai. Volontairement restreint — si tout est en gras, plus rien
    ne l'est. Applique APRES l'etiquette pour ne jamais imbriquer deux balises. */
 const EMPH = [
-  /(\d{1,4}\s?MAD)/g,                       // 400 MAD
+  /* Exclut le MAD de la fourchette dynamique de mealEstimateText() : sinon
+     ce regex generique la bolderait en double avec les deux dedies plus bas
+     (245 MAD isole, imbrique dans le <strong> de la phrase entiere). */
+  /(\d{1,4}\s?MAD)(?! par personne, courses comprises)(?! per person, groceries included)/g, // 400 MAD
   /(\d{1,2}h(?:\d{2})?)/g,                   // 9h00, 16h, 10h30
   /(\d{1,2}(?::\d{2})?\s?(?:am|pm))/gi,      // 9:00 am, 4 pm
   /(\d{1,2}\s?h\b)/g,                        // 48 h
@@ -546,7 +549,12 @@ const EMPH = [
   /(\b10 (?:personnes|people)\b)/gi,
   /(une entrée, un plat et un dessert|one starter, one main and one dessert)/gi,
   /(toute allergie ou restriction alimentaire|any allergies or dietary restrictions)/gi,
-  /((?:deux|two) nourrissons en berceau|two infants in cots)/gi
+  /((?:deux|two) nourrissons en berceau|two infants in cots)/gi,
+  /* Fourchette de mealEstimateText() uniquement — le lookahead sur la suite
+     de phrase l'isole de la fourchette fixe "40 à 80 MAD par personne" du
+     premier MEAL_NOTES, qui elle ne doit pas passer en gras. */
+  /(\d{1,4} à \d{1,4} MAD par personne)(?=, courses comprises)/g,
+  /(\d{1,4} to \d{1,4} MAD per person)(?=, groceries included)/g
 ];
 function emph(txt){
   let out = txt;
