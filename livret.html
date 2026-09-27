@@ -142,7 +142,11 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
   /* On empeche seulement les coupures laides : un titre seul en bas de page,
      une ligne orpheline, un bloc chambre ou une ligne de tableau scindee. */
   h2,h3{page-break-after:avoid;break-after:avoid}
-  .room,tr,li{page-break-inside:avoid}
+  /* table ici en plus de tr : sans ca, tr:avoid empeche une ligne d'etre
+     coupee EN DEUX mais laisse le tableau se scinder ENTRE deux lignes, avec
+     repetition du thead sur la page suivante — c'est ce qui isolait la ligne
+     petit-dejeuner du reste du tableau repas en bilingue. */
+  .room,table,tr,li{page-break-inside:avoid;break-inside:avoid}
   p,li{orphans:2;widows:2}
   a{color:var(--terracotta)}
 
@@ -541,10 +545,12 @@ const listOf = arr => '<ul>' + arr.map(x => '<li>' + t(x) + '</li>').join('') + 
    heure, un delai. Volontairement restreint — si tout est en gras, plus rien
    ne l'est. Applique APRES l'etiquette pour ne jamais imbriquer deux balises. */
 const EMPH = [
-  /* Exclut le MAD de la fourchette dynamique de mealEstimateText() : sinon
-     ce regex generique la bolderait en double avec les deux dedies plus bas
-     (245 MAD isole, imbrique dans le <strong> de la phrase entiere). */
-  /(\d{1,4}\s?MAD)(?! par personne, courses comprises)(?! per person, groceries included)/g, // 400 MAD
+  /* Exclut tout MAD suivi de "par personne"/"per person" : la fourchette
+     fixe "40 a 80 MAD par personne selon les plats" (MEAL_NOTES) et celle
+     dynamique de mealEstimateText() sont toutes deux gerees par les regex
+     dediees plus bas, jamais par ce regex generique (sinon double gras
+     imbrique, ou gras isole sur la borne haute de la fourchette fixe). */
+  /(\d{1,4}\s?MAD)(?! par personne)(?! per person)/g, // 400 MAD
   /(\d{1,2}h(?:\d{2})?)/g,                   // 9h00, 16h, 10h30
   /(\d{1,2}(?::\d{2})?\s?(?:am|pm))/gi,      // 9:00 am, 4 pm
   /(\d{1,2}\s?h\b)/g,                        // 48 h
