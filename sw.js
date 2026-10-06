@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v483 (livret : tarifs MAD corrigés)
-const CACHE = 'stafflo-v483';
+// Stafflo Service Worker — v484 (planning.html jamais mis en cache)
+const CACHE = 'stafflo-v484';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
@@ -44,6 +44,8 @@ self.addEventListener('fetch', e => {
   // livret.html is consulted rarely and always online — never cache it,
   // so it never serves a stale version to a client.
   if (url.includes('livret.html')) return;
+  // Même règle pour planning.html : outil interne, toujours la dernière version.
+  if (url.includes('planning.html')) return;
 
   // Skip external APIs — let them go directly to network
   const { hostname } = new URL(url);

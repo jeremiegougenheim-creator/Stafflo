@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Planning équipe · Stafflo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  Générateur des plannings équipe (Saïd, Léa) à partir des fiches crm_clients.
+
+  Règle produit : la page n'invente rien. Les dates et compositions viennent
+  de la fiche, en lecture seule. Les informations opérationnelles (heure
+  d'arrivée, chambres, repas…) sont saisies ici et gardées dans le navigateur
+  (localStorage, comme les réglages de l'app). Tout champ absent sort en « ? ».
+
+  Lecture seule sur Supabase : aucune écriture. Le dépôt est public : aucun nom
+  de client, aucun numéro ni consigne nominative n'est codé en dur ici.
+-->
+<style>
+  :root{
+    --cream:#FAF6EE; --card:#FFFDF8; --ink:#0F2318; --green:#1D4D3A;
+    --gold:#C9963A; --gold-soft:#E5C77A; --line:#E7DFCF; --dim:#6B7A70;
+    --err:#9B2C1F; --err-bg:#F8E6E1; --warn-bg:#FBF1DC; --info-bg:#EEF2EC;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--cream);color:var(--ink);font-family:Inter,system-ui,sans-serif;
+       font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto;padding:24px 16px 80px}
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+         padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:20px}
+  .mark{font-family:"Cormorant Garamond",serif;font-size:30px;font-weight:600}
+  .mark em{font-style:italic;color:var(--gold)}
+  .who{margin-left:auto;font-size:12px;color:var(--dim)}
+  h2{font-family:"Cormorant Garamond",serif;font-weight:600;font-size:23px;margin:30px 0 6px}
+  h3{font-size:15px;margin:0 0 4px}
+  .sub{font-size:12px;color:var(--dim);margin:0 0 12px}
+  .hidden{display:none !important}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:12px}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+  label{display:block;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin:0 0 4px}
+  input,textarea,select{width:100%;background:#fff;border:1px solid var(--line);border-radius:6px;
+    padding:8px 10px;color:var(--ink);font:inherit;font-size:14px}
+  textarea{min-height:64px;resize:vertical}
+  /* Un exemple ne doit jamais ressembler à une valeur saisie. */
+  ::placeholder{color:#B4BCB6;opacity:1;font-style:italic}
+  input:focus-visible,textarea:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{
+    outline:2px solid var(--gold);outline-offset:2px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+  .full{grid-column:1/-1}
+  button,.btn{display:inline-block;font:inherit;font-size:13px;font-weight:500;cursor:pointer;
+    background:var(--green);color:#fff;border:0;border-radius:6px;padding:8px 14px;text-decoration:none}
+  button.ghost,.btn.ghost{background:transparent;color:var(--green);border:1px solid var(--green)}
+  button:disabled{opacity:.5;cursor:default}
+  .msg{font-size:13px;margin-top:8px;color:var(--dim)}
+  .msg.err{color:var(--err)}
+  .fact{font-size:13px;color:var(--dim);margin:0 0 10px}
+  .fact b{color:var(--ink);font-weight:600}
+  .chk{border-radius:8px;padding:8px 12px;margin:0 0 6px;font-size:13px}
+  .chk.err{background:var(--err-bg);color:var(--err)}
+  .chk.warn{background:var(--warn-bg)}
+  .chk.info{background:var(--info-bg)}
+  .chk b{font-weight:600}
+  .meal{display:grid;grid-template-columns:150px 120px 90px 150px 1fr 36px;gap:6px;margin-bottom:6px}
+  .meal button{padding:6px 0;background:transparent;color:var(--err);border:1px solid var(--line)}
+  @media (max-width:640px){ .meal{grid-template-columns:1fr 1fr} .meal button{grid-column:1/-1} }
+  pre.out{white-space:pre-wrap;word-wrap:break-word;background:#fff;border:1px solid var(--line);
+    border-radius:8px;padding:12px;font-family:var(--mono);font-size:12.5px;line-height:1.55;margin:8px 0}
+  .acts{display:flex;gap:8px;flex-wrap:wrap}
+  details>summary{cursor:pointer;font-weight:600;margin:6px 0}
+  .muted{color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">Planning <em>équipe</em></div>
+    <div class="who" id="who"></div>
+  </header>
+
+  <section id="loginSec" class="card hidden" style="max-width:380px">
+    <p class="sub">Aucune session Stafflo dans ce navigateur. Connecte-toi avec ton compte Stafflo.</p>
+    <form id="loginForm">
+      <label for="email">Email</label><input id="email" type="email" autocomplete="username" required>
+      <label for="pw" style="margin-top:10px">Mot de passe</label><input id="pw" type="password" autocomplete="current-password" required>
+      <div style="margin-top:12px"><button id="loginBtn" type="submit">Se connecter</button></div>
+      <div class="msg" id="loginMsg"></div>
+    </form>
+  </section>
+
+  <main id="app" class="hidden">
+    <div class="card bar">
+      <div><label for="from">Du</label><input id="from" type="date"></div>
+      <div><label for="to">Au</label><input id="to" type="date"></div>
+      <div><button id="reload" class="ghost" type="button">Recharger les fiches</button></div>
+      <div class="msg" id="loadMsg"></div>
+    </div>
+
+    <h2>Points à vérifier</h2>
+    <p class="sub">Calculés à partir des fiches et de ta saisie. Aucun n'est deviné : chacun dit d'où il vient.</p>
+    <div id="checks"></div>
+
+    <h2>Séjours de la période</h2>
+    <p class="sub">En gris, ce que dit la fiche Stafflo (non modifiable ici). En dessous, ce que tu sais du séjour — gardé dans ce navigateur.</p>
+    <div id="stays"></div>
+
+    <h2>Messages pour <span class="staffName"></span></h2>
+    <p class="sub">Un message général, puis un par séjour. Le bouton WhatsApp ouvre la conversation avec le texte déjà écrit : rien ne part tant que tu n'appuies pas sur Envoyer.</p>
+    <div id="said"></div>
+
+    <h2>Message pour <span class="menageName"></span></h2>
+    <div id="lea"></div>
+
+    <h2>Réglages</h2>
+    <details class="card" id="cfgBox">
+      <summary>Équipe, linge, horaires, rappels</summary>
+      <div class="grid" id="cfgForm" style="margin-top:10px"></div>
+    </details>
+    <details class="card">
+      <summary>Exporter / importer la saisie</summary>
+      <p class="sub" style="margin-top:8px">Pour passer d'un appareil à l'autre, ou coller une saisie préparée. L'import remplace la saisie des séjours concernés et les réglages fournis ; rien n'est écrit dans Stafflo.</p>
+      <textarea id="io" style="min-height:140px;font-family:var(--mono);font-size:12px"></textarea>
+      <div class="acts" style="margin-top:8px">
+        <button type="button" id="exportBtn" class="ghost">Exporter</button>
+        <button type="button" id="importBtn">Importer</button>
+      </div>
+      <div class="msg" id="ioMsg"></div>
+    </details>
+  </main>
+</div>
+
+<script id="logic">
+(function (root) {
+  'use strict';
+
+  /* ── Dates : chaînes 'YYYY-MM-DD', arithmétique en UTC pour éviter le
+     décalage d'un jour déjà rencontré dans l'app (bug UTC+1). ─────────────── */
+  const J  = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const JC = ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
+  const M  = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const MC = ['janv.','févr.','mars','avril','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+
+  const isDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const toD = s => { const p = s.split('-').map(Number); return new Date(Date.UTC(p[0], p[1] - 1, p[2])); };
+  const iso = d => d.toISOString().slice(0, 10);
+  const addDays = (s, n) => { const d = toD(s); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
+  const diffDays = (a, b) => Math.round((toD(b) - toD(a)) / 86400000);
+  const dow = s => toD(s).getUTCDay();
+  const mon = s => toD(s).getUTCMonth();
+  const yr = s => toD(s).getUTCFullYear();
+  const num = s => { const n = toD(s).getUTCDate(); return n === 1 ? '1er' : String(n); };
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  const dot = s => /[.!?…]$/.test(s) ? s : s + '.';
+
+  const jShort = (s, withMonth) => JC[dow(s)] + ' ' + num(s) + (withMonth ? ' ' + MC[mon(s)] : '');
+  const jLong  = (s, withMonth) => J[dow(s)] + ' ' + num(s) + (withMonth ? ' ' + M[mon(s)] : '');
+  const rangeShort = (a, b) => cap(jShort(a, false)) + ' → ' + jShort(b, mon(a) !== mon(b));
+  const rangeLong  = (a, b) => cap(jLong(a, mon(a) !== mon(b))) + ' → ' + jLong(b, true);
+  const rangeLea   = (a, b, refYear) =>
+    num(a) + (mon(a) !== mon(b) ? ' ' + MC[mon(a)] : '') + ' → ' + num(b) + ' ' + MC[mon(b)] +
+    (yr(a) !== refYear ? ' ' + yr(a) : '');
+
+  // 'le 19 et le 25 octobre' / 'le 30 octobre et le 2 novembre'
+  function listDates(dates) {
+    const parts = dates.map((d, i) => {
+      const nx = dates[i + 1];
+      return 'le ' + num(d) + (!nx || mon(nx) !== mon(d) ? ' ' + M[mon(d)] : '');
+    });
+    return joinFr(parts);
+  }
+  function joinFr(parts) {
+    if (parts.length <= 1) return parts.join('');
+    return parts.slice(0, -1).join(', ') + ' et ' + parts[parts.length - 1];
+  }
+
+  /* ── Heures : '15h30', '15:30', '15h', '15' → minutes. Motif ancré. ───── */
+  function parseHeure(s) {
+    if (s == null) return null;
+    const m = String(s).trim().match(/^(\d{1,2})(?:\s*(?:h|:)\s*(\d{2})?)?$/i);
+    if (!m) return null;
+    const h = +m[1], mn = m[2] ? +m[2] : 0;
+    if (h > 23 || mn > 59) return null;
+    return h * 60 + mn;
+  }
+  const fmtHeure = min => Math.floor(min / 60) + 'h' + (min % 60 ? String(min % 60).padStart(2, '0') : '');
+
+  /* ── Jours fériés fixes du Maroc (liste officielle 2026 ; 31 octobre
+     institué par décret royal du 4 novembre 2025). Les fêtes religieuses
+     sont lunaires et annoncées tard : elles s'ajoutent dans les réglages,
+     jamais devinées ici. ──────────────────────────────────────────────────── */
+  const FERIES_FIXES = {
+    '01-01': 'Nouvel An', '01-11': "Manifeste de l'Indépendance", '01-14': 'Nouvel An amazigh',
+    '05-01': 'Fête du Travail', '07-30': 'Fête du Trône', '08-14': 'Oued Ed-Dahab',
+    '08-20': 'Révolution du Roi et du Peuple', '08-21': 'Fête de la Jeunesse',
+    '10-31': "Fête de l'Unité", '11-06': 'Marche Verte', '11-18': "Fête de l'Indépendance"
+  };
+  function feriesExtra(cfg) {
+    const out = {};
+    String((cfg && cfg.feriesExtra) || '').split('\n').forEach(l => {
+      const m = l.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(.+)$/);
+      if (m) out[m[1]] = m[2].trim();
+    });
+    return out;
+  }
+  function holidaysIn(a, b, cfg) {
+    const extra = feriesExtra(cfg), out = [];
+    for (let d = a; d <= b; d = addDays(d, 1)) {
+      const nom = extra[d] || FERIES_FIXES[d.slice(5)];
+      if (nom) out.push({ date: d, nom });
+    }
+    return out;
+  }
+
+  /* ── Petit-déjeuner retiré du livret : dates des commits qui l'ont retiré
+     (620f8f5 et c260381). Un livret enregistré avant l'annonce encore
+     probablement — l'heure enregistrée n'est pas toujours celle de l'envoi. */
+  const RETRAITS_PETIT_DEJ = [
+    { at: '2026-09-27T13:19:07Z', items: ['jben', 'olives', "huile d'olive"] },
+    { at: '2026-10-05T12:38:19Z', items: ['yaourt'] }
+  ];
+
+  function defaultCfg() {
+    return {
+      staff: 'Saïd', staffPhone: '', host: 'Jérémie', menage: 'Léa', menagePhone: '',
+      capacite: 10, jeux: null, changeApres: 7, horizon: 30,
+      lingeEnl: '16h', lingeRet: '13h',
+      debut: '9h', pauseDebut: '15h', pauseFin: '17h', fin: '21h',
+      important: '',
+      rappels: [
+        "Petit-déjeuner 9h-10h30, msemen achetés le jour même. Si un groupe le veut plus tôt, il prévient la veille avant 16h et tu installes tout ce qui peut l'être.",
+        "Repas (brunch, déjeuner, dîner) : commandés au minimum 2 jours à l'avance. Si un client en demande un pour le lendemain, tu ne refuses pas : tu demandes à Léa si c'est possible et tu me préviens. Le goûter, c'est toi qui le prépares : la veille suffit.",
+        "La cuisinière achète les ingrédients de ses repas. Toi, tu achètes les extras des clients, plus les condiments, le café, l'eau et le papier toilette.",
+        'Photo de chaque ticket envoyée sur WhatsApp, sans exception.',
+        'Passeports de chaque voyageur à me transmettre avant chaque arrivée.'
+      ].join('\n'),
+      feriesExtra: ''
+    };
+  }
+
+  // Copie conforme de isFirmBooking() d'app.html : statut vide = fiche
+  // ancienne = confirmée ; seules confirmed et pending sont fermes.
+  function isFirm(c) {
+    if (!c) return false;
+    const bs = c.bookingStatus || c.booking_status || '';
+    if (!bs) return true;
+    return bs === 'confirmed' || bs === 'pending';
+  }
+
+  const numN = v => (v === null || v === undefined || v === '' || isNaN(+v)) ? null : +v;
+  const firstName = n => String(n || '').trim().split(/\s+/)[0] || '';
+  const plural = (n, one, many) => n + ' ' + (n > 1 ? many : one);
+
+  function buildStays(rows, ops) {
+    ops = ops || {};
+    return (rows || []).filter(r => r && isDate(r.arrival) && isDate(r.departure)).map(r => {
+      const o = Object.assign({}, ops[r.id] || {});
+      o.repas = Array.isArray(o.repas) ? o.repas.filter(Boolean).map(x => Object.assign({}, x)) : [];
+      const det = r.details || {};
+      return {
+        id: String(r.id), name: r.name || '', arrival: r.arrival, departure: r.departure,
+        guests: numN(r.guests), adults: numN(r.adults), children: numN(r.children), infants: numN(r.infants),
+        livretSentAt: det.livretSentAt || r.livret || null,
+        ops: o,
+        display: (o.nom && String(o.nom).trim()) || firstName(r.name) || '?',
+        nights: diffDays(r.arrival, r.departure)
+      };
+    }).sort((a, b) => a.arrival < b.arrival ? -1 : a.arrival > b.arrival ? 1 : 0);
+  }
+  const invalidRows = rows => (rows || []).filter(r => !(r && isDate(r.arrival) && isDate(r.departure)));
+  const inWindow = (all, from, to) => all.filter(s => s.departure >= from && s.arrival <= to);
+  const nextOf = (all, s) => { const i = all.findIndex(x => x.id === s.id); return i >= 0 ? all[i + 1] || null : null; };
+
+  function comp(s) {
+    if (s.adults == null) return (s.guests != null ? s.guests : '?') + ' voyageurs (composition ?)';
+    const p = [plural(s.adults, 'adulte', 'adultes')];
+    if (s.children) p.push(plural(s.children, 'enfant', 'enfants'));
+    if (s.infants) p.push(plural(s.infants, 'bébé', 'bébés'));
+    return p.join(' + ');
+  }
+  const couverts = s => s.adults == null ? '?' : String(s.adults + (s.children || 0));
+
+  // Jours disponibles pour le ménage entre ce départ et l'arrivée suivante.
+  function turnover(s, next) {
+    const first = addDays(s.departure, 1);
+    if (!next) return { far: true, days: [first], full: null };
+    const full = diffDays(s.departure, next.arrival) - 1;
+    if (full > 7) return { far: true, days: [first], full };
+    const days = [];
+    for (let k = 1; k <= full; k++) days.push(addDays(s.departure, k));
+    return { far: false, days, full };
+  }
+  const midChange = s => s.nights >= 0 ? addDays(s.arrival, Math.ceil(s.nights / 2)) : null;
+  const needsChange = (s, cfg) => s.nights >= (cfg.changeApres || 7);
+
+  function arrivalStatus(s, cfg) {
+    const h = parseHeure(s.ops.heure);
+    if (h == null) return { h: null };
+    const p0 = parseHeure(cfg.pauseDebut), p1 = parseHeure(cfg.pauseFin), end = parseHeure(cfg.fin);
+    return { h, pause: p0 != null && p1 != null && h >= p0 && h < p1, late: end != null && h >= end };
+  }
+
+  /* ── Messages Saïd ────────────────────────────────────────────────────── */
+  function saidMessages(win, all, cfg) {
+    if (!win.length) return [];
+    const N = win.length + 1, staff = cfg.staff || '?', tm = mon(win[0].arrival);
+    const lastDep = win[win.length - 1].departure;
+
+    const groups = win.map(s => '• ' + rangeShort(s.arrival, s.departure) + ' · ' + s.display + ' · ' + comp(s));
+
+    const ev = [];
+    win.forEach(s => {
+      const nx = nextOf(all, s), t = turnover(s, nx), ret = addDays(s.departure, 1);
+      let men;
+      if (!t.days.length) men = ' · ⚠️ aucun jour pour le ménage';
+      else if (t.far) men = ' · ménage complet le ' + num(t.days[0]);
+      else if (t.days.length === 1) men = ' · ménage complet le ' + num(t.days[0]) + ' — *une seule journée avant le groupe suivant*';
+      else if (t.days.length === 2) men = ' · ménage complet le ' + num(t.days[0]) + ' ou le ' + num(t.days[1]);
+      else men = ' · ménage complet entre le ' + num(t.days[0]) + ' et le ' + num(t.days[t.days.length - 1]);
+      ev.push({ d: s.departure, t: '• ' + cap(jShort(s.departure, mon(s.departure) !== tm)) + ', ' + cfg.lingeEnl +
+        ' : enlèvement → retour ' + jShort(ret, mon(ret) !== mon(s.departure)) + ', ' + cfg.lingeRet + men });
+      if (needsChange(s, cfg) && cfg.jeux !== 1) {
+        const md = midChange(s), mr = addDays(md, 1);
+        ev.push({ d: md, t: '• ' + cap(jShort(md, mon(md) !== tm)) + ', ' + cfg.lingeEnl +
+          ' : enlèvement en cours de séjour → retour ' + jShort(mr, mon(mr) !== mon(md)) + ', ' + cfg.lingeRet });
+      }
+    });
+    ev.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+
+    const exc = [];
+    win.forEach((s, i) => { const a = arrivalStatus(s, cfg); if (a.pause || a.late) exc.push({ d: s.arrival, g: i + 1 }); });
+    let horaires = 'Horaires ' + cfg.debut + '-' + cfg.fin + ' avec pause de ' + cfg.pauseDebut + ' à ' + cfg.pauseFin;
+    if (exc.length) horaires += ', sauf ' + listDates(exc.map(x => x.d)) + ' (voir ' +
+      (exc.length > 1 ? 'les messages des groupes ' : 'le message du groupe ') + joinFr(exc.map(x => String(x.g))) + ')';
+    horaires += '.';
+
+    const rappels = String(cfg.rappels || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => '• ' + l);
+    rappels.push('• ' + horaires);
+
+    const general = [
+      '*PLANNING VILLA — ' + M[tm].toUpperCase() + ' (1/' + N + ')*', '',
+      staff + ", voici le calendrier général jusqu'au " + num(lastDep) + ' ' + M[mon(lastDep)] +
+        ". Je t'envoie ensuite un message séparé pour chaque groupe, avec tous les détails.", '',
+      win.length > 1 ? '*LES ' + win.length + ' GROUPES*' : '*LE GROUPE*', ...groups, '',
+      '*LINGE ET MÉNAGES ENTRE LES GROUPES*',
+      "C'est toi qui appelles pour chaque enlèvement du linge. Les draps prêts avant " + cfg.lingeEnl + '.',
+      ...ev.map(x => x.t), ''
+    ];
+    if (String(cfg.important || '').trim()) general.push('*⚠️ LE PLUS IMPORTANT DU MOIS*', String(cfg.important).trim(), '');
+    general.push('*RAPPELS POUR TOUS LES GROUPES*', ...rappels, '', 'Merci ' + staff + '.', cfg.host || '');
+
+    const out = [{ label: '1/' + N + ' · Planning général', text: general.join('\n').trim() }];
+    win.forEach((s, i) => out.push({ label: (i + 2) + '/' + N + ' · ' + s.display, text: stayMessage(s, i, N, all, cfg) }));
+    return out;
+  }
+
+  function stayMessage(s, i, N, all, cfg) {
+    const o = s.ops, nx = nextOf(all, s), t = turnover(s, nx), am = mon(s.arrival);
+    const wm = d => mon(d) !== am;
+    const L = [];
+    L.push('*GROUPE ' + (i + 1) + ' (' + (i + 2) + '/' + N + ') — ' + s.display.toUpperCase() + '*');
+    L.push('*' + rangeLong(s.arrival, s.departure) + ' · ' + comp(s) + (o.precision ? ', ' + String(o.precision).trim() : '') + '*');
+    if (o.occasion) L.push('', String(o.occasion).trim());
+    L.push('');
+    L.push('_Chambres_ : ' + (o.chambres ? String(o.chambres).trim() : '?'));
+
+    const a = arrivalStatus(s, cfg);
+    let arr = a.h != null ? 'vers ' + fmtHeure(a.h) + (o.arrivee ? ' — ' + String(o.arrivee).trim() : '') : (o.arrivee ? String(o.arrivee).trim() : '?');
+    if (a.pause) arr = dot(arr) + " C'est pendant la pause : tu restes pour l'accueil.";
+    else if (a.late) arr = dot(arr) + " C'est après les horaires : tu restes pour les accueillir.";
+    L.push('_Arrivée_ : ' + arr);
+    if (o.programme) L.push('', String(o.programme).trim(), '');
+
+    const meals = o.repas.filter(r => isDate(r.date)).sort((x, y) => (x.date + (x.heure || '')) < (y.date + (y.heure || '')) ? -1 : 1);
+    if (!meals.length) L.push('_Repas_ : ?');
+    else {
+      L.push('_Repas_ :');
+      meals.forEach(r => L.push('• ' + cap(jShort(r.date, wm(r.date))) + (r.heure ? ', ' + r.heure : '') + ' : ' + (r.moment || '?') +
+        (r.menu ? ' — ' + String(r.menu).trim() : '') + (r.statut === 'confirmé' ? '' : ' (en attente de confirmation)')));
+    }
+    if (o.petitdej) L.push('_Petit-déjeuner_ : à acheter en plus pour ce groupe : *' + String(o.petitdej).trim() + '*.');
+    L.push('_Transport_ : ' + (o.transport ? String(o.transport).trim() : '?'));
+    const dh = parseHeure(o.depart);
+    L.push('_Départ_ : ' + jLong(s.departure, wm(s.departure)) + ', chambres libérées à midi. ' +
+      (dh != null ? 'Départ du groupe vers ' + fmtHeure(dh) + '.' : 'Heure de départ du groupe : ?'));
+    if (o.notes) L.push('', String(o.notes).trim());
+
+    if (needsChange(s, cfg) && cfg.jeux !== 1) {
+      const md = midChange(s), mr = addDays(md, 1);
+      L.push('', '*' + jLong(md, wm(md)).toUpperCase() + ' — CHANGEMENT DU LINGE*',
+        "Tu refais les lits avec le jeu de rechange, puis tu appelles pour l'enlèvement du linge sale à " + cfg.lingeEnl +
+        '. Retour le ' + jLong(mr, wm(mr)) + ' à ' + cfg.lingeRet + '. Préviens les clients la veille.');
+    }
+
+    const tight = !t.far && t.days.length === 1;
+    const ret = addDays(s.departure, 1);
+    L.push('', '*APRÈS LEUR DÉPART' + (tight ? ' — une seule journée avant le groupe suivant' : '') + '*');
+    L.push('• ' + cap(jLong(s.departure, wm(s.departure))) + ', ' + cfg.lingeEnl + ' : enlèvement du linge — tu appelles pour le confirmer.');
+    L.push('• ' + cap(jLong(ret, wm(ret))) + ', ' + cfg.lingeRet + ' : retour du linge.');
+    const eq = "ménage complet avec l'équipe de " + (cfg.menage || '?');
+    const beds = (!t.far && nx) ? (nx.ops.chambres ? ' Lits pour ' + nx.display + ' : ' + dot(String(nx.ops.chambres).trim())
+      : ' Lits selon la répartition de ' + nx.display + ", que je t'envoie.") : '';
+    if (!t.days.length) L.push('• ⚠️ Aucun jour pour le ménage avant le groupe suivant.');
+    else if (t.far) L.push('• ' + cap(jLong(t.days[0], wm(t.days[0]))) + ' : ' + eq + '.');
+    else if (tight) L.push('• ' + cap(jLong(t.days[0], wm(t.days[0]))) + ' : ' + eq + " le matin, lits faits l'après-midi dès le retour du linge." + beds);
+    else if (t.days.length === 2) L.push('• ' + cap(jLong(t.days[0], wm(t.days[0]))) + ' ou ' + jLong(t.days[1], wm(t.days[1])) + ' : ' + eq + '.' + beds);
+    else L.push('• Entre ' + jLong(t.days[0], wm(t.days[0])) + ' et ' + jLong(t.days[t.days.length - 1], wm(t.days[t.days.length - 1])) + ' : ' + eq + '.' + beds);
+    if (tight) L.push("• Si le linge n'est pas là à " + cfg.lingeRet + ', préviens-moi tout de suite : le groupe suivant arrive le lendemain.');
+    return L.join('\n');
+  }
+
+  /* ── Message Léa ──────────────────────────────────────────────────────── */
+  function leaMessage(win, all, cfg, today) {
+    const fut = all.filter(s => s.departure >= today);
+    if (!fut.length) return '';
+    const ref = yr(today), tm = mon((win[0] || fut[0]).arrival), staff = cfg.staff || '?', men = cfg.menage || '?';
+    const L = ['*PROGRAMME VILLA DAR J — ' + M[tm].toUpperCase() + '*', '',
+      'Bonjour ' + men + ', voici le planning du mois pour la cuisinière, le linge et les ménages inter-location. Sur place, ' +
+      staff + ' est ton contact pour tout.', '', '*RÉSERVATIONS CONFIRMÉES*'];
+    fut.forEach(s => L.push('• ' + rangeLea(s.arrival, s.departure, ref) + ' · ' + s.display + ' · ' + comp(s)));
+
+    const serrees = [];
+    fut.forEach(s => { const t = turnover(s, nextOf(all, s)); if (!t.far && t.days.length === 1) serrees.push(t.days[0]); });
+    if (serrees.length === 1) L.push('', "Une rotation n'a qu'une journée entre deux groupes : le " + jLong(serrees[0], true) + '.');
+    else if (serrees.length > 1) L.push('', (serrees.length === 2 ? 'Deux' : serrees.length === 3 ? 'Trois' : serrees.length) +
+      " rotations n'ont qu'une journée entre deux groupes : " + joinFr(serrees.map(d => 'le ' + jLong(d, true))) + '.');
+
+    if (win.length) {
+      const items = [];
+      win.forEach(s => {
+        const meals = s.ops.repas.filter(r => isDate(r.date) && r.moment !== 'goûter');
+        if (!meals.length) items.push({ k: s.arrival, t: '• ' + rangeLea(s.arrival, s.departure, ref) + ' · ' + couverts(s) + ' couverts · en attente du client' });
+        meals.forEach(r => items.push({ k: r.date + (r.heure || ''), t: '• ' + cap(jShort(r.date, true)) + (r.heure ? ', ' + r.heure : '') +
+          ' · ' + (r.moment || '?') + ' · ' + couverts(s) + ' couverts · ' +
+          (r.statut === 'confirmé' ? 'confirmé' : 'en attente de confirmation du client') + (r.menu ? ' — ' + String(r.menu).trim() : '') }));
+      });
+      items.sort((a, b) => a.k < b.k ? -1 : a.k > b.k ? 1 : 0);
+      L.push('', '*CUISINIÈRE — REPAS*', ...items.map(x => x.t));
+
+      const lin = [], mens = [];
+      win.forEach(s => {
+        const nx = nextOf(all, s), t = turnover(s, nx), ret = addDays(s.departure, 1);
+        const tight = !t.far && t.days.length === 1;
+        lin.push({ d: s.departure, t: '• ' + cap(jShort(s.departure, true)) + ', ' + cfg.lingeEnl + ' → retour ' + jShort(ret, true) + ', ' + cfg.lingeRet +
+          (tight ? ' — sans marge, le groupe suivant arrive le ' + num(nx.arrival) : '') });
+        if (needsChange(s, cfg) && cfg.jeux !== 1) {
+          const md = midChange(s), mr = addDays(md, 1);
+          lin.push({ d: md, t: '• ' + cap(jShort(md, true)) + ', ' + cfg.lingeEnl + ' → retour ' + jShort(mr, true) + ', ' + cfg.lingeRet + ' — changement en cours de séjour' });
+        }
+        if (!t.days.length) mens.push('• ⚠️ Aucun jour pour le ménage avant ' + nx.display);
+        else if (t.far) mens.push('• ' + cap(jShort(t.days[0], true)) + ' — après le départ du ' + num(s.departure));
+        else if (tight) mens.push('• ' + cap(jShort(t.days[0], true)) + " — une seule journée avant l'arrivée du " + num(nx.arrival) +
+          " : ménage le matin, lits faits l'après-midi dès le retour du linge");
+        else {
+          const a = t.days[0], b = t.days[t.days.length - 1];
+          mens.push('• Entre le ' + jShort(a, mon(a) !== mon(b)) + ' et le ' + jShort(b, true) + " — avant l'arrivée du " + num(nx.arrival));
+        }
+      });
+      lin.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+      L.push('', '*LINGE*', 'À chaque rotation : enlèvement à ' + cfg.lingeEnl + ', retour le lendemain à ' + cfg.lingeRet +
+        " si c'est possible de ton côté. " + staff + ' appelle pour confirmer chaque enlèvement et prépare les draps avant ' + cfg.lingeEnl + '.',
+        ...lin.map(x => x.t), '', '*MÉNAGES INTER-LOCATION*', ...mens);
+    }
+    L.push('', "*PRODUITS D'ACCUEIL*", "Réassort à chaque inter-location, refacturé comme d'habitude.", '', 'Merci ' + men + '.', cfg.host || '');
+    return L.join('\n').trim();
+  }
+
+  /* ── Points à vérifier ────────────────────────────────────────────────── */
+  function checks(all, cfg, today) {
+    const out = [], staff = cfg.staff || 'Saïd';
+    const add = (lvl, s, txt) => out.push({ lvl, id: s ? s.id : null, who: s ? s.display : '', txt });
+    all.filter(s => s.departure >= today).forEach(s => {
+      const nx = nextOf(all, s), soon = diffDays(today, s.arrival) <= (cfg.horizon || 30);
+
+      if (s.adults == null) add('warn', s, 'Composition non renseignée dans la fiche (adultes / enfants / bébés) : les messages affichent « ? ».');
+      else {
+        const p = s.adults + (s.children || 0);
+        if (p > (cfg.capacite || 10)) add('err', s, p + ' personnes hors bébés, au-delà de la capacité de ' + (cfg.capacite || 10) + '.');
+        if ((s.infants || 0) > 2) add('warn', s, s.infants + " bébés : le livret annonce jusqu'à deux nourrissons en berceau (1 lit inclus, le 2e à 400 MAD, au-delà à louer).");
+      }
+
+      if (nx) {
+        const full = diffDays(s.departure, nx.arrival) - 1;
+        if (full < 1) add('err', s, 'Aucun jour de battement avant ' + nx.display + ' : départ le ' + jLong(s.departure, true) + ', arrivée le ' + jLong(nx.arrival, true) + '.');
+        else if (full === 1) {
+          add('warn', s, 'Rotation serrée : une seule journée avant ' + nx.display + ' (le ' + jLong(addDays(s.departure, 1), true) +
+            '), linge de retour à ' + cfg.lingeRet + ', aucune marge.');
+          if (soon && parseHeure(s.ops.depart) == null) add('warn', s, "Heure de départ du groupe inconnue sur une rotation serrée : s'il reste l'après-midi, les serviettes de piscine ratent l'enlèvement de " + cfg.lingeEnl + '.');
+        }
+      }
+
+      if (soon) {
+        const a = arrivalStatus(s, cfg);
+        if (!s.ops.heure) add('warn', s, "Heure d'arrivée à la villa non renseignée.");
+        else if (a.h == null) add('warn', s, "Heure d'arrivée illisible : « " + s.ops.heure + ' » (écrire 15h30 ou 15:30).');
+        else if (a.pause) add('warn', s, 'Arrivée vers ' + fmtHeure(a.h) + ", pendant la pause de l'équipe : " + staff + " doit rester pour l'accueil.");
+        else if (a.late) add('warn', s, 'Arrivée vers ' + fmtHeure(a.h) + ", après les horaires de l'équipe : " + staff + ' doit rester.');
+        if (!s.ops.chambres) add('warn', s, 'Répartition des chambres non renseignée.');
+      }
+
+      if (needsChange(s, cfg)) {
+        const md = midChange(s);
+        if (cfg.jeux === 1) add('err', s, s.nights + ' nuits : changement de linge en cours de séjour impossible avec un seul jeu de draps.');
+        else if (soon && !cfg.jeux) add('warn', s, s.nights + ' nuits : changement de linge prévu le ' + jLong(md, true) +
+          ' — il faut un jeu de draps de rechange à la villa (nombre de jeux non renseigné dans les réglages).');
+      }
+
+      holidaysIn(s.arrival, s.departure, cfg).forEach(h => {
+        const meal = s.ops.repas.some(r => r.date === h.date && r.moment !== 'goûter');
+        add(meal || soon ? 'warn' : 'info', s, 'Le ' + jLong(h.date, true) + ' est férié (' + h.nom + ') : un repas ce jour-là est facturé au double par la cuisinière.' +
+          (meal ? ' Un repas est prévu ce jour-là.' : ''));
+      });
+
+      if (!s.livretSentAt) add('info', s, 'Aucun livret enregistré pour ce séjour.');
+      else if (!s.ops.petitdej && !s.ops.livretOk) {
+        const t = Date.parse(s.livretSentAt);
+        const items = [].concat(...RETRAITS_PETIT_DEJ.filter(r => t < Date.parse(r.at)).map(r => r.items));
+        if (items.length) {
+          const d = new Date(t);
+          add('warn', s, 'Livret enregistré le ' + d.getUTCDate() + ' ' + M[d.getUTCMonth()] + ' à ' + fmtHeure(d.getUTCHours() * 60 + d.getUTCMinutes()) +
+            ', avant le retrait de : ' + joinFr(items) + ". Le PDF envoyé l'annonce probablement — à vérifier, puis renvoyer le livret ou l'acheter pour ce groupe (champ « Petit-déjeuner »).");
+        }
+      }
+
+      s.ops.repas.forEach(r => {
+        if (!isDate(r.date) || r.date < s.arrival || r.date > s.departure) { add('err', s, 'Repas daté hors du séjour : ' + (r.date || '?') + '.'); return; }
+        const delai = r.moment === 'goûter' ? 1 : 2, reste = diffDays(today, r.date);
+        if (r.statut !== 'confirmé' && reste >= 0 && reste < delai)
+          add('warn', s, cap(r.moment || 'repas') + ' du ' + jLong(r.date, true) + ' pas encore confirmé, et le délai (' + (delai === 1 ? 'la veille' : '2 jours') + ') est dépassé.');
+      });
+    });
+    const rank = { err: 0, warn: 1, info: 2 };
+    return out.sort((a, b) => rank[a.lvl] - rank[b.lvl]);
+  }
+
+  function waLink(phone, text) {
+    const digits = String(phone || '').replace(/\(0\)/g, '').replace(/\D/g, '');
+    return digits ? 'https://wa.me/' + digits + '?text=' + encodeURIComponent(text) : null;
+  }
+
+  const PL = { defaultCfg, isFirm, buildStays, invalidRows, inWindow, saidMessages, leaMessage, checks, waLink,
+               parseHeure, fmtHeure, comp, holidaysIn, addDays, isDate };
+  root.PL = PL;
+})(this);
+</script>
+
+<script>
+(function () {
+  'use strict';
+  const SB = 'https://rcjhgilpmojohmrqzokx.supabase.co';
+  const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
+  const KEY = 'stafflo_planning_v1';
+  const PL = window.PL;
+  const $ = id => document.getElementById(id);
+  const el = (tag, attrs, kids) => {
+    const n = document.createElement(tag);
+    Object.entries(attrs || {}).forEach(([k, v]) => {
+      if (k === 'text') n.textContent = v; else if (k === 'class') n.className = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+    });
+    (kids || []).forEach(c => c && n.appendChild(c));
+    return n;
+  };
+
+  let JWT = null, ROWS = [];
+  let STORE = { cfg: PL.defaultCfg(), ops: {} };
+
+  /* ── Stockage local (navigateur seulement ; aucune écriture Supabase) ── */
+  function loadStore() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        STORE = { cfg: Object.assign(PL.defaultCfg(), s.cfg || {}), ops: s.ops || {} };
+      }
+    } catch (e) { /* stockage indisponible : la page marche sans */ }
+  }
+  let saveT = null;
+  function save() {
+    clearTimeout(saveT);
+    saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(STORE)); } catch (e) {} }, 300);
+  }
+  const ops = id => (STORE.ops[id] = STORE.ops[id] || {});
+
+  function localToday() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  /* ── Session : on lit celle de l'app (même origine), sans jamais l'écrire.
+     Expirée → connexion dédiée, qui ne touche pas à la session de l'app. ── */
+  function appSession() {
+    try {
+      const s = JSON.parse(localStorage.getItem('stafflo_session') || 'null');
+      if (s && s.access_token && (!s.expires_at || s.expires_at * 1000 > Date.now() + 60000)) return s;
+    } catch (e) {}
+    return null;
+  }
+
+  async function fetchRows() {
+    const today = localToday();
+    $('loadMsg').textContent = 'Lecture des fiches…';
+    // Le statut est filtré côté navigateur avec la règle exacte de l'app
+    // (isFirm) : un filtre serveur eq.confirmed raterait pending et les
+    // fiches anciennes sans statut.
+    const q = 'crm_clients?select=id,name,arrival,departure,guests,adults,children,infants,booking_status,livret:details->>livretSentAt' +
+      '&deleted_at=is.null&departure=gte.' + today + '&order=arrival.asc';
+    const r = await fetch(SB + '/rest/v1/' + q, { headers: { apikey: ANON, Authorization: 'Bearer ' + JWT } });
+    if (r.status === 401) { JWT = null; showLogin('Session expirée : reconnecte-toi.'); return; }
+    if (!r.ok) throw new Error('crm_clients → ' + r.status);
+    ROWS = (await r.json()).filter(PL.isFirm);
+    const bad = PL.invalidRows(ROWS).length;
+    $('loadMsg').textContent = ROWS.length + ' réservation' + (ROWS.length > 1 ? 's' : '') + ' confirmée' + (ROWS.length > 1 ? 's' : '') +
+      ' à venir' + (bad ? ' · ' + bad + ' ignorée' + (bad > 1 ? 's' : '') + ' (dates illisibles dans la fiche)' : '');
+    renderStays(); renderOut();
+  }
+
+  function showLogin(msg) {
+    $('app').classList.add('hidden'); $('loginSec').classList.remove('hidden');
+    $('loginMsg').className = 'msg' + (msg ? ' err' : ''); $('loginMsg').textContent = msg || '';
+  }
+  $('loginForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('loginBtn'), msg = $('loginMsg');
+    btn.disabled = true; msg.className = 'msg'; msg.textContent = 'Connexion…';
+    try {
+      const r = await fetch(SB + '/auth/v1/token?grant_type=password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', apikey: ANON },
+        body: JSON.stringify({ email: $('email').value.trim(), password: $('pw').value })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error_description || d.msg || d.error || 'échec');
+      JWT = d.access_token; $('who').textContent = d.user && d.user.email || '';
+      start();
+    } catch (err) { msg.className = 'msg err'; msg.textContent = '✗ ' + err.message; }
+    btn.disabled = false;
+  });
+
+  /* ── Rendu des séjours (formulaires) ─────────────────────────────────── */
+  function field(id, key, label, type, opts) {
+    const o = ops(id), wrap = el('div', { class: opts && opts.full ? 'full' : '' });
+    const inp = type === 'textarea' ? el('textarea', {}) : el('input', { type: type || 'text' });
+    inp.value = o[key] || '';
+    if (opts && opts.ph) inp.placeholder = opts.ph;
+    inp.addEventListener('input', () => { o[key] = inp.value; save(); renderOutSoon(); });
+    const lid = 'f_' + id + '_' + key; inp.id = lid;
+    wrap.appendChild(el('label', { for: lid, text: label })); wrap.appendChild(inp);
+    return wrap;
+  }
+  function mealRow(s, r, list) {
+    const row = el('div', { class: 'meal' });
+    const d = el('input', { type: 'date', min: s.arrival, max: s.departure, 'aria-label': 'Date' }); d.value = r.date || '';
+    const mo = el('select', { 'aria-label': 'Repas' });
+    ['brunch', 'déjeuner', 'dîner', 'goûter'].forEach(x => mo.appendChild(el('option', { value: x, text: x })));
+    mo.value = r.moment || 'dîner';
+    const h = el('input', { type: 'text', placeholder: 'heure', 'aria-label': 'Heure' }); h.value = r.heure || '';
+    const st = el('select', { 'aria-label': 'Statut' });
+    ['en attente', 'confirmé'].forEach(x => st.appendChild(el('option', { value: x, text: x })));
+    st.value = r.statut || 'en attente';
+    const me = el('input', { type: 'text', placeholder: 'menu', 'aria-label': 'Menu' }); me.value = r.menu || '';
+    const upd = () => { r.date = d.value; r.moment = mo.value; r.heure = h.value; r.statut = st.value; r.menu = me.value; save(); renderOutSoon(); };
+    [d, mo, h, st, me].forEach(x => x.addEventListener('input', upd));
+    const del = el('button', { type: 'button', 'aria-label': 'Retirer ce repas', text: '×', onclick: () => {
+      list.splice(list.indexOf(r), 1); save(); row.remove(); renderOutSoon(); } });
+    [d, mo, h, st, me, del].forEach(x => row.appendChild(x));
+    if (!r.moment) upd();
+    return row;
+  }
+  function renderStays() {
+    const box = $('stays'); box.textContent = '';
+    const all = PL.buildStays(ROWS, STORE.ops), win = PL.inWindow(all, $('from').value, $('to').value);
+    if (!win.length) { box.appendChild(el('p', { class: 'muted', text: 'Aucune réservation confirmée sur cette période.' })); return; }
+    win.forEach(s => {
+      const o = ops(s.id); o.repas = Array.isArray(o.repas) ? o.repas : [];
+      const card = el('div', { class: 'card' });
+      card.appendChild(el('h3', { text: s.name || '?' }));
+      const fact = el('p', { class: 'fact' });
+      fact.innerHTML = 'Fiche : <b></b> · <b></b> · livret <b></b>';
+      const bs = fact.querySelectorAll('b');
+      bs[0].textContent = s.arrival + ' → ' + s.departure + ' (' + s.nights + ' nuits)';
+      bs[1].textContent = PL.comp(s);
+      bs[2].textContent = s.livretSentAt ? s.livretSentAt.slice(0, 16).replace('T', ' ') : 'non enregistré';
+      card.appendChild(fact);
+      const g = el('div', { class: 'grid' });
+      g.appendChild(field(s.id, 'nom', 'Nom dans les messages', 'text', { ph: 'par défaut : ' + s.display }));
+      g.appendChild(field(s.id, 'precision', 'Précision (ex. 5 femmes)'));
+      g.appendChild(field(s.id, 'heure', 'Arrivée à la villa (heure)', 'text', { ph: 'ex. 15h30' }));
+      g.appendChild(field(s.id, 'depart', 'Départ du groupe (heure)', 'text', { ph: 'ex. 15h30' }));
+      g.appendChild(field(s.id, 'occasion', 'Occasion (phrase)', 'text', { full: true }));
+      g.appendChild(field(s.id, 'arrivee', 'Arrivée (vol, chauffeur…)', 'text', { full: true }));
+      g.appendChild(field(s.id, 'chambres', 'Chambres', 'text', { full: true }));
+      g.appendChild(field(s.id, 'transport', 'Transport', 'text', { full: true }));
+      g.appendChild(field(s.id, 'petitdej', 'Petit-déjeuner à acheter en plus', 'text', { full: true }));
+      const ckw = el('div', { class: 'full' }), ckid = 'f_' + s.id + '_livretOk';
+      const ckb = el('input', { type: 'checkbox', id: ckid, style: 'width:auto;margin-right:8px' });
+      ckb.checked = !!o.livretOk;
+      ckb.addEventListener('change', () => { o.livretOk = ckb.checked; save(); renderOutSoon(); });
+      const ckl = el('label', { for: ckid, style: 'display:flex;align-items:center;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)' });
+      ckl.appendChild(ckb); ckl.appendChild(document.createTextNode('Livret envoyé vérifié : rien à acheter en plus pour le petit-déjeuner'));
+      ckw.appendChild(ckl); g.appendChild(ckw);
+      g.appendChild(field(s.id, 'programme', 'Programme jour par jour (texte libre)', 'textarea', { full: true }));
+      g.appendChild(field(s.id, 'notes', 'Autres consignes', 'textarea', { full: true }));
+      card.appendChild(g);
+      card.appendChild(el('label', { text: 'Repas', style: 'margin-top:12px' }));
+      const ml = el('div');
+      o.repas.forEach(r => ml.appendChild(mealRow(s, r, o.repas)));
+      card.appendChild(ml);
+      card.appendChild(el('button', { type: 'button', class: 'ghost', text: '+ Ajouter un repas', onclick: () => {
+        const r = { date: s.arrival, moment: 'dîner', statut: 'en attente' }; o.repas.push(r); ml.appendChild(mealRow(s, r, o.repas)); save(); renderOutSoon(); } }));
+      box.appendChild(card);
+    });
+  }
+
+  /* ── Rendu des sorties ───────────────────────────────────────────────── */
+  async function copy(text, btn) {
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { const t = el('textarea'); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch (x) {} t.remove(); }
+    const was = btn.textContent; btn.textContent = 'Copié ✓'; setTimeout(() => { btn.textContent = was; }, 1500);
+  }
+  function outBlock(label, text, phone) {
+    const c = el('div', { class: 'card' });
+    c.appendChild(el('h3', { text: label }));
+    c.appendChild(el('pre', { class: 'out', text }));
+    const acts = el('div', { class: 'acts' });
+    const cb = el('button', { type: 'button', class: 'ghost', text: 'Copier' }); cb.addEventListener('click', () => copy(text, cb));
+    acts.appendChild(cb);
+    const wa = PL.waLink(phone, text);
+    if (wa) acts.appendChild(el('a', { class: 'btn', href: wa, target: '_blank', rel: 'noopener', text: 'Ouvrir dans WhatsApp' }));
+    else acts.appendChild(el('span', { class: 'muted', text: 'Numéro non renseigné dans les réglages : copie seulement.' }));
+    c.appendChild(acts);
+    return c;
+  }
+  let outT = null;
+  const renderOutSoon = () => { clearTimeout(outT); outT = setTimeout(renderOut, 200); };
+  function renderOut() {
+    const cfg = STORE.cfg, today = localToday();
+    const all = PL.buildStays(ROWS, STORE.ops), win = PL.inWindow(all, $('from').value, $('to').value);
+    document.querySelectorAll('.staffName').forEach(n => { n.textContent = cfg.staff || '?'; });
+    document.querySelectorAll('.menageName').forEach(n => { n.textContent = cfg.menage || '?'; });
+
+    const ck = $('checks'); ck.textContent = '';
+    const list = PL.checks(all, cfg, today);
+    const shown = list.filter(c => c.lvl !== 'info'), infos = list.filter(c => c.lvl === 'info');
+    if (!shown.length) ck.appendChild(el('p', { class: 'muted', text: 'Rien à signaler.' }));
+    shown.forEach(c => { const p = el('div', { class: 'chk ' + c.lvl }); p.appendChild(el('b', { text: c.who + ' — ' })); p.appendChild(document.createTextNode(c.txt)); ck.appendChild(p); });
+    if (infos.length) {
+      const d = el('details'); d.appendChild(el('summary', { text: infos.length + ' information' + (infos.length > 1 ? 's' : '') }));
+      infos.forEach(c => { const p = el('div', { class: 'chk info' }); p.appendChild(el('b', { text: c.who + ' — ' })); p.appendChild(document.createTextNode(c.txt)); d.appendChild(p); });
+      ck.appendChild(d);
+    }
+
+    const sd = $('said'); sd.textContent = '';
+    const msgs = PL.saidMessages(win, all, cfg);
+    if (!msgs.length) sd.appendChild(el('p', { class: 'muted', text: 'Aucun séjour sur la période.' }));
+    msgs.forEach(m => sd.appendChild(outBlock(m.label, m.text, cfg.staffPhone)));
+
+    const ld = $('lea'); ld.textContent = '';
+    const lt = PL.leaMessage(win, all, cfg, today);
+    if (lt) ld.appendChild(outBlock('Planning ' + (cfg.menage || ''), lt, cfg.menagePhone));
+  }
+
+  /* ── Réglages ───────────────────────────────────────────────────────── */
+  function renderCfg() {
+    const f = $('cfgForm'); f.textContent = '';
+    const c = STORE.cfg;
+    const inp = (key, label, type, full) => {
+      const w = el('div', { class: full ? 'full' : '' }), id = 'cfg_' + key;
+      const i = type === 'textarea' ? el('textarea', { id }) : el('input', { id, type: type || 'text' });
+      i.value = c[key] == null ? '' : c[key];
+      i.addEventListener('input', () => { c[key] = type === 'number' ? (i.value === '' ? null : +i.value) : i.value; save(); renderOutSoon(); });
+      w.appendChild(el('label', { for: id, text: label })); w.appendChild(i); f.appendChild(w);
+    };
+    inp('staff', 'Majordome'); inp('staffPhone', 'Son WhatsApp', 'tel'); inp('host', 'Signature');
+    inp('menage', 'Prestataire ménage / cuisinière'); inp('menagePhone', 'Son WhatsApp', 'tel');
+    const w = el('div'), sel = el('select', { id: 'cfg_jeux' });
+    [['', '? (non renseigné)'], ['1', '1'], ['2', '2'], ['3', '3 ou plus']].forEach(([v, t]) => sel.appendChild(el('option', { value: v, text: t })));
+    sel.value = c.jeux == null ? '' : String(Math.min(c.jeux, 3));
+    sel.addEventListener('input', () => { c.jeux = sel.value === '' ? null : +sel.value; save(); renderOutSoon(); });
+    w.appendChild(el('label', { for: 'cfg_jeux', text: 'Jeux de draps complets à la villa' })); w.appendChild(sel); f.appendChild(w);
+    inp('capacite', 'Capacité (hors bébés)', 'number'); inp('changeApres', 'Changement de linge à partir de (nuits)', 'number');
+    inp('lingeEnl', 'Enlèvement du linge'); inp('lingeRet', 'Retour du linge (lendemain)');
+    inp('debut', 'Début de journée'); inp('pauseDebut', 'Pause : début'); inp('pauseFin', 'Pause : fin'); inp('fin', 'Fin de journée');
+    inp('important', 'Le plus important du mois (facultatif)', 'textarea', true);
+    inp('rappels', 'Rappels pour tous les groupes (une ligne par rappel)', 'textarea', true);
+    inp('feriesExtra', 'Fêtes religieuses annoncées (une par ligne : 2027-03-10 Aïd al-Fitr)', 'textarea', true);
+  }
+
+  $('exportBtn').addEventListener('click', () => { $('io').value = JSON.stringify(STORE, null, 2); $('ioMsg').textContent = 'Saisie exportée ci-dessus.'; });
+  $('importBtn').addEventListener('click', () => {
+    try {
+      const d = JSON.parse($('io').value);
+      if (!d || typeof d !== 'object' || (!d.ops && !d.cfg)) throw new Error('il faut un objet avec « ops » et/ou « cfg »');
+      if (d.cfg) STORE.cfg = Object.assign(STORE.cfg, d.cfg);
+      if (d.ops) Object.keys(d.ops).forEach(k => { STORE.ops[k] = d.ops[k]; });
+      save(); renderCfg(); renderStays(); renderOut();
+      $('ioMsg').className = 'msg'; $('ioMsg').textContent = 'Importé : ' + Object.keys(d.ops || {}).length + ' séjour(s)' + (d.cfg ? ' + réglages' : '') + '.';
+    } catch (e) { $('ioMsg').className = 'msg err'; $('ioMsg').textContent = '✗ ' + e.message; }
+  });
+
+  function start() {
+    $('loginSec').classList.add('hidden'); $('app').classList.remove('hidden');
+    renderCfg();
+    fetchRows().catch(e => { $('loadMsg').textContent = '✗ ' + e.message; });
+  }
+
+  loadStore();
+  const today = localToday();
+  $('from').value = today; $('to').value = PL.addDays(today, 30);
+  ['from', 'to'].forEach(id => $(id).addEventListener('change', () => { renderStays(); renderOut(); }));
+  $('reload').addEventListener('click', () => fetchRows().catch(e => { $('loadMsg').textContent = '✗ ' + e.message; }));
+  const s = appSession();
+  if (s) { JWT = s.access_token; $('who').textContent = (s.user && s.user.email) || ''; start(); }
+  else showLogin('');
+})();
+</script>
+</body>
+</html>
