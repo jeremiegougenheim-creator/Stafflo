@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v484 (planning.html jamais mis en cache)
-const CACHE = 'stafflo-v484';
+// Stafflo Service Worker — v485 (livret : groupe famille/amis transmis)
+const CACHE = 'stafflo-v485';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

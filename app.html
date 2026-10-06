@@ -34332,6 +34332,29 @@ function startTour(){
     return (g > 0) ? g : null;
   }
 
+  /* Type de groupe du livret (salutation « et toute la famille » / « et tout
+     le groupe ») — regex uniquement, aucun appel LLM, jamais le nom du client.
+     'famille' si les textes parlent de famille sans jamais parler d'amis,
+     'amis' dans le cas inverse, null sinon (aucun signal, ou signaux
+     contradictoires : « deux familles d'amis »). null → le livret salue par le
+     prénom seul ; le menu Groupe du livret reste modifiable avant impression.
+     Pluriels uniquement côté amis : « un ami nous a conseillé » n'est pas un
+     groupe. Fonction isolée, testée par tests/evals-livret-group.mjs. */
+  function detectLivretGroup(input){
+    input = input || {};
+    var txt = [input.message, input.guestMessage, input.notes]
+      .filter(function(s){ return typeof s === 'string' && s; })
+      .join('\n').toLowerCase();
+    if (!txt) return null;
+    var B = '(^|[^a-zà-ÿ])', E = '(?![a-zà-ÿ])';
+    var FAM = new RegExp(B + '(familles?|family|families|familial|familiale|familiales)' + E);
+    var AMI = new RegExp(B + '(amis|amies|friends|copains|copines)' + E);
+    var f = FAM.test(txt), a = AMI.test(txt);
+    if (f && !a) return 'famille';
+    if (a && !f) return 'amis';
+    return null;
+  }
+
   /* Langue du livret — regex uniquement, aucun appel LLM, jamais le nom du
      client. Priorité : pays/drapeau (nat) > indicatif téléphonique > 1er
      message. Signaux absents ou contradictoires → bilingue ('bi'), jamais
@@ -34533,6 +34556,11 @@ function startTour(){
     if (pax) p.set('pax', String(pax));
     var msgs = (window._clientMessages && window._clientMessages[c.id]) || c.messages || null;
     p.set('lang', detectLivretLang({ nat: c.nat, phone: c.phone, message: firstLivretMessageText(msgs) }));
+    // Groupe famille / amis : seulement à partir de 3 personnes (ou pax
+    // inconnu) — « Bonjour Marc et toute la famille » n'a pas de sens à deux.
+    var grp = detectLivretGroup({ message: firstLivretMessageText(msgs),
+      guestMessage: c.details && c.details.guest_message, notes: c.notes });
+    if (grp && (!pax || pax >= 3)) p.set('groupe', grp);
     return 'livret.html?' + p.toString();
   }
 
