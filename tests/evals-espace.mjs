@@ -39,6 +39,11 @@ check('nuits calculées en code', /c\.n = c\.d - c\.a/.test(script));
 check('leads exclus', /FIRM_OUT = \['inquiry', 'lead', 'quoted'/.test(script));
 check('session partagée avec l’app', /SESSION_KEY = 'stafflo_session'/.test(script));
 check('noindex', esp.includes('<meta name="robots" content="noindex, nofollow">'));
+// v2 — messages Airbnb (email_inbox, rempli par gmail-sync)
+check('messages : seulement les non archivés', /archived_at=is\.null/.test(script));
+check('« Traité » archive (soft), jamais de suppression', /archived_at:/.test(script) && !/method:\s*'DELETE'/.test(script));
+check('ARIA voit les messages en attente', /msgsFor\(/.test(script));
+check('état de la synchro affiché (sync_runs)', /sync_runs\?select=finished_at,ok/.test(script));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 check('sw.js ne met pas espace.html en cache', sw.includes("url.includes('espace.html')"));
 

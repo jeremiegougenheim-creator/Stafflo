@@ -195,7 +195,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       fullApp: 'Ouvrir l’app complète',
       loginTitle: 'Connexion', loginSub: 'Le même compte que l’app Stafflo.', email: 'Email', password: 'Mot de passe', signin: 'Se connecter', loginErr: 'Email ou mot de passe incorrect.',
       loadErr: 'Impossible de charger les séjours.', retry: 'Réessayer',
-      notes: 'Notes', mealsTxt: 'Repas', none: '—'
+      notes: 'Notes', mealsTxt: 'Repas', none: '—',
+      inbox: 'À répondre', inboxNone: 'Aucun message client en attente.',
+      mtype: { message: 'Message', inquiry: 'Demande', request: 'Demande de réservation' },
+      replyAirbnb: 'Répondre sur Airbnb', draft: 'Brouillon ARIA', drafting: 'ARIA rédige…', done: 'Traité',
+      ago: function (h) { return h < 1 ? 'à l’instant' : h < 24 ? 'il y a ' + Math.round(h) + ' h' : 'il y a ' + Math.round(h / 24) + ' j'; },
+      syncAgo: function (m) { return 'Emails synchronisés ' + (m < 1 ? 'à l’instant' : 'il y a ' + m + ' min'); },
+      syncOld: 'Synchro emails en retard', sendSaid: 'Envoyer à Saïd', msgCheck: 'Message client',
+      inquiryHint: 'Demande Airbnb : sans réponse sous 24 h, elle expire.',
+      inboxHelp: 'Les emails Airbnb arrivent ici tout seuls, toutes les 10 minutes. Répondez dans Airbnb, puis touchez « Traité ».'
     },
     en: {
       tabs: { jour: 'Today', sejours: 'Stays', aria: 'ARIA', maison: 'House' },
@@ -229,13 +237,22 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       fullApp: 'Open the full app',
       loginTitle: 'Sign in', loginSub: 'The same account as the Stafflo app.', email: 'Email', password: 'Password', signin: 'Sign in', loginErr: 'Wrong email or password.',
       loadErr: 'Could not load the stays.', retry: 'Retry',
-      notes: 'Notes', mealsTxt: 'Meals', none: '—'
+      notes: 'Notes', mealsTxt: 'Meals', none: '—',
+      inbox: 'To answer', inboxNone: 'No guest message waiting.',
+      mtype: { message: 'Message', inquiry: 'Enquiry', request: 'Booking request' },
+      replyAirbnb: 'Reply on Airbnb', draft: 'ARIA draft', drafting: 'ARIA is writing…', done: 'Done',
+      ago: function (h) { return h < 1 ? 'just now' : h < 24 ? Math.round(h) + ' h ago' : Math.round(h / 24) + ' d ago'; },
+      syncAgo: function (m) { return 'Emails synced ' + (m < 1 ? 'just now' : m + ' min ago'); },
+      syncOld: 'Email sync is late', sendSaid: 'Send to Saïd', msgCheck: 'Guest message',
+      inquiryHint: 'Airbnb enquiry: with no reply within 24 h, it expires.',
+      inboxHelp: 'Airbnb emails arrive here on their own, every 10 minutes. Reply in Airbnb, then tap “Done”.'
     }
   };
 
   /* ── État ─────────────────────────────────────────────────────────── */
   var U = { tab: 'jour', lang: 'fr', open: {}, panel: {}, toast: '', toastErr: false, busy: false, loginErr: '' };
-  var D = { stays: [], loaded: false, online: navigator.onLine !== false, error: false, user: null };
+  var D = { stays: [], msgs: [], sync: null, loaded: false, online: navigator.onLine !== false, error: false, user: null };
+  var DR = {}; /* brouillons ARIA par message : { busy, text } */
   var A = { msgs: [], busy: false, draft: '' };
   try { var sl = localStorage.getItem(LANG_KEY); if (sl === 'en' || sl === 'fr') U.lang = sl; } catch (e) {}
   try { var tb = (location.hash || '').replace('#', ''); if (['jour', 'sejours', 'aria', 'maison'].indexOf(tb) > -1) U.tab = tb; } catch (e) {}
@@ -445,7 +462,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var FIELDS = 'id,name,nat,phone,arrival,departure,guests,adults,children,infants,price,source,booking_status,meals,notes,remarks,details,messages,staff_briefed_at,is_comp';
   function load() {
     D.error = false;
-    return api('crm_clients?select=' + FIELDS + '&deleted_at=is.null&order=arrival.asc').then(function (rows) {
+    var since = new Date(Date.now() - 10 * 86400000).toISOString();
+    return Promise.all([
+      api('crm_clients?select=' + FIELDS + '&deleted_at=is.null&order=arrival.asc'),
+      api('email_inbox?select=id,subject,received_at,client_id,extracted&from_email=ilike.*airbnb.com&archived_at=is.null&received_at=gte.' + encodeURIComponent(since) + '&order=received_at.desc&limit=80').catch(function () { return []; }),
+      api('sync_runs?select=finished_at,ok&order=id.desc&limit=1').catch(function () { return []; })
+    ]).then(function (res) {
+      var rows = res[0];
+      D.msgs = buildMsgs(res[1] || []);
+      D.sync = (res[2] || [])[0] || null;
       var t = todayNum();
       D.stays = (rows || []).filter(function (c) {
         if (FIRM_OUT.indexOf(String(c.booking_status || '').toLowerCase()) > -1) return false;
@@ -458,6 +483,66 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       if (String(e.message) === 'no_session') { D.user = null; D.loaded = true; return; }
       D.error = true; D.loaded = true; D.online = navigator.onLine !== false;
     }).then(render);
+  }
+  /* Un fil Airbnb = une ligne (le plus récent). Demandes > 24 h retirées :
+     sans réponse, Airbnb les fait expirer. Réactions (« Reacted 👍 ») ignorées. */
+  function buildMsgs(rows) {
+    var byKey = {}, out = [];
+    rows.forEach(function (r) {
+      var p = r.extracted && r.extracted.airbnb;
+      if (!p || ['message', 'inquiry', 'request'].indexOf(p.type) < 0) return;
+      var ageH = (Date.now() - new Date(r.received_at).getTime()) / 3600000;
+      if (p.type !== 'message' && ageH > 24) return;
+      var key = p.thread_id || r.id;
+      if (byKey[key]) { byKey[key].ids.push(r.id); return; }
+      var m = { id: r.id, ids: [r.id], type: p.type, thread: p.thread_id, client_id: r.client_id, at: r.received_at, ageH: ageH,
+        first: p.first_name || String(p.name || '').split(' ')[0] || '', checkin: p.checkin, checkout: p.checkout,
+        adults: p.adults, children: p.children, infants: p.infants, text: String(p.guest_message || '').trim() };
+      byKey[key] = m; out.push(m);
+    });
+    return out.filter(function (m) { return !/^Reacted\b/i.test(m.text); });
+  }
+  function msgsFor(c) { return D.msgs.filter(function (m) { return m.client_id && String(m.client_id) === String(c.id); }); }
+  function archiveMsg(m) {
+    U.busy = true; render();
+    return api('email_inbox?id=in.(' + m.ids.map(encodeURIComponent).join(',') + ')', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ archived_at: new Date().toISOString() })
+    }).then(function () { D.msgs = D.msgs.filter(function (x) { return x !== m; }); toast(L().saved); })
+      .catch(function () { toast(L().saveErr, true); }).finally(function () { U.busy = false; render(); });
+  }
+  function draftFor(m) {
+    if (DR[m.id] && DR[m.id].busy) return;
+    var c = m.client_id ? byId(m.client_id) : null, fr = U.lang !== 'en';
+    var ctx = c ? (c.name + ' · ' + fmtLongDay(c.a) + ' → ' + fmtLongDay(c.d) + ' · ' + L().nights(c.n) + (c.pax ? ' · ' + L().pax(c.pax) : ''))
+      : ((m.checkin ? m.checkin + ' → ' + m.checkout : '') + (m.adults != null ? ' · ' + L().composition(m.adults, m.children, m.infants) : ''));
+    var ask = (m.type === 'message'
+      ? 'Rédige la réponse Airbnb de ' + owner() + ' à ce message d’un client qui a réservé. Réponds précisément à ce qu’il demande, avec les faits de la fiche maison. Court, chaleureux, prêt à copier, dans la langue du client.'
+      : 'Rédige la réponse Airbnb de ' + owner() + ' à cette demande. Elle doit être commerciale : réponds d’abord à la question posée en mettant la villa en valeur (domaine, piscine, équipe, repas faits maison). Puis dis que c’est notre maison de famille, demande la composition du groupe (couples / personnes seules) et donne les règles de la maison ; la pré-approbation se fait une fois les règles acceptées. Dans la langue du client, prêt à copier.') +
+      '\n\nClient : ' + (m.first || '?') + (ctx ? ' · ' + ctx : '') + '\nMessage reçu :\n« ' + (m.text || m.subject || '') + ' »';
+    DR[m.id] = { busy: true, text: '' }; render();
+    fetch(PROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: fr ? 'write_fr' : 'write_en', system: ariaSystem(), user: ask, max_tokens: 900 }) })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (x) { DR[m.id] = { busy: false, text: x.ok && x.d && x.d.text ? String(x.d.text).trim() : L().ariaErr }; })
+      .catch(function () { DR[m.id] = { busy: false, text: L().ariaErr }; })
+      .finally(render);
+  }
+  function inboxItem(m, inStay) {
+    var l = L(), c = m.client_id ? byId(m.client_id) : null;
+    var who = (m.first || '?') + ' · ' + (l.mtype[m.type] || m.type) + ' · ' + l.ago(m.ageH);
+    var meta = c && !inStay ? c.name + ' · ' + fmtDay(c.a) + ' → ' + fmtDay(c.d)
+      : (!c && m.checkin ? fmtDay(dayNum(m.checkin)) + ' → ' + fmtDay(dayNum(m.checkout)) + (m.adults != null ? ' · ' + l.composition(m.adults, m.children, m.infants) : '') : '');
+    var dr = DR[m.id];
+    var h = '<div class="panel" style="background:#fff">' +
+      '<span class="ttl">' + esc(who) + '</span>' + (meta ? '<span class="sub">' + esc(meta) + '</span>' : '') +
+      (m.type !== 'message' ? '<span class="sub" style="color:var(--alert)">' + esc(l.inquiryHint) + '</span>' : '') +
+      (m.text ? '<p style="margin:0;font-size:14px;white-space:pre-line">« ' + esc(m.text.slice(0, 700)) + ' »</p>' : '') +
+      '<div class="row2">' +
+      (m.thread ? '<a class="btn ghost" href="https://www.airbnb.com/hosting/thread/' + esc(m.thread) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.replyAirbnb) + '</a>' : '') +
+      '<button type="button" class="btn gold" data-a="draft" data-v="' + esc(m.id) + '"' + (dr && dr.busy ? ' disabled' : '') + '><i class="ti ti-sparkles" aria-hidden="true"></i>' + esc(dr && dr.busy ? l.drafting : l.draft) + '</button>' +
+      '<button type="button" class="btn ghost" data-a="archive" data-v="' + esc(m.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' + esc(l.done) + '</button></div>';
+    if (dr && dr.text) h += '<textarea class="t" id="dr-' + esc(m.id) + '">' + esc(dr.text) + '</textarea><button type="button" class="btn green" data-a="copydraft" data-v="' + esc(m.id) + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>';
+    return h + '</div>';
   }
   function decorate(c) {
     c.a = dayNum(c.arrival); c.d = dayNum(c.departure); c.n = c.d - c.a;
@@ -480,6 +565,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     ];
   }
   function tone(c) {
+    if (msgsFor(c).length) return 'alert';
     var ck = checks(c);
     if (ck.some(function (x) { return x.late; })) return 'alert';
     if (ck.some(function (x) { return !x.done; })) return 'wait';
@@ -570,6 +656,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return lines.join('\n');
   }
   var waDigits = function (raw) { return String(raw || '').replace(/\(0\)/g, '').replace(/\D/g, ''); };
+  function saidWa() { var s = F.TEAM.filter(function (m) { return m.phone; })[0]; return s ? waDigits(s.phone) : ''; }
 
   /* ── ARIA ─────────────────────────────────────────────────────────── */
   function staysForAI() {
@@ -602,7 +689,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         '- A guest message is ready to copy, in the guest’s language, signed ' + owner() + '. A team brief is in French and simple.\n' +
         '- Meal prices are per service for the whole group, never per person.\n') +
       '\n' + (fr ? 'Aujourd’hui : ' : 'Today: ') + fmtLongDay(t) + '\n\n' + F.digest(fr ? 'fr' : 'en') +
-      '\n\n=== ' + (fr ? 'SÉJOURS À VENIR ET EN COURS' : 'UPCOMING AND CURRENT STAYS') + ' ===\n' + (staysForAI() || (fr ? '(aucun)' : '(none)'));
+      '\n\n=== ' + (fr ? 'SÉJOURS À VENIR ET EN COURS' : 'UPCOMING AND CURRENT STAYS') + ' ===\n' + (staysForAI() || (fr ? '(aucun)' : '(none)')) +
+      '\n\n=== ' + (fr ? 'MESSAGES AIRBNB NON TRAITÉS' : 'UNHANDLED AIRBNB MESSAGES') + ' ===\n' + (D.msgs.map(function (m) {
+        var c = m.client_id ? byId(m.client_id) : null;
+        return '- ' + (m.first || '?') + ' · ' + (TXT.fr.mtype[m.type] || m.type) + ' · ' + L().ago(m.ageH) + (c ? ' · séjour ' + c.name : (m.checkin ? ' · ' + m.checkin + ' → ' + m.checkout : '')) + ' : « ' + String(m.text || '').slice(0, 300) + ' »';
+      }).join('\n') || (fr ? '(aucun)' : '(none)'));
   }
   function ask(text) {
     text = String(text || '').trim();
@@ -633,7 +724,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var h = '<article class="stay ' + tone(c) + '"><button type="button" class="top" data-a="toggle" data-id="' + esc(c.id) + '" aria-expanded="' + open + '">' +
       '<span><span class="nm">' + esc(c.name) + '</span><br><span class="dt">' + esc(when) + '</span></span>' +
       '<span class="right">' + right + '<span class="sub">' + esc(c.pax ? l.pax(c.pax) : '?') + (c.source ? ' · ' + esc(c.source) : '') + '</span></span></button>';
-    h += '<div class="checks">' + ck.map(function (x) {
+    var cm = msgsFor(c);
+    h += '<div class="checks">' + (cm.length ? '<span class="check t-alert"><i class="ti ti-message-chatbot" aria-hidden="true"></i>' + esc(l.msgCheck) + ' · ' + esc(l.ago(cm[0].ageH)) + '</span>' : '') + ck.map(function (x) {
       var cls = x.done ? 't-go' : x.late ? 't-alert' : 't-wait';
       var label = l.ck[x.k] + (x.done ? '' : x.late ? ' · ' + l.ckLate : ' · ' + (x.due === t ? l.inDays(0) : l.ckDue(fmtDay(x.due))));
       return '<span class="check ' + cls + '"><i class="ti ti-' + (x.done ? 'check' : ICON[x.k]) + '" aria-hidden="true"></i>' + esc(label) + '</span>';
@@ -649,6 +741,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (String(c.meals || '').trim()) h += '<span class="sub"><b>' + esc(l.mealsTxt) + colon + '</b> ' + esc(flat(c.meals).slice(0, 300)) + '</span>';
     var notes = [c.notes, c.remarks].filter(function (x) { return x && String(x).trim(); }).map(flat).join(' · ');
     if (notes) h += '<span class="sub"><b>' + esc(l.notes) + colon + '</b> ' + esc(notes.slice(0, 300)) + '</span>';
+    msgsFor(c).forEach(function (m) { h += inboxItem(m, true); });
     var wa = waDigits(c.phone);
     h += '<div class="acts">' +
       '<a class="act" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener" title="' + esc(l.act.livret) + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</a>' +
@@ -670,6 +763,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         '<textarea class="t" id="tx-' + esc(c.id) + '">' + esc(txt) + '</textarea><div class="row2">' +
         '<button type="button" class="btn gold" data-a="copy" data-id="' + esc(c.id) + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
         (wa && pn !== 'brief' ? '<button type="button" class="btn ghost" data-a="sendwa" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.openWa) + '</button>' : '') +
+        (pn === 'brief' && saidWa() ? '<button type="button" class="btn ghost" data-a="sendsaid" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendSaid) + '</button>' : '') +
         (pn === 'brief' ? '<button type="button" class="btn ghost" data-a="briefdone" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' +
           esc(c.staff_briefed_at ? l.briefDone + fmtDay(dayNum(String(c.staff_briefed_at).slice(0, 10))) : l.markBrief) + '</button>' : '') +
         '</div>' + (!wa && pn !== 'brief' ? '<span class="sub">' + esc(l.noPhone) + '</span>' : '') + '</div>';
@@ -690,6 +784,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     h += '<div class="tiles"><div class="tile"><span class="l">' + esc(l.tUpcoming) + '</span><span class="v">' + up.length + '</span></div>' +
       '<div class="tile"><span class="l">' + esc(l.tNights) + '</span><span class="v">' + nightsMonth + '</span></div>' +
       '<div class="tile"><span class="l">' + esc(l.tNet) + '</span><span class="v" style="font-size:21px">' + esc(euro(net)) + '</span></div></div>';
+    var free = D.msgs.filter(function (m) { return !m.client_id || !byId(m.client_id); });
+    if (free.length) h += card('message-chatbot', l.inbox, '<span class="sub">' + esc(l.inboxHelp) + '</span>' + free.map(function (m) { return inboxItem(m, false); }).join(''), String(free.length));
     h += card('home', l.inStay, cur.length ? cur.map(function (c) { return stayCard(c, 'in'); }).join('') : '<p class="empty">' + esc(l.noStay) + '</p>');
     h += card('plane-arrival', l.next, next.length ? next.map(function (c) { return stayCard(c, 'next'); }).join('') :
       '<p class="empty">' + esc(l.noNext) + '</p><button type="button" class="btn ghost" data-a="tab" data-v="sejours">' + esc(l.seeAll) + '</button>', next.length ? String(next.length) : '');
@@ -751,14 +847,19 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     document.documentElement.lang = U.lang;
     document.getElementById('title').textContent = l.titles[U.tab];
     var td = fmtLongDay(t); document.getElementById('today').textContent = td.charAt(0).toUpperCase() + td.slice(1);
-    var nt = document.getElementById('net'); nt.textContent = D.online ? l.online : l.offline; nt.className = 'chip' + (D.online ? '' : ' off');
+    var nt = document.getElementById('net');
+    if (D.online && D.sync && D.sync.finished_at) {
+      var mins = Math.max(0, Math.round((Date.now() - new Date(D.sync.finished_at).getTime()) / 60000));
+      nt.textContent = mins > 40 || D.sync.ok === false ? l.syncOld : l.syncAgo(mins); nt.className = 'chip' + (mins > 40 || D.sync.ok === false ? ' off' : '');
+    } else { nt.textContent = D.online ? l.online : l.offline; nt.className = 'chip' + (D.online ? '' : ' off'); }
     [].forEach.call(document.querySelectorAll('.langsw button'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === U.lang)); });
     if (!F) { main.innerHTML = '<div class="card"><div class="b"><span class="err">villa-facts.js</span></div></div>'; return; }
     var draft = document.getElementById('ariaIn'); if (draft) A.draft = draft.value;
     var loggedOut = D.loaded && !D.user && !D.error;
     if (loggedOut) { main.innerHTML = viewLogin(); document.getElementById('tabs').innerHTML = ''; return; }
     main.innerHTML = '<div class="stack">' + (U.tab === 'jour' ? viewJour() : U.tab === 'sejours' ? viewSejours() : U.tab === 'aria' ? viewAria() : viewMaison()) + '</div>';
-    var late = D.stays.filter(function (c) { return c.d >= t && checks(c).some(function (x) { return x.late; }); }).length;
+    var late = D.stays.filter(function (c) { return c.d >= t && (msgsFor(c).length || checks(c).some(function (x) { return x.late; })); }).length +
+      D.msgs.filter(function (m) { return !m.client_id || !byId(m.client_id); }).length;
     document.getElementById('tabs').innerHTML = TABS.map(function (tb) {
       return '<button type="button" data-a="tab" data-v="' + tb[0] + '"' + (U.tab === tb[0] ? ' aria-current="page"' : '') + '><i class="ti ti-' + tb[1] + '" aria-hidden="true"></i>' + esc(l.tabs[tb[0]]) +
         (tb[0] === 'jour' && late ? '<em class="badge" aria-label="' + late + '">' + late + '</em>' : '') + '</button>';
@@ -785,6 +886,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'livret' && c) { setDetail(c, 'livretSentAt', c.details.livretSentAt ? null : new Date().toISOString()); }
     else if (a === 'briefdone' && c && !c.staff_briefed_at) { patch(c, { staff_briefed_at: new Date().toISOString() }); }
     else if (a === 'savephone' && c) { var ph = document.getElementById('ph-' + c.id); var val = ph ? ph.value.trim() : ''; if (waDigits(val).length >= 8) { U.panel[c.id] = ''; patch(c, { phone: val }); } else if (ph) ph.focus(); }
+    else if (a === 'draft') { var m1 = D.msgs.filter(function (x) { return x.id === v; })[0]; if (m1) draftFor(m1); }
+    else if (a === 'archive') { var m2 = D.msgs.filter(function (x) { return x.id === v; })[0]; if (m2) archiveMsg(m2); }
+    else if (a === 'copydraft') { var dt = document.getElementById('dr-' + v); if (dt) copyText(dt.value); }
+    else if (a === 'sendsaid' && c) { var tx3 = document.getElementById('tx-' + c.id); window.open('https://wa.me/' + saidWa() + '?text=' + encodeURIComponent(tx3 ? tx3.value : msgBrief(c)), '_blank', 'noopener'); }
     else if (a === 'reload') { D.loaded = false; render(); load(); }
     else if (a === 'chip') { var i = +v, ch = L().chips[i]; if (i === 3) { A.draft = ch + '\n\n'; render(); var ta = document.getElementById('ariaIn'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } } else ask(ch); }
     else if (a === 'ask') { var inp = document.getElementById('ariaIn'); ask(inp ? inp.value : ''); }
@@ -806,6 +911,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
 
   render();
   load();
+  setInterval(function () { if (document.visibilityState === 'visible' && D.user && !U.busy) load(); }, 5 * 60000);
 })();
 </script>
 </body>
