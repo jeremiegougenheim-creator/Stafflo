@@ -170,6 +170,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       inStay: 'En ce moment', next: 'Prochaines arrivées', departures: 'Départs', upcomingAll: 'Tous les séjours à venir',
       noStay: 'Personne à la villa en ce moment.', noNext: 'Aucune arrivée dans les 3 prochaines semaines.', seeAll: 'Voir tous les séjours',
       tUpcoming: 'À venir', tNights: 'Nuits ce mois', tNet: 'Net à venir',
+      recent: 'Partis récemment', noPayout: 'Versement Airbnb pas encore vu dans les emails',
       nights: function (n) { return n + (n > 1 ? ' nuits' : ' nuit'); },
       pax: function (n) { return n + ' pers.'; },
       inDays: function (n) { return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : 'dans ' + n + ' jours'; },
@@ -181,6 +182,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       copy: 'Copier', copied: 'Copié', openWa: 'Ouvrir WhatsApp', close: 'Fermer',
       markLivret: 'Marquer le livret envoyé', unmarkLivret: 'Livret pas encore envoyé',
       markBrief: 'Marquer le brief envoyé', briefDone: 'Brief envoyé le ',
+      payout: function (amt, by) { return 'Versement Airbnb ' + amt + ' envoyé' + (by ? ' · sur le compte vers le ' + by : ''); },
       livretDone: 'Livret envoyé le ', saved: 'Enregistré', saveErr: 'Enregistrement impossible — réessayez',
       phonePh: '+33 6 12 34 56 78', savePhone: 'Enregistrer le numéro', noPhone: 'Pas de numéro : copiez le message et envoyez-le depuis Airbnb.',
       composition: function (a, k, i) { var p = []; if (a) p.push(a + (a > 1 ? ' adultes' : ' adulte')); if (k) p.push(k + (k > 1 ? ' enfants' : ' enfant')); if (i) p.push(i + (i > 1 ? ' bébés' : ' bébé')); return p.join(', '); },
@@ -212,6 +214,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       inStay: 'Right now', next: 'Next arrivals', departures: 'Departures', upcomingAll: 'All upcoming stays',
       noStay: 'Nobody at the villa right now.', noNext: 'No arrival in the next 3 weeks.', seeAll: 'See all stays',
       tUpcoming: 'Upcoming', tNights: 'Nights this month', tNet: 'Net to come',
+      recent: 'Recently left', noPayout: 'Airbnb payout not seen in emails yet',
       nights: function (n) { return n + (n > 1 ? ' nights' : ' night'); },
       pax: function (n) { return n + (n > 1 ? ' guests' : ' guest'); },
       inDays: function (n) { return n === 0 ? 'today' : n === 1 ? 'tomorrow' : 'in ' + n + ' days'; },
@@ -223,6 +226,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       copy: 'Copy', copied: 'Copied', openWa: 'Open WhatsApp', close: 'Close',
       markLivret: 'Mark guide as sent', unmarkLivret: 'Guide not sent yet',
       markBrief: 'Mark brief as sent', briefDone: 'Brief sent on ',
+      payout: function (amt, by) { return 'Airbnb payout ' + amt + ' sent' + (by ? ' · due in the bank by ' + by : ''); },
       livretDone: 'Guide sent on ', saved: 'Saved', saveErr: 'Could not save — try again',
       phonePh: '+44 7700 900123', savePhone: 'Save number', noPhone: 'No number: copy the message and send it from Airbnb.',
       composition: function (a, k, i) { var p = []; if (a) p.push(a + (a > 1 ? ' adults' : ' adult')); if (k) p.push(k + (k > 1 ? ' children' : ' child')); if (i) p.push(i + (i > 1 ? ' infants' : ' infant')); return p.join(', '); },
@@ -251,7 +255,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
 
   /* ── État ─────────────────────────────────────────────────────────── */
   var U = { tab: 'jour', lang: 'fr', open: {}, panel: {}, toast: '', toastErr: false, busy: false, loginErr: '' };
-  var D = { stays: [], msgs: [], sync: null, loaded: false, online: navigator.onLine !== false, error: false, user: null };
+  var D = { stays: [], past: [], msgs: [], sync: null, loaded: false, online: navigator.onLine !== false, error: false, user: null };
   var DR = {}; /* brouillons ARIA par message : { busy, text } */
   var A = { msgs: [], busy: false, draft: '' };
   try { var sl = localStorage.getItem(LANG_KEY); if (sl === 'en' || sl === 'fr') U.lang = sl; } catch (e) {}
@@ -477,6 +481,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         var a = dayNum(c.arrival), d = dayNum(c.departure);
         return a != null && d != null && d > a && d >= t - 1;
       }).map(decorate);
+      // Séjours terminés (45 j) : nuits du mois et suivi des versements.
+      D.past = (rows || []).filter(function (c) {
+        if (FIRM_OUT.indexOf(String(c.booking_status || '').toLowerCase()) > -1) return false;
+        var a = dayNum(c.arrival), d = dayNum(c.departure);
+        return a != null && d != null && d > a && d < t - 1 && d >= t - 45;
+      }).map(decorate).sort(function (x, y) { return y.d - x.d; });
       D.loaded = true; D.online = true;
       var s = readSession(); D.user = s && s.user;
     }).catch(function (e) {
@@ -669,6 +679,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         ' · ' + L().nights(c.n) + ' · ' + (c.pax ? L().pax(c.pax) : (fr ? 'nombre inconnu' : 'count unknown')) +
         (L().composition(c.ad, c.ch, c.inf) ? ' (' + L().composition(c.ad, c.ch, c.inf) + ')' : '') +
         ' · ' + (c.source || '?') + (c.price ? ' · net ' + Math.round(c.price) + ' €' : '') +
+        (payoutLines(c).length ? ' · ' + payoutLines(c).join(' ; ') : '') +
         ' · ' + (fr ? 'tél. ' : 'phone ') + st('phone') + ' · ' + (fr ? 'livret envoyé ' : 'guide sent ') + st('livret') +
         ' · ' + (fr ? 'repas reçus ' : 'meals received ') + st('meals') + ' · ' + (fr ? 'brief équipe ' : 'team brief ') + st('brief') +
         (String(c.meals || '').trim() ? ' · ' + (fr ? 'repas : ' : 'meals: ') + flat(c.meals).slice(0, 200) : '') +
@@ -733,6 +744,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (open) h += stayDetail(c);
     return h + '</article>';
   }
+  /* Versements Airbnb relevés par la synchro serveur (details.payouts). */
+  function payoutsOf(c) { return Array.isArray(c.details.payouts) ? c.details.payouts.filter(function (x) { return x && x.amount_eur != null; }) : []; }
+  function payoutLines(c) {
+    return payoutsOf(c).map(function (x) { return L().payout(euro(x.amount_eur), x.expected_by ? fmtDay(dayNum(x.expected_by)) : ''); });
+  }
   function stayDetail(c) {
     var l = L(), pn = U.panel[c.id] || '', h = '';
     var comp = l.composition(c.ad, c.ch, c.inf);
@@ -741,6 +757,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (String(c.meals || '').trim()) h += '<span class="sub"><b>' + esc(l.mealsTxt) + colon + '</b> ' + esc(flat(c.meals).slice(0, 300)) + '</span>';
     var notes = [c.notes, c.remarks].filter(function (x) { return x && String(x).trim(); }).map(flat).join(' · ');
     if (notes) h += '<span class="sub"><b>' + esc(l.notes) + colon + '</b> ' + esc(notes.slice(0, 300)) + '</span>';
+    payoutLines(c).forEach(function (x) { h += '<span class="sub" style="color:var(--go)"><i class="ti ti-cash" aria-hidden="true"></i> ' + esc(x) + '</span>'; });
     msgsFor(c).forEach(function (m) { h += inboxItem(m, true); });
     var wa = waDigits(c.phone);
     h += '<div class="acts">' +
@@ -779,7 +796,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var deps = D.stays.filter(function (c) { return c.d === t || c.d === t + 1; });
     var up = D.stays.filter(function (c) { return c.a >= t; });
     var m0 = new Date(), mStart = Date.UTC(m0.getFullYear(), m0.getMonth(), 1) / 86400000, mEnd = Date.UTC(m0.getFullYear(), m0.getMonth() + 1, 1) / 86400000;
-    var nightsMonth = D.stays.reduce(function (s, c) { return s + Math.max(0, Math.min(c.d, mEnd) - Math.max(c.a, mStart)); }, 0);
+    var nightsMonth = D.stays.concat(D.past || []).reduce(function (s, c) { return s + Math.max(0, Math.min(c.d, mEnd) - Math.max(c.a, mStart)); }, 0);
     var net = up.reduce(function (s, c) { return s + (c.is_comp ? 0 : (+c.price || 0)); }, 0);
     h += '<div class="tiles"><div class="tile"><span class="l">' + esc(l.tUpcoming) + '</span><span class="v">' + up.length + '</span></div>' +
       '<div class="tile"><span class="l">' + esc(l.tNights) + '</span><span class="v">' + nightsMonth + '</span></div>' +
@@ -798,7 +815,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var l = L(), t = todayNum();
     if (!D.loaded) return '<div class="card"><div class="b"><span class="sub">' + esc(l.loading) + '</span></div></div>';
     var list = D.stays.filter(function (c) { return c.d >= t; });
-    return card('calendar-event', l.upcomingAll, list.length ? list.map(function (c) { return stayCard(c, c.a <= t ? 'in' : 'next'); }).join('') : '<p class="empty">' + esc(l.noNext) + '</p>', list.length ? String(list.length) : '');
+    var h = card('calendar-event', l.upcomingAll, list.length ? list.map(function (c) { return stayCard(c, c.a <= t ? 'in' : 'next'); }).join('') : '<p class="empty">' + esc(l.noNext) + '</p>', list.length ? String(list.length) : '');
+    var past = (D.past || []).filter(function (c) { return c.d >= t - 30; });
+    if (past.length) h += card('history', l.recent, past.map(function (c) {
+      var pl = payoutLines(c), airbnb = /airbnb/i.test(String(c.source || ''));
+      var st = pl.length ? '<span class="sub" style="color:var(--go)">' + esc(pl.join(' · ')) + '</span>'
+        : (airbnb && !c.is_comp ? '<span class="sub" style="color:var(--wait)">' + esc(l.noPayout) + '</span>' : '');
+      return '<div class="line" style="flex-direction:column;align-items:flex-start;gap:2px"><span><b>' + esc(c.name) + '</b> · ' + esc(fmtDay(c.a) + ' → ' + fmtDay(c.d)) +
+        (c.price ? ' · ' + esc(euro(+c.price)) : '') + '</span>' + st + '</div>';
+    }).join(''), String(past.length));
+    return h;
   }
   function viewAria() {
     var l = L(), h = '<div class="aria">';
