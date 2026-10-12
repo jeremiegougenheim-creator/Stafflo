@@ -199,3 +199,12 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 - `sw.js` ne met jamais `villa-facts.js` en cache : un changement atteint ARIA au chargement suivant.
 - Garde-fou : `node tests/evals-fiche-maison.mjs` (résumé à jour, injection, réponses types, pas de retour des copies figées). Le livret doit rendre **à l'identique** après tout déplacement de données.
 
+
+## 14. Synchronisation Gmail → CRM côté serveur (`gmail-sync`) et Espace Stafflo
+
+- **`supabase/functions/gmail-sync`** (edge function, `verify_jwt` off, protégée par l'en-tête `x-sync-key` vérifié en base par `gmail_sync_key_ok()` contre le secret Vault `gmail_sync_key`). Lit la boîte de la villa avec le jeton déjà stocké dans `villa_settings.email_connection` (scope `gmail.readonly` : **aucun envoi possible**).
+- **Cron** (pg_cron + pg_net) : `gmail-sync-10min` (`*/10`, emails Airbnb des 3 derniers jours → `email_inbox`, `source = 'gmail_sync'`) et `gmail-reparse-30min` (`5,35`, re-parse les lignes insérées par l'app). Chaque passage écrit une ligne dans `sync_runs` (lisible par le propriétaire, RLS).
+- **Parseur regex uniquement** (`parseAirbnb`). Un champ absent du texte reste vide. Garde-fou : `node tests/evals-gmail-sync.mjs`.
+- **Rapprochement strict** (`findStay`) : code HM… → fil Airbnb → dates exactes avec un seul séjour → (rappel) nom complet exact. Sinon rien n'est relié. Une confirmation sans séjour crée le séjour (`details.origin = 'gmail_sync'`, `pending: ['price']` si pas de versement). Une annulation n'agit que sur code exact. Ne remplit que les champs vides, ne supprime jamais.
+- **Espace Stafflo** (`espace.html`, noindex, jamais en cache) : poste de pilotage simple sur la même session que l'app. Jour / Séjours / ARIA / Maison, FR/EN. Lit `crm_clients`, `email_inbox` (non archivés), `sync_runs`. « Traité » = `archived_at` (soft). Aucun fait de la villa en dur : tout vient de `villa-facts.js`. Garde-fou : `node tests/evals-espace.mjs`.
+- Claude Code reste en lecture seule sur la base : les migrations, cron et secrets sont gérés par Claude (claude.ai).
