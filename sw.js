@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v490 (suppressions douces : client_context, chat_history, prestataires)
-const CACHE = 'stafflo-v490';
+// Stafflo Service Worker — v491 (bouton vols en direct : ReferenceError corrigée)
+const CACHE = 'stafflo-v491';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
