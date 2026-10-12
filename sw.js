@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v489 (IA : plus d'appel direct hors UE depuis le navigateur)
-const CACHE = 'stafflo-v489';
+// Stafflo Service Worker — v490 (suppressions douces : client_context, chat_history, prestataires)
+const CACHE = 'stafflo-v490';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

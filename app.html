@@ -15751,7 +15751,7 @@ async function _prewarmAriaCache(clientList) {
 
   // Batch fetch client_context (prefs, allergies, dietary)
   try {
-    var r1 = await fetch(url + '/rest/v1/client_context?client_id=in.(' + ids.join(',') + ')&order=category.asc', { headers: hdrs });
+    var r1 = await fetch(url + '/rest/v1/client_context?client_id=in.(' + ids.join(',') + ')&deleted_at=is.null&order=category.asc', { headers: hdrs });
     if (r1.ok) {
       var ccRows = await r1.json();
       ccRows.forEach(function(row){
@@ -17253,7 +17253,7 @@ async function loadClientContext(clientId) {
   var cfg = getCfg();
   var key = cfg.sbKey || SB_ANON;
   try {
-    var r = await fetch(SB_URL + '/rest/v1/client_context?client_id=eq.' + clientId + '&order=category.asc,key.asc', {
+    var r = await fetch(SB_URL + '/rest/v1/client_context?client_id=eq.' + clientId + '&deleted_at=is.null&order=category.asc,key.asc', {
       headers: { apikey: key, Authorization: 'Bearer ' + key }
     });
     if (!r.ok) return [];
@@ -17332,7 +17332,8 @@ async function saveClientContext(clientId, items) {
       key:       (item.key || '').replace(/\s+/g,'_').toLowerCase(),
       value:     String(item.value || '').slice(0, 500),
       source:    item.source || 'chat',
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      deleted_at: null
     };
   }).filter(function(i) { return i.key && i.value; }); // skip empty
 
@@ -17467,9 +17468,11 @@ async function deleteContextItem(clientId, key) {
   var cfg = getCfg();
   var sbKey = cfg.sbKey || SB_ANON;
   try {
+    // v490 — suppression douce (deleted_at), jamais définitive.
     await fetch(SB_URL + '/rest/v1/client_context?client_id=eq.' + clientId + '&key=eq.' + encodeURIComponent(key), {
-      method: 'DELETE',
-      headers: { apikey: sbKey, Authorization: 'Bearer ' + sbKey }
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', apikey: sbKey, Authorization: 'Bearer ' + sbKey, Prefer: 'return=minimal' },
+      body: JSON.stringify({ deleted_at: new Date().toISOString() })
     });
     // Remove the row from UI
     var row = document.querySelector('.ctx-row[data-cid="' + clientId + '"][data-key="' + key + '"]');
@@ -17807,7 +17810,7 @@ async function loadChatHistory(options) {
   var cfg = getCfg();
   var key = cfg.sbKey || SB_ANON;
   var limit = options.limit || 30;
-  var url = SB_URL + '/rest/v1/chat_history?order=created_at.desc&limit=' + limit;
+  var url = SB_URL + '/rest/v1/chat_history?deleted_at=is.null&order=created_at.desc&limit=' + limit;
   if (options.clientId) url += '&client_id=eq.' + options.clientId;
   if (options.sessionOnly) url += '&session_id=eq.' + _chatSessionId;
   try {
@@ -17853,7 +17856,8 @@ async function deleteChatHistory(clientId) {
   if (clientId) url += '?client_id=eq.' + clientId;
   else url += '?session_id=eq.' + _chatSessionId;
   try {
-    await fetch(url, { method: 'DELETE', headers: { apikey: key, Authorization: 'Bearer ' + key } });
+    // v490 — effacer la conversation = la masquer (deleted_at), jamais de suppression définitive.
+    await fetch(url + (url.indexOf('?') > -1 ? '&' : '?') + 'deleted_at=is.null', { method: 'PATCH', headers: { 'Content-Type': 'application/json', apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' }, body: JSON.stringify({ deleted_at: new Date().toISOString() }) });
   } catch(e) {}
 }
 
@@ -20881,7 +20885,7 @@ async function fetchPrestataires() {
   if (_prestaCache && (now - _prestaCache.ts) < 3600000) return _prestaCache.data;
   try {
     var r = await fetch(
-      SB_URL + '/rest/v1/prestataires?select=name,type,phone,email,contact_channel,notes,share_with_guests&order=created_at.asc',
+      SB_URL + '/rest/v1/prestataires?select=id,name,type,phone,email,contact_channel,notes,share_with_guests&deleted_at=is.null&order=created_at.asc',
       { headers: authHeaders() }
     );
     if (!r.ok) return [];
@@ -21053,9 +21057,11 @@ async function deletePresta(id) {
   var fr2 = lang === 'fr';
   if (!confirm(fr2?'Supprimer ce prestataire ?':'Delete this provider?')) return;
   try {
+    // v490 — suppression douce (deleted_at), jamais définitive.
     var r = await fetch(SB_URL + '/rest/v1/prestataires?id=eq.' + encodeURIComponent(id), {
-      method: 'DELETE',
-      headers: authHeaders()
+      method: 'PATCH',
+      headers: Object.assign({}, authHeaders(), { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({ deleted_at: new Date().toISOString() })
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     _prestaCache = null;
@@ -25975,7 +25981,7 @@ async function loadAriaHistorySession(sessionId) {
   try {
     var cfg = (typeof getCfg === 'function') ? getCfg() : {};
     var key = (cfg.sbKey) || (typeof SB_ANON !== 'undefined' ? SB_ANON : '');
-    var url = SB_URL + '/rest/v1/chat_history?session_id=eq.' + encodeURIComponent(sessionId) + '&order=created_at.asc&limit=100';
+    var url = SB_URL + '/rest/v1/chat_history?session_id=eq.' + encodeURIComponent(sessionId) + '&deleted_at=is.null&order=created_at.asc&limit=100';
     var r = await fetch(url, { headers: { apikey: key, Authorization: 'Bearer ' + key } });
     if (!r.ok) return;
     var rows = await r.json();
@@ -30440,7 +30446,8 @@ window.addEventListener('DOMContentLoaded', function() {
             // Tente delete Supabase
             try {
               var cfg = getCfg(); var key = cfg.sbKey || SB_ANON;
-              fetch(SB_URL + '/rest/v1/crm_clients?id=eq.'+id, { method:'DELETE', headers:{ apikey:key, Authorization:'Bearer '+key } }).catch(function(){});
+              // v490 — suppression douce, comme la corbeille (jamais définitive).
+              fetch(SB_URL + '/rest/v1/crm_clients?id=eq.'+id, { method:'PATCH', headers:{ 'Content-Type':'application/json', apikey:key, Authorization:'Bearer '+key, Prefer:'return=minimal' }, body: JSON.stringify({ deleted_at: new Date().toISOString() }) }).catch(function(){});
             } catch(e){}
             toast(f?'✗ Annulé':'✗ Undone');
           }
