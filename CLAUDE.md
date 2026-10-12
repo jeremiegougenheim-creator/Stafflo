@@ -16,7 +16,8 @@
 - **Icons** : Tabler Icons via webfont, centralisés via `iconFor()`
 - **Typographie** : Cormorant Garamond (titres, voix ARIA) + Inter (UI)
 - **Palette** : cream `#FAF6EE`, dark green `#0F2318`, mid green `#1D4D3A`, gold `#C9963A`, gold soft `#E5C77A`
-- **Villa de test** : Villa DarJ Marrakech. Staff : Said (majordome), Faiza (chef), Bouchra (housekeeping).
+- **Villa de test** : Villa DarJ Marrakech. Équipe : Saïd (majordome), Bouchra (ménage), Léa (prestataire repas, envoie la cuisinière). Faiza ne travaille plus à la villa depuis septembre 2026.
+- **Fiche maison** : `villa-facts.js` — voir §13.
 
 ---
 
@@ -188,3 +189,13 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 
 - **Gmail OAuth** : Implicit flow → tokens expirent ~1h, daily reconnect nécessaire. Upgrade vers Authorization Code flow scopé pour un patch séparé, pas dans le pivot ARIA-first.
 - **`deleted_at`** : pas encore d'historique soft-delete dans Supabase. Ne pas ajouter sans demande.
+
+## 13. Fiche maison — `villa-facts.js` (source unique des faits de la villa)
+
+- Prix des repas, équipe, horaires, règles, chambres, menus, alentours : **uniquement** dans `villa-facts.js`, en paires `[fr, en]`. Le livret (`livret.html`) et l'app (`app.html`) le lisent tous les deux.
+- **Ne jamais recopier un fait en dur dans app.html** (prompt, modèle de message, libellé). C'est ce qui avait figé « Faiza », « 300 MAD par personne » et « la Palmeraie » dans les réponses d'ARIA pendant des mois.
+- Côté app : `villaFactsActive()` (Villa Dar J seulement, hors démo, coupe-circuit `localStorage.stafflo_facts_ai = 'off'`), `villaFactsForAI(lang)`, `villaStaffNames()`, `villaTeamLine(lang)`.
+- Un wrapper `window.fetch` ajoute le résumé de la fiche (`VILLA_FACTS.digest(lang)`) à toute requête ai-proxy de **rédaction** (`write_*`, `chat_*`, `reason`, `brief`). **Jamais aux extractions** (`extract`, `fast_classify`, `vision`…) : un prix de la villa ne doit pas devenir une donnée client.
+- `sw.js` ne met jamais `villa-facts.js` en cache : un changement atteint ARIA au chargement suivant.
+- Garde-fou : `node tests/evals-fiche-maison.mjs` (résumé à jour, injection, réponses types, pas de retour des copies figées). Le livret doit rendre **à l'identique** après tout déplacement de données.
+

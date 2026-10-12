@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v486 (fiche maison : villa-facts.js, source unique livret + ARIA)
-const CACHE = 'stafflo-v486';
+// Stafflo Service Worker — v487 (ARIA lit la fiche maison ; réponses types sans faits figés)
+const CACHE = 'stafflo-v487';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

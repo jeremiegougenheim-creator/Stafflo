@@ -28,6 +28,9 @@
 ═══════════════════════════════════════════════════════════════════
 -->
 <meta charset="UTF-8">
+<!-- Fiche maison (source unique des faits de la villa, partagée avec livret.html).
+     Chargée avant tout : ARIA et les réponses types la lisent via villaFactsActive(). -->
+<script src="villa-facts.js"></script>
 <script>
 /* garde-fou mono-domaine : toute visite sur github.io est renvoyée sur stafflo.app,
    en préservant le chemin, les query params (?demo=1) et le hash. */
@@ -4766,7 +4769,7 @@ window.renderSoloTurnoverCard = function(){
     } else if (current) {
       ctx = { phase:'stay', guest:current };
       items = [
-        { k:'pool_check', label: FR?'Piscine 28°C':'Pool 28°C', urgent:false },
+        { k:'pool_check', label: FR?'Piscine propre':'Pool clean', urgent:false },
         { k:'breakfast', label: FR?'Petit-déj confirmé':'Breakfast confirmed', urgent:false },
         { k:'midstay_msg', label: FR?'Check-in mi-séjour':'Mid-stay check-in', urgent:true },
         { k:'chef_menu', label: FR?'Menu chef du soir':'Tonight chef menu', urgent:false },
@@ -4776,7 +4779,7 @@ window.renderSoloTurnoverCard = function(){
     } else if (nextArrival && daysToArr !== null && daysToArr <= 3) {
       ctx = { phase:'preArrival', guest:nextArrival };
       items = [
-        { k:'staff_brief', label: FR?'Briefer Said + Faiza':'Brief Said + Faiza', urgent: daysToArr<=1 },
+        { k:'staff_brief', label: FR?'Briefer l\'équipe':'Brief the team', urgent: daysToArr<=1 },
         { k:'groceries', label: FR?'Courses + fleurs':'Groceries + flowers', urgent: daysToArr<=1 },
         { k:'rooms_ready', label: FR?'Chambres prêtes':'Rooms ready', urgent: daysToArr<=1 },
         { k:'driver_conf', label: FR?'Chauffeur confirmé':'Driver confirmed', urgent:false },
@@ -7598,6 +7601,75 @@ const STAFFLO_PROXY = 'https://rcjhgilpmojohmrqzokx.supabase.co/functions/v1/ai-
 // Optional shared secret — only enforced if PROXY_SECRET is set in Edge Function env.
 // When unset on the server, the header is just ignored. Safe to keep here.
 const STAFFLO_PROXY_SECRET = '';
+// ════════════════════════════════════════════════════════════════════════
+// FICHE MAISON → ARIA (villa-facts.js)
+// ════════════════════════════════════════════════════════════════════════
+// Les faits de la villa (prix des repas, équipe, horaires, règles, chambres)
+// vivent dans villa-facts.js, le même fichier que le livret. Avant, l'app en
+// gardait des copies figées (Faiza, « 300 MAD par personne », « la Palmeraie »)
+// et ARIA répondait faux. Ici, un seul branchement :
+//   · toute requête ai-proxy de RÉDACTION (write_*, chat_*, reason, brief)
+//     reçoit le résumé de la fiche ; les extractions (extract, fast_classify,
+//     vision…) ne le reçoivent JAMAIS — un prix de la villa ne doit pas
+//     devenir une donnée client ;
+//   · villaStaffNames() / villaTeamLine() remplacent les listes d'équipe en dur.
+// Actif seulement pour la Villa Dar J (le fichier ne décrit qu'elle), hors démo.
+// Coupe-circuit sans redéploiement : localStorage.stafflo_facts_ai = 'off'.
+function villaFactsActive() {
+  try {
+    if (!window.VILLA_FACTS || typeof window.VILLA_FACTS.digest !== 'function') return false;
+    if (localStorage.getItem('stafflo_facts_ai') === 'off') return false;
+    if (typeof STAFFLO_AUTH !== 'undefined' && STAFFLO_AUTH && STAFFLO_AUTH.mode === 'demo') return false;
+    var c = (typeof getCfg === 'function') ? getCfg() : {};
+    return /dar\s*-?\s*j\b/i.test(String(c.villa || ''));
+  } catch (e) { return false; }
+}
+function villaFactsForAI(lng) {
+  return villaFactsActive() ? window.VILLA_FACTS.digest(lng === 'en' ? 'en' : 'fr') : '';
+}
+// Prénoms de l'équipe pour les briefs et la reconnaissance des messages staff.
+// Fiche maison d'abord ; sinon null → l'appelant garde sa logique cfg.staff.
+function villaStaffNames() {
+  if (!villaFactsActive()) return null;
+  return window.VILLA_FACTS.TEAM.filter(function (m) { return m.name && m.brief; })
+    .map(function (m) { return m.name; });
+}
+function villaTeamLine(lng) {
+  if (!villaFactsActive()) return null;
+  var i = lng === 'en' ? 1 : 0;
+  return window.VILLA_FACTS.TEAM.filter(function (m) { return m.brief; })
+    .map(function (m) { return (m.name ? m.name + ' — ' : '') + m.role[i].split(' — ')[0].split(' ; ')[0]; })
+    .join(', ');
+}
+(function () {
+  var WRITE_TASK = /^(write_|chat_|reason$|brief$)/;
+  var orig = window.fetch;
+  window.fetch = function (input, init) {
+    try {
+      var u = typeof input === 'string' ? input : (input && input.url) || '';
+      if (u === STAFFLO_PROXY && init && typeof init.body === 'string' && villaFactsActive()) {
+        var b = JSON.parse(init.body);
+        if (b && WRITE_TASK.test(String(b.task || '')) &&
+            String(b.system || '').indexOf('=== FICHE MAISON') < 0 &&
+            String(b.system || '').indexOf('=== HOUSE FACTS') < 0 &&
+            String(b.user || '').indexOf('=== FICHE MAISON') < 0 &&
+            String(b.user || '').indexOf('=== HOUSE FACTS') < 0) {
+          var t = String(b.task);
+          var lng = /_en$/.test(t) ? 'en' : (/_(fr)$/.test(t) ? 'fr' : (/^write_guest_/.test(t) ? 'en' : (typeof lang !== 'undefined' && lang === 'en' ? 'en' : 'fr')));
+          var facts = villaFactsForAI(lng);
+          if (facts) {
+            // system vide → le proxy garde son propre system ; on préfixe alors
+            // le message utilisateur au lieu de remplacer ce system par défaut.
+            if (b.system) b.system = b.system + '\n\n' + facts;
+            else b.user = facts + '\n\n=== ' + (lng === 'en' ? 'REQUEST' : 'DEMANDE') + ' ===\n' + (b.user || '');
+            init = Object.assign({}, init, { body: JSON.stringify(b) });
+          }
+        }
+      }
+    } catch (e) { /* fail open : la requête part telle quelle */ }
+    return orig.apply(this, arguments.length > 1 ? [input, init] : [input]);
+  };
+})();
 function proxyHeaders() {
   const h = { 'Content-Type': 'application/json' };
   if (STAFFLO_PROXY_SECRET) h['x-stafflo-secret'] = STAFFLO_PROXY_SECRET;
@@ -9963,10 +10035,14 @@ function getCheckoutReminderCfg() {
 }
 
 // ─── Meal recap support helpers ─────────────────────────────────────────
-// findChefStaff: name of staff with role matching /chef|cuisinier|cuisinière|cook/i,
-// falls back to literal "Faiza" when no staff configured.
+// findChefStaff: name of staff with role matching /chef|cuisinier|cuisinière|cook/i.
+// Fiche maison d'abord (Léa, prestataire repas) ; sinon cfg ; sinon « la cuisinière ».
 function findChefStaff() {
   try {
+    if (villaFactsActive()) {
+      var _cook = window.VILLA_FACTS.TEAM.find(function(m){ return m.kitchen && m.name; });
+      if (_cook) return _cook.name;
+    }
     var cfg = getCfg();
     if (Array.isArray(cfg.staffMembers)) {
       var chef = cfg.staffMembers.find(function(s){
@@ -9984,7 +10060,7 @@ function findChefStaff() {
       }
     }
   } catch(e){}
-  return 'Faiza';
+  return lang === 'en' ? 'the cook' : 'la cuisinière';
 }
 
 // findGuestInInstruction: match a first-name or full-name token in the instruction
@@ -15923,10 +15999,11 @@ async function handleChatQuestion(text) {
   var cfg = getCfg();
   var ownerName = cfg.owner || 'Jérémie';
   var villaName = cfg.villa || 'Villa DarJ';
-  // Staff first names — read from cfg.staffMembers (array) or cfg.staff
-  // (multi-line "Name (role)"), fall back to the Villa DarJ trio.
+  // Staff first names — fiche maison (villa-facts.js) d'abord, puis
+  // cfg.staffMembers (array) ou cfg.staff (multi-line "Name (role)").
   var staffNames = (function(){
     try {
+      var _vf = villaStaffNames(); if (_vf && _vf.length) return _vf;
       if (Array.isArray(cfg.staffMembers) && cfg.staffMembers.length) {
         return cfg.staffMembers.map(function(s){ return ((s && s.name)||'').trim().split(/\s+/)[0]; }).filter(Boolean);
       }
@@ -15936,9 +16013,9 @@ async function handleChatQuestion(text) {
         }).filter(Boolean);
       }
     } catch(e){}
-    return ['Said','Faiza','Bouchra'];
+    return [];
   })();
-  var staffList = staffNames.join(', ');
+  var staffList = staffNames.join(', ') || (fr ? 'l\'équipe' : 'the team');
 
   // Detect ARIA orchestrator — only from internal flag (__orchestrator:true prefix)
   var isOrchestrator = /^__orchestrator:true\b/m.test(text);
@@ -22242,7 +22319,7 @@ async function generateAlerts(weatherTemp) {
     // Special meals
     if (n2.includes('vegan') || n2.includes('vegetar') || n2.includes('halal') || n2.includes('allerg') || n2.includes('couscous') || n2.includes('moroccan')) {
       alerts.push({type:'info', title:'🍽 ' + cl.name + ' — ' + (fr?'Préférences repas · ':'Meal preferences · ') + timing,
-        sub: cl.notes.slice(0,100) + (fr?' · Briefez Faiza':' · Brief Faiza')});
+        sub: cl.notes.slice(0,100) + (fr?' · Briefez la cuisine':' · Brief the kitchen')});
     }
     // Transfer / cars
     if (n2.includes('transfer') || n2.includes('driver') || n2.includes('car') || n2.includes('voiture') || n2.includes('taxi')) {
@@ -24341,7 +24418,7 @@ function generateStaffChecklist() {
   const relevant = checkinTomorrow || inHouse;
   
   const wTemp = parseInt(document.getElementById('factorWeather')?.textContent?.match(/\d+/)?.[0] || '20');
-  const staffName = (cfg.staff || 'Said, Faiza, Bouchra').split('\n')[0].replace(/\(.*?\)/,'').trim();
+  const staffName = ((villaStaffNames() || [])[0]) || (cfg.staff || '').split('\n')[0].replace(/\(.*?\)/,'').trim() || (fr ? 'l\'équipe' : 'the team');
   
   // Build smart checklist
   const checklist = [];
@@ -24759,10 +24836,10 @@ let sopState = JSON.parse(localStorage.getItem('stafflo_sop') || '{}');
 // Phased checklist — items grouped by stay phase, scoped per guest
 const VILLA_SOP_PHASES = [
   { id:'preArrival', label_fr:'Avant arrivée (J-2 / J-1)', label_en:'Before arrival (D-2 / D-1)', items:[
-    {id:'staff_brief',  label_fr:'Briefer Said (majordome) + Faiza (chef)', label_en:'Brief Said (butler) + Faiza (chef)'},
+    {id:'staff_brief',  label_fr:'Briefer l\'équipe (Saïd, cuisine)',       label_en:'Brief the team (Saïd, kitchen)'},
     {id:'groceries',    label_fr:'Courses + fleurs fraîches',                 label_en:'Groceries + fresh flowers'},
     {id:'rooms',        label_fr:'Chambres préparées (linge, amenities)',     label_en:'Rooms prepared (linen, amenities)'},
-    {id:'pool',         label_fr:'Piscine 28°C, produits OK',                 label_en:'Pool 28°C, chemicals OK'},
+    {id:'pool',         label_fr:'Piscine propre, produits OK',               label_en:'Pool clean, chemicals OK'},
     {id:'driver',       label_fr:'Chauffeur confirmé (heure, terminal)',      label_en:'Driver confirmed (time, terminal)'},
     {id:'welcome',      label_fr:'Message bienvenue WhatsApp envoyé',         label_en:'WhatsApp welcome message sent'},
     {id:'passport',     label_fr:'Passeports demandés (loi marocaine)',       label_en:'Passports requested (Moroccan law)'}
@@ -28415,7 +28492,7 @@ function v2RenderHero() {
       // Action presets per phase
       var presets = {
         preArrival: [
-          {k:'staff_brief',  fr:'Briefer Said + Faiza', en:'Brief Said + Faiza'},
+          {k:'staff_brief',  fr:'Briefer l\'équipe',    en:'Brief the team'},
           {k:'groceries',    fr:'Courses + fleurs',     en:'Groceries + flowers'},
           {k:'rooms_ready',  fr:'Chambres prêtes',      en:'Rooms ready'},
           {k:'driver_conf',  fr:'Chauffeur confirmé',   en:'Driver confirmed'},
@@ -28423,7 +28500,7 @@ function v2RenderHero() {
           {k:'passport_req', fr:'Passeports demandés',  en:'Passports requested'}
         ],
         stay: [
-          {k:'pool_check',   fr:'Piscine 28°C',         en:'Pool 28°C'},
+          {k:'pool_check',   fr:'Piscine propre',       en:'Pool clean'},
           {k:'breakfast',    fr:'Petit-déj confirmé',   en:'Breakfast confirmed'},
           {k:'midstay_msg',  fr:'Check-in mi-séjour',   en:'Mid-stay check-in'},
           {k:'chef_menu',    fr:'Menu chef du soir',    en:'Tonight\'s chef menu'}
@@ -30466,7 +30543,7 @@ window.addEventListener('DOMContentLoaded', function() {
         // Brief staff
         actions.push({
           id:'staff', icon:'📋',
-          label: f ? 'Brief Said + Faiza + Bouchra' : 'Brief Said + Faiza + Bouchra',
+          label: f ? 'Brief équipe' : 'Team brief',
           target:'staff', kind:'whatsapp',
           ai_task: 'write_staff',
           purpose:'staff_brief', guest:g, family:fam, lang:'fr'
@@ -30558,7 +30635,7 @@ window.addEventListener('DOMContentLoaded', function() {
       case 'reply_inquiry':
         var mem = (ctx.ariaMemory || '').trim();
         var villaFacts = mem ? '\n=== VILLA REFERENCE ===\n'+mem.slice(0,2000)+'\n=== END ===' : '';
-        var staffNames = ctx.staff || 'Said (butler), Faiza (chef), Bouchra (housekeeping)';
+        var staffNames = villaTeamLine(lng) || ctx.staff || (lng === 'fr' ? 'l\'équipe de la villa' : 'the villa team');
         var gps = ctx.gps || '';
         system = lng === 'fr'
           ? 'Tu réponds à une demande de réservation pour '+villa+'. Propriétaire: '+owner+'. Staff: '+staffNames+'.'
@@ -30596,25 +30673,25 @@ window.addEventListener('DOMContentLoaded', function() {
       case 'staff_brief':
         system = lng === 'fr'
           ? [
-              'Tu rédiges un brief WhatsApp READY-TO-SEND pour le staff de la villa : Said (majordome), Faiza (chef), Bouchra (housekeeping).',
+              'Tu rédiges un brief WhatsApp READY-TO-SEND pour l\'équipe de la villa : ' + (villaTeamLine('fr') || 'majordome, cuisine, ménage') + '.',
               'Ton direct, opérationnel, signé ' + owner + '. PAS de pleasantries ("je vous prie", "cordialement").',
               'Format WhatsApp avec bullets, 8-12 lignes max.',
               'STRUCTURE OBLIGATOIRE :',
               '  1) En-tête : guest, dates, nb pax.',
               '  2) Said (majordome) → accueil, transport, horaires d\'arrivée.',
-              '  3) Faiza (chef) → repas, allergies, régimes, courses.',
+              '  3) Cuisine (' + (findChefStaff() || 'cuisinière') + ') → repas, allergies, régimes, courses.',
               '  4) Bouchra (housekeeping) → chambres, linge, configuration (lit bébé, etc.).',
               'CHAQUE responsable doit avoir au moins 1 action concrète. Si l\'info manque, écris "à confirmer".',
               'JAMAIS de doublon entre sections. JAMAIS de "je vous tiens au courant".'
             ].join('\n')
           : [
-              'You write a READY-TO-SEND WhatsApp brief for the villa staff: Said (butler), Faiza (chef), Bouchra (housekeeping).',
+              'You write a READY-TO-SEND WhatsApp brief for the villa team: ' + (villaTeamLine('en') || 'house manager, kitchen, housekeeping') + '.',
               'Direct, operational tone, signed ' + owner + '. NO pleasantries ("I kindly ask", "best regards").',
               'WhatsApp bullet format, 8-12 lines max.',
               'MANDATORY STRUCTURE:',
               '  1) Header: guest, dates, guest count.',
               '  2) Said (butler) → welcome, transport, arrival timing.',
-              '  3) Faiza (chef) → meals, allergies, dietary, groceries.',
+              '  3) Kitchen (' + (findChefStaff() || 'cook') + ') → meals, allergies, dietary, groceries.',
               '  4) Bouchra (housekeeping) → rooms, linen, setup (baby cot, etc.).',
               'EACH responsible must have at least 1 concrete action. If info is missing, write "TBC".',
               'NEVER duplicate across sections. NEVER "I will keep you posted".'
@@ -30631,12 +30708,12 @@ window.addEventListener('DOMContentLoaded', function() {
              + (g.nat ? (lng==='fr'?'Nationalité: ':'Nationality: ')+g.nat+'\n' : '')
              + (g.notes ? 'Notes: '+g.notes+'\n' : '')
              + '\n' + (lng==='fr'
-                 ? 'Format brief WhatsApp pour Said + Faiza + Bouchra, avec sections claires.'
-                 : 'WhatsApp brief format for Said + Faiza + Bouchra, with clear sections.');
+                 ? 'Format brief WhatsApp pour toute l\'équipe, avec une section par personne.'
+                 : 'WhatsApp brief format for the whole team, one section per person.');
         break;
       case 'shopping_list':
         system = [
-          'Tu génères une liste de courses pratique pour Faiza (chef) et Bouchra (housekeeping), à partir du profil du guest ci-dessous.',
+          'Tu génères une liste de courses pratique pour la cuisine et le ménage, à partir du profil du guest ci-dessous.',
           'Format WhatsApp avec bullets, groupés par catégorie : Frigo/Petit-déj, Boissons, Bébé/Enfants (si présent), Divers.',
           'Chaque catégorie doit avoir au moins 1 item concret.',
           'N\'invente JAMAIS une allergie, un régime ou une préférence qui n\'est pas mentionné dans les notes ci-dessous. Si une info manque pour personnaliser, écris "à confirmer" plutôt que de deviner.',
@@ -30740,7 +30817,7 @@ window.addEventListener('DOMContentLoaded', function() {
   function ariaOpenWithMealRecapPrompt(guest){
     if (!guest) return;
     var firstName = ((guest.name||'').split(' ')[0]) || 'guest';
-    var chefName = (typeof findChefStaff === 'function') ? findChefStaff() : 'Faiza';
+    var chefName = (typeof findChefStaff === 'function') ? findChefStaff() : 'la cuisinière';
     var placeholder = '[Colle ici la conversation WhatsApp avec ' + chefName + ' pendant le séjour]';
     var seed = 'fais le récap fin de séjour pour ' + firstName + ' avec les coûts des repas :\n\n' + placeholder + '\n';
     // v-item83b : ces fonctions se contentaient d'ecrire dans #chatInput (le
@@ -31255,7 +31332,7 @@ window.addEventListener('DOMContentLoaded', function() {
           _staffNames2 = _cfg2.staff.split(/[\n,]/).map(function(s){ return s.replace(/\(.*?\)/g,'').trim(); }).filter(Boolean);
         }
       } catch(e2){}
-      if (!_staffNames2.length) _staffNames2 = ['Saïd', 'Faiza', 'Bouchra'];
+      var _vf2 = villaStaffNames(); if (_vf2 && _vf2.length) _staffNames2 = _vf2;
 
       // Référentiel clients actifs
       var _clientRef = [];
@@ -32781,7 +32858,7 @@ window.addEventListener('DOMContentLoaded', function() {
           '<input id="onbV3V2VillaName" type="text" autocomplete="off" placeholder="' + (isFr ? 'Villa DarJ…' : 'Villa Santi…') + '" ' +
             'style="display:block;width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(250,246,238,.25);border-radius:var(--r-sm);background:rgba(255,255,255,.07);color:#FAF6EE;font-size:14px;font-family:DM Sans,sans-serif;margin-bottom:14px;">' +
           '<label style="display:block;font-size:11px;color:rgba(250,246,238,.6);margin-bottom:5px">' + (isFr ? 'Personnes sur place (staff, gardien…)' : 'People on site (staff, caretaker…)') + '</label>' +
-          '<input id="onbV3V2Staff" type="text" autocomplete="off" placeholder="' + (isFr ? 'Saïd, Faiza, Bouchra' : 'Said, Faiza, Bouchra') + '" ' +
+          '<input id="onbV3V2Staff" type="text" autocomplete="off" placeholder="' + (isFr ? 'Saïd, Bouchra, Léa' : 'Saïd, Bouchra, Léa') + '" ' +
             'style="display:block;width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(250,246,238,.25);border-radius:var(--r-sm);background:rgba(255,255,255,.07);color:#FAF6EE;font-size:14px;font-family:DM Sans,sans-serif;margin-bottom:18px;">' +
           '<button id="onbV3V2Save" type="button" ' +
             'style="display:block;width:100%;padding:13px 16px;background:#C9963A;color:#FAF6EE;border:none;border-radius:var(--r-md);font-family:DM Sans,sans-serif;font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.3px">' +
@@ -34987,7 +35064,7 @@ function startTour(){
       });
     }
     renderChecklist('v5dArrChecklist', 'preArrival', [
-      { k:'staff_brief', label: FR?'Briefer Said + Faiza':'Brief Said + Faiza' },
+      { k:'staff_brief', label: FR?'Briefer l\'équipe':'Brief the team' },
       { k:'groceries',   label: FR?'Courses + fleurs':'Groceries + flowers' },
       { k:'rooms_ready', label: FR?'Chambres prêtes':'Rooms ready' },
       { k:'driver_conf', label: FR?'Chauffeur confirmé':'Driver confirmed' },
@@ -34995,7 +35072,7 @@ function startTour(){
     ]);
     renderChecklist('v5dDuringChecklist', 'stay', [
       { k:'midstay_msg', label: FR?'Check-in mi-séjour':'Mid-stay check-in' },
-      { k:'pool_check',  label: FR?'Piscine 28°C':'Pool 28°C' },
+      { k:'pool_check',  label: FR?'Piscine propre':'Pool clean' },
       { k:'chef_menu',   label: FR?'Menu chef du soir':'Tonight chef menu' }
     ]);
     renderChecklist('v5dDepChecklist', 'departure', [
@@ -36930,6 +37007,7 @@ function startTour(){
         var villaName = cfg.villa || 'Villa DarJ';
         var staffList = (function(){
           try {
+            var _vf3 = villaStaffNames(); if (_vf3 && _vf3.length) return _vf3.join(', ');
             if (Array.isArray(cfg.staffMembers) && cfg.staffMembers.length) {
               return cfg.staffMembers.map(function(s){ return ((s && s.name)||'').trim().split(/\s+/)[0]; }).filter(Boolean).join(', ');
             }
@@ -36937,7 +37015,7 @@ function startTour(){
               return cfg.staff.split(/[\n,]/).map(function(s){ return s.replace(/\(.*?\)/g,'').trim().split(/\s+/)[0]; }).filter(Boolean).join(', ');
             }
           } catch(e){}
-          return 'Said, Faiza, Bouchra';
+          return lang === 'en' ? 'the team' : 'l\'équipe';
         })();
         var clientList = _getClients();
         var isOrchestrator = /^__orchestrator:true\b/m.test(text);
@@ -37311,8 +37389,8 @@ function startTour(){
               var villaName = cfg.villa || 'Villa DarJ';
               var fr = lang === 'fr';
               var systemPrompt = (fr
-                ? 'Tu es ARIA pour ' + villaName + '. Staff : Said, Faiza, Bouchra.\nRÈGLE : N\'invente jamais un montant, prénom ou contact absent des données. Info absente → omets ou « non précisé ».\nINTENTION NOUVEAU SÉJOUR : si énoncé d\'un nouveau contact + dates, retourne UNE action kind:"create_client". Si contexte gratuit/offert/famille, is_comp:true dans fields.\nPropose 2-3 actions. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"message complet signé ' + ownerName + '"}]'
-                : 'You are ARIA for ' + villaName + '. Staff: Said, Faiza, Bouchra.\nRULE: Never invent an amount, name or contact absent from the data. Missing → omit or "not specified".\nNEW STAY INTENT: if new contact + dates are stated, return ONE action kind:"create_client". If complimentary/family context, is_comp:true in fields.\nPropose 2-3 actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"full message signed ' + ownerName + '"}]');
+                ? 'Tu es ARIA pour ' + villaName + '. Équipe : ' + (villaTeamLine('fr') || 'l\'équipe de la villa') + '.\nRÈGLE : N\'invente jamais un montant, prénom ou contact absent des données. Info absente → omets ou « non précisé ».\nINTENTION NOUVEAU SÉJOUR : si énoncé d\'un nouveau contact + dates, retourne UNE action kind:"create_client". Si contexte gratuit/offert/famille, is_comp:true dans fields.\nPropose 2-3 actions. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"message complet signé ' + ownerName + '"}]'
+                : 'You are ARIA for ' + villaName + '. Team: ' + (villaTeamLine('en') || 'the villa team') + '.\nRULE: Never invent an amount, name or contact absent from the data. Missing → omit or "not specified".\nNEW STAY INTENT: if new contact + dates are stated, return ONE action kind:"create_client". If complimentary/family context, is_comp:true in fields.\nPropose 2-3 actions. JSON array only:\n[{"label":"max 5 words","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"full message signed ' + ownerName + '"}]');
               var clientList = _getClients();
               var clientCtx = 'Active clients (' + clientList.length + '): ' + buildClientLines(fullPrompt, 5);
               var userCtx = 'Today: ' + _today() + '\n' + clientCtx + '\n\nSituation:\n' + fullPrompt;
@@ -37862,7 +37940,7 @@ function startTour(){
       if (cardId === 'cardAriaMemoryShortcut') {
         var cfg = (typeof getCfg==='function')?getCfg():{};
         var m = (cfg.ariaMemory||'').trim();
-        if (!m) return '<div style="padding:14px 20px;font-size:12px;color:var(--muted);line-height:1.5"><div style="font-style:italic">'+(fr?'Vide. Cliquez pour ajouter le contexte permanent qu\'Aria utilisera dans toutes les analyses.':'Empty. Click to add permanent context Aria will use across all analyses.')+'</div><div style="font-size:11px;color:var(--gold);margin-top:8px;font-weight:500">'+(fr?'Ex: « Said arrive à 8h. Faiza parle arabe et français. Allergies à la maison : noix. »':'Ex: "Said arrives at 8am. Faiza speaks Arabic+French. House allergies: nuts."')+'</div></div>';
+        if (!m) return '<div style="padding:14px 20px;font-size:12px;color:var(--muted);line-height:1.5"><div style="font-style:italic">'+(fr?'Vide. Cliquez pour ajouter le contexte permanent qu\'Aria utilisera dans toutes les analyses.':'Empty. Click to add permanent context Aria will use across all analyses.')+'</div><div style="font-size:11px;color:var(--gold);margin-top:8px;font-weight:500">'+(fr?'Ex: « Saïd arrive à 8h30. Bouchra parle arabe et français. Allergies à la maison : noix. »':'Ex: "Saïd arrives at 8:30am. Bouchra speaks Arabic+French. House allergies: nuts."')+'</div></div>';
         return '<div style="padding:14px 20px;font-size:12px;color:var(--muted);font-style:italic;line-height:1.5">"'+m.slice(0,180)+(m.length>180?'…':'')+'"</div>';
       }
       // Detect by body id (Guests tab)
@@ -39304,14 +39382,60 @@ function startTour(){
         var _fn = (g.name||'there').split(' ')[0];
         var tmplText = '';
         if (!isReviewReq) {
-          if (isDirect) {
-            tmplText = fr
-              ? 'Bonjour ' + _fn + ', merci de nous avoir contactés — nous serions ravis de vous accueillir à la Villa DarJ !\n\nLa villa est notre maison de famille au cœur de la Palmeraie, avec piscine privée, climatisation complète, et une équipe dédiée sur place : Said (votre majordome), Faiza (chef privée), et Bouchra (ménage).\n\nRésumé rapide de votre séjour :\n• Arrivée : ' + (g.arrival||'à confirmer') + '\n• Départ : ' + (g.departure||'à confirmer') + '\n• Durée : ' + (nights||'?') + ' nuits\n• Invités : ' + (g.guests||'?') + '\n• Tarif : ' + (g.price ? g.price+'€' : 'à confirmer') + '\n\nAvant de confirmer, pourriez-vous nous préciser :\n1. La composition du groupe — combien de couples et de célibataires ? (pour l\'attribution des chambres)\n2. Des besoins alimentaires ou allergies pour la chef ?\n3. Souhaitez-vous un transfert aéroport ? (~200 MAD par trajet)\n\nNotre service repas :\n• Brunch : 300 MAD pour le groupe\n• Déjeuner : 300 MAD/personne + courses\n• Dîner : 400 MAD/personne + courses\n\nRègles de la maison :\n• Maison de famille — merci de respecter l\'esprit du lieu\n• Musique bienvenue, niveau sonore raisonnable après minuit\n• Interdiction de fumer à l\'intérieur · Invités enregistrés uniquement\n\nPaiement : 50% d\'acompte pour confirmer, 50% à l\'arrivée.\n\nAu plaisir de vous accueillir !\n' + ownerName
-              : 'Hello ' + _fn + ', thank you for reaching out — we would be delighted to welcome you to Villa DarJ!\n\nThe villa is my family home in the heart of the Palmeraie, with private pool, full air conditioning, and a dedicated team on-site: Said (your majordome), Faiza (private chef), and Bouchra (housekeeping).\n\nA quick summary of your stay:\n• Check-in: ' + (g.arrival||'TBC') + '\n• Check-out: ' + (g.departure||'TBC') + '\n• Duration: ' + (nights||'?') + ' nights\n• Guests: ' + (g.guests||'?') + '\n• Rate: ' + (g.price ? g.price+'€' : 'TBC') + '\n\nBefore we confirm, could you please let me know:\n1. Group composition — how many couples and singles? (for room assignment)\n2. Any dietary needs or allergies for the chef?\n3. Would you like airport transfer arranged? (~200 MAD one way)\n\nOur food service:\n• Brunch: 300 MAD for the group\n• Lunch: 300 MAD/person + groceries\n• Dinner: 400 MAD/person + groceries\n\nHouse rules:\n• Family home — please respect the spirit of the place\n• Music welcome, reasonable noise after midnight\n• No smoking inside · Registered guests only\n\nPayment: 50% deposit to confirm, 50% on arrival.\n\nLooking forward to hosting you!\n' + ownerName;
-          } else if (isAirbnb) {
-            tmplText = fr
-              ? 'Bonjour ' + _fn + ', merci beaucoup pour votre message — nous serions ravis d\'accueillir votre groupe à la Villa DarJ.\n\nLa villa est notre maison de famille, et nous ferons en sorte que tout soit préparé le plus confortablement possible. ' + _weather + '\n\nPour confirmer, pouvez-vous nous préciser la composition du groupe — combien de couples et combien de célibataires ?\n\nRepas :\n• Brunch : 300 MAD pour le groupe\n• Déjeuner : 300 MAD/personne + courses\n• Dîner : 400 MAD/personne + courses\n\nRègles de la maison :\n• Maison de famille — merci de respecter l\'esprit du lieu\n• Musique bienvenue, niveau sonore raisonnable après minuit\n• Interdiction de fumer à l\'intérieur · Invités enregistrés uniquement\n• Conformément à la loi marocaine, nous ne pouvons pas accueillir de couples musulmans non mariés partageant une chambre\n\nUne fois la composition des chambres confirmée et les règles acceptées, je vous envoie la confirmation officielle immédiatement.\n\nMerci,\n' + ownerName
-              : 'Hello ' + _fn + ', thank you so much for your message — we would be delighted to welcome your group to Villa DarJ.\n\nThe villa is my family home and we will make sure everything is prepared as comfortably as possible. ' + _weather + '\n\nJust one quick question before we confirm: could you please let us know the group composition — how many couples and how many singles?\n\nFood service:\n• Brunch: 300 MAD for the group\n• Lunch: 300 MAD/person + groceries\n• Dinner: 400 MAD/person + groceries\n\nHouse rules:\n• Family home — please respect the spirit of the place\n• Music welcome, reasonable noise after midnight\n• No smoking inside · Registered guests only\n• Under Moroccan law, unmarried Muslim couples cannot share a room\n\nOnce you confirm the room composition and agree to the house rules, I will send the official booking confirmation right away.\n\nThank you,\n' + ownerName;
+          // Réponses types construites depuis la fiche maison (villa-facts.js) :
+          // prix des repas, équipe, règles — plus aucun chiffre en dur ici.
+          // (Ancienne version figée : « la Palmeraie », Faiza, brunch 300 MAD,
+          // déjeuner 300 MAD/personne, dîner 400 MAD/personne, bruit « après
+          // minuit », transfert ~200 MAD — tous faux en octobre 2026.)
+          // Hors Villa Dar J (fiche absente) : pas de modèle, seulement les
+          // réponses rédigées par ARIA — mieux qu'un modèle faux.
+          if ((isDirect || isAirbnb) && villaFactsActive()) {
+            var VF = window.VILLA_FACTS, _i = fr ? 0 : 1;
+            var _p = function(pair){ return String(Array.isArray(pair) ? (pair[_i] != null ? pair[_i] : pair[0]) : pair).replace(/\s*\n\s*/g, ' ').trim(); };
+            var _first = function(txt){ return (String(txt).match(/^[^.]*\./) || [String(txt)])[0]; };
+            var _team = VF.TEAM.filter(function(m){ return m.brief; }).map(function(m){
+              return m.kitchen ? (fr ? 'une cuisinière sur demande' : 'a cook on request')
+                               : m.name + ' (' + m.role[_i].split(' — ')[0].split(' ; ')[0] + ')';
+            });
+            var _teamTxt = _team.slice(0, -1).join(', ') + (fr ? ' et ' : ' and ') + _team[_team.length - 1];
+            var _intro = fr
+              ? 'La villa est notre maison de famille, avec piscine, ' + VF.ROOMS.length + ' chambres pour ' + VF.VILLA.extraGuest.max + ' personnes au maximum, et une équipe sur place : ' + _teamTxt + '.'
+              : 'The villa is our family home, with a pool, ' + VF.ROOMS.length + ' bedrooms for up to ' + VF.VILLA.extraGuest.max + ' people, and a team on site: ' + _teamTxt + '.';
+            var _meals = VF.MEALS.map(function(m){
+              var a = _p(m.a), b = _p(m.b);
+              return '• ' + _p(m.n) + ' : ' + (a === b ? a : a + (fr ? ' pour 1 à 6 personnes, ' : ' for 1–6 guests, ') + b + (fr ? ' pour 7 à 10 (par service, pour le groupe)' : ' for 7–10 (per service, for the group)'));
+            });
+            var _order = (_p(VF.TEXT.orderRule).match(/(Deux jours avant[^.]*\.|Two days before[^.]*\.)/) || [''])[0];
+            var _change = (_p(VF.TEXT.orderRule).match(/(Vous pourrez ensuite[^.]*\.|You can then[^.]*\.)/) || [''])[0];
+            var _mealsBlock = (fr ? '\nRepas :\n' : '\nFood service:\n') + _meals.join('\n') +
+              '\n• ' + _p(VF.MEAL_NOTES[1]) +
+              '\n• ' + _first(_p(VF.MEAL_NOTES[3])) +
+              (_order ? '\n• ' + _order + (_change ? ' ' + _change : '') : '');
+            var _rulesBlock = (fr ? '\n\nRègles de la maison :\n' : '\n\nHouse rules:\n') +
+              VF.RULES.map(function(r){ return '• ' + _p(r); }).join('\n');
+            if (isDirect) {
+              tmplText = fr
+                ? 'Bonjour ' + _fn + ', merci de nous avoir contactés — nous serions ravis de vous accueillir à la Villa Dar J !\n\n' + _intro +
+                  '\n\nRésumé rapide de votre séjour :\n• Arrivée : ' + (g.arrival||'à confirmer') + '\n• Départ : ' + (g.departure||'à confirmer') + '\n• Durée : ' + (nights||'?') + ' nuits\n• Invités : ' + (g.guests||'?') + '\n• Tarif : ' + (g.price ? g.price+'€' : 'à confirmer') +
+                  '\n\nAvant de confirmer, pourriez-vous nous préciser :\n1. La composition du groupe — combien de couples et de personnes seules ? (pour préparer les chambres)\n2. Des besoins alimentaires ou allergies ?\n3. Souhaitez-vous un transfert aéroport ? (avec notre chauffeur de confiance, à votre charge)\n' +
+                  _mealsBlock + _rulesBlock +
+                  '\n\nPaiement : 50% d\'acompte pour confirmer, 50% à l\'arrivée.\n\nAu plaisir de vous accueillir !\n' + ownerName
+                : 'Hello ' + _fn + ', thank you for reaching out — we would be delighted to welcome you to Villa Dar J!\n\n' + _intro +
+                  '\n\nA quick summary of your stay:\n• Check-in: ' + (g.arrival||'TBC') + '\n• Check-out: ' + (g.departure||'TBC') + '\n• Duration: ' + (nights||'?') + ' nights\n• Guests: ' + (g.guests||'?') + '\n• Rate: ' + (g.price ? g.price+'€' : 'TBC') +
+                  '\n\nBefore we confirm, could you please let me know:\n1. Group composition — how many couples and single guests? (to prepare the bedrooms)\n2. Any dietary needs or allergies?\n3. Would you like an airport transfer? (with our trusted driver, at your own cost)\n' +
+                  _mealsBlock + _rulesBlock +
+                  '\n\nPayment: 50% deposit to confirm, 50% on arrival.\n\nLooking forward to welcoming you!\n' + ownerName;
+            } else {
+              tmplText = fr
+                ? 'Bonjour ' + _fn + ', merci beaucoup pour votre message — nous serions ravis d\'accueillir votre groupe à la Villa Dar J.\n\n' + _intro + ' ' + _weather +
+                  '\n\nPour confirmer, pouvez-vous nous préciser la composition du groupe — combien de couples et combien de personnes seules ?\n' +
+                  _mealsBlock + _rulesBlock +
+                  '\n\nUne fois la composition des chambres confirmée et les règles acceptées, je vous envoie la confirmation officielle immédiatement.\n\nMerci,\n' + ownerName
+                : 'Hello ' + _fn + ', thank you so much for your message — we would be delighted to welcome your group to Villa Dar J.\n\n' + _intro + ' ' + _weather +
+                  '\n\nJust one quick question before we confirm: could you please let us know the group composition — how many couples and how many single guests?\n' +
+                  _mealsBlock + _rulesBlock +
+                  '\n\nOnce you confirm the room composition and agree to the house rules, I will send the official booking confirmation right away.\n\nThank you,\n' + ownerName;
+            }
           }
           if (tmplText) {
             responses.unshift({ label: isDirect ? 'Template Direct' : 'Template Airbnb', tone: 'professional', text: tmplText });
