@@ -46,8 +46,21 @@ check('ARIA voit les messages en attente', /msgsFor\(/.test(script));
 check('état de la synchro affiché (sync_runs)', /sync_runs\?select=finished_at,ok/.test(script));
 check('versements Airbnb lus dans details.payouts (gmail-sync)', /c\.details\.payouts/.test(script) && /payoutLines\(c\)/.test(script));
 check('nuits du mois comptent aussi les séjours terminés', /D\.stays\.concat\(D\.past/.test(script));
+// v3 — alertes, modification d'un séjour, décompte
+for (const bad of ['14h', '400 MAD', 'MAD par article'])
+  check(`aucun horaire ni prix recopié : « ${bad} »`, !script.includes(bad));
+check('décompte : prix lus dans la fiche (F.MEALS)', /unitPrice\(F\.MEALS\[1\], col\)/.test(script) && /unitPrice\(F\.MEALS\[2\], col\)/.test(script));
+check('décompte enregistré dans details.billing (fusion, rien d’écrasé)', /setDetail\(c, 'billing'/.test(script));
+check('modification : seuls les champs changés sont envoyés', /if \(!Object\.keys\(body\)\.length\)/.test(script));
+check('alertes : la clé publique vient du serveur (jamais de clé privée côté page)', /pushCall\('public_key'\)/.test(script) && !/priv/i.test(script.replace(/private|privée|privé/g, '')));
+check('alertes : désactiver = suppression douce de l’abonnement', /push_subscriptions\?endpoint=eq\.[\s\S]{0,200}deleted_at/.test(script));
+check('installable : manifeste et icône écran d’accueil', esp.includes('<link rel="manifest" href="espace.webmanifest">') && esp.includes('<link rel="apple-touch-icon" href="assets/icon-180.png">'));
+check('pastille de synchro : seulement les passages gmail-sync', /sync_runs\?select=finished_at,ok&source=like\.gmail_sync\*/.test(script));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 check('sw.js ne met pas espace.html en cache', sw.includes("url.includes('espace.html')"));
+check('sw.js affiche les alertes et ouvre l’Espace au clic', /addEventListener\('push'/.test(sw) && /addEventListener\('notificationclick'/.test(sw) && /espace\.html/.test(sw));
+const man = JSON.parse(fs.readFileSync(path.join(root, 'espace.webmanifest'), 'utf8'));
+check('manifeste : démarre sur l’Espace, plein écran, icônes PNG', man.start_url === '/espace.html' && man.display === 'standalone' && man.icons.every((i) => fs.existsSync(path.join(root, i.src))));
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

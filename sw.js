@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v492 (plus de faits inventés dans les modèles et prompts ARIA)
-const CACHE = 'stafflo-v492';
+// Stafflo Service Worker — v493 (alertes Airbnb sur le téléphone : push + clic → Espace)
+const CACHE = 'stafflo-v493';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
@@ -82,4 +82,31 @@ self.addEventListener('fetch', e => {
       return cached || fresh;
     })
   );
+});
+
+// ── Alertes (Web Push envoyé par la fonction serveur push-notify) ──────────
+// Le message est chiffré de bout en bout ; il contient seulement titre, texte,
+// tag (une alerte par fil Airbnb) et l'adresse à ouvrir.
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Stafflo', {
+    body: d.body || '',
+    tag: d.tag || undefined,
+    renotify: !!d.tag,
+    icon: './assets/icon-192.png',
+    badge: './assets/badge-96.png',
+    data: { url: d.url || '/espace.html' },
+  }));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const target = new URL((e.notification.data && e.notification.data.url) || '/espace.html', self.location.origin).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    for (const c of list) {
+      if (c.url.indexOf('espace.html') > -1 && 'focus' in c) { c.postMessage({ type: 'stafflo-reload' }); return c.focus(); }
+    }
+    return self.clients.openWindow(target);
+  }));
 });
