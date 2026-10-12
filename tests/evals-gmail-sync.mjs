@@ -78,7 +78,7 @@ p = P('Reservation request for Villa Dar J', 'Pending: respond within 24 hours.'
 check('request : type', p.type === 'request', p.type);
 
 // 10. Hors sujet → other, aucun champ
-p = P('Your payout of €1,735.20 was sent', 'We sent a payout to your bank account.');
+p = P('You’ve hit a full year as a Superhost, Jeremie.', 'Congratulations on 12 months of great hosting. Your rating is 4.9.');
 check('hors sujet : type other', p.type === 'other', p.type);
 check('hors sujet : aucun champ rempli', !p.code && !p.name && !p.checkin && p.payout_eur === null && p.adults === null, p);
 
@@ -86,7 +86,38 @@ check('hors sujet : aucun champ rempli', !p.code && !p.name && !p.checkin && p.p
 p = P('Réservation confirmée', 'Check-in Check-out 13 oct. 2026 16 oct. 2026');
 check('dates FR', p.checkin === '2026-10-13' && p.checkout === '2026-10-16', [p.checkin, p.checkout]);
 
+// 12. Montant au format européen (Airbnb .fr)
+p = P('Réservation confirmée', 'Check-in Check-out 13 oct. 2026 16 oct. 2026 VOUS GAGNEZ 1 549,86 €');
+check('montant FR « 1 549,86 € » → 1549.86', p.payout_eur === 1549.86, p.payout_eur);
+
+// 13. Versement Airbnb (format réel .co.uk, anonymisé)
+const PAYOUT = `€ 1,549.86 EUR was sent today Your money was sent on 8 October and should arrive by 15 October 2026. View earnings [https://www.airbnb.co.uk/users/transaction_history/1] Bank account Jean Dupont, IBAN 1234 (EUR) Payout ID M-6KIKMHXFSXEXN6 We share this unique identifier with your bank. Airbnb account ID 1 Details Helen Twelvetrees € 1,549.86 EUR Home • 07/10/2026 - 10/10/2026 1-hectare estate, pool, butler & home-cooked meals (756889438032872685) HMY5QCBESA Total paid: € 1,549.86 EUR Get help with payouts`;
+p = P('We sent a payout of € 1,549.86 EUR', PAYOUT);
+check('versement : type payout', p.type === 'payout', p.type);
+check('versement : identifiant', p.payout && p.payout.id === 'M-6KIKMHXFSXEXN6', p.payout);
+check('versement : total', p.payout && p.payout.total_eur === 1549.86, p.payout);
+check('versement : arrivée prévue', p.payout && p.payout.expected_by === '2026-10-15', p.payout);
+check('versement : une ligne, code exact', p.payout && p.payout.items.length === 1 && p.payout.items[0].code === 'HMY5QCBESA', p.payout && p.payout.items);
+check('versement : montant de la ligne', p.payout && p.payout.items[0].amount_eur === 1549.86, p.payout && p.payout.items);
+check('versement : nom sans « Details »', p.payout && p.payout.items[0].name === 'Helen Twelvetrees', p.payout && p.payout.items);
+
+// 14. Versement groupé (deux réservations)
+const PAYOUT2 = PAYOUT.replace('Total paid:', 'Ana Ruiz € 980.00 EUR Home • 01/11/2026 - 04/11/2026 Villa (1) HMABCD1234 Total paid:');
+p = P('We sent a payout of € 2,529.86 EUR', PAYOUT2);
+check('versement groupé : deux lignes', p.payout && p.payout.items.length === 2 && p.payout.items[1].code === 'HMABCD1234' && p.payout.items[1].amount_eur === 980, p.payout && p.payout.items);
+
+// 15. Versement sans code de réservation → aucune ligne (rien à relier)
+p = P('We sent a payout of € 100.00 EUR', '€ 100.00 EUR was sent today. Details Resolution € 100.00 EUR Adjustment');
+check('versement sans code : payout null', p.payout === null, p.payout);
+
+// 16. Un email qui n'est pas un versement n'a jamais de bloc payout
+p = P('Reservation confirmed - Ana Ruiz Prieto arrives 13 Oct', CONF_BODY);
+check('confirmation : pas de bloc payout', p.payout === null, p.payout);
+
 // ── Garde-fous du code ─────────────────────────────────────────────────────
+check('versement relié par code exact, résultat unique', /reservation_code=eq\.\$\{it\.code\}&limit=2/.test(src) && /rows\?\.length !== 1/.test(src));
+check('versement : prix rempli seulement s\'il est vide et < 28 nuits', /!\(\+stay\.price > 0\) && it\.amount_eur != null && list\.length === 1 && nights > 0 && nights < 28/.test(src));
+check('versement : jamais compté deux fois', /list\.some\(\(x\) => x\.key === key\)/.test(src));
 check('lecture seule Gmail (aucun envoi)', !/gmail\.send|messages\/send/.test(src));
 check('aucune suppression en base', !/method:\s*["']DELETE["']/.test(src));
 check('clé de synchro vérifiée côté base', /gmail_sync_key_ok/.test(src));

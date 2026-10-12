@@ -12,7 +12,8 @@
 //          net « YOU EARN », code de réservation, fil Airbnb ;
 //        · rappel / message / demande → relié au séjour (code, fil, ou
 //          prénom + dates exactes) ;
-//        · annulation → séjour marqué annulé, UNIQUEMENT si le code correspond.
+//        · annulation → séjour marqué annulé, UNIQUEMENT si le code correspond ;
+//        · versement Airbnb → noté sur le séjour du même code (details.payouts).
 //
 // Règle ARIA « zéro invention » : tout est extrait par REGEX sur un format
 // Airbnb stable. Un champ non trouvé reste vide (jamais estimé, jamais un 0
@@ -83,14 +84,33 @@ function isoDate(d: string, m: string, y: string): string | null {
   if (!(dd >= 1 && dd <= 31 && yy >= 2024 && yy <= 2035)) return null;
   return yy + "-" + String(mo).padStart(2, "0") + "-" + String(dd).padStart(2, "0");
 }
-const num = (s: string) => { const v = parseFloat(s.replace(/[\s,]/g, "")); return isFinite(v) ? v : null; };
+// « 1,549.86 » (Airbnb .co.uk/.com) et « 1 549,86 » / « 1.549,86 » (Airbnb .fr) → 1549.86
+const num = (s: string) => {
+  let x = s.replace(/[\s\u00a0\u202f]/g, "");
+  x = /,\d{1,2}$/.test(x) ? x.replace(/\./g, "").replace(",", ".") : x.replace(/,/g, "");
+  const v = parseFloat(x);
+  return isFinite(v) ? v : null;
+};
 
 export type Parsed = {
-  type: "confirmation" | "request" | "inquiry" | "message" | "reminder" | "cancellation" | "alteration" | "review" | "other";
+  type: "confirmation" | "request" | "inquiry" | "message" | "reminder" | "cancellation" | "alteration" | "review" | "payout" | "other";
   code: string | null; thread_id: string | null; name: string | null; first_name: string | null;
   checkin: string | null; checkout: string | null; adults: number | null; children: number | null; infants: number | null;
   payout_eur: number | null; guest_total_eur: number | null; guest_message: string | null;
+  payout: Payout | null;
 };
+// Versement Airbnb : une ligne par réservation, reliée au séjour par son code HM… exact.
+// Les dates de la ligne (07/10/2026) ne servent pas : jj/mm ou mm/jj selon le domaine.
+export type Payout = { id: string | null; total_eur: number | null; expected_by: string | null; items: { code: string; name: string | null; amount_eur: number | null }[] };
+export function parsePayout(t: string): Payout | null {
+  const id = (t.match(/Payout ID\s+(M-[A-Z0-9]{6,})/) || [])[1] || null;
+  const tot = t.match(/€\s?([\d.,]+)\s*EUR was sent/i) || t.match(/Total paid:\s*€\s?([\d.,]+)/i);
+  const exp = t.match(/should arrive by\s+(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/i);
+  const items = [...t.matchAll(/([A-ZÀ-Ý][\p{L}'’-]+(?: [A-ZÀ-Ý][\p{L}'’-]+){0,3})\s+€\s?([\d.,]+)\s*EUR\s+[^€]{0,260}?\b(HM[A-Z0-9]{8})\b/gu)]
+    .map((m) => ({ code: m[3], name: m[1].replace(/^Details\s+/, "").trim() || null, amount_eur: num(m[2]) }));
+  if (!items.length) return null;
+  return { id, total_eur: tot ? num(tot[1]) : null, expected_by: exp ? isoDate(exp[1], exp[2], exp[3]) : null, items };
+}
 export function parseAirbnb(subject: string, text: string): Parsed {
   const s = subject || "", t = (text || "").replace(/\s+/g, " ");
   const type: Parsed["type"] =
@@ -101,6 +121,7 @@ export function parseAirbnb(subject: string, text: string): Parsed {
     /^(re:\s*)?(enquiry|inquiry) for|demande d'information|respond to .* enquiry/i.test(s) && !/^re:/i.test(s) ? "inquiry" :
     /^re:|new message|message from|nouveau message/i.test(s) ? "message" :
     /reminder|is coming soon|arrive bientôt/i.test(s) ? "reminder" :
+    /sent a payout|payout of|versement/i.test(s) ? "payout" :
     /review/i.test(s) ? "review" : "other";
   const code = (t.match(/CONFIRMATION CODE\s+(HM[A-Z0-9]{6,12})\b/) || t.match(/reservations\/details\/(HM[A-Z0-9]{6,12})\b/) || t.match(/\b(HM[A-Z0-9]{8})\b/) || [])[1] || null;
   const thread_id = (t.match(/hosting\/thread\/(\d{6,})/) || [])[1] || null;
@@ -152,6 +173,7 @@ export function parseAirbnb(subject: string, text: string): Parsed {
     type, code, thread_id, name, first_name, checkin, checkout, adults, children, infants,
     payout_eur: payout ? num(payout[1]) : null, guest_total_eur: total ? num(total[1]) : null,
     guest_message: guest_message ? guest_message.slice(0, 1200) : null,
+    payout: type === "payout" ? parsePayout(t) : null,
   };
 }
 
@@ -191,6 +213,7 @@ async function patchStay(id: string, body: Row) {
 
 // deno-lint-ignore no-explicit-any
 async function applyToCrm(p: Parsed, emailId: string | null, dry: boolean, log: any[]): Promise<string | null> {
+  if (p.type === "payout") return applyPayout(p, emailId, dry, log);
   const stay = await findStay(p);
   if (p.type === "confirmation" || (p.type === "reminder" && stay)) {
     if (stay) {
@@ -244,6 +267,38 @@ async function applyToCrm(p: Parsed, emailId: string | null, dry: boolean, log: 
   return stay.id;
 }
 
+// Versement : chaque ligne est rattachée au séjour dont le code est EXACTEMENT celui de
+// la ligne (un seul résultat), sinon elle est seulement journalisée. Le prix n'est
+// rempli que s'il est vide, pour un séjour de moins de 28 nuits (au-delà, Airbnb
+// verse par mois et la ligne n'est qu'une partie du total).
+// deno-lint-ignore no-explicit-any
+async function applyPayout(p: Parsed, emailId: string | null, dry: boolean, log: any[]): Promise<string | null> {
+  if (!p.payout) return null;
+  let first: string | null = null;
+  for (const it of p.payout.items) {
+    const rows: Row[] = await db(`crm_clients?select=${SEL}&user_id=eq.${OWNER_ID}&deleted_at=is.null&details->>reservation_code=eq.${it.code}&limit=2`);
+    if (rows?.length !== 1) { log.push({ action: "payout_unmatched", code: it.code, amount: it.amount_eur }); continue; }
+    const stay = rows[0];
+    first = first || stay.id;
+    const d = { ...(stay.details || {}) };
+    const list: Row[] = Array.isArray(d.payouts) ? d.payouts.slice() : [];
+    const key = (p.payout.id || emailId || "") + ":" + it.code;
+    if (list.some((x) => x.key === key)) continue;
+    list.push({ key, payout_id: p.payout.id, amount_eur: it.amount_eur, expected_by: p.payout.expected_by, email_id: emailId, seen_at: new Date().toISOString() });
+    d.payouts = list;
+    const up: Row = { details: d };
+    const nights = stay.arrival && stay.departure ? (Date.parse(stay.departure) - Date.parse(stay.arrival)) / 86400000 : 99;
+    if (!(+stay.price > 0) && it.amount_eur != null && list.length === 1 && nights > 0 && nights < 28) {
+      up.price = it.amount_eur; up.commission = 0;
+      d.payout_source = d.payout_source || "gmail_payout";
+      if (Array.isArray(d.pending)) d.pending = d.pending.filter((x: string) => x !== "price");
+    }
+    log.push({ action: "payout", id: stay.id, amount: it.amount_eur, fields: Object.keys(up) });
+    if (!dry) await patchStay(stay.id, up);
+  }
+  return first;
+}
+
 // ── Google ───────────────────────────────────────────────────────────────
 async function googleToken(refresh: string) {
   const r = await fetch("https://oauth2.googleapis.com/token", {
@@ -280,7 +335,7 @@ Deno.serve(async (req: Request) => {
         const cid = await applyToCrm(p, r.id, dry, log);
         if (cid) stats.linked++;
         log.push({ email: r.id, subject: String(r.subject).slice(0, 70), type: p.type, code: p.code, name: p.name, in: p.checkin, out: p.checkout, a: p.adults, c: p.children, i: p.infants, earn: p.payout_eur, client: cid });
-        if (!dry) await db(`email_inbox?id=eq.${r.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ extracted: { ...(r.extracted || {}), airbnb: p, parsed_by: "gmail_sync_v1" }, ...(cid && !r.client_id ? { client_id: cid } : {}) }) });
+        if (!dry) await db(`email_inbox?id=eq.${r.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ extracted: { ...(r.extracted || {}), airbnb: p, parsed_by: "gmail_sync_v2" }, ...(cid && !r.client_id ? { client_id: cid } : {}) }) });
       }
     } else {
       const vs: Row[] = await db(`villa_settings?select=email_connection&villa_key=eq.${VILLA_KEY}&owner_id=eq.${OWNER_ID}&limit=1`);
@@ -309,7 +364,7 @@ Deno.serve(async (req: Request) => {
             body: JSON.stringify({ id: rowId, owner_id: OWNER_ID, user_id: OWNER_ID, villa_key: VILLA_KEY, gmail_id: gid,
               from_name: (fm ? fm[1].replace(/"/g, "") : from).slice(0, 200), from_email: (fm ? fm[2] : from).slice(0, 200),
               subject: subject.slice(0, 500), body, received_at: date ? new Date(date).toISOString() : new Date().toISOString(),
-              status: "new", source: "gmail_sync", extracted: { airbnb: p, parsed_by: "gmail_sync_v1" } }),
+              status: "new", source: "gmail_sync", extracted: { airbnb: p, parsed_by: "gmail_sync_v2" } }),
           });
         }
         const cid = await applyToCrm(p, rowId, dry, log);
