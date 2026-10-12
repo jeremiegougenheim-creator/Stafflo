@@ -44,6 +44,10 @@ const PRACTICAL = [
    "Cleaning: the house is cleaned every day."],
   ["Chauffage : la maison est chauffée selon vos besoins, chambres comprises. Le salon et la suite principale ont aussi une cheminée.",
    "Heating: the house is heated as you need it, bedrooms included. The living room and the master suite also have a fireplace."],
+  /* Climatisation : confirmé par Jérémie le 10/10/2026 (toutes les chambres),
+     point à mettre en avant pour l'été. Absent du livret jusqu'ici. */
+  ["Climatisation : toutes les chambres sont climatisées — un vrai confort pendant les chaleurs de l'été.",
+   "Air conditioning: every bedroom is air-conditioned — a real comfort in the summer heat."],
   ["Piscine : notre piscine n'est ni chauffée, ni clôturée, et n'est pas équipée d'une alarme. Si de jeunes enfants séjournent avec vous, leur surveillance relève entièrement des parents ou des accompagnants, à tout moment. Nous vous remercions d'y veiller.",
    "Swimming pool: our pool is not heated, not fenced and has no alarm. If young children are staying with you, supervising them is entirely the responsibility of their parents or guardians, at all times. We thank you for your care in this."],
   ["Arrivée et départ : vos chambres sont prêtes à partir de 14h. Le jour du départ, nous vous demandons simplement de libérer les chambres pour midi, le temps que l'équipe puisse les préparer. La maison, le jardin et la piscine restent ensuite à vous jusqu'à 18h — dites-nous votre heure de départ à l'avance et nous organiserons tout, déjeuner au bord de l'eau compris si vous le souhaitez. Si votre vol est plus tardif, parlons-en : nous trouverons une solution.",
