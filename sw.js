@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v487 (ARIA lit la fiche maison ; réponses types sans faits figés)
-const CACHE = 'stafflo-v487';
+// Stafflo Service Worker — v488 (Espace Stafflo : espace.html, jamais en cache)
+const CACHE = 'stafflo-v488';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
@@ -50,6 +50,8 @@ self.addEventListener('fetch', e => {
   // changé doit atteindre ARIA au prochain chargement. Hors ligne, l'app
   // tourne sans fiche (villaFactsActive() = false), sans erreur.
   if (url.includes('villa-facts.js')) return;
+  // Espace Stafflo : toujours la dernière version, comme livret et planning.
+  if (url.includes('espace.html')) return;
 
   // Skip external APIs — let them go directly to network
   const { hostname } = new URL(url);
