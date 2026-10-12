@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v485 (livret : groupe famille/amis transmis)
-const CACHE = 'stafflo-v485';
+// Stafflo Service Worker — v486 (fiche maison : villa-facts.js, source unique livret + ARIA)
+const CACHE = 'stafflo-v486';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
@@ -46,6 +46,10 @@ self.addEventListener('fetch', e => {
   if (url.includes('livret.html')) return;
   // Même règle pour planning.html : outil interne, toujours la dernière version.
   if (url.includes('planning.html')) return;
+  // Fiche maison (villa-facts.js) : jamais en cache SW — un prix ou une règle
+  // changé doit atteindre ARIA au prochain chargement. Hors ligne, l'app
+  // tourne sans fiche (villaFactsActive() = false), sans erreur.
+  if (url.includes('villa-facts.js')) return;
 
   // Skip external APIs — let them go directly to network
   const { hostname } = new URL(url);
