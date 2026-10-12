@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v491 (bouton vols en direct : ReferenceError corrigée)
-const CACHE = 'stafflo-v491';
+// Stafflo Service Worker — v492 (plus de faits inventés dans les modèles et prompts ARIA)
+const CACHE = 'stafflo-v492';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

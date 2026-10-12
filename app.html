@@ -4760,7 +4760,7 @@ window.renderSoloTurnoverCard = function(){
       ctx = { phase:'departure', guest:departing };
       items = [
         { k:'checkout_msg', label: FR?'Message départ + avis':'Checkout + review message', urgent:true },
-        { k:'cleaning_brief', label: FR?'Briefer Bouchra ménage':'Brief Bouchra cleaning', urgent:true },
+        { k:'cleaning_brief', label: FR?'Briefer le ménage':'Brief housekeeping', urgent:true },
         { k:'driver_back', label: FR?'Transfert retour':'Return transfer', urgent:false },
         { k:'inventory', label: FR?'Inventaire chambre':'Room inventory', urgent:false },
         { k:'invoice', label: FR?'Envoyer reçu':'Send receipt', urgent:false },
@@ -7016,7 +7016,7 @@ window.renderSetupOneLiner = function(){
     <div class="field"><label data-fr="Prix de base (par nuit)" data-en="Base price (per night)">Prix de base (par nuit)</label><input id="cfgBasePrice" type="number" min="0" step="10" placeholder="750"></div>
     <div class="field"><label data-fr="Capacité incluse (avant supplément)" data-en="Included capacity (before surcharge)">Capacité incluse (avant supplément)</label><input id="cfgBaseCapacity" type="number" min="1" max="30" placeholder="8"></div>
     <div class="field"><label data-fr="Supplément / invité / nuit au-delà" data-en="Extra guest fee / night beyond">Supplément / invité / nuit au-delà</label><input id="cfgExtraGuestFee" type="number" min="0" step="5" placeholder="50"></div>
-    <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Said (majordome)&#10;Faiza (cuisinière)&#10;Bouchra (ménage)"></textarea></div>
+    <div class="field"><label data-fr="Staff (un par ligne)" data-en="Staff (one per line)">Staff (un par ligne)</label><textarea id="cfgStaff" rows="3" placeholder="Prénom (rôle)&#10;ex. Saïd (majordome)&#10;Bouchra (ménage)"></textarea></div>
     <div class="field" id="cfgWiseDetailsField" style="display:none"><label data-fr="Coordonnées Wise / virement (affichées sur le décompte)" data-en="Wise / bank transfer details (shown on the bill)">Coordonnées Wise / virement (affichées sur le décompte)</label><textarea id="cfgWiseDetails" rows="3" placeholder="Bénéficiaire, IBAN / lien Wise… (laissez vide pour ne pas l'afficher sur le décompte)"></textarea></div>
     <!-- Cleaner contact (v82) — used by the Solo profile turnover card -->
     <div class="field"><label data-fr="Nom du ménage" data-en="Cleaner name">Nom du ménage</label><input id="cfgCleanerName" placeholder="Bouchra"></div>
@@ -11638,7 +11638,7 @@ async function analyze() {
       `Write all 7 messages in ${guestLang}. Each must be complete, warm, and ready to send. Return ONLY valid JSON:`,
       isInquiry
         ? `{"messages":{"airbnb":"Complete reply to guest's inquiry. Answer EVERY question they asked with specific facts (distances in km+minutes, prices in MAD, exact amenities). Structure by topic. Add weather for their dates + transport options. Warm, personal tone ('my family home'). 15-30 lines. Sign ${ownerName}.","welcome":"pre-approval: highlight villa for their group size. Excite them.","driver":"airport transfer info.","staff":"internal note: guest profile + their question + what to prepare.","passport":"polite ID request, required by law.","checkout":"template for after stay, review request.","hostReview":"empty for inquiry"}}`
-        : `{"messages":{"airbnb":"booking confirmation reply, excited + welcoming, sign ${ownerName}.","welcome":"WhatsApp welcome: arrival ${arrFmt}, check-in 14h, checkout 12h, wifi, pool 28°C${chefBit}. Personal details from notes.","driver":"driver brief: ${gName}, ${g.guests||'?'} pax, arrival ${arrFmt}, villa GPS ${gpsInfo}.","staff":"staff prep brief: ${gName} arrival ${arrFmt}, ${g.nights||'?'}n, ${g.guests||'?'} guests. Notes: ${g.notes||'none'}. Checklist: rooms, pool, welcome gifts, chef menu.","passport":"polite passport copy request before arrival.","checkout":"post-stay thank you message to ${gName} (1st person from owner): warm 2-3 sentences thanking them, hoping they enjoyed villa+staff, kind invitation to leave Airbnb/Booking review (mention it helps the villa). Sign ${ownerName}. Ready to copy-send.","hostReview":"PUBLIC review YOU (host) leave for ${gName} on Airbnb/Booking — 2-3 sentences, warm + specific. Mention they were respectful guests, communication smooth, would host again. Use guest details from notes if available. Direct, no greeting/signature, just the review text itself."}}`,
+        : `{"messages":{"airbnb":"booking confirmation reply, excited + welcoming, sign ${ownerName}.","welcome":"WhatsApp welcome: arrival ${arrFmt}; check-in/checkout times, wifi and pool only as given in the house facts, never invented${chefBit}. Personal details from notes.","driver":"driver brief: ${gName}, ${g.guests||'?'} pax, arrival ${arrFmt}, villa GPS ${gpsInfo}.","staff":"staff prep brief: ${gName} arrival ${arrFmt}, ${g.nights||'?'}n, ${g.guests||'?'} guests. Notes: ${g.notes||'none'}. Checklist: rooms, pool, welcome gifts, chef menu.","passport":"polite passport copy request before arrival.","checkout":"post-stay thank you message to ${gName} (1st person from owner): warm 2-3 sentences thanking them, hoping they enjoyed villa+staff, kind invitation to leave Airbnb/Booking review (mention it helps the villa). Sign ${ownerName}. Ready to copy-send.","hostReview":"PUBLIC review YOU (host) leave for ${gName} on Airbnb/Booking — 2-3 sentences, warm + specific. Mention they were respectful guests, communication smooth, would host again. Use guest details from notes if available. Direct, no greeting/signature, just the review text itself."}}`,
     ].filter(Boolean).join('\n');
 
     // Run pass 2 and update UI when done
@@ -14225,41 +14225,26 @@ function loadAriaMemoryTemplate() {
   if (!ta) return;
   if (ta.value.trim() && !confirm(lang==='fr' ? 'Remplacer le contenu actuel par le template ?' : 'Replace current content with template?')) return;
   var cfg = getCfg();
-  var villa = cfg.villa || 'Villa DarJ';
-  var owner = cfg.owner || 'Jérémie';
   var city = cfg.city || 'Marrakech';
-  ta.value =
-'=== EMAIL DE BIENVENUE TYPE ===\n' +
-'Bonjour [prénom],\n\n' +
-'C\'est avec plaisir que nous vous accueillons à ' + villa + '.\n' +
-'Said, notre majordome, sera à votre disposition dès votre arrivée.\n' +
-'Faiza prépare ses meilleurs plats traditionnels — n\'hésitez pas à lui partager vos préférences.\n\n' +
-'À très bientôt,\n' + owner + '\n\n' +
-'=== TARIFS ===\n' +
-'Basse saison (nov-mars) : 2 500€/sem\n' +
-'Moyenne saison : 3 200€/sem\n' +
-'Haute saison (juin-août, vacances) : 4 500€/sem\n' +
-'Mid-week 3 nuits min : 1 800€\n' +
-'Caution : 1 500€ remboursable\n\n' +
-'=== INFOS PRATIQUES VILLA ===\n' +
-'Wifi : DarJ_Guest / mdp à demander à Said\n' +
-'Code coffre : à confirmer lors du check-in\n' +
-'Piscine chauffée : 24-28°C selon saison\n' +
-'Climatisation : toutes les chambres\n\n' +
-'=== STAFF ===\n' +
-'Said (majordome) : disponible 8h-22h, parle FR/AR/EN\n' +
-'Faiza (cheffe) : cuisine marocaine + internationale, prévenir 24h pour menus spéciaux\n' +
-'Bouchra (ménage) : tous les matins\n\n' +
-'=== RÈGLES VILLA ===\n' +
-'Maximum 8 invités sans accord préalable\n' +
-'Pas de fumeurs à l\'intérieur (terrasses OK)\n' +
-'Pas de soirée bruyante après 23h (voisinage)\n' +
-'Animaux : sur demande uniquement\n\n' +
-'=== CONTACTS UTILES ' + city.toUpperCase() + ' ===\n' +
-'Driver privé : Hassan +212 ...\n' +
-'Fleuriste anniversaires : Florist Marrakech\n' +
-'Médecin urgence anglophone : Dr ...\n' +
-'Restaurant recommandé : ...';
+  // v490 — l'ancien modèle contenait des valeurs inventées (tarifs, caution, wifi,
+  // « piscine chauffée », Faiza…) qu'ARIA prenait pour vraies une fois enregistrées.
+  // Le modèle n'a plus que des rubriques à compléter : un champ vide reste « ? ».
+  var factsNote = (typeof villaFactsActive === 'function' && villaFactsActive())
+    ? (lang === 'fr'
+        ? '(La fiche maison — repas et prix, équipe, horaires, règles, chambres — est déjà fournie à ARIA. N\'écrivez ici que ce qui n\'y est pas.)\n\n'
+        : '(The house facts — meals and prices, team, times, rules, rooms — are already given to ARIA. Only write here what is not in them.)\n\n')
+    : '';
+  ta.value = factsNote + (lang === 'fr'
+    ? '=== TARIFS ===\nBasse saison : ?\nHaute saison : ?\nCaution : ?\n\n' +
+      '=== INFOS PRATIQUES ===\nWifi : ?\nPiscine : ?\n\n' +
+      '=== ÉQUIPE ===\n? (rôle, horaires, langues)\n\n' +
+      '=== RÈGLES ===\nNombre maximum de personnes : ?\nFumeurs : ?\nBruit : ?\nAnimaux : ?\n\n' +
+      '=== CONTACTS UTILES ' + city.toUpperCase() + ' ===\nChauffeur : ?\nMédecin : ?\nRestaurants recommandés : ?'
+    : '=== RATES ===\nLow season: ?\nHigh season: ?\nDeposit: ?\n\n' +
+      '=== PRACTICAL INFO ===\nWifi: ?\nPool: ?\n\n' +
+      '=== TEAM ===\n? (role, hours, languages)\n\n' +
+      '=== RULES ===\nMaximum guests: ?\nSmoking: ?\nNoise: ?\nPets: ?\n\n' +
+      '=== USEFUL CONTACTS ' + city.toUpperCase() + ' ===\nDriver: ?\nDoctor: ?\nRecommended restaurants: ?');
   updateAriaMemoryCount();
   toast(lang === 'fr' ? '✓ Template chargé — éditez selon vos besoins' : '✓ Template loaded — edit as needed');
 }
@@ -28522,7 +28507,7 @@ function v2RenderHero() {
         ],
         departure: [
           {k:'checkout_msg', fr:'Message départ + avis',en:'Checkout + review msg'},
-          {k:'cleaning_brief',fr:'Briefer Bouchra ménage',en:'Brief Bouchra cleaning'},
+          {k:'cleaning_brief',fr:'Briefer le ménage',en:'Brief housekeeping'},
           {k:'driver_back',  fr:'Transfert retour',     en:'Return transfer'},
           {k:'inventory',    fr:'Inventaire chambre',   en:'Room inventory'}
         ]
@@ -31372,7 +31357,7 @@ window.addEventListener('DOMContentLoaded', function() {
         '- Pas sûr → "unknown" + needs_review:true.',
         '- N\'invente JAMAIS montant/date/nom absent du message.',
         '- Si entity_id n\'est pas dans le référentiel clients → entity_type:"unknown", needs_review:true.',
-        'JSON shape : {"entity_type":"maison","entity_id":null,"subject":"Paiement Saïd 3000 MAD","confidence":0.95,"needs_review":false,"actions":[{"title":"Virer 3000 MAD à Saïd","category":"depense","amount":3000,"due_date":null}]}'
+        'JSON shape : {"entity_type":"maison","entity_id":null,"subject":"<sujet court, tiré du texte>","confidence":0.95,"needs_review":false,"actions":[{"title":"<action tirée du texte>","category":"depense","amount":null,"due_date":null}]} — montant, nom et date seulement s\'ils sont écrits dans le texte, sinon null.'
       ].join('\n');
 
       var _user = 'Message : "' + (body||'').slice(0, 3000) + '"' + (fromName ? ' — Expéditeur : ' + fromName + (fromHandle ? ' (' + fromHandle + ')' : '') : '');
@@ -35093,7 +35078,7 @@ function startTour(){
     ]);
     renderChecklist('v5dDepChecklist', 'departure', [
       { k:'checkout_msg',   label: FR?'Message départ + avis':'Checkout + review message' },
-      { k:'cleaning_brief', label: FR?'Briefer Bouchra ménage':'Brief Bouchra cleaning' },
+      { k:'cleaning_brief', label: FR?'Briefer le ménage':'Brief housekeeping' },
       { k:'inventory',      label: FR?'Inventaire chambre':'Room inventory' }
     ]);
   }
