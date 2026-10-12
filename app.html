@@ -24195,6 +24195,13 @@ function getProviderKey(cfg, provider) {
 }
 
 async function callProviderAPI(provider, apiKey, systemPrompt, userContent, maxTokens) {
+  // v489 — « Données traitées en Europe » : si le proxy ARIA échoue, l'app ne
+  // contacte plus directement un fournisseur hors UE avec les clés du navigateur.
+  // Seul Mistral (Paris) reste autorisé. Réactivation volontaire uniquement :
+  // localStorage.stafflo_direct_ai = 'on'.
+  var _directOn = false;
+  try { _directOn = localStorage.getItem('stafflo_direct_ai') === 'on'; } catch(_e) {}
+  if (provider !== 'mistral' && !_directOn) throw new Error('direct_ai_disabled_' + provider);
   var ac = new AbortController();
   var timer = setTimeout(function(){ ac.abort(); }, 10000);
   try {

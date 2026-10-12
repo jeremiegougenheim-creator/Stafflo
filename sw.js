@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v488 (Espace Stafflo : espace.html, jamais en cache)
-const CACHE = 'stafflo-v488';
+// Stafflo Service Worker — v489 (IA : plus d'appel direct hors UE depuis le navigateur)
+const CACHE = 'stafflo-v489';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
