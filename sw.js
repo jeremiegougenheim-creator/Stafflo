@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v497 (fiche : frais Airbnb calculés, brut − net)
-const CACHE = 'stafflo-v497';
+// Stafflo Service Worker — v498 (langue FR/EN lisible, boîte lisible sur téléphone)
+const CACHE = 'stafflo-v498';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
