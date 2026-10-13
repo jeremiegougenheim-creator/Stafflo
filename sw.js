@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v502 (Ops du jour générique masqué, Espace › À faire)
-const CACHE = 'stafflo-v502';
+// Stafflo Service Worker — v503 (vue équipe equipe.html, jamais en cache)
+const CACHE = 'stafflo-v503';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
@@ -52,6 +52,8 @@ self.addEventListener('fetch', e => {
   if (url.includes('villa-facts.js')) return;
   // Espace Stafflo : toujours la dernière version, comme livret et planning.
   if (url.includes('espace.html')) return;
+  // Vue équipe : données du jour, jamais en cache.
+  if (url.includes('equipe.html') || url.includes('/functions/v1/staff-view')) return;
 
   // Skip external APIs — let them go directly to network
   const { hostname } = new URL(url);
