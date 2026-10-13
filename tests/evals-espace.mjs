@@ -77,6 +77,13 @@ check('dates fortes : aucune date d’événement en dur', !/20\d\d-\d\d-\d\d/.t
 check('dates fortes : nuits sans séjour calculées en code', /function eventNights\(e\)/.test(script) && /c\.a <= x && x < c\.d/.test(script));
 check('dates fortes : dates lunaires signalées approximatives', /e\.category === 'religious'/.test(script) && /evApprox:/.test(script));
 check('ARIA : dates fortes sans prix chiffré', /ne propose jamais de prix chiffré ni de hausse en %/.test(script) && /eventsForAI\(\)/.test(script));
+// v7 — accès équipe (equipe.html) et champs lus par l'équipe
+check('accès équipe : jeton aléatoire 32 octets, seule l’empreinte sha-256 part en base', /crypto\.getRandomValues\(new Uint8Array\(32\)\)/.test(script) && /token_hash: h/.test(script) && !/token_hash: tok/.test(script));
+check('accès équipe : retirer = suppression douce', /staff_links\?id=eq\.[\s\S]{0,200}deleted_at/.test(script));
+check('accès équipe : liens retirés non listés', /staff_links\?select=[^']*deleted_at=is\.null/.test(script));
+check('accès équipe : personnes lues dans la fiche maison', /function teamNames\(\) \{ return F\.TEAM/.test(script));
+check('champs équipe : fusion dans details, rien d’autre écrasé', /var nd = Object\.assign\(\{\}, c\.details\)/.test(script) && /\['arrival', 'arrival_time'\], \['beds', 'beds'\], \['staffnote', 'staff_note'\]/.test(script));
+check('brief équipe : la consigne remplace les notes privées', /if \(sn\) lines\.push\('Consigne : '/.test(script) && /else if \(notes\) lines\.push\('Notes : '/.test(script));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 check('sw.js ne met pas espace.html en cache', sw.includes("url.includes('espace.html')"));
 check('sw.js affiche les alertes et ouvre l’Espace au clic', /addEventListener\('push'/.test(sw) && /addEventListener\('notificationclick'/.test(sw) && /espace\.html/.test(sw));
