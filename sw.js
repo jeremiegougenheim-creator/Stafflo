@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v499 (allègement : écrans recentrés, lien Espace, occupé ce soir)
-const CACHE = 'stafflo-v499';
+// Stafflo Service Worker — v500 (ARIA : actions nommées, doublons retirés)
+const CACHE = 'stafflo-v500';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

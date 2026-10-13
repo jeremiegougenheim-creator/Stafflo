@@ -31,6 +31,7 @@ for (const [label, sel] of [
   ['« Mode de gestion » sans effet', 'data-en="OPERATION PROFILE"'],
   ['tarifs repas à 0 € (la fiche maison fait foi)', '.trim-v1 #settingsMealPricing'],
 ]) check('masqué : ' + label, trim.includes(sel));
+check('ARIA : icônes en double masquées, « Rédiger » et « Extraire » nommées', trim.includes(".aria-action-btn[onclick*=\"'price'\"]") && trim.includes('content:attr(aria-label)'));
 check('Villa › Prix : « occupé ce soir » + prochaine nuit libre', /window\.staffloTrimTonight = function/.test(trim) && /window\.staffloTrimTonight\(\)/.test(app));
 check('en-tête : lien vers l’Espace', /a\.href = 'espace\.html'/.test(trim) && !/a\.className = 'hdr-btn'/.test(trim));
 check('Aujourd’hui : « NET <année> » au lieu d’un total depuis toujours', /var _netLbl = _trim \? \('NET ' \+ _yr\) : 'NET';/.test(app));
