@@ -59,7 +59,8 @@ check('signature ES256 valide', okSig);
 const idx = fs.readFileSync(path.join(root, 'supabase/functions/push-notify/index.ts'), 'utf8');
 const seg = idx.slice(idx.indexOf('// ── Textes des alertes'), idx.indexOf('async function subsOf'));
 const segJs = esbuild.transformSync(seg.replace(/^export /gm, ''), { loader: 'ts' }).code;
-const A = (await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert };').toString('base64'))).buildAlert;
+const MOD = await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert, buildBrief };').toString('base64'));
+const A = MOD.buildAlert, B = MOD.buildBrief;
 let a = A({ type: 'inquiry', first_name: 'Daniel', checkin: '2026-10-13', checkout: '2026-10-16', adults: 9, children: 0, infants: 0, guest_message: 'Is the villa available?', thread_id: '123' }, 'fr');
 check('demande : titre et délai 24 h', a && a.title === 'Nouvelle demande — Daniel' && /13 oct\. → 16 oct\. · 9 adultes · 24 h pour répondre/.test(a.body), a && a.body);
 check('demande : message du client cité', a && /« Is the villa available\? »/.test(a.body));
@@ -79,6 +80,30 @@ check('rappel, avis, autre : pas d\'alerte', ['reminder', 'review', 'other'].eve
 check('cron : chaque email marqué notified_at (jamais deux fois)', /notified_at=is\.null/.test(idx) && /notified_at: new Date/.test(idx));
 check('abonnement expiré (404/410) : désactivé en douceur', /r\.gone \? \{ deleted_at/.test(idx));
 check('clé privée VAPID jamais renvoyée au navigateur', /action === "public_key"\) return out\(\{ publicKey: \(await vapid\(\)\)\.publicKey \}\)/.test(idx) && !/privateJwk[^\n]*out\(/.test(idx));
+
+// ── Point du matin (buildBrief) ───────────────────────────────────────────
+{
+  const T = '2026-10-13';
+  const S = [
+    { name: 'Felipe Villalobos', arrival: '2026-10-13', departure: '2026-10-16', adults: 7, children: 0, phone: '', meals: '', staff_briefed_at: null, details: { livretSentAt: '2026-10-08' }, source: 'Airbnb', booking_status: 'confirmed' },
+    { name: 'Paul Partant', arrival: '2026-10-10', departure: '2026-10-13', adults: 5, details: {}, source: 'Airbnb', booking_status: 'confirmed' },
+    { name: 'Helen Twelvetrees', arrival: '2026-10-07', departure: '2026-10-10', details: {}, source: 'Airbnb', booking_status: 'confirmed' },
+    { name: 'Lead Fantome', arrival: '2026-10-13', departure: '2026-10-15', booking_status: 'inquiry', details: {} },
+    { name: 'Famille Offert', arrival: '2026-10-01', departure: '2026-10-05', is_comp: true, source: 'Airbnb', booking_status: 'confirmed', details: {} },
+  ];
+  const b = B(S, 2, T, 'fr');
+  check('brief : arrivée du jour avec le groupe', b && /Arrivée : Felipe \(7 pers\.\)/.test(b.body), b && b.body);
+  check('brief : départ du jour', b && /Départ : Paul/.test(b.body), b && b.body);
+  // Felipe : téléphone (J-3), repas (J-2), brief (J-1) en retard ; Paul : message de départ (jour J)
+  check('brief : à faire compté depuis la base (3 en retard + 1 départ)', b && /4 à faire, dont 3 en retard/.test(b.body), b && b.body);
+  check('brief : messages clients et avis à laisser', b && /2 messages clients à traiter/.test(b.body) && /1 avis Airbnb à laisser/.test(b.body), b && b.body);
+  check('brief : une demande (lead) n’est jamais une arrivée', b && !/Lead/.test(b.body));
+  check('brief : séjour offert → pas d’avis demandé', B([S[4]], 0, '2026-10-07', 'fr') === null);
+  check('brief : rien à signaler → pas de notification', B([], 0, T, 'fr') === null);
+  const e = B(S, 1, T, 'en');
+  check('brief : anglais', e && e.title === 'Villa Dar J — today' && /Arriving: Felipe \(7 guests\)/.test(e.body) && /1 guest message to handle/.test(e.body), e && e.body);
+}
+check('brief : protégé par la clé de synchro, aperçu possible (dry)', /action === "brief"[\s\S]{0,200}gmail_sync_key_ok/.test(idx) && /body\.dry/.test(idx));
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

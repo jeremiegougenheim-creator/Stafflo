@@ -11,6 +11,9 @@
 //                              jamais la base et cette fonction).
 //   { action: "test" }       + JWT utilisateur   → alerte d'essai sur les appareils de
 //                              l'utilisateur.
+//   { action: "brief" }      + en-tête x-sync-key → cron du matin : une notification
+//                              « aujourd'hui » (arrivées, départs, à faire, messages,
+//                              avis), seulement s'il y a quelque chose. { dry: true } = aperçu.
 // Les textes des alertes reprennent UNIQUEMENT ce que le parseur a lu dans l'email
 // (extracted.airbnb) : un champ absent n'apparaît pas, rien n'est deviné.
 import { generateVapidKeys, sendPush, type Sub } from "./webpush.ts";
@@ -116,6 +119,37 @@ export function buildAlert(p: Row, lang: "fr" | "en"): { title: string; body: st
   }
 }
 
+// ── Point du matin (cron 7 h 30 UTC) ─────────────────────────────────────
+// Même logique que l'Espace : vérifications avant arrivée (téléphone et livret
+// J-3, repas J-2, brief J-1), message de départ, avis Airbnb (14 jours), messages
+// clients en attente. Tout est compté depuis la base, rien n'est estimé.
+const FIRM_OUT = ["inquiry", "lead", "quoted", "declined", "cancelled", "canceled", "archived", "expired"];
+const dn = (iso: string | null | undefined) => { const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null; };
+export function buildBrief(stays: Row[], msgCount: number, todayIso: string, lang: "fr" | "en"): { title: string; body: string; tag: string } | null {
+  const fr = lang === "fr", t = dn(todayIso)!;
+  const firm = (stays || []).filter((c) => !c.deleted_at && !FIRM_OUT.includes(String(c.booking_status || "").toLowerCase()) && dn(c.arrival) != null && dn(c.departure) != null);
+  const first = (c: Row) => String(c.name || "").split(/\s+/)[0] || "?";
+  const pax = (c: Row) => { const n = (+c.adults || 0) + (+c.children || 0) || +c.guests || 0; return n ? (fr ? ` (${n} pers.)` : ` (${n} guests)`) : ""; };
+  const arr = firm.filter((c) => dn(c.arrival) === t), dep = firm.filter((c) => dn(c.departure) === t);
+  let late = 0, today = 0;
+  firm.filter((c) => { const a = dn(c.arrival)!; return a >= t && a - t <= 3; }).forEach((c) => {
+    const a = dn(c.arrival)!, d = c.details || {};
+    ([[!!String(c.phone || "").trim(), a - 3], [!!d.livretSentAt, a - 3], [!!String(c.meals || "").trim(), a - 2], [!!c.staff_briefed_at, a - 1]] as [boolean, number][])
+      .forEach(([done, due]) => { if (!done) { if (t > due) late++; else if (t === due) today++; } });
+  });
+  const departMsg = firm.filter((c) => { const d = dn(c.departure)!; return d >= t && d - t <= 1 && !(c.details || {}).departMsgAt; }).length;
+  const reviews = firm.filter((c) => { const d = dn(c.departure)!; return /airbnb/i.test(String(c.source || "")) && !c.is_comp && !(c.details || {}).reviewDoneAt && t > d && t <= d + 14; }).length;
+  const parts: string[] = [];
+  if (arr.length) parts.push((fr ? "Arrivée : " : "Arriving: ") + arr.map((c) => first(c) + pax(c)).join(", "));
+  if (dep.length) parts.push((fr ? "Départ : " : "Leaving: ") + dep.map(first).join(", "));
+  const todo = late + today + departMsg;
+  if (todo) parts.push(fr ? `${todo} à faire` + (late ? `, dont ${late} en retard` : "") : `${todo} to do` + (late ? `, ${late} overdue` : ""));
+  if (msgCount) parts.push(fr ? `${msgCount} message${msgCount > 1 ? "s" : ""} client${msgCount > 1 ? "s" : ""} à traiter` : `${msgCount} guest message${msgCount > 1 ? "s" : ""} to handle`);
+  if (reviews) parts.push(fr ? `${reviews} avis Airbnb à laisser` : `${reviews} Airbnb review${reviews > 1 ? "s" : ""} to leave`);
+  if (!parts.length) return null; // rien à signaler : pas de notification
+  return { tag: "brief-" + todayIso, title: fr ? "Villa Dar J — aujourd’hui" : "Villa Dar J — today", body: clip(parts.join(" · "), 230) };
+}
+
 async function subsOf(owner: string): Promise<(Sub & { id: string; lang: string })[]> {
   return await db(`push_subscriptions?select=id,endpoint,p256dh,auth,lang&owner_id=eq.${owner}&deleted_at=is.null`) || [];
 }
@@ -173,6 +207,28 @@ Deno.serve(async (req: Request) => {
         await db(`email_inbox?id=eq.${r.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ notified_at: new Date().toISOString() }) });
       }
       return out({ ok: true, stats });
+    }
+    if (body.action === "brief") {
+      const key = req.headers.get("x-sync-key") || "";
+      const ok = key && await fetch(SB_URL + "/rest/v1/rpc/gmail_sync_key_ok", { method: "POST", headers: H, body: JSON.stringify({ k: key }) }).then((r) => r.json()).catch(() => false);
+      if (ok !== true) return out({ error: "unauthorized" }, 401);
+      const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Casablanca" }).format(new Date());
+      const lo = new Date(Date.parse(todayIso) - 16 * 86400000).toISOString().slice(0, 10), hi = new Date(Date.parse(todayIso) + 4 * 86400000).toISOString().slice(0, 10);
+      const stays: Row[] = await db(`crm_clients?select=name,arrival,departure,guests,adults,children,phone,meals,staff_briefed_at,details,source,is_comp,booking_status,deleted_at&user_id=eq.${OWNER_ID}&deleted_at=is.null&departure=gte.${lo}&arrival=lte.${hi}`) || [];
+      const since48 = new Date(Date.now() - 48 * 3600000).toISOString(), since24 = Date.now() - 24 * 3600000;
+      const mails: Row[] = await db(`email_inbox?select=received_at,extracted&owner_id=eq.${OWNER_ID}&archived_at=is.null&from_email=ilike.*airbnb.com&received_at=gte.${since48}`) || [];
+      const threads = new Set<string>();
+      mails.forEach((m) => {
+        const p = m.extracted?.airbnb; if (!p || !["message", "inquiry", "request"].includes(p.type)) return;
+        if (p.type !== "message" && Date.parse(m.received_at) < since24) return; // demande expirée
+        if (/^Reacted\b/i.test(String(p.guest_message || ""))) return;
+        threads.add(p.thread_id || m.received_at);
+      });
+      const subs = await subsOf(OWNER_ID);
+      const preview = buildBrief(stays, threads.size, todayIso, "fr");
+      if (body.dry || !preview || !subs.length) return out({ ok: true, dry: !!body.dry, today: todayIso, brief: preview, subs: subs.length });
+      const d = await deliver(subs, (lang) => buildBrief(stays, threads.size, todayIso, lang));
+      return out({ ok: true, today: todayIso, brief: preview, ...d });
     }
     const uid = await userFrom(req);
     if (!uid) return out({ error: "unauthorized" }, 401);
