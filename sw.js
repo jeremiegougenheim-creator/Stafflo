@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v501 (événements : doublons supprimés exclus du contexte ARIA)
-const CACHE = 'stafflo-v501';
+// Stafflo Service Worker — v502 (Ops du jour générique masqué, Espace › À faire)
+const CACHE = 'stafflo-v502';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

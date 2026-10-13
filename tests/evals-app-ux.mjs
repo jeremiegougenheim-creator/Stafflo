@@ -30,6 +30,7 @@ for (const [label, sel] of [
   ['« 14 prochains jours » sans contenu', 'data-en="Next 14 days"'],
   ['« Mode de gestion » sans effet', 'data-en="OPERATION PROFILE"'],
   ['tarifs repas à 0 € (la fiche maison fait foi)', '.trim-v1 #settingsMealPricing'],
+  ['« Ops du jour » générique (l’Espace suit les vraies étapes)', '.trim-v1 #v3CardOps'],
 ]) check('masqué : ' + label, trim.includes(sel));
 check('ARIA : icônes en double masquées, « Rédiger » et « Extraire » nommées', trim.includes(".aria-action-btn[onclick*=\"'price'\"]") && trim.includes('content:attr(aria-label)'));
 check('Villa › Prix : « occupé ce soir » + prochaine nuit libre', /window\.staffloTrimTonight = function/.test(trim) && /window\.staffloTrimTonight\(\)/.test(app));
