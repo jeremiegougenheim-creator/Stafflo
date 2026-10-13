@@ -16,6 +16,7 @@ const code = src.replace(/^\s*\/\/.*$/gm, '');
 check('propriétaire tiré du JWT (auth.getUser), 401 sinon', /auth\.getUser\(\)/.test(code) && /error: 'unauthorized' \}, 401/.test(code));
 check('owner_id du corps ignoré', !/body\.owner_id/.test(code) && !/owner_id\?:/.test(code));
 check('aucune grille par défaut inventée (grid_missing)', !/DEFAULT_GRID/.test(code) && /error:'grid_missing'/.test(code));
+check('événements lus avec le jeton du propriétaire (RLS : les siens + ceux partagés de sa destination)', /asUser\.from\('events'\)/.test(code) && !/sb\.from\('events'\)/.test(code));
 check('aucune date d’événement en dur', !/m===10&&d>=9/.test(code) && /from\('events'\)/.test(code) && /is\('deleted_at', null\)/.test(code));
 check('plafond max_price respecté', /data\.max_price/.test(code));
 check('pas de CORS « * »', !/Allow-Origin':\s*'\*'/.test(code));

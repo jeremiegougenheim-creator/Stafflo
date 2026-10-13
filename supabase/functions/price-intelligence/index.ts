@@ -12,6 +12,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 //   3. Ville inconnue → pas de météo (avant : la météo de Marrakech pour tout le monde).
 //   4. Villa sans grille de prix → { error: 'grid_missing' } au lieu de la grille de
 //      Marrakech (650…1200 €) présentée comme la sienne.
+// v18 (13/10/2026, multi-villa) : événements lus avec le jeton du propriétaire → la RLS
+//   ajoute les dates fortes partagées de sa destination (events.owner_id null, pays/ville).
 // Le moteur lui-même (saison, modificateurs, comparables, occupation, délai) est inchangé :
 // décision du 11/07/2026 « garder le moteur existant ».
 
@@ -116,8 +118,9 @@ Deno.serve(async (req:Request) => {
     const calibFormula: string|null = (data.calibration_sources && data.calibration_sources.formula) ? data.calibration_sources.formula : null;
     const villaCity = cityKey(data.city), villaCountry = String(data.country || ''), villaBedrooms = data.bedrooms || 0;
 
-    // 2. Événements : table events du propriétaire (sourcée).
-    const { data: evRows } = await sb.from('events').select('name,start_date,end_date,demand_impact').eq('owner_id', ownerId).is('deleted_at', null).lte('start_date', targetDate).gte('end_date', targetDate);
+    // 2. Événements (sourcés) lus AVEC LE JETON DU PROPRIÉTAIRE : la RLS renvoie ses lignes
+    //    + les dates fortes partagées de SA destination (pays/ville de sa villa), jamais celles d'une autre.
+    const { data: evRows } = await asUser.from('events').select('name,start_date,end_date,demand_impact').is('deleted_at', null).lte('start_date', targetDate).gte('end_date', targetDate);
     const eventSig = pickEvent(evRows || [], targetDate);
     const geo = geoFor(villaCity);
 
