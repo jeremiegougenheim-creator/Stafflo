@@ -143,7 +143,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
 <body>
 <div id="app">
   <header class="top">
-    <span class="k" id="kicker">Villa Dar J · Marrakech</span>
+    <span class="k" id="kicker">Stafflo</span>
     <h1 id="title">Espace</h1>
     <div class="row">
       <span class="chip" id="today"></span>
@@ -178,7 +178,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var SB_URL = 'https://rcjhgilpmojohmrqzokx.supabase.co';
   var SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
   var PROXY = SB_URL + '/functions/v1/ai-proxy';
-  var F = window.VILLA_FACTS;
+  /* Multi-villa (13/10/2026) : la fiche maison est celle du compte connecté.
+     villa_settings.house_facts_ref = 'villa-facts.js' → la fiche de la villa pilote ;
+     sinon une fiche vide : aucune donnée d'une autre villa n'apparaît, ARIA dit « à confirmer ». */
+  var PILOT_F = window.VILLA_FACTS;
+  var EMPTY_F = { VILLA: { name: '', host: '', address: '', pin: null }, PRACTICAL: [], MEALS: [], MEAL_NOTES: [], TEXT: {}, RULES: [], ROOMS: [], GOOD_TO_KNOW: [], TEAM: [], digest: function () { return ''; } };
+  var F = EMPTY_F, HAS_FACTS = false;
   var SESSION_KEY = 'stafflo_session';
   var LANG_KEY = 'stafflo_espace_lang';
   var FIRM_OUT = ['inquiry', 'lead', 'quoted', 'declined', 'cancelled', 'canceled'];
@@ -227,6 +232,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       ariaErr: 'ARIA ne répond pas pour le moment. Réessayez dans un instant.',
       chips: ['Prochaines arrivées et ce qui manque', 'Brief équipe pour la prochaine arrivée', 'Combien coûte un dîner pour 9 personnes ?', 'Rédige la réponse à ce message client :'],
       clear: 'Effacer la conversation',
+      mYourVilla: 'Votre villa', mCity: 'Ville', mBedrooms: 'Chambres', mCapacity: 'Capacité', mNoTeam: 'Aucune personne enregistrée. Ajoutez votre équipe dans Réglages.', mSettings: 'Ouvrir les réglages',
+      mSheetTitle: 'Fiche maison', mSheetTxt: 'Horaires, règles, repas, adresse : la fiche maison n’est pas encore remplie. Tant qu’elle est vide, ARIA répond « à confirmer » sur ces sujets et les messages aux clients restent simples. Les bases de la villa se règlent dans Réglages.',
       mMeals: 'Repas & prix', mOrder: 'Commande des repas', mTeam: 'Équipe', mArrival: 'Arrivée & départ', mRules: 'Règles de la maison', mRooms: 'Chambres',
       mGroup16: '1–6 pers.', mGroup710: '7–10 pers.', mDigest: 'Ce qu’ARIA sait de la maison',
       mHow: 'Ces faits viennent de la fiche maison (villa-facts.js), la même que le livret. Pour changer un prix, un horaire ou une règle, demandez-le à Claude : le livret, ARIA et les messages suivent ensemble.',
@@ -239,7 +246,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       replyAirbnb: 'Répondre sur Airbnb', draft: 'Brouillon ARIA', drafting: 'ARIA rédige…', done: 'Traité',
       ago: function (h) { return h < 1 ? 'à l’instant' : h < 24 ? 'il y a ' + Math.round(h) + ' h' : 'il y a ' + Math.round(h / 24) + ' j'; },
       syncAgo: function (m) { return 'Emails synchronisés ' + (m < 1 ? 'à l’instant' : 'il y a ' + m + ' min'); },
-      syncOld: 'Synchro emails en retard', sendSaid: 'Envoyer à Saïd', msgCheck: 'Message client',
+      syncOld: 'Synchro emails en retard', sendTo: function (n) { return 'Envoyer à ' + n; }, msgCheck: 'Message client',
       inquiryHint: 'Demande Airbnb : sans réponse sous 24 h, elle expire.',
       inboxHelp: 'Les emails Airbnb arrivent ici tout seuls, toutes les 10 minutes. Répondez dans Airbnb, puis touchez « Traité ».',
       pushTitle: 'Alertes sur ce téléphone', pushOnTxt: 'Activées : vous êtes prévenu dès qu’une demande, un message, une réservation, une annulation ou un versement Airbnb arrive.',
@@ -307,6 +314,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       ariaErr: 'ARIA is not answering right now. Try again in a moment.',
       chips: ['Next arrivals and what is missing', 'Team brief for the next arrival', 'How much is a dinner for 9 people?', 'Write the reply to this guest message:'],
       clear: 'Clear the conversation',
+      mYourVilla: 'Your villa', mCity: 'City', mBedrooms: 'Bedrooms', mCapacity: 'Capacity', mNoTeam: 'No one recorded yet. Add your team in Settings.', mSettings: 'Open settings',
+      mSheetTitle: 'House sheet', mSheetTxt: 'Times, rules, meals, address: the house sheet is not filled in yet. While it is empty, ARIA answers “to be confirmed” on these topics and guest messages stay simple. The villa basics are set in Settings.',
       mMeals: 'Meals & prices', mOrder: 'Ordering meals', mTeam: 'Team', mArrival: 'Arrival & departure', mRules: 'House rules', mRooms: 'Bedrooms',
       mGroup16: '1–6 guests', mGroup710: '7–10 guests', mDigest: 'What ARIA knows about the house',
       mHow: 'These facts come from the house file (villa-facts.js), the same one as the guest guide. To change a price, a time or a rule, ask Claude: the guide, ARIA and the messages all follow.',
@@ -319,7 +328,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       replyAirbnb: 'Reply on Airbnb', draft: 'ARIA draft', drafting: 'ARIA is writing…', done: 'Done',
       ago: function (h) { return h < 1 ? 'just now' : h < 24 ? Math.round(h) + ' h ago' : Math.round(h / 24) + ' d ago'; },
       syncAgo: function (m) { return 'Emails synced ' + (m < 1 ? 'just now' : m + ' min ago'); },
-      syncOld: 'Email sync is late', sendSaid: 'Send to Saïd', msgCheck: 'Guest message',
+      syncOld: 'Email sync is late', sendTo: function (n) { return 'Send to ' + n; }, msgCheck: 'Guest message',
       inquiryHint: 'Airbnb enquiry: with no reply within 24 h, it expires.',
       inboxHelp: 'Airbnb emails arrive here on their own, every 10 minutes. Reply in Airbnb, then tap “Done”.',
       pushTitle: 'Alerts on this phone', pushOnTxt: 'On: you are told as soon as an Airbnb enquiry, message, booking, cancellation or payout comes in.',
@@ -577,8 +586,14 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       api('sync_runs?select=finished_at,ok&source=like.gmail_sync*&order=id.desc&limit=1').catch(function () { return []; }),
       // Dates fortes : table events (sourcée, une ligne par période), suppressions douces exclues.
       api('events?select=id,name,name_en,category,start_date,end_date,source,notes,zones&deleted_at=is.null&end_date=gte.' + new Date(todayNum() * 86400000).toISOString().slice(0, 10) + '&order=start_date.asc&limit=40').catch(function () { return []; }),
-      api('staff_links?select=id,name,lang,created_at,last_seen_at&deleted_at=is.null&order=created_at.desc').catch(function () { return []; })
+      api('staff_links?select=id,name,lang,created_at,last_seen_at&deleted_at=is.null&order=created_at.desc').catch(function () { return []; }),
+      api('villa_settings?select=villa_name,city,country,owner_name,bedrooms,max_guests,house_facts_ref&order=created_at.asc&limit=1').catch(function () { return []; }),
+      api('staff?select=name,role,wa&active=eq.true&order=name.asc').catch(function () { return []; })
     ]).then(function (res) {
+      D.villa = (res[5] || [])[0] || null;
+      D.staff = res[6] || [];
+      HAS_FACTS = !!(D.villa && D.villa.house_facts_ref === 'villa-facts.js' && PILOT_F);
+      F = HAS_FACTS ? PILOT_F : EMPTY_F;
       var rows = res[0];
       D.msgs = buildMsgs(res[1] || []);
       D.sync = (res[2] || [])[0] || null;
@@ -636,7 +651,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       : ((m.checkin ? m.checkin + ' → ' + m.checkout : '') + (m.adults != null ? ' · ' + L().composition(m.adults, m.children, m.infants) : ''));
     var ask = (m.type === 'message'
       ? 'Rédige la réponse Airbnb de ' + owner() + ' à ce message d’un client qui a réservé. Réponds précisément à ce qu’il demande, avec les faits de la fiche maison. Court, chaleureux, prêt à copier, dans la langue du client.'
-      : 'Rédige la réponse Airbnb de ' + owner() + ' à cette demande. Elle doit être commerciale : réponds d’abord à la question posée en mettant la villa en valeur (domaine, piscine, équipe, repas faits maison). Puis dis que c’est notre maison de famille, demande la composition du groupe (couples / personnes seules) et donne les règles de la maison ; la pré-approbation se fait une fois les règles acceptées. Dans la langue du client, prêt à copier.') +
+      : 'Rédige la réponse Airbnb de ' + owner() + ' à cette demande. Elle doit être commerciale : réponds d’abord à la question posée en mettant la villa en valeur ' + (HAS_FACTS ? '(domaine, piscine, équipe, repas faits maison). Puis dis que c’est notre maison de famille, demande la composition du groupe (couples / personnes seules) et donne les règles de la maison ; la pré-approbation se fait une fois les règles acceptées.' : 'avec les seuls faits connus, sans rien inventer. Puis demande la composition du groupe et confirme les dates.') + ' Dans la langue du client, prêt à copier.') +
       '\n\nClient : ' + (m.first || '?') + (ctx ? ' · ' + ctx : '') + '\nMessage reçu :\n« ' + (m.text || m.subject || '') + ' »';
     DR[m.id] = { busy: true, text: '' }; render();
     aiPost({ task: fr ? 'write_fr' : 'write_en', system: ariaSystem(), user: ask, max_tokens: 900 })
@@ -677,10 +692,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var mk = function (k, done, due) { return { k: k, done: done, due: due, late: !done && t > due }; };
     return [
       mk('phone', !!String(c.phone || '').trim(), c.a - 3),
-      mk('livret', !!c.details.livretSentAt, c.a - 3),
-      mk('meals', !!String(c.meals || '').trim(), c.a - 2),
+      HAS_FACTS ? mk('livret', !!c.details.livretSentAt, c.a - 3) : null,
+      F.MEALS.length ? mk('meals', !!String(c.meals || '').trim(), c.a - 2) : null,
       mk('brief', !!c.staff_briefed_at, c.a - 1)
-    ];
+    ].filter(Boolean);
   }
   function tone(c) {
     if (msgsFor(c).length) return 'alert';
@@ -896,7 +911,21 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
 
   /* ── Messages prêts, construits depuis la fiche maison ─────────────── */
-  var owner = function () { return (F && F.VILLA.host) || 'Jérémie'; };
+  var cap1 = function (s) { s = String(s || '').trim(); return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; };
+  function villaName() { return (HAS_FACTS && F.VILLA.name) || String((D.villa && D.villa.villa_name) || '').trim(); }
+  function villaCity() { return String((D.villa && D.villa.city) || '').split(',')[0].trim(); }
+  /* « la Villa X », « le Riad Y » — pour les phrases en français. Sans nom : « chez nous ». */
+  function atVilla(fr) {
+    var n = villaName();
+    if (!n) return fr ? 'chez nous' : 'our villa';
+    if (!fr) return n;
+    return (/^(villa|maison|résidence|demeure|bastide|ferme|casa)\b/i.test(n) ? 'la ' : /^(riad|domaine|mas|château|chalet|palais|manoir)\b/i.test(n) ? 'le ' : '') + n;
+  }
+  var owner = function () { return (F && F.VILLA.host) || cap1(D.villa && D.villa.owner_name) || villaName() || 'Stafflo'; };
+  function teamList() {
+    return HAS_FACTS ? F.TEAM.filter(function (m) { return m.name && m.brief; }).map(function (m) { return { name: m.name, phone: m.phone || '' }; })
+      : (D.staff || []).filter(function (m) { return m.name; }).map(function (m) { return { name: String(m.name), phone: m.wa || '' }; });
+  }
   function mealsRow(c) { return c.pax >= 7 ? 'b' : 'a'; }
   function msgMeals(c) {
     var g = guestLang(c), i = g === 'en' ? 1 : 0, M = F.MEALS, col = mealsRow(c);
@@ -904,7 +933,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var drinks = (flat(P(F.MEAL_NOTES[3], i)).match(/^[^.]*\./) || [''])[0];
     var dates = fmtDay(c.a, g) + ' → ' + fmtDay(c.d, g);
     if (g === 'fr') {
-      return 'Bonjour ' + firstName(c) + ',\n\nVotre séjour à la Villa Dar J approche (' + dates + ') ! ' + (m2 ? m2[0] : '') + '\n\n' +
+      return 'Bonjour ' + firstName(c) + ',\n\nVotre séjour à ' + atVilla(true) + ' approche (' + dates + ') ! ' + (m2 ? m2[0] : '') + '\n\n' +
         'Pour votre groupe de ' + c.pax + ' personnes :\n' +
         '• ' + P(M[1].n, 0) + ' : ' + P(M[1][col], 0) + ' par service pour tout le groupe\n' +
         '• ' + P(M[2].n, 0) + ' : ' + P(M[2][col], 0) + '\n' +
@@ -912,7 +941,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         '• ' + drinks + '\n\n' +
         'Les menus sont dans votre livret : pour chaque service, le groupe choisit une entrée, un plat et un dessert. ' + (m3 ? m3[0] : '') + '\n\nÀ très vite,\n' + owner();
     }
-    return 'Hello ' + firstName(c) + ',\n\nYour stay at Villa Dar J is coming up (' + dates + ')! ' + (m2 ? m2[0] : '') + '\n\n' +
+    return 'Hello ' + firstName(c) + ',\n\nYour stay at ' + atVilla(false) + ' is coming up (' + dates + ')! ' + (m2 ? m2[0] : '') + '\n\n' +
       'For your group of ' + c.pax + ':\n' +
       '• ' + P(M[1].n, 1) + ': ' + P(M[1][col], 1) + ' per service for the whole group\n' +
       '• ' + P(M[2].n, 1) + ': ' + P(M[2][col], 1) + '\n' +
@@ -955,8 +984,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function msgDepart(c) {
     var g = guestLang(c), fr = g === 'fr', facts = departFacts(fr ? 0 : 1);
     var airbnb = /airbnb/i.test(String(c.source || ''));
-    return (fr ? 'Bonjour ' + firstName(c) + ',\n\nMerci encore d’avoir choisi la Villa Dar J. Pour votre départ le ' + fmtLongDay(c.d, 'fr') + ' :\n\n'
-               : 'Hello ' + firstName(c) + ',\n\nThank you again for choosing Villa Dar J. For your departure on ' + fmtLongDay(c.d, 'en') + ':\n\n') +
+    return (fr ? 'Bonjour ' + firstName(c) + ',\n\nMerci encore d’avoir choisi ' + atVilla(true) + '. Pour votre départ le ' + fmtLongDay(c.d, 'fr') + ' :\n\n'
+               : 'Hello ' + firstName(c) + ',\n\nThank you again for choosing ' + atVilla(false) + '. For your departure on ' + fmtLongDay(c.d, 'en') + ':\n\n') +
       (facts ? facts + '\n\n' : '') +
       (airbnb ? (fr ? 'Si vous avez aimé votre séjour, un avis sur Airbnb nous aiderait beaucoup — nous laisserons le vôtre de notre côté.\n\n'
                     : 'If you enjoyed your stay, a review on Airbnb would mean a lot to us — we will leave yours on our side.\n\n') : '') +
@@ -964,8 +993,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
   function msgReviewAsk(c) {
     var fr = guestLang(c) === 'fr';
-    return fr ? 'Bonjour ' + firstName(c) + ',\n\nMerci d’avoir séjourné à la Villa Dar J. Si vous avez un instant, votre avis sur Airbnb nous aiderait beaucoup : il guide les prochains voyageurs. Nous avons laissé le vôtre de notre côté.\n\nAu plaisir de vous revoir,\n' + owner()
-              : 'Hello ' + firstName(c) + ',\n\nThank you for staying at Villa Dar J. If you have a moment, a review on Airbnb would help us a lot: it guides future guests. We have left yours on our side.\n\nHope to welcome you again,\n' + owner();
+    return fr ? 'Bonjour ' + firstName(c) + ',\n\nMerci d’avoir séjourné à ' + atVilla(true) + '. Si vous avez un instant, votre avis sur Airbnb nous aiderait beaucoup : il guide les prochains voyageurs. Nous avons laissé le vôtre de notre côté.\n\nAu plaisir de vous revoir,\n' + owner()
+              : 'Hello ' + firstName(c) + ',\n\nThank you for staying at ' + atVilla(false) + '. If you have a moment, a review on Airbnb would help us a lot: it guides future guests. We have left yours on our side.\n\nHope to welcome you again,\n' + owner();
   }
   function reviewWindowEnd(c) { return c.d + 14; } /* Airbnb : 14 jours après le départ */
   function reviewOpen(c) { var t = todayNum(); return /airbnb/i.test(String(c.source || '')) && !c.is_comp && !c.details.reviewDoneAt && t > c.d && t <= reviewWindowEnd(c); }
@@ -986,7 +1015,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
   /* Brief équipe : en français (l'équipe parle arabe, français et anglais de base). */
   function msgBrief(c) {
-    var t = TXT.fr, team = F.TEAM.filter(function (m) { return m.brief; }).map(function (m) { return m.name; }).join(', ');
+    var t = TXT.fr, team = teamList().map(function (m) { return m.name; }).join(', ') || 'l’équipe';
     var lines = [];
     lines.push('Brief ' + (c.name || '') + ' — pour ' + team);
     var arrFact = flat(P(F.PRACTICAL.filter(function (p) { return /^Arrivée et départ/.test(p[0]); })[0] || ['', ''], 0));
@@ -1011,14 +1040,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return lines.join('\n');
   }
   var waDigits = function (raw) { return String(raw || '').replace(/\(0\)/g, '').replace(/\D/g, ''); };
-  function saidWa() { var s = F.TEAM.filter(function (m) { return m.phone; })[0]; return s ? waDigits(s.phone) : ''; }
+  function saidWa() { var s = teamList().filter(function (m) { return m.phone; })[0]; return s ? waDigits(s.phone) : ''; }
+  function saidName() { var s = teamList().filter(function (m) { return m.phone; })[0]; return s ? s.name : ''; }
 
   /* ── ARIA ─────────────────────────────────────────────────────────── */
   function staysForAI() {
     var t = todayNum(), fr = U.lang !== 'en';
     return D.stays.filter(function (c) { return c.d >= t; }).slice(0, 15).map(function (c) {
       var ck = checks(c), yes = fr ? 'oui' : 'yes', no = fr ? 'non' : 'no';
-      var st = function (k) { var x = ck.filter(function (y) { return y.k === k; })[0]; return x.done ? yes : no; };
+      var st = function (k) { var x = ck.filter(function (y) { return y.k === k; })[0]; return x ? (x.done ? yes : no) : '—'; };
       var when = c.a < t ? (fr ? 'EN COURS, ' : 'IN PROGRESS, ') + L().night(t - c.a + 1, c.n) : L().inDays(c.a - t);
       return '- ' + c.name + ' · ' + (fr ? 'arrivée ' : 'arrival ') + fmtLongDay(c.a) + ' (' + when + ') · ' + (fr ? 'départ ' : 'departure ') + fmtLongDay(c.d) +
         ' · ' + L().nights(c.n) + ' · ' + (c.pax ? L().pax(c.pax) : (fr ? 'nombre inconnu' : 'count unknown')) +
@@ -1034,22 +1064,31 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         ([c.notes, c.remarks].filter(Boolean).length ? ' · notes : ' + flat([c.notes, c.remarks].filter(Boolean).join(' ')).slice(0, 240) : '');
     }).join('\n');
   }
+  function basicsForAI(fr) {
+    var v = D.villa || {}, team = teamList().map(function (m) { return m.name; }).join(', ');
+    return (fr ? '=== LA VILLA (réglages du compte) ===\n' : '=== THE VILLA (account settings) ===\n') +
+      '- ' + (villaName() || '?') + (v.city ? ' · ' + v.city : '') + '\n' +
+      '- ' + (fr ? 'Chambres : ' : 'Bedrooms: ') + (v.bedrooms || '?') + ' · ' + (fr ? 'capacité : ' : 'capacity: ') + (v.max_guests || '?') + '\n' +
+      '- ' + (fr ? 'Équipe : ' : 'Team: ') + (team || '?') + '\n' +
+      (fr ? 'La fiche maison (prix, horaires, règles, adresse, repas) n’est pas encore remplie : toute information de ce type est « à confirmer », jamais inventée.'
+          : 'The house sheet (prices, times, rules, address, meals) is not filled in yet: any such information is "to be confirmed", never invented.');
+  }
   function ariaSystem() {
     var fr = U.lang !== 'en', t = todayNum();
     return (fr
-      ? 'Tu es ARIA, l’assistante de ' + owner() + ' pour la Villa Dar J à Marrakech. Réponds en français si la question est en français, en anglais si elle est en anglais, court et concret.\n' +
+      ? 'Tu es ARIA, l’assistante de ' + owner() + ' pour ' + atVilla(true) + (villaCity() ? ' à ' + villaCity() : '') + '. Réponds en français si la question est en français, en anglais si elle est en anglais, court et concret.\n' +
         'Règles :\n- Utilise UNIQUEMENT la fiche maison et la liste des séjours ci-dessous. Une information absente se dit « à confirmer », jamais inventée (prix, nom, horaire, numéro, code).\n' +
         '- Les dates, nuits et délais sont déjà calculés : ne les recalcule jamais.\n- Le « suggested door code » des emails Airbnb n’est PAS un code de la villa : ne le donne jamais.\n' +
         '- Un message pour un client est prêt à copier, dans sa langue, signé ' + owner() + '. Un brief équipe est en français, simple.\n' +
         '- Prix des repas : par service et pour tout le groupe, jamais par personne.\n' +
         '- Dates fortes : dis si la villa est libre ou réservée ; ne propose jamais de prix chiffré ni de hausse en %.\n'
-      : 'You are ARIA, ' + owner() + '’s assistant for Villa Dar J in Marrakech. Answer in the language of the question, short and concrete.\n' +
+      : 'You are ARIA, ' + owner() + '’s assistant for ' + atVilla(false) + (villaCity() ? ' in ' + villaCity() : '') + '. Answer in the language of the question, short and concrete.\n' +
         'Rules:\n- Use ONLY the house facts and the list of stays below. Anything missing is "to be confirmed", never invented (price, name, time, number, code).\n' +
         '- Dates, nights and deadlines are already computed: never recompute them.\n- The Airbnb "suggested door code" is NOT a villa code: never give it.\n' +
         '- A guest message is ready to copy, in the guest’s language, signed ' + owner() + '. A team brief is in French and simple.\n' +
         '- Meal prices are per service for the whole group, never per person.\n' +
         '- Key dates: say whether the villa is free or booked; never suggest a price figure or a % increase.\n') +
-      '\n' + (fr ? 'Aujourd’hui : ' : 'Today: ') + fmtLongDay(t) + '\n\n' + F.digest(fr ? 'fr' : 'en') +
+      '\n' + (fr ? 'Aujourd’hui : ' : 'Today: ') + fmtLongDay(t) + '\n\n' + (HAS_FACTS ? F.digest(fr ? 'fr' : 'en') : basicsForAI(fr)) +
       '\n\n=== ' + (fr ? 'SÉJOURS À VENIR ET EN COURS' : 'UPCOMING AND CURRENT STAYS') + ' ===\n' + (staysForAI() || (fr ? '(aucun)' : '(none)')) +
       '\n\n=== ' + (fr ? 'DATES FORTES (6 MOIS)' : 'KEY DATES (6 MONTHS)') + ' ===\n' + (eventsForAI() || (fr ? '(aucune)' : '(none)')) +
       '\n\n=== ' + (fr ? 'MESSAGES AIRBNB NON TRAITÉS' : 'UNHANDLED AIRBNB MESSAGES') + ' ===\n' + (D.msgs.map(function (m) {
@@ -1134,8 +1173,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     fr: function (n, u) { return 'Bonjour ' + n + ', voici le lien Stafflo pour suivre les arrivées, les départs et les repas de la villa :\n' + u + '\nCe lien est personnel.'; },
     ar: function (n, u) { return 'مرحبا ' + n + '، هذا رابط Stafflo لمتابعة مواعيد الوصول والمغادرة والوجبات في الفيلا:\n' + u + '\nهذا الرابط خاص بك.'; }
   };
-  function teamNames() { return F.TEAM.filter(function (m) { return m.name && m.brief; }).map(function (m) { return m.name; }); }
-  function teamPhone(name) { var m = F.TEAM.filter(function (x) { return x.name === name && x.phone; })[0]; return m ? waDigits(m.phone) : ''; }
+  function teamNames() { return teamList().map(function (m) { return m.name; }); }
+  function teamPhone(name) { var m = teamList().filter(function (x) { return x.name === name && x.phone; })[0]; return m ? waDigits(m.phone) : ''; }
   function b64u(bytes) { var s = ''; for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
   function sha256hex(s) { return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function (b) { return Array.prototype.map.call(new Uint8Array(b), function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }); }
   function equipeUrl(tok) { return location.origin + location.pathname.replace(/[^/]*$/, '') + 'equipe.html#k=' + tok; }
@@ -1192,7 +1231,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       if (c.a < t) return; // séjour commencé : les vérifications d'avant arrivée ne comptent plus
       checks(c).forEach(function (x) { if (!x.done && x.due <= t + 2) out.push({ c: c, k: x.k, due: x.due, late: x.late }); });
     });
-    D.stays.filter(function (c) { return c.d >= t && c.d - t <= 1 && c.a < c.d && !c.details.departMsgAt; }).forEach(function (c) {
+    if (HAS_FACTS) D.stays.filter(function (c) { return c.d >= t && c.d - t <= 1 && c.a < c.d && !c.details.departMsgAt; }).forEach(function (c) {
       out.push({ c: c, k: 'depart', due: c.d - 1, late: t > c.d - 1 });
     });
     D.stays.concat(D.past || []).filter(reviewOpen).forEach(function (c) {
@@ -1251,18 +1290,18 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     msgsFor(c).forEach(function (m) { h += inboxItem(m, true); });
     var wa = waDigits(c.phone);
     h += '<div class="acts">' +
-      '<a class="act" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener" title="' + esc(l.act.livret) + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</a>' +
+      (HAS_FACTS ? '<a class="act" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener" title="' + esc(l.act.livret) + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</a>' : '') +
       (wa ? '<a class="act" href="https://wa.me/' + wa + '" target="_blank" rel="noopener" title="WhatsApp"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
-      (c.a < todayNum() ? ['brief'] : ['meals', 'arrival', 'passports', 'brief']).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
+      (c.a < todayNum() || !HAS_FACTS ? ['brief'] : (F.MEALS.length ? ['meals', 'arrival', 'passports', 'brief'] : ['arrival', 'passports', 'brief'])).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
         return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', brief: 'clipboard-list' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
       }).join('') +
       (wa ? '' : '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="phone" aria-pressed="' + (pn === 'phone') + '"><i class="ti ti-phone" aria-hidden="true"></i>' + esc(l.act.phone) + '</button>') +
-      (c.d - todayNum() <= 2 ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="depart" aria-pressed="' + (pn === 'depart') + '"><i class="ti ti-door-exit" aria-hidden="true"></i>' + esc(l.actDepart) + '</button>' : '') +
+      (HAS_FACTS && c.d - todayNum() <= 2 ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="depart" aria-pressed="' + (pn === 'depart') + '"><i class="ti ti-door-exit" aria-hidden="true"></i>' + esc(l.actDepart) + '</button>' : '') +
       '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="edit" aria-pressed="' + (pn === 'edit') + '"><i class="ti ti-pencil" aria-hidden="true"></i>' + esc(l.act2.edit) + '</button>' +
-      '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="bill" aria-pressed="' + (pn === 'bill') + '"><i class="ti ti-receipt" aria-hidden="true"></i>' + esc(l.act2.bill) + '</button>' +
+      (HAS_FACTS && F.MEALS.length ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="bill" aria-pressed="' + (pn === 'bill') + '"><i class="ti ti-receipt" aria-hidden="true"></i>' + esc(l.act2.bill) + '</button>' : '') +
       '</div>';
     var ls = c.details.livretSentAt;
-    if (c.a >= todayNum()) h += '<div class="row2"><button type="button" class="btn ghost" data-a="livret" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-' + (ls ? 'check' : 'file-text') + '" aria-hidden="true"></i>' +
+    if (HAS_FACTS && c.a >= todayNum()) h += '<div class="row2"><button type="button" class="btn ghost" data-a="livret" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-' + (ls ? 'check' : 'file-text') + '" aria-hidden="true"></i>' +
       esc(ls ? l.livretDone + fmtDay(dayNum(String(ls).slice(0, 10))) : l.markLivret) + '</button></div>';
     if (pn === 'phone') {
       h += '<div class="panel"><span class="ttl">' + esc(l.act.phone) + '</span><input class="t" type="tel" id="ph-' + esc(c.id) + '" placeholder="' + esc(l.phonePh) + '" autocomplete="off">' +
@@ -1277,7 +1316,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         '<textarea class="t" id="tx-' + esc(c.id) + '">' + esc(txt) + '</textarea><div class="row2">' +
         '<button type="button" class="btn gold" data-a="copy" data-id="' + esc(c.id) + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
         (wa && pn !== 'brief' ? '<button type="button" class="btn ghost" data-a="sendwa" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.openWa) + '</button>' : '') +
-        (pn === 'brief' && saidWa() ? '<button type="button" class="btn ghost" data-a="sendsaid" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendSaid) + '</button>' : '') +
+        (pn === 'brief' && saidWa() ? '<button type="button" class="btn ghost" data-a="sendsaid" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(saidName())) + '</button>' : '') +
         (pn === 'brief' ? '<button type="button" class="btn ghost" data-a="briefdone" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' +
           esc(c.staff_briefed_at ? l.briefDone + fmtDay(dayNum(String(c.staff_briefed_at).slice(0, 10))) : l.markBrief) + '</button>' : '') +
         (pn === 'depart' ? '<button type="button" class="btn ghost" data-a="departdone" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' +
@@ -1363,7 +1402,19 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       (A.msgs.length ? '<button type="button" class="btn ghost" style="color:#F4EFE3;border-color:rgba(244,239,227,.35)" data-a="clear">' + esc(l.clear) + '</button>' : '') + '</div>';
     return h + '</div>';
   }
+  function viewMaisonBasics() {
+    var l = L(), v = D.villa || {}, h = pushCard(), dash = '?';
+    var line = function (k, val) { return '<div class="line"><span>' + esc(k) + '</span><b>' + esc(val == null || val === '' ? dash : String(val)) + '</b></div>'; };
+    h += card('home', villaName() || l.mYourVilla, line(l.mCity, v.city) + line(l.mBedrooms, v.bedrooms) + line(l.mCapacity, v.max_guests));
+    var team = teamList();
+    h += card('users', l.mTeam, team.length ? team.map(function (m) { return '<div class="line"><span><b>' + esc(m.name) + '</b></span>' + (m.phone ? '<span class="sub">' + esc(m.phone) + '</span>' : '') + '</div>'; }).join('') : '<p class="empty">' + esc(l.mNoTeam) + '</p>');
+    h += eqCard();
+    h += card('file-text', l.mSheetTitle, '<p style="margin:0;font-size:14px">' + esc(l.mSheetTxt) + '</p>' +
+      '<a class="btn ghost" href="app.html"><i class="ti ti-settings" aria-hidden="true"></i>' + esc(l.mSettings) + '</a>');
+    return h;
+  }
   function viewMaison() {
+    if (!HAS_FACTS) return viewMaisonBasics();
     var l = L(), i = I(), h = pushCard();
     var rows = F.MEALS.map(function (m) { return '<tr><td>' + esc(P(m.n)) + '<br><span class="sub">' + esc(P(m.h)) + '</span></td><td class="n">' + esc(P(m.a)) + '</td><td class="n">' + esc(P(m.b)) + '</td></tr>'; }).join('');
     h += card('tools-kitchen-2', l.mMeals, '<table class="fact-t"><thead><tr><th></th><th>' + esc(l.mGroup16) + '</th><th>' + esc(l.mGroup710) + '</th></tr></thead><tbody>' + rows + '</tbody></table>' +
@@ -1398,6 +1449,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var l = L(), t = todayNum(), main = document.getElementById('main');
     document.documentElement.lang = U.lang;
     document.getElementById('title').textContent = l.titles[U.tab];
+    var kk = document.getElementById('kicker');
+    if (kk) kk.textContent = D.loaded && D.user ? (villaName() ? villaName() + (villaCity() ? ' · ' + villaCity() : '') : l.mYourVilla) : 'Stafflo';
     var td = fmtLongDay(t); document.getElementById('today').textContent = td.charAt(0).toUpperCase() + td.slice(1);
     var nt = document.getElementById('net');
     if (D.online && D.sync && D.sync.finished_at) {

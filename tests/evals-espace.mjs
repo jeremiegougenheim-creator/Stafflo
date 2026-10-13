@@ -81,11 +81,18 @@ check('ARIA : dates fortes sans prix chiffré', /ne propose jamais de prix chiff
 check('accès équipe : jeton aléatoire 32 octets, seule l’empreinte sha-256 part en base', /crypto\.getRandomValues\(new Uint8Array\(32\)\)/.test(script) && /token_hash: h/.test(script) && !/token_hash: tok/.test(script));
 check('accès équipe : retirer = suppression douce', /staff_links\?id=eq\.[\s\S]{0,200}deleted_at/.test(script));
 check('accès équipe : liens retirés non listés', /staff_links\?select=[^']*deleted_at=is\.null/.test(script));
-check('accès équipe : personnes lues dans la fiche maison', /function teamNames\(\) \{ return F\.TEAM/.test(script));
+check('accès équipe : personnes de la fiche maison (pilote) ou de la table staff du compte', /function teamNames\(\) \{ return teamList\(\)/.test(script) && /HAS_FACTS \? F\.TEAM\.filter/.test(script) && /\(D\.staff \|\| \[\]\)/.test(script));
 check('champs équipe : fusion dans details, rien d’autre écrasé', /var nd = Object\.assign\(\{\}, c\.details\)/.test(script) && /\['arrival', 'arrival_time'\], \['beds', 'beds'\], \['staffnote', 'staff_note'\]/.test(script));
 check('brief équipe : la consigne remplace les notes privées', /if \(sn\) lines\.push\('Consigne : '/.test(script) && /else if \(notes\) lines\.push\('Notes : '/.test(script));
 // v8 — ARIA identifiée : le jeton de session part avec chaque appel ai-proxy
 check('ARIA : jeton de session envoyé à ai-proxy (quota et journal par propriétaire)', /function aiPost\(payload\)/.test(script) && /h\.Authorization = 'Bearer ' \+ s\.access_token/.test(script) && !/fetch\(PROXY, \{ method: 'POST', headers: \{ 'Content-Type': 'application\/json' \}/.test(script));
+// v9 — multi-villa : chaque compte voit SA villa, jamais celle du pilote
+check('multi-villa : aucun nom de villa écrit en dur', !/Villa Dar J|Dar J ·/.test(esp) && !/'Jérémie'/.test(script));
+check('multi-villa : fiche maison choisie par villa_settings.house_facts_ref', /HAS_FACTS = !!\(D\.villa && D\.villa\.house_facts_ref === 'villa-facts\.js' && PILOT_F\)/.test(script) && /F = HAS_FACTS \? PILOT_F : EMPTY_F/.test(script));
+check('multi-villa : en-tête = villa et ville du compte', /kk\.textContent = D\.loaded && D\.user \? \(villaName\(\)/.test(script));
+check('multi-villa : sans fiche, ARIA reçoit les bases et « à confirmer »', /HAS_FACTS \? F\.digest\(fr \? 'fr' : 'en'\) : basicsForAI\(fr\)/.test(script) && /jamais inventée/.test(script));
+check('multi-villa : livret, décompte et messages d’avant arrivée seulement avec une fiche maison', /HAS_FACTS \? '<a class="act" href="' \+ esc\(livretUrl\(c\)\)/.test(script) && /HAS_FACTS && F\.MEALS\.length \? '<button type="button" class="act" data-a="panel" data-id="' \+ esc\(c\.id\) \+ '" data-v="bill"/.test(script) && /if \(!HAS_FACTS\) return viewMaisonBasics\(\);/.test(script));
+check('multi-villa : « Envoyer à » la personne de l’équipe, pas un prénom écrit en dur', /sendTo: function \(n\)/.test(script) && !/sendSaid:/.test(script));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 check('sw.js ne met pas espace.html en cache', sw.includes("url.includes('espace.html')"));
 check('sw.js affiche les alertes et ouvre l’Espace au clic', /addEventListener\('push'/.test(sw) && /addEventListener\('notificationclick'/.test(sw) && /espace\.html/.test(sw));

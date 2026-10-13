@@ -34,7 +34,8 @@ const VILLA = {
      la regle du jour contredisait ce qu'avaient paye Thibaut, Gautier, Sean.
      Conserve ici comme reference du reglage Airbnb. */
   extraGuest:{from:8, fee:50, max:10},
-  host:'Jérémie'
+  host:'Jérémie',
+  name:'Villa Dar J'   /* nom affiché dans les messages aux clients et par ARIA (Espace) */
 };
 
 const PRACTICAL = [
