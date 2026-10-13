@@ -2282,6 +2282,16 @@ body.is-v3-on .v3-mode-btn { background:#C9963A; color:#0F2318; border-color:#C9
 .v5-perf-bar-track { flex:1; height:5px; background:#FAF6EE; border-radius:var(--r-pill); overflow:hidden; min-width:30px; }
 .v5-perf-bar-fill { height:100%; background:#C9963A; border-radius:var(--r-pill); transition:width .35s ease; }
 .v5-perf-bar-val { width:48px; text-align:right; color:#0F2318; font-weight:600; font-family:'DM Sans','Inter',sans-serif; flex-shrink:0; }
+/* v519 — le remplissage est un <span> en ligne : largeur et hauteur ignorées → barres toujours vides. */
+.v5-perf-bar-fill { display:block; }
+/* v519 — téléphone : la bande défilait en largeur sans barre visible, les barres par canal
+   (« Airb… ») restaient hors écran. Chiffres sur une ligne, barres pleine largeur dessous. */
+@media (max-width: 560px) {
+  .v5-perf { flex-wrap:wrap; overflow-x:visible; row-gap:10px; }
+  .v5-perf-bars { flex:1 1 100%; min-width:0; padding-left:0; border-left:none; border-top:1px solid #E5DCC8; padding-top:8px; }
+  .v5-perf-bar-name { width:84px; }
+  .v5-perf-bar-val { width:64px; }
+}
 
 .v5-search-row { display:flex; flex-direction:column; gap:8px; }
 .v5-search-wrap { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #E5DCC8; border-radius:var(--r-md); padding:0 12px; transition:border-color .15s, box-shadow .15s; }
@@ -43232,13 +43242,18 @@ function stopAriaMic(btn) {
           past_due: fr ? 'Paiement en retard'  : 'Payment past due',
           canceled: fr ? 'Annulé'              : 'Canceled',
           revoked:  fr ? 'Révoqué'             : 'Revoked',
-          none:     fr ? 'Aucun abonnement'    : 'No subscription'
+          none:     fr ? 'Aucun abonnement'    : 'No subscription',
+          // v519 : statuts renvoyés par billing_status() qui s'affichaient bruts (« comp », « trial_expired »)
+          comp:          fr ? 'Accès offert · complet' : 'Complimentary · full access',
+          trial_expired: fr ? 'Essai terminé'          : 'Trial ended'
         };
         statusEl.textContent = labels[s.status] || s.status || labels.none;
       }
     }
     var btn = document.getElementById('cfgSubscriptionBtn');
-    if (btn) {
+    // v519 : accès offert (liste blanche) → rien à acheter ni à gérer, pas de « Passer à Solo ».
+    if (btn) btn.style.display = (s && s.status === 'comp') ? 'none' : '';
+    if (btn && !(s && s.status === 'comp')) {
       var active = s ? isActiveStatus(s.status) : false;
       var btnLbl = active ? (fr ? 'Gérer mon abonnement' : 'Manage my subscription') : (fr ? 'Passer à Solo' : 'Upgrade to Solo');
       btn.textContent = btnLbl;

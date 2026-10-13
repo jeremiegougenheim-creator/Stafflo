@@ -57,5 +57,11 @@ check('onboarding : écran compte valide sans saisie quand connecté', /if \(ste
 check('inscription : plus de « 5 chambres / 750 € » envoyés par défaut', !/bedrooms: 5, base_price: 750/.test(app));
 check('exemples neutres (ni Villa DarJ ni jeremie@)', !/placeholder="Villa DarJ"/.test(app) && !/placeholder="jeremie@villa\.com"/.test(app));
 check('lien magique inerte masqué', /#onboardingV3 #onbV3AcctMagic/.test(app));
+// v519 — abonnement offert, bande « Performance » des clients
+check('abonnement offert (liste blanche) : « Accès offert », jamais « Passer à Solo »', /comp:\s+fr \? 'Accès offert · complet'/.test(app) && /btn\.style\.display = \(s && s\.status === 'comp'\) \? 'none' : ''/.test(app));
+check('abonnement : « trial_expired » affiché « Essai terminé » (plus le code brut)', /trial_expired: fr \? 'Essai terminé'/.test(app));
+check('clients : barres par canal remplies (le remplissage n’est plus un span en ligne sans taille)', /\.v5-perf-bar-fill \{ display:block; \}/.test(app));
+check('clients (téléphone) : barres sous les chiffres, plus de bande qui défile hors écran', /@media \(max-width: 560px\) \{\s*\.v5-perf \{ flex-wrap:wrap; overflow-x:visible;/.test(app));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
