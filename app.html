@@ -40074,6 +40074,25 @@ function startTour(){
         if (t && t.indexOf('BEGIN:VCALENDAR') !== -1) return t;
       }
     } catch(e) {}
+    // v494 — lecture côté serveur (edge function ical-fetch) : le lien iCal, qui
+    // contient un jeton privé, ne part plus chez des proxys publics inconnus.
+    if (typeof SB_URL !== 'undefined') {
+      try {
+        var _tok = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token) || '';
+        var _h = { 'Content-Type': 'application/json', apikey: (typeof SB_ANON !== 'undefined' ? SB_ANON : '') };
+        if (_tok) _h.Authorization = 'Bearer ' + _tok;
+        var rs = await fetch(SB_URL + '/functions/v1/ical-fetch', { method: 'POST', headers: _h, body: JSON.stringify({ url: trimmed }) });
+        if (rs.ok) {
+          var ts = await rs.text();
+          if (ts && ts.indexOf('BEGIN:VCALENDAR') !== -1) return ts;
+        }
+      } catch(e) {}
+    }
+    // Proxys publics : désactivés par défaut (fuite du jeton iCal). Réactivation
+    // volontaire seulement : localStorage.stafflo_public_cors = 'on'.
+    var _pubOn = false;
+    try { _pubOn = localStorage.getItem('stafflo_public_cors') === 'on'; } catch(e) {}
+    if (!_pubOn) throw new Error('ical_server_failed');
     // Fallback proxies
     for (var i=0; i<ICAL_PROXIES.length; i++){
       try {

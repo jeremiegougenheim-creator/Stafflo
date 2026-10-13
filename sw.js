@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v493 (alertes Airbnb sur le téléphone : push + clic → Espace)
-const CACHE = 'stafflo-v493';
+// Stafflo Service Worker — v494 (calendriers iCal lus par le serveur, plus de proxys publics)
+const CACHE = 'stafflo-v494';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

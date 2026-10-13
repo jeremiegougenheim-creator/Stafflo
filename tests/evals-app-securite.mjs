@@ -83,5 +83,19 @@ const mem = topFn(app, 'loadAriaMemoryTemplate') || '';
 check('modèle mémoire ARIA sans valeur inventée (aucun prix, wifi, caution)', mem && !/\d[\d\s]*€|DarJ_Guest|Hassan|1 500|24-28/.test(mem));
 check('exemple du classifieur sans montant ni nom inventé', !/Paiement Saïd 3000 MAD/.test(app) && /"amount":null,"due_date":null\}\]\} — montant/.test(app));
 
+// ── 5. iCal : plus de proxys publics par défaut ────────────────────────────
+check('iCal : lecture par la fonction serveur ical-fetch', /\/functions\/v1\/ical-fetch/.test(app));
+const icalFn = app.slice(app.indexOf('async function fetchIcal('), app.indexOf('function parseIcal('));
+check('iCal : proxys publics seulement si stafflo_public_cors = on', icalFn.indexOf("stafflo_public_cors") > -1 && icalFn.indexOf("if (!_pubOn) throw") < icalFn.indexOf('ICAL_PROXIES[i]'));
+const icalSrc = fs.readFileSync(path.join(root, 'supabase/functions/ical-fetch/index.ts'), 'utf8');
+const { createRequire } = await import('node:module');
+let esb = null; for (const b of [import.meta.url, '/opt/npm-tools/']) { try { esb = createRequire(b)('esbuild'); break; } catch {} }
+const allowedJs = esb.transformSync(icalSrc.slice(icalSrc.indexOf('const HOSTS'), icalSrc.indexOf('const MAX')) + icalSrc.slice(icalSrc.indexOf('export function allowed'), icalSrc.indexOf('Deno.serve')).replace(/^export /m, ''), { loader: 'ts' }).code;
+const allowedFn = new Function(allowedJs + '\nreturn allowed;')();
+const ok = (u) => !!allowedFn(u);
+check('ical-fetch : Airbnb, Booking, VRBO, webcal acceptés', ok('https://www.airbnb.fr/calendar/ical/123.ics?s=abc') && ok('https://admin.booking.com/hotel/hoteladmin/ical.html?t=x') && ok('webcal://www.vrbo.com/icalendar/x.ics'));
+check('ical-fetch : pas un proxy ouvert (http, autres sites, IP, identifiants refusés)', !ok('http://www.airbnb.com/calendar/ical/1.ics') && !ok('https://evil.com/x.ics') && !ok('https://169.254.169.254/latest') && !ok('https://user:pw@www.airbnb.com/x') && !ok('https://airbnb.com.evil.io/x.ics') && !ok('https://www.airbnb.com:8443/x'));
+check('ical-fetch : utilisateur connecté obligatoire', /auth\/v1\/user/.test(icalSrc) && /unauthorized/.test(icalSrc));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
