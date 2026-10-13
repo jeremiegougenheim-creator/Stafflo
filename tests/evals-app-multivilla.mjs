@@ -75,5 +75,16 @@ check('ville vide ≠ Marrakech (seul le pilote garde l’ancien repli)', /if \(
   check('modèles : nom, propriétaire et WhatsApp du compte', JSON.stringify(run({ villa: 'Casa Lumi', owner: 'Ana', wa: '+351 900' })) === JSON.stringify({ villa_name: 'Casa Lumi', owner_name: 'Ana', owner_whatsapp: '+351 900' }));
 }
 
+// ── v510 : livret, vols, événements, séjour ─────────────────────────────
+const MKG = "(typeof isMarrakechVilla === 'function' && !isMarrakechVilla())";
+check('livret : jamais ouvert sans fiche maison (il ne décrit que la villa pilote)', /function openLivretAction\(c\)\{\s*if \(!c\) return;[\s\S]{0,400}if \(typeof villaFactsActive === 'function' && !villaFactsActive\(\)\) \{/.test(app));
+check('livret : ni carte de rappel, ni lien dans le message d’accueil, ni bouton sans fiche maison',
+  /livretSentAt\) return; \/\/ déjà envoyé, aucune carte\s*\n\s*if \(typeof villaFactsActive === 'function' && !villaFactsActive\(\)\) return;/.test(app)
+  && /typeof window\.livretUrl !== 'function'\) return content;\s*\n\s*if \(typeof villaFactsActive === 'function' && !villaFactsActive\(\)\) return content;/.test(app)
+  && /livretBtn\.style\.display = \(firm && _hasFacts\)/.test(app));
+check('vols RAK : seulement pour une villa à Marrakech (affichage et appel en direct)', app.includes('if ' + MKG + ' {\n    var _fl = document.getElementById(\'factorFlights\')') && app.includes('if ' + MKG + ' return; // v510 : vols RAK'));
+check('événements de Marrakech (ancien moteur de prix, +15 %) : seulement à Marrakech', app.includes('if ' + MKG + ' { MARRAKECH_EVENTS = []; return; }') && app.includes('if ' + MKG + ' return null; // v510'));
+check('séjour (décompte) : villa du compte, MAD seulement au Maroc', !/villa_name: 'DarJ Marrakech'/.test(app) && /devise: \(\/maroc\|morocco\/i\.test/.test(app));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

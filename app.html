@@ -4345,6 +4345,7 @@ window.renderSoloTurnoverCard = function(){
     // par fenêtre qui dupliquerait la carte.
     firmList.forEach(function(c){
       if (c.details && c.details.livretSentAt) return; // déjà envoyé, aucune carte
+      if (typeof villaFactsActive === 'function' && !villaFactsActive()) return; // v510 : livret = fiche maison du pilote seulement
       var arr = c.arrival ? new Date(c.arrival) : null; if (arr) arr.setHours(0,0,0,0);
       var dep = c.departure ? new Date(c.departure) : null; if (dep) dep.setHours(0,0,0,0);
       if (arr && arr < today) return;                  // arrivée déjà passée
@@ -12852,12 +12853,12 @@ async function openFicheSejour(clientId) {
     var newSej = {
       crm_client_id: clientId,
       guest_name: c.name || '',
-      villa_name: 'DarJ Marrakech',
+      villa_name: villaNameOr(), // v510 : villa du compte
       checkin_date: c.arrival || null,
       checkout_date: c.departure || null,
       nb_adults: parseInt(c.guests) || 0,
       nb_children: 0,
-      devise: 'MAD',
+      devise: (/maroc|morocco/i.test(String(getCfg().country || '') + ' ' + String(getCfg().city || '')) || !(typeof isMarrakechVilla === 'function' && !isMarrakechVilla())) ? 'MAD' : 'EUR', // v510
       status: 'in_progress',
       repas: [],
       avances: []
@@ -20850,6 +20851,8 @@ let MARRAKECH_EVENTS = [];
 // VILLA / HOME TAB — pricing, weather, competitors
 // ════════════════════════════════════════════════════════
 async function loadMarrakechEvents() {
+  // v510 — multi-villa : calendrier et repli codé en dur propres à Marrakech.
+  if (typeof isMarrakechVilla === 'function' && !isMarrakechVilla()) { MARRAKECH_EVENTS = []; return; }
   const cfg = getCfg();
   const url = (cfg.supabaseUrl && cfg.supabaseUrl.includes('.supabase.co')) ? cfg.supabaseUrl : SB_URL;
   const key = cfg.supabaseKey || SB_ANON;
@@ -21483,6 +21486,7 @@ const MK_EVENTS = [
 ];
 
 function isInEventWindow(date) {
+  if (typeof isMarrakechVilla === 'function' && !isMarrakechVilla()) return null; // v510 : fenêtres d'événements de Marrakech seulement
   date = date || new Date();
   const mm = String(date.getMonth()+1).padStart(2,'0');
   const dd = String(date.getDate()).padStart(2,'0');
@@ -22980,6 +22984,14 @@ function renderFlights() {
   const isArr = currentTab === 'arr';
   const isTomorrow = currentDay === 'tomorrow';
   const search = (document.getElementById('flightSearch')?.value || '').toLowerCase().trim();
+  /* v510 — multi-villa : horaires et vols en direct de l'aéroport de Marrakech (RAK) seulement.
+     Ailleurs : on le dit, jamais les vols d'un autre aéroport. */
+  if (typeof isMarrakechVilla === 'function' && !isMarrakechVilla()) {
+    var _fl = document.getElementById('factorFlights'); if (_fl) _fl.textContent = '—';
+    var _fc = document.getElementById('flightsContent');
+    if (_fc) _fc.innerHTML = '<div style="padding:20px;text-align:center;font-size:12px;color:var(--text3)">' + (fr ? 'Vols : disponible pour l\'aéroport de Marrakech (RAK) seulement, pour l\'instant.' : 'Flights: available for Marrakech airport (RAK) only, for now.') + '</div>';
+    return;
+  }
   let data = isArr ? RAK_ARRIVALS : RAK_DEPARTURES;
 
   // Filter by city, IATA code or flight number
@@ -23066,6 +23078,7 @@ async function fetchLiveFlights() {
   // NB : `lang` ici, pas `fr` — `fr` (bare, sans parenthèses) plante par
   // ReferenceError dans cette portée (même bug pré-existant que renderFlights()
   // l.22371 et loadWeather() l.22242, non touché, hors scope X1).
+  if (typeof isMarrakechVilla === 'function' && !isMarrakechVilla()) return; // v510 : vols RAK seulement pour une villa à Marrakech
   if (typeof isDemoMode === 'function' && isDemoMode()) {
     var _flFr = (typeof lang !== 'undefined') && lang === 'fr';
     if (typeof toast === 'function') toast(_flFr ? 'Mode démo · horaires habituels affichés, pas de données live' : 'Demo mode · usual schedule shown, no live data');
@@ -30957,6 +30970,7 @@ window.addEventListener('DOMContentLoaded', function() {
   // une valeur à faire écrire par le modèle.
   function _appendLivretLink(a, content){
     if (!a || a.purpose !== 'welcome' || !a.guest || typeof window.livretUrl !== 'function') return content;
+    if (typeof villaFactsActive === 'function' && !villaFactsActive()) return content; // v510 : pas de livret d'une autre villa
     try {
       var abs = new URL(window.livretUrl(a.guest), location.href).href;
       var label = fr() ? 'Livret d\'accueil : ' : 'Welcome booklet: ';
@@ -34744,6 +34758,12 @@ function startTour(){
   // que livretUrl() ne soit jamais dupliquée ailleurs.
   function openLivretAction(c){
     if (!c) return;
+    /* v510 — multi-villa : livret.html ne décrit que la villa pilote (villa-facts.js).
+       Sans fiche maison en base, jamais d'ouverture : un client recevrait l'adresse et le wifi d'une autre villa. */
+    if (typeof villaFactsActive === 'function' && !villaFactsActive()) {
+      if (typeof toast === 'function') toast((typeof lang !== 'undefined' && lang === 'en') ? 'Welcome booklet: available once your house sheet is set up' : 'Livret d\'accueil : disponible une fois votre fiche maison en place');
+      return;
+    }
     window.open(livretUrl(c), '_blank', 'noopener');
     c.details = c.details || {};
     c.details.livretSentAt = new Date().toISOString();
@@ -35496,7 +35516,8 @@ function startTour(){
     var livretBtn = $('v5dLivretBtn');
     if (livretBtn) {
       var firm = typeof isFirmBooking === 'function' ? isFirmBooking(c) : true;
-      livretBtn.style.display = firm ? '' : 'none';
+      var _hasFacts = typeof villaFactsActive === 'function' ? villaFactsActive() : false; // v510 : livret = fiche maison
+      livretBtn.style.display = (firm && _hasFacts) ? '' : 'none';
       livretBtn.onclick = function(){ openLivretAction(c); };
     }
   }
