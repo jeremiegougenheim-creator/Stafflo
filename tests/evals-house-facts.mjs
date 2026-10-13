@@ -26,6 +26,8 @@ const secrets = [data.VILLA.wifi && data.VILLA.wifi.net, data.VILLA.wifi && data
   .concat((data.TEAM || []).map((m) => m.name)).filter((x) => x && String(x).length >= 3);
 check('moteur public : aucune valeur de la fiche (wifi, téléphones, adresse, position, équipe)', secrets.every((s) => !engine.includes(String(s))), `${secrets.filter((s) => engine.includes(String(s))).length} valeur(s) trouvée(s)`);
 check('moteur public : aucun QR code ni numéro', !/<svg|\+\d{3}\s?\d/.test(engine));
+const legacy = read('villa-facts.js');
+check('villa-facts.js (encore servi pour les pages en cache) : plus aucune donnée', secrets.every((s) => !legacy.includes(String(s))) && !/VILLA_FACTS\s*=|<svg|\+\d{3}\s?\d/.test(legacy));
 
 // 2. build(data) rend l'objet attendu, gelé, avec le résumé ARIA.
 const F = HF && HF.build(data);

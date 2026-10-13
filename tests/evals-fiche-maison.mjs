@@ -1,4 +1,4 @@
-// Fiche maison (villa-facts.js) : une seule source de faits pour le livret,
+// Fiche maison (en base, house_facts) : une seule source de faits pour le livret,
 // ARIA et les réponses types. Rejoue contre le code réel.
 //   node tests/evals-fiche-maison.mjs
 //
@@ -16,7 +16,10 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const app = fs.readFileSync(path.join(root, 'app.html'), 'utf8');
-const factsSrc = fs.readFileSync(path.join(root, 'villa-facts.js'), 'utf8');
+// 13/10/2026 : la fiche est en base (villa_settings.house_facts). Copie de référence hors du
+// site : _private/house-facts-pilot.json ; moteur public sans données : house-facts.js.
+const engineSrc = fs.readFileSync(path.join(root, 'house-facts.js'), 'utf8');
+const pilotData = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 
 let pass = 0, fail = 0;
 function check(name, ok, detail) {
@@ -27,9 +30,9 @@ function check(name, ok, detail) {
 // ── 1. Résumé IA ───────────────────────────────────────────────────────
 const ctx = { window: {} };
 vm.createContext(ctx);
-vm.runInContext(factsSrc, ctx);
-const F = ctx.window.VILLA_FACTS;
-check('VILLA_FACTS exposé et gelé', F && Object.isFrozen(F));
+vm.runInContext(engineSrc, ctx);
+const F = ctx.window.StaffloHouseFacts.build(pilotData);
+check('VILLA_FACTS (fiche construite par house-facts.js) gelé', F && Object.isFrozen(F));
 const fr = F.digest('fr'), en = F.digest('en');
 for (const [label, txt, must] of [
   ['FR', fr, ['650 MAD', '850 MAD', '300 MAD', 'Saïd', 'Bouchra', 'Léa', '23h et 7h', '14h', 'Douar Sabba', 'Deux jours avant']],
