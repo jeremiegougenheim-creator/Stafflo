@@ -84,6 +84,8 @@ check('accès équipe : liens retirés non listés', /staff_links\?select=[^']*d
 check('accès équipe : personnes lues dans la fiche maison', /function teamNames\(\) \{ return F\.TEAM/.test(script));
 check('champs équipe : fusion dans details, rien d’autre écrasé', /var nd = Object\.assign\(\{\}, c\.details\)/.test(script) && /\['arrival', 'arrival_time'\], \['beds', 'beds'\], \['staffnote', 'staff_note'\]/.test(script));
 check('brief équipe : la consigne remplace les notes privées', /if \(sn\) lines\.push\('Consigne : '/.test(script) && /else if \(notes\) lines\.push\('Notes : '/.test(script));
+// v8 — ARIA identifiée : le jeton de session part avec chaque appel ai-proxy
+check('ARIA : jeton de session envoyé à ai-proxy (quota et journal par propriétaire)', /function aiPost\(payload\)/.test(script) && /h\.Authorization = 'Bearer ' \+ s\.access_token/.test(script) && !/fetch\(PROXY, \{ method: 'POST', headers: \{ 'Content-Type': 'application\/json' \}/.test(script));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 check('sw.js ne met pas espace.html en cache', sw.includes("url.includes('espace.html')"));
 check('sw.js affiche les alertes et ouvre l’Espace au clic', /addEventListener\('push'/.test(sw) && /addEventListener\('notificationclick'/.test(sw) && /espace\.html/.test(sw));

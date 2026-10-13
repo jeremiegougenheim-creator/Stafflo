@@ -534,6 +534,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (s.expires_at && s.expires_at * 1000 < Date.now() + 60000) return refresh(s);
     return Promise.resolve(s);
   }
+  /* ARIA : ai-proxy reçoit le jeton de session — le proxy identifie le propriétaire,
+     applique sa limite d'usage et journalise (ai_usage_log). Sans session : quota anonyme. */
+  function aiPost(payload) {
+    return session().then(function (s) {
+      var h = { 'Content-Type': 'application/json', apikey: SB_ANON };
+      if (s && s.access_token) h.Authorization = 'Bearer ' + s.access_token;
+      return fetch(PROXY, { method: 'POST', headers: h, body: JSON.stringify(payload) });
+    });
+  }
   function api(path, opts, retried) {
     return session().then(function (s) {
       if (!s) throw new Error('no_session');
@@ -630,8 +639,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       : 'Rédige la réponse Airbnb de ' + owner() + ' à cette demande. Elle doit être commerciale : réponds d’abord à la question posée en mettant la villa en valeur (domaine, piscine, équipe, repas faits maison). Puis dis que c’est notre maison de famille, demande la composition du groupe (couples / personnes seules) et donne les règles de la maison ; la pré-approbation se fait une fois les règles acceptées. Dans la langue du client, prêt à copier.') +
       '\n\nClient : ' + (m.first || '?') + (ctx ? ' · ' + ctx : '') + '\nMessage reçu :\n« ' + (m.text || m.subject || '') + ' »';
     DR[m.id] = { busy: true, text: '' }; render();
-    fetch(PROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: fr ? 'write_fr' : 'write_en', system: ariaSystem(), user: ask, max_tokens: 900 }) })
+    aiPost({ task: fr ? 'write_fr' : 'write_en', system: ariaSystem(), user: ask, max_tokens: 900 })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (x) { DR[m.id] = { busy: false, text: x.ok && x.d && x.d.text ? String(x.d.text).trim() : L().ariaErr }; })
       .catch(function () { DR[m.id] = { busy: false, text: L().ariaErr }; })
@@ -970,8 +978,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       '\n\n' + (fr ? 'Client : ' : 'Guest: ') + (c.name || '?') + ' · ' + fmtLongDay(c.a, g) + ' → ' + fmtLongDay(c.d, g) + ' · ' + L().nights(c.n) + (c.pax ? ' · ' + L().pax(c.pax) : '') +
       (notes ? '\n' + (fr ? 'Notes : ' : 'Notes: ') + notes : '');
     DR[k] = { busy: true, text: '' }; render();
-    fetch(PROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: fr ? 'write_fr' : 'write_en', system: ariaSystem(), user: ask, max_tokens: 400 }) })
+    aiPost({ task: fr ? 'write_fr' : 'write_en', system: ariaSystem(), user: ask, max_tokens: 400 })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (x) { DR[k] = { busy: false, text: x.ok && x.d && x.d.text ? String(x.d.text).trim() : L().ariaErr }; })
       .catch(function () { DR[k] = { busy: false, text: L().ariaErr }; })
@@ -1056,8 +1063,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     A.msgs.push({ r: 'u', t: text }); A.busy = true; A.draft = ''; render();
     var hist = A.msgs.slice(-7, -1).map(function (m) { return (m.r === 'u' ? (U.lang === 'en' ? 'Owner: ' : 'Propriétaire : ') : 'ARIA : ') + m.t; }).join('\n\n');
     var user = (hist ? (U.lang === 'en' ? '=== EARLIER IN THIS CONVERSATION ===\n' : '=== PLUS TÔT DANS CETTE CONVERSATION ===\n') + hist + '\n\n=== ' + (U.lang === 'en' ? 'NEW MESSAGE' : 'NOUVEAU MESSAGE') + ' ===\n' : '') + text;
-    fetch(PROXY, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: U.lang === 'en' ? 'chat_en' : 'chat_fr', system: ariaSystem(), user: user, max_tokens: 900 }) })
+    aiPost({ task: U.lang === 'en' ? 'chat_en' : 'chat_fr', system: ariaSystem(), user: user, max_tokens: 900 })
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
       .then(function (x) { A.msgs.push({ r: 'a', t: x.ok && x.d && x.d.text ? String(x.d.text).trim() : L().ariaErr, err: !(x.ok && x.d && x.d.text) }); })
       .catch(function () { A.msgs.push({ r: 'a', t: L().ariaErr, err: true }); })
