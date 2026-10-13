@@ -10525,7 +10525,10 @@ async function _pushFieldToSupabase(sbCol, value) {
     if (!token) return false; // not logged in — skip cloud save silently
     var villaKey = cfg.villaKey || cfg.villa_key || 'villadarj';
     var body = {}; body[sbCol] = value;
-    var r = await fetch(cfg.sbUrl + '/rest/v1/villa_settings?villa_key=eq.' + encodeURIComponent(villaKey), {
+    /* v508 — multi-villa : la ligne du COMPTE (owner_id). Avant : villa_key 'villadarj' par
+       défaut → pour un nouveau compte (villa_key = villa_<id>), aucune ligne touchée, rien sauvé. */
+    var _own = (typeof _stafflo_user !== 'undefined' && _stafflo_user && _stafflo_user.id) ? 'owner_id=eq.' + _stafflo_user.id : 'villa_key=eq.' + encodeURIComponent(villaKey);
+    var r = await fetch(cfg.sbUrl + '/rest/v1/villa_settings?' + _own, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -10656,7 +10659,9 @@ async function pullSettingsFromSupabase() {
               && _stafflo_session.access_token) ? _stafflo_session.access_token : null;
     if (!token) return false;
     var villaKey = cfg.villaKey || cfg.villa_key || 'villadarj';
-    var r = await fetch(cfg.sbUrl + '/rest/v1/villa_settings?villa_key=eq.' + encodeURIComponent(villaKey) + '&select=*', {
+    /* v508 — multi-villa : la ligne du COMPTE (owner_id), pas la clé du pilote par défaut. */
+    var _ownP = (typeof _stafflo_user !== 'undefined' && _stafflo_user && _stafflo_user.id) ? 'owner_id=eq.' + _stafflo_user.id : 'villa_key=eq.' + encodeURIComponent(villaKey);
+    var r = await fetch(cfg.sbUrl + '/rest/v1/villa_settings?' + _ownP + '&select=*', {
       headers: { apikey: cfg.sbKey, Authorization: 'Bearer ' + token }
     });
     if (!r.ok) return false;
@@ -11014,6 +11019,24 @@ async function reconcileFromSupabase() {
 }
 window.reconcileFromSupabase = reconcileFromSupabase;
 
+/* v508 — multi-villa : emails pris en compte = Airbnb + les adresses du COMPTE (boîte
+   connectée, email du compte). Avant : les deux adresses du pilote écrites en dur
+   (pour le pilote, ce sont exactement sa boîte connectée et son email : rien ne change). */
+function inboxSendersIn() {
+  var list = ['automated@airbnb.com'];
+  try {
+    var c = (typeof getCfg === 'function') ? getCfg() : {};
+    var a = c.email_connection && c.email_connection.email;
+    var b = (typeof _stafflo_user !== 'undefined' && _stafflo_user && _stafflo_user.email) || '';
+    [a, b].forEach(function (x) {
+      x = String(x || '').trim().toLowerCase();
+      if (/^[^\s@,()"]+@[^\s@,()"]+$/.test(x) && list.indexOf(x) < 0) list.push(x);
+    });
+  } catch (e) {}
+  return 'in.(' + list.map(encodeURIComponent).join(',') + ')';
+}
+window.inboxSendersIn = inboxSendersIn;
+
 /* v172 — Réconcilie les virements Airbnb ("We sent a payout") vers crm_clients.
    Idempotent via payout_id. PATCH price si absent. Review si écart > 10%. */
 async function reconcilePayouts() {
@@ -11023,7 +11046,7 @@ async function reconcilePayouts() {
   var hdr = sbHdrs(cfg.sbKey);
 
   // Fetch all Airbnb automated emails, filter payout subjects in JS
-  var eRes; try { eRes = await fetch(cfg.sbUrl + '/rest/v1/email_inbox?from_email=in.(automated@airbnb.com,marrakech.villadarj@gmail.com,jergoug@yahoo.com)&select=id,subject,body&order=received_at.desc&limit=200', { headers: hdr }); } catch(e) { return; }
+  var eRes; try { eRes = await fetch(cfg.sbUrl + '/rest/v1/email_inbox?from_email=' + inboxSendersIn() + '&select=id,subject,body&order=received_at.desc&limit=200', { headers: hdr }); } catch(e) { return; }
   if (!eRes.ok) return;
   var emails = (await eRes.json()).filter(function(e) {
     return e && /we sent a payout/i.test(e.subject || '');
@@ -11111,7 +11134,7 @@ async function reconcileConfirmationBreakdowns() {
   if (!cfg.sbUrl || !cfg.sbKey) return;
   var hdr = sbHdrs(cfg.sbKey);
 
-  var eRes; try { eRes = await fetch(cfg.sbUrl + '/rest/v1/email_inbox?from_email=in.(automated@airbnb.com,marrakech.villadarj@gmail.com,jergoug@yahoo.com)&select=id,subject,body,received_at&order=received_at.desc&limit=200', { headers: hdr }); } catch(e) { return; }
+  var eRes; try { eRes = await fetch(cfg.sbUrl + '/rest/v1/email_inbox?from_email=' + inboxSendersIn() + '&select=id,subject,body,received_at&order=received_at.desc&limit=200', { headers: hdr }); } catch(e) { return; }
   if (!eRes.ok) return;
   var emails = (await eRes.json()).filter(function(e) {
     var sig = (typeof parseEmailSignals === 'function') ? parseEmailSignals(e) : null;
@@ -11313,7 +11336,7 @@ async function integrateReservationRequests() {
 
   var eRes;
   try {
-    eRes = await fetch(cfg.sbUrl + '/rest/v1/email_inbox?from_email=in.(automated@airbnb.com,marrakech.villadarj@gmail.com,jergoug@yahoo.com)&client_id=is.null&or=(status.neq.processed,status.is.null)&select=id,subject,body,received_at&order=received_at.desc&limit=200', { headers: hdr });
+    eRes = await fetch(cfg.sbUrl + '/rest/v1/email_inbox?from_email=' + inboxSendersIn() + '&client_id=is.null&or=(status.neq.processed,status.is.null)&select=id,subject,body,received_at&order=received_at.desc&limit=200', { headers: hdr });
   } catch(e) { return; }
   if (!eRes.ok) return;
   var emails = (await eRes.json()).filter(function(e) {
@@ -19865,7 +19888,7 @@ async function saveEmailConnection(conn) {
           Prefer: 'return=minimal'
         },
         body: JSON.stringify({
-          villa_key: villaKey,
+          /* v508 : villa_key n'est plus réécrite depuis le nom de la villa (clé fixée à l'inscription). */
           email_connection: conn,
           updated_at: new Date().toISOString()
         })
@@ -19883,9 +19906,13 @@ async function disconnectEmail() {
   try {
     var key = cfg.sbKey || SB_ANON;
     var villaKey = (cfg.villa || 'villa').toLowerCase().replace(/[^a-z0-9]/g, '');
-    await fetch(SB_URL + '/rest/v1/villa_settings?villa_key=eq.' + villaKey, {
+    /* v508 — la ligne du COMPTE. Avant : villa_key dérivée du nom → seul le pilote correspondait ;
+       pour un autre compte la boîte restait connectée côté serveur et gmail-sync continuait de la lire. */
+    var _dUid = (typeof _stafflo_user !== 'undefined' && _stafflo_user) ? _stafflo_user.id : null;
+    var _dTok = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token) ? _stafflo_session.access_token : key;
+    await fetch(SB_URL + '/rest/v1/villa_settings?' + (_dUid ? 'owner_id=eq.' + _dUid : 'villa_key=eq.' + villaKey), {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', apikey: key, Authorization: 'Bearer ' + key, Prefer: 'return=minimal' },
+      headers: { 'Content-Type': 'application/json', apikey: key, Authorization: 'Bearer ' + _dTok, Prefer: 'return=minimal' },
       body: JSON.stringify({ email_connection: null, updated_at: new Date().toISOString() })
     });
   } catch(e){}
@@ -22149,7 +22176,7 @@ async function parseInboxPayouts() {
     var _sbk = _cfg.sbKey || SB_ANON;
     var emails = [];
     try {
-      var _pr = await fetch(_sbu + "/rest/v1/email_inbox?from_email=in.(automated@airbnb.com,marrakech.villadarj@gmail.com,jergoug@yahoo.com)&select=id,subject,body,status,received_at&order=received_at.desc&limit=200", { headers: sbHdrs(_sbk) });
+      var _pr = await fetch(_sbu + "/rest/v1/email_inbox?from_email=" + inboxSendersIn() + "&select=id,subject,body,status,received_at&order=received_at.desc&limit=200", { headers: sbHdrs(_sbk) });
       if (_pr.ok) emails = await _pr.json();
     } catch(_pe2) {}
     var results = [];
@@ -28197,10 +28224,11 @@ function getAirbnbConfig() {
     var cfg = getCfg();
     return {
       apiKey: (cfg.airbnbApiKey || '').trim(),
-      listingId: (cfg.airbnbListingId || '756889438032872685').trim(),
+      // v508 — multi-villa : jamais l'annonce du pilote par défaut (aucun compte n'a de clé API Airbnb).
+      listingId: (cfg.airbnbListingId || '').trim(),
       provider: cfg.airbnbProvider || 'direct' // 'direct' | 'hostaway' | 'guesty' | 'lodgify'
     };
-  } catch(e) { return { apiKey:'', listingId:'756889438032872685', provider:'direct' }; }
+  } catch(e) { return { apiKey:'', listingId:'', provider:'direct' }; }
 }
 
 function setAirbnbConfig(patch) {
@@ -28229,9 +28257,11 @@ function promptAirbnbSetup() {
     return;
   }
   // Listing ID
-  var lid = prompt(fr?'ID du listing Airbnb (laisse vide pour Villa DarJ):':'Airbnb listing ID (leave empty for Villa DarJ):', cur.listingId);
+  var lid = prompt(fr?'ID de votre annonce Airbnb (chiffres de l\'adresse airbnb.com/rooms/…) :':'Your Airbnb listing ID (digits in airbnb.com/rooms/…):', cur.listingId);
   if (lid === null) return;
-  lid = (lid || '756889438032872685').trim();
+  /* v508 — multi-villa : plus d'annonce du pilote par défaut. Vide → on s'arrête. */
+  lid = (lid || '').trim();
+  if (!/^\d{5,25}$/.test(lid)) { if (typeof toast === 'function') toast(fr?'ID d\'annonce manquant ou invalide':'Missing or invalid listing ID'); return; }
   // Provider
   var prov = prompt(fr?'Source : direct, hostaway, guesty, lodgify ?':'Source: direct, hostaway, guesty, lodgify?', cur.provider || 'direct');
   if (prov === null) return;
