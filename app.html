@@ -12462,9 +12462,9 @@ function buildStaffNote(query, fr) {
 window.buildStaffNote = buildStaffNote;
 
 function buildGuestMessage(c, cfg, fr) {
-  var today = new Date();
-  var arr = c.arrival ? new Date(c.arrival) : null;
-  var dep = c.departure ? new Date(c.departure) : null;
+  var today = new Date(); today.setHours(12,0,0,0); // v495 : midi contre midi
+  var arr = c.arrival ? new Date(String(c.arrival).slice(0,10) + 'T12:00:00') : null;
+  var dep = c.departure ? new Date(String(c.departure).slice(0,10) + 'T12:00:00') : null;
   var daysUntilArrival = arr ? Math.round((arr - today) / 86400000) : 999;
   var daysUntilDeparture = dep ? Math.round((dep - today) / 86400000) : 999;
   var villaName = cfg.villa || 'your villa';
@@ -34931,7 +34931,9 @@ function startTour(){
     host.hidden = true; host.innerHTML = '';
     var FR = fr();
     if (!c.arrival) return;
-    var today = new Date(); today.setHours(0,0,0,0);
+    // v495 : midi contre midi. Minuit contre midi donnait x,5 jour, arrondi au
+    // jour suivant : le jour de l'arrivée s'affichait « demain ».
+    var today = new Date(); today.setHours(12,0,0,0);
     var dArr = Math.round((new Date(c.arrival + 'T12:00:00') - today) / 86400000);
     var dDep = c.departure ? Math.round((new Date(c.departure + 'T12:00:00') - today) / 86400000) : null;
     if (dDep != null && dDep < 0) return;          // sejour termine : rien a faire
@@ -35160,7 +35162,7 @@ function startTour(){
     if (!host) return;
     var FR = fr();
     if (!c.arrival) { host.textContent = ''; return; }
-    var today = new Date(); today.setHours(0,0,0,0);
+    var today = new Date(); today.setHours(12,0,0,0); // v495 : midi contre midi (voir renderNowAction)
     var arr = new Date(c.arrival + 'T12:00:00');
     var dep = c.departure ? new Date(c.departure + 'T12:00:00') : null;
     var dArr = Math.round((arr - today) / 86400000);
@@ -42001,7 +42003,7 @@ window._setNotifPref = function(key, val){ try { window._notifPrefs[key] = !!val
     if (status === 'inquiry') return 'stage_0_inquiry';
     if (!client.arrival) return 'stage_1_confirmed_no_dates';
     
-    var today = new Date(); today.setHours(0,0,0,0);
+    var today = new Date(); today.setHours(12,0,0,0); // v495 : midi contre midi
     var arr = new Date(client.arrival + 'T12:00:00');
     var dep = client.departure ? new Date(client.departure + 'T12:00:00') : null;
     var daysToArrival = Math.round((arr - today) / 86400000);

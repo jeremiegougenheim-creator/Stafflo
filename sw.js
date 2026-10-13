@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v494 (calendriers iCal lus par le serveur, plus de proxys publics)
-const CACHE = 'stafflo-v494';
+// Stafflo Service Worker — v495 (dates : le jour d’arrivée ne s’affiche plus « demain »)
+const CACHE = 'stafflo-v495';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

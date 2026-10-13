@@ -97,5 +97,20 @@ check('ical-fetch : Airbnb, Booking, VRBO, webcal acceptés', ok('https://www.ai
 check('ical-fetch : pas un proxy ouvert (http, autres sites, IP, identifiants refusés)', !ok('http://www.airbnb.com/calendar/ical/1.ics') && !ok('https://evil.com/x.ics') && !ok('https://169.254.169.254/latest') && !ok('https://user:pw@www.airbnb.com/x') && !ok('https://airbnb.com.evil.io/x.ics') && !ok('https://www.airbnb.com:8443/x'));
 check('ical-fetch : utilisateur connecté obligatoire', /auth\/v1\/user/.test(icalSrc) && /unauthorized/.test(icalSrc));
 
+// ── 6. Dates : jamais minuit contre midi (le jour J s'affichait « demain ») ──
+{
+  const L = app.split('\n'); let bad = [];
+  L.forEach((l, i) => {
+    if (!/T12:00:00'\)\s*-\s*today|\(\s*(arr|dep|arrDate|depDate)\s*-\s*today\s*\)/.test(l)) return;
+    const win = L.slice(Math.max(0, i - 6), i + 1).join('\n');
+    if (/T12:00:00/.test(win) && /today\.setHours\(0,\s*0,\s*0,\s*0\)/.test(win) && !/today\.setHours\(12/.test(win)) bad.push(i + 1);
+  });
+  check('dates : aucune différence minuit contre midi', bad.length === 0, bad.join(','));
+  const now = new Date(); now.setHours(12, 0, 0, 0);
+  const d = (iso) => Math.round((new Date(iso + 'T12:00:00') - now) / 86400000);
+  const iso = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+  check('dates : jour J = 0, demain = 1, hier = −1', d(iso(0)) === 0 && d(iso(1)) === 1 && d(iso(-1)) === -1);
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
