@@ -128,7 +128,8 @@ for (const bad of ["Staff : Said, Faiza, Bouchra", "Briefer Said + Faiza", "Brie
 check('app.html charge villa-facts.js avant tout script', app.indexOf('<script src="villa-facts.js"></script>') > 0 &&
   app.indexOf('<script src="villa-facts.js"></script>') < app.indexOf('<script>'));
 const livret = fs.readFileSync(path.join(root, 'livret.html'), 'utf8');
-check('livret.html lit villa-facts.js', livret.includes('<script src="villa-facts.js"></script>') && livret.includes('= window.VILLA_FACTS;'));
+// 13/10/2026 : la fiche n'est plus un fichier public ; le livret la reçoit de livret-view (tests/evals-livret-load.mjs).
+check('livret.html lit la fiche maison (house-facts.js → window.VILLA_FACTS)', livret.includes('<script src="house-facts.js"></script>') && livret.includes('= window.VILLA_FACTS;'));
 check('livret.html ne redéfinit plus les données', !/^const (MEALS|RULES|PRACTICAL|VILLA) = /m.test(livret));
 
 console.log(`\n${pass}/${pass + fail} PASS`);
