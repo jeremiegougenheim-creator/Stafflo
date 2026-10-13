@@ -88,5 +88,7 @@ check('séjour (décompte) : villa du compte, MAD seulement au Maroc', !/villa_n
 
 check('concurrents : « Suggestions Marrakech » seulement pour une villa à Marrakech', app.includes("if (!document.getElementById('compSuggestions') && !(typeof isMarrakechVilla === 'function' && !isMarrakechVilla())) {"));
 
+check('démo sur un vrai compte : aucun client de démo envoyé en base, par les deux chemins', /async function pushToSupabase\(client\) \{\n  if \(client && client\._demo\) return;/.test(app) && /async function safePushToSupabase\(client\)\{\n    if \(client && client\._demo\) return false;/.test(app));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
