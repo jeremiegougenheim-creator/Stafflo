@@ -21,7 +21,16 @@ function fnSource(src, name) {
 }
 
 // ── v508 : réglages, connexion Gmail, emails, annonce Airbnb ─────────────
-check('aucune adresse email du pilote en dur', !/jergoug@|marrakech\.villadarj@/.test(app));
+// Aucune vraie adresse ni vrai numéro dans le code public : seulement des domaines d'exemple ou de service,
+// et des numéros de fiction (séries « 1234567 », Ofcom 07700 900xxx, zéros).
+{
+  const mails = [...new Set(app.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}/g) || [])];
+  const badMails = mails.filter((m) => !/@(example\.[a-z.]+|exemple\.com|email\.com|airbnb\.com|booking\.com|stafflo\.app)$/i.test(m));
+  check('aucune vraie adresse email dans app.html (exemples et services seulement)', badMails.length === 0, badMails);
+  const phones = [...new Set(app.match(/\+\d{2,3}[ \d]{7,14}/g) || [])];
+  const badPhones = phones.filter((n) => !/1234567|0123456|7700 ?900|600000000/.test(n.replace(/ /g, (x) => x)) && !/1234567|0123456|7700900|600000000/.test(n.replace(/ /g, '')));
+  check('aucun vrai numéro de téléphone dans app.html (numéros de fiction seulement)', badPhones.length === 0, badPhones);
+}
 check('aucune annonce Airbnb du pilote par défaut', !/756889438032872685/.test(app));
 check('réglages : enregistrés sur la ligne du compte (owner_id), pas sur « villadarj »',
   /villa_settings\?' \+ _own, \{/.test(app) && /'owner_id=eq\.' \+ _stafflo_user\.id : 'villa_key=eq\.'/.test(app));
@@ -54,7 +63,7 @@ check('fiche maison choisie par la base (house_facts_ref), plus par le nom de la
   /return c\.houseFactsRef === 'villa-facts\.js';/.test(app) && !/dar\\s\*-\?\\s\*j/.test(app));
 check('drapeau fiche maison relu à chaque démarrage, avant les sorties anticipées',
   /cfg\.houseFactsRef = _hf;[\s\S]{0,400}if \(!row\.onboarded\) return;/.test(app));
-check('aucun numéro de téléphone du pilote', !/67684852|\+852/.test(app));
+check('aucun indicatif de Hong Kong (numéro perso du pilote) dans app.html', !/\+852/.test(app));
 check('aucun repli sur le prénom du pilote', !/'Jérémie'/.test(code));
 check('aucun repli sur le nom de la villa pilote', !/'Villa DarJ|'DarJ'|Villa DarJ \(vous\)|de Villa DarJ|saison Villa DarJ/.test(code));
 check('modèles de messages : identité du compte aux deux endroits', (app.match(/ownerTemplateCtx\(\)/g) || []).length >= 2 && !/owner_whatsapp: '/.test(app));

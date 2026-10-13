@@ -16,7 +16,7 @@
 - **Icons** : Tabler Icons via webfont, centralisés via `iconFor()`
 - **Typographie** : Cormorant Garamond (titres, voix ARIA) + Inter (UI)
 - **Palette** : cream `#FAF6EE`, dark green `#0F2318`, mid green `#1D4D3A`, gold `#C9963A`, gold soft `#E5C77A`
-- **Villa de test** : Villa DarJ Marrakech. Équipe : Saïd (majordome), Bouchra (ménage), Léa (prestataire repas, envoie la cuisinière). Faiza ne travaille plus à la villa depuis septembre 2026.
+- **Villa pilote** (pas un modèle : Stafflo est un SaaS multi-villa, voir §16) : Villa DarJ, Marrakech. Équipe actuelle : uniquement celle de `villa-facts.js` (l'ancienne cuisinière, partie en septembre 2026, ne doit réapparaître nulle part).
 - **Fiche maison** : `villa-facts.js` — voir §13.
 
 ---
@@ -122,7 +122,7 @@ Si un critère échoue, le flag reste et l'ancien code reste.
 - Champs manquants marqués explicitement avec `?`
 - **Pas de fake data** dans l'app
 - Distinction guest-paid vs host-payout critique
-- Commissions par défaut : Airbnb 3.6%, Booking 15%, Direct 0%
+- Commissions par défaut : Airbnb 3.6%, Booking 15%, Direct 0% — ⚠ à trancher par le propriétaire : le code n'est pas cohérent (3.6 à l'onboarding et sur les séjours, 15.5 « host-only » dans Réglages et `price-intelligence`). Ne pas « corriger » d'un côté sans décision.
 - `cfg.minPrice` / `cfg.maxPrice` = plancher et plafond, ARIA doit les respecter
 - Pricing tiers :
   - **Tier A** €69 / €179 / €399 — émergent
@@ -136,7 +136,7 @@ Si un critère échoue, le flag reste et l'ancien code reste.
 - Dark green : `#0F2318`
 - Mid green : `#1D4D3A`
 - Gold : `#C9963A`
-- Fonts : Cormorant Garamond + Inter (landing), DM Sans + Fraunces (app ARIA)
+- Fonts : Cormorant Garamond + Inter (site), DM Sans/Inter + Cormorant Garamond (app et Espace)
 
 ## 8. Roadmap pivot ARIA-first v1 (composants à livrer)
 
@@ -207,7 +207,7 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 - **Multi-propriétaire** (v5) : aucun compte en dur. La synchro boucle sur chaque `villa_settings` dont `email_connection.refresh_token` existe ; tout est rattaché au propriétaire du passage. Un compte en erreur n'arrête pas les autres (réponse 207). `{owner: uuid}` limite un essai à un compte.
 - **Parseur regex uniquement** (`parseAirbnb`). Un champ absent du texte reste vide. Garde-fou : `node tests/evals-gmail-sync.mjs`.
 - **Rapprochement strict** (`findStay`) : code HM… → fil Airbnb → dates exactes avec un seul séjour → (rappel) nom complet exact. Sinon rien n'est relié. Une confirmation sans séjour crée le séjour (`details.origin = 'gmail_sync'`, `pending: ['price']` si pas de versement). Une annulation n'agit que sur code exact. Ne remplit que les champs vides, ne supprime jamais.
-- **Espace Stafflo** (`espace.html`, noindex, jamais en cache) : poste de pilotage simple sur la même session que l'app. Jour / Séjours / ARIA / Maison, FR/EN. Lit `crm_clients`, `email_inbox` (non archivés), `sync_runs`. « Traité » = `archived_at` (soft). Aucun fait de la villa en dur : tout vient de `villa-facts.js`. Garde-fou : `node tests/evals-espace.mjs`.
+- **Espace Stafflo** (`espace.html`, noindex, jamais en cache) : poste de pilotage simple sur la même session que l'app. Jour / Séjours / ARIA / Maison, FR/EN. Lit `crm_clients`, `email_inbox` (non archivés), `sync_runs`. « Traité » = `archived_at` (soft). Aucun fait de villa en dur : la fiche `villa-facts.js` n'est chargée que si `villa_settings.house_facts_ref = 'villa-facts.js'` (le pilote) ; sinon bases du compte (nom, ville, chambres, équipe de la table `staff`) et ARIA répond « à confirmer ». Compte neuf : carte « Mise en route » (Gmail, premier séjour, équipe, alertes) avec liens `app.html?open=gmail|stay|settings`. Garde-fou : `node tests/evals-espace.mjs`.
 - Claude Code reste en lecture seule sur la base : les migrations, cron et secrets sont gérés par Claude (claude.ai).
 
 
@@ -216,9 +216,25 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 - **Alertes sur le téléphone (Web Push, sans service tiers)** : `supabase/functions/push-notify` (+ `webpush.ts`, chiffrement aes128gcm / VAPID en WebCrypto). Cron `push-notify-5min` : une alerte par nouvel email Airbnb utile (demande, message, confirmation, modification, annulation, versement), puis `email_inbox.notified_at` — jamais deux fois. Abonnements dans `push_subscriptions` (RLS propriétaire). Clé privée VAPID dans Vault, jamais dans le client. L'Espace propose « Activer les alertes » ; `sw.js` gère `push` et `notificationclick` (ouvre l'Espace). Sur iPhone : l'Espace doit être ajouté à l'écran d'accueil (`espace.webmanifest`).
 - **Point du matin sur le téléphone** : cron `push-brief-matin` (`30 * * * *`) → `push-notify` `{action:"brief"}` : pour chaque compte avec des alertes actives, une notification « <nom de sa villa> — aujourd'hui » quand il est 8 h dans le fuseau de la villa (`tzFor` : déduit du pays, UTC sinon) → 8 h 30 locales. Arrivées, départs, à faire, messages, avis, calculés depuis la base (`buildBrief`, testé dans `evals-push`) ; livret, repas et message de départ comptés seulement avec une fiche maison. Rien si rien à signaler. `{dry:true}` = aperçu de tous les comptes. Alertes (`run`) : chaque email part sur les appareils de SON propriétaire.
 - **iCal** : `supabase/functions/ical-fetch` lit les calendriers côté serveur (utilisateur connecté, https, liste fermée de plateformes, redirections vérifiées). Les proxys CORS publics de `fetchIcal` ne servent plus que si `localStorage.stafflo_public_cors = 'on'`.
-- **Point du matin** : tâche planifiée claude.ai « Villa Dar J — à faire du jour (8h45) » (lecture seule de la base → email à marrakech.villadarj@gmail.com + notification). Pas de code dans ce dépôt.
-- **Garde-fous à lancer avant tout push** : `node tests/evals-app-securite.mjs`, `evals-app-ux`, `evals-fiche-maison`, `evals-espace`, `evals-gmail-sync`, `evals-push`, plus `node tests/visual.mjs` (puis `git checkout -- tests/baseline.json`).
+- **Point du matin** : tâche planifiée claude.ai « Villa Dar J — à faire du jour (8h45) » (lecture seule de la base → email au propriétaire + notification). Pas de code dans ce dépôt.
+- **Garde-fous à lancer avant tout push** : TOUS les `node tests/evals-*.mjs` (app-securite, app-ux, app-multivilla, fiche-maison, espace, gmail-sync, push, meteo, site-legal, ai-proxy, transcribe, polar, price-intel, donnees-publiques, staff, livret-*, email-body, airbnb-guests, planning), plus `node tests/visual.mjs` (avec `git checkout -- tests/baseline.json` avant et après). Les évals des fonctions serveur se lancent avec `PUSH_TEST_MODULES` / `POLAR_TEST_MODULES` (modules transpilés).
 - **Allègement de l'UI** (`stafflo_trim_v1`, bloc « v499 — ALLÈGEMENT » en fin de app.html) : masquage CSS + bandeau « occupé ce soir » + lien Espace. `'off'` rétablit tout. Ajouter un masquage = une ligne de sélecteur dans ce bloc + un contrôle dans `tests/evals-app-ux.mjs`. Revue complète : doc projet `REVUE-UX-UI-2026-10-13`.
 - **Dates fortes** : table `events` = vacances scolaires FR par zone (`zones`), festivals, marathon, fêtes lunaires (`source = 'estimate'` → affichées « approximatives »). Deux sortes de lignes : celles d'un compte (`owner_id`, RLS propriétaire) et le **catalogue partagé** (`owner_id` null, `country` ISO-2 obligatoire, `city` facultative), visible en lecture seule par chaque compte dont la villa est dans ce pays/cette ville (policy `events_shared_read` → `events_shared_visible()` + `country_code()`). Catalogue actuel : Maroc (fêtes religieuses, tout le pays) et Marrakech (festivals, vacances FR avec notes de marché Marrakech). Les notes et `demand_impact` sont propres à une destination : ne jamais partager une ligne hors de sa destination. Aucun compte ne peut écrire le catalogue (tenu côté serveur). Les lecteurs (Espace, app, `price-intelligence` avec le jeton du propriétaire) passent par la RLS. Toute date a une source ; suppression douce (`deleted_at`). L'Espace calcule les nuits sans séjour ; ARIA les reçoit sans jamais proposer de prix chiffré. `marrakech_events` = ancien moteur de prix d'app.html (hausses en % sans source) : à éteindre avec l'écran Prix, ne pas l'enrichir.
 - **Propositions passées** : doc projet `PROPOSITIONS-2026-10-13` (intégré / à faire dans l'ordre / laissé de côté / à trancher). Le consulter avant de proposer une « nouvelle » idée.
 - **Architecture cible** (doc projet `ARCHI-CIBLE-2026-10-12`) : la base est la seule vérité, le serveur fait les automatisations, les écrans restent fins. L'Espace (`espace.html`) est l'écran principal ; app.html est éteint écran par écran, derrière interrupteur, 14 jours sans retour avant tout retrait.
+
+
+## 16. SaaS multi-villa (13/10/2026) — règles pour toute modification
+
+Villa Dar J n'est que le pilote. Un nouveau compte ne doit rien voir, recevoir ni écrire du pilote.
+
+- **Aucun identifiant du pilote en dur** : ni UUID, ni `villa_key`, ni email, ni téléphone, ni annonce Airbnb, ni nom de villa ou d'équipe comme valeur par défaut. Replis neutres : `villaNameOr()` / `ownerNameOr()` (app), `villaName()` / `owner()` (Espace). Garde-fous : `evals-app-multivilla`, `evals-espace` (v9), `evals-gmail-sync`, `evals-push`.
+- **Fiche maison** : choisie par la base (`villa_settings.house_facts_ref = 'villa-facts.js'`), jamais par le nom. App : `cfg.houseFactsRef`, relu à chaque démarrage par `pullVillaSettings()` → `villaFactsActive()`. Livret, repas, message de départ : seulement avec une fiche. `villa_settings.house_facts` (jsonb) est réservé à une fiche éditable par compte.
+- **⚠ `villa-facts.js` est public** (servi par le site, même si le dépôt devient privé) : wifi, téléphones de l'équipe, adresse. Chantier proposé : fiche en base + livret servi par lien signé (comme `staff-view`).
+- **Lignes `villa_settings`** : toujours par `owner_id` (le compte), jamais par une `villa_key` par défaut ou dérivée du nom (un nouveau compte a `villa_key = villa_<id>`).
+- **Fonctions serveur** : `gmail-sync` boucle sur chaque boîte connectée (`email_connection.refresh_token`), erreurs isolées par compte (207) ; `push-notify` envoie chaque alerte au propriétaire de l'email, point du matin à 8 h 30 dans le fuseau de la villa (`tzFor` depuis le pays, UTC sinon ; cron `30 * * * *`) ; `price-intelligence` lit `events` avec le jeton du propriétaire.
+- **Dates fortes partagées** : `events.owner_id` null + `country` ISO-2 (+ `city`), visibles via la policy `events_shared_read` / `events_shared_visible()`. Notes et `demand_impact` propres à une destination : ne jamais partager une ligne hors de sa destination.
+- **Lieu** : météo = GPS des Réglages (`parseGpsLatLon`, Open-Meteo par lat/lon ; `q=` est ignoré par `weather-proxy`), Marrakech seulement pour une villa à Marrakech, sinon rien — jamais de météo inventée. Vols RAK, événements `marrakech_events`, suggestions de concurrents : `isMarrakechVilla()` (ville vide ≠ Marrakech, sauf le pilote).
+- **Auth des fonctions** : la clé anon n'est pas un utilisateur (`isPublicKey`) ; utilisateur = `GET /auth/v1/user` avec son jeton (cache 5 min) ; limites par utilisateur. `transcribe` (Voxtral) et la vision d'`ai-proxy` exigent une session. Facturation : `is_entitled()` + policies restrictives `billing_gate` (INSERT/UPDATE) ; `billing_status()` renvoie aussi `comp` (accès offert) et `trial_expired`.
+- **Site et légal** : liens Confidentialité / Conditions / Mentions légales sur chaque page ; avis légal sous chaque formulaire d'inscription ; la politique de confidentialité décrit ce que fait le code (la mettre à jour avec tout nouveau sous-traitant ou toute nouvelle lecture de données). Liens profonds : `app.html?signup=1` (onglet inscription), `app.html?open=gmail|settings|stay`.
+
