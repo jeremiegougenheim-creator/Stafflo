@@ -36,5 +36,14 @@ for (const f of ['index.html', 'en.html', 'ar.html', 'th.html', 'zh.html']) {
 }
 check('accueil : un navigateur en chinois arrive sur zh.html (plus sur en.html)', /zh:'zh\.html'/.test(read('index.html')));
 
+// ── Inscription : avis légal sur chaque formulaire ───────────────────────
+{
+  const app = read('app.html'), login = read('login.html');
+  check('inscription (onboarding) : avis + liens Conditions et Confidentialité, FR/EN', /id="onbV3AcctLegal"[\s\S]{0,700}href="terms\.html"[\s\S]{0,300}href="privacy\.html"/.test(app) && /data-en="By creating your access, you accept the "/.test(app));
+  check('inscription (onboarding) : avis masqué pour un compte déjà connecté', /#onboardingV3\.onb-authed #onbV3AcctLegal,/.test(app));
+  check('inscription (fenêtre de connexion) : avis + liens, FR/EN', /'En créant votre compte, vous acceptez les <a href="terms\.html"/.test(app) && /'By creating your account, you accept the <a href="terms\.html"/.test(app));
+  check('inscription (login.html) : avis + liens', /id="s-btn"[\s\S]{0,200}En créant votre compte, vous acceptez les <a href="terms\.html\?lang=fr"/.test(login) && /href="privacy\.html\?lang=fr"/.test(login));
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
