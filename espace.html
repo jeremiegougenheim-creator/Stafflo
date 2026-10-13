@@ -54,6 +54,12 @@ main{flex:1 1 auto;padding:14px 14px calc(96px + env(safe-area-inset-bottom))}
 .card .h h2{margin:0;font-size:11.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--gm);flex:1}
 .card .b{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
 .pill{font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.todo{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid var(--line,#E7DFCF);border-radius:14px;padding:12px 12px 12px 14px;margin:0 0 8px;font:inherit;color:inherit;cursor:pointer;min-height:56px}
+.todo:active{transform:scale(.99)}.todo>.ti:first-child{font-size:20px;color:var(--gold,#C9963A);flex:none}
+.todo .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}.todo .tx b{font-weight:600;font-size:14.5px}
+.todo .tx .sub{margin:0}.todo>.ti:last-child{color:#A79F8C;flex:none}
+.stay{scroll-margin-top:12px}
+.todo.late{border-color:var(--alert-bg);box-shadow:inset 3px 0 0 var(--alert)}
 .t-go{background:var(--go-bg);color:var(--go)}.t-wait{background:var(--wait-bg);color:var(--wait)}
 .t-house{background:var(--house-bg);color:var(--house)}.t-alert{background:var(--alert-bg);color:var(--alert)}
 .gold{background:var(--wait-bg);color:var(--gold-ink)}
@@ -192,6 +198,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       leaves: function (d) { return 'départ ' + d; },
       ck: { phone: 'Téléphone', livret: 'Livret', meals: 'Repas', brief: 'Brief équipe' },
       ckLate: 'en retard', ckDue: function (d) { return 'avant ' + d; },
+      todo: { title: 'À faire', none: 'Rien d’urgent pour les 3 prochains jours.', msg: 'Répondre au message', phone: 'Demander son téléphone', livret: 'Envoyer le livret', meals: 'Obtenir les choix de repas', brief: 'Briefer l’équipe' },
+      arrivesToday: 'arrive aujourd’hui',
       act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief équipe', phone: 'Téléphone' },
       copy: 'Copier', copied: 'Copié', openWa: 'Ouvrir WhatsApp', close: 'Fermer',
       markLivret: 'Marquer le livret envoyé', unmarkLivret: 'Livret pas encore envoyé',
@@ -251,6 +259,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       leaves: function (d) { return 'leaves ' + d; },
       ck: { phone: 'Phone', livret: 'Guide', meals: 'Meals', brief: 'Team brief' },
       ckLate: 'late', ckDue: function (d) { return 'by ' + d; },
+      todo: { title: 'To do', none: 'Nothing urgent for the next 3 days.', msg: 'Reply to the message', phone: 'Ask for their phone', livret: 'Send the guide', meals: 'Get meal choices', brief: 'Brief the team' },
+      arrivesToday: 'arrives today',
       act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'Team brief', phone: 'Phone' },
       copy: 'Copy', copied: 'Copied', openWa: 'Open WhatsApp', close: 'Close',
       markLivret: 'Mark guide as sent', unmarkLivret: 'Guide not sent yet',
@@ -937,11 +947,35 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function card(icon, title, body, pill) {
     return '<section class="card"><div class="h"><span class="i"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span><h2>' + esc(title) + '</h2>' + (pill ? '<span class="pill gold">' + esc(pill) + '</span>' : '') + '</div><div class="b">' + body + '</div></section>';
   }
+  /* « À faire » : une ligne par action, tous séjours confondus (7 jours), retards
+     d'abord. Un geste ouvre le séjour sur le bon panneau. */
+  function todoItems() {
+    var t = todayNum(), out = [];
+    D.stays.filter(function (c) { return c.d > t && c.a - t <= 7; }).forEach(function (c) {
+      msgsFor(c).slice(0, 1).forEach(function (m) { out.push({ c: c, k: 'msg', due: t, late: false, m: m }); });
+      if (c.a < t) return; // séjour commencé : les vérifications d'avant arrivée ne comptent plus
+      checks(c).forEach(function (x) { if (!x.done && x.due <= t + 2) out.push({ c: c, k: x.k, due: x.due, late: x.late }); });
+    });
+    var rank = function (x) { return x.k === 'msg' ? 0 : x.late ? 1 : 2; };
+    return out.sort(function (x, y) { return (rank(x) - rank(y)) || (x.due - y.due) || (x.c.a - y.c.a); });
+  }
+  function todoCard() {
+    var l = L(), t = todayNum(), it = todoItems();
+    var body = it.length ? it.map(function (x) {
+      var when = x.k === 'msg' ? l.ago(x.m.ageH) : x.late ? l.ckLate : (x.due === t ? l.inDays(0) : l.ckDue(fmtDay(x.due)));
+      var cls = x.k === 'msg' || x.late ? 't-alert' : x.due === t ? 't-wait' : 't-house';
+      return '<button type="button" class="todo' + (x.late ? ' late' : '') + '" data-a="goto" data-id="' + esc(x.c.id) + '" data-v="' + x.k + '">' +
+        '<i class="ti ti-' + (x.k === 'msg' ? 'message-chatbot' : ICON[x.k]) + '" aria-hidden="true"></i>' +
+        '<span class="tx"><b>' + esc(l.todo[x.k]) + '</b><span class="sub">' + esc(x.c.name + ' · ' + l.inDays(Math.max(0, x.c.a - t))) + '</span></span>' +
+        '<span class="pill ' + cls + '">' + esc(when) + '</span><i class="ti ti-chevron-right" aria-hidden="true"></i></button>';
+    }).join('') : '<p class="empty">' + esc(l.todo.none) + '</p>';
+    return card('checklist', l.todo.title, body, it.length ? String(it.length) : '');
+  }
   function stayCard(c, mode) {
     var t = todayNum(), l = L(), ck = checks(c), open = !!U.open[c.id];
-    var when = mode === 'in' ? l.night(Math.min(c.n, t - c.a + 1), c.n) + ' · ' + l.leaves(fmtDay(c.d)) : fmtDay(c.a) + ' → ' + fmtDay(c.d) + ' · ' + l.nights(c.n);
+    var when = mode === 'in' ? (c.a === t ? l.arrivesToday + ' · ' + l.nights(c.n) : l.night(Math.min(c.n, t - c.a + 1), c.n)) + ' · ' + l.leaves(fmtDay(c.d)) : fmtDay(c.a) + ' → ' + fmtDay(c.d) + ' · ' + l.nights(c.n);
     var right = mode === 'in' ? '' : '<span class="pill ' + (c.a - t <= 2 ? 't-alert' : 'gold') + '">' + esc(l.inDays(c.a - t)) + '</span>';
-    var h = '<article class="stay ' + tone(c) + '"><button type="button" class="top" data-a="toggle" data-id="' + esc(c.id) + '" aria-expanded="' + open + '">' +
+    var h = '<article class="stay ' + tone(c) + '" id="st-' + esc(c.id) + '"><button type="button" class="top" data-a="toggle" data-id="' + esc(c.id) + '" aria-expanded="' + open + '">' +
       '<span><span class="nm">' + esc(c.name) + '</span><br><span class="dt">' + esc(when) + '</span></span>' +
       '<span class="right">' + right + '<span class="sub">' + esc(c.pax ? l.pax(c.pax) : '?') + (c.source ? ' · ' + esc(c.source) : '') + '</span></span></button>';
     var cm = msgsFor(c);
@@ -1007,12 +1041,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (!D.loaded) return '<div class="card"><div class="b"><span class="sub">' + esc(l.loading) + '</span></div></div>';
     if (D.error) return '<div class="card"><div class="b"><span class="err">' + esc(l.loadErr) + '</span><button type="button" class="btn green" data-a="reload">' + esc(l.retry) + '</button></div></div>';
     var cur = D.stays.filter(function (c) { return c.a <= t && t < c.d; });
-    var next = D.stays.filter(function (c) { return c.a >= t && c.a - t <= 21; }).slice(0, 4);
+    var next = D.stays.filter(function (c) { return c.a > t && c.a - t <= 21; }).slice(0, 4);
     var deps = D.stays.filter(function (c) { return c.d === t || c.d === t + 1; });
     var up = D.stays.filter(function (c) { return c.a >= t; });
     var m0 = new Date(), mStart = Date.UTC(m0.getFullYear(), m0.getMonth(), 1) / 86400000, mEnd = Date.UTC(m0.getFullYear(), m0.getMonth() + 1, 1) / 86400000;
     var nightsMonth = D.stays.concat(D.past || []).reduce(function (s, c) { return s + Math.max(0, Math.min(c.d, mEnd) - Math.max(c.a, mStart)); }, 0);
     var net = up.reduce(function (s, c) { return s + (c.is_comp ? 0 : (+c.price || 0)); }, 0);
+    h += todoCard();
     h += '<div class="tiles"><div class="tile"><span class="l">' + esc(l.tUpcoming) + '</span><span class="v">' + up.length + '</span></div>' +
       '<div class="tile"><span class="l">' + esc(l.tNights) + '</span><span class="v">' + nightsMonth + '</span></div>' +
       '<div class="tile"><span class="l">' + esc(l.tNet) + '</span><span class="v" style="font-size:21px">' + esc(euro(net)) + '</span></div></div>';
@@ -1122,6 +1157,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (a === 'tab') { U.tab = v; try { history.replaceState(null, '', '#' + v); } catch (er) {} render(); window.scrollTo(0, 0); }
     else if (a === 'lang') { U.lang = v; try { localStorage.setItem(LANG_KEY, v); } catch (er) {} render(); }
     else if (a === 'toggle' && c) { U.open[c.id] = !U.open[c.id]; render(); }
+    else if (a === 'goto' && c) {
+      U.tab = 'jour'; U.open[c.id] = true;
+      var pv = { phone: waDigits(c.phone) ? '' : 'phone', meals: 'meals', brief: 'brief' }[v] || '';
+      U.panel[c.id] = pv; render();
+      var el2 = document.getElementById('st-' + c.id);
+      if (el2 && el2.scrollIntoView) el2.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     else if (a === 'panel' && c) { U.panel[c.id] = U.panel[c.id] === v ? '' : v; render(); }
     else if (a === 'copy' && c) { var tx = document.getElementById('tx-' + c.id); if (tx) copyText(tx.value); }
     else if (a === 'sendwa' && c) { var tx2 = document.getElementById('tx-' + c.id); window.open('https://wa.me/' + waDigits(c.phone) + '?text=' + encodeURIComponent(tx2 ? tx2.value : ''), '_blank', 'noopener'); }
