@@ -45,5 +45,11 @@ const onb = app.slice(app.indexOf('<!-- v504 — ONBOARDING : SE DÉCONNECTER'))
 check('onboarding : « Se déconnecter » visible quand une session existe', /id = 'onbV3SignOut'/.test(onb) && /doSignOut\(\)/.test(onb) && /!window\._demoMode/.test(onb));
 check('onboarding : rien pour un nouvel inscrit sans compte', /if \(!open \|\| !s\) \{ if \(bar\) bar\.style\.display = 'none'; return; \}/.test(onb));
 check('onboarding : ajout pur (aucun nœud existant retiré)', onb.length > 100 && !/\.remove\(\)|removeChild/.test(onb));
+// Réglages allégés (v505) : l'Avancé Supabase masqué pour tous ; pour la villa pilote
+// (fiche maison active), les champs qui doublent la fiche cèdent la place à une note.
+const rg = app.slice(app.indexOf('<!-- v505 — RÉGLAGES ALLÉGÉS'));
+check('réglages : URL et clé Supabase masquées (tout propriétaire)', trim.includes('.trim-v1 #settingsModal .settings-section:has(#cfgSbUrl)'));
+check('réglages : doublons de la fiche masqués seulement si la fiche maison est active', trim.includes('.trim-v1.facts-v1 #settingsModal .field:has(> #cfgBedrooms)') && /villaFactsActive\(\)/.test(rg) && /classList\.toggle\('facts-v1'/.test(rg));
+check('réglages : aucun champ retiré du DOM (valeurs intactes)', !/\.remove\(\)|removeChild/.test(rg.slice(0, rg.indexOf('</script>'))));
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

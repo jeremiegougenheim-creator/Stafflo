@@ -44214,6 +44214,21 @@ window.auditTones = auditTones;
    navigateur seulement. Les vraies étapes (téléphone, livret, repas J-2, brief J-1,
    départ, avis) sont suivies en base dans Espace › À faire. */
 .trim-v1 #v3CardOps { display:none !important; }
+/* Réglages › Avancé : l'URL et la clé Supabase n'ont rien à faire entre les mains d'un
+   propriétaire (base commune ; une mauvaise valeur coupe l'app). « Tout enregistrer » reste. */
+.trim-v1 #settingsModal div:has(> [data-en="⚠ ADVANCED — DEVELOPERS"]),
+.trim-v1 #settingsModal .settings-section:has(#cfgSbUrl) { display:none !important; }
+/* Villa Dar J (fiche maison active, classe facts-v1) : chambres, capacité, supplément,
+   équipe et mémoire d'ARIA vivent dans villa-facts.js. Deux endroits = deux vérités. */
+.trim-v1.facts-v1 #settingsModal .field:has(> #cfgBedrooms),
+.trim-v1.facts-v1 #settingsModal .field:has(> #cfgMaxGuests),
+.trim-v1.facts-v1 #settingsModal .field:has(> #cfgBaseCapacity),
+.trim-v1.facts-v1 #settingsModal .field:has(> #cfgExtraGuestFee),
+.trim-v1.facts-v1 #settingsModal .field:has(> #cfgStaff),
+.trim-v1.facts-v1 #settingsModal .settings-section:has(#cfgAriaMemory) { display:none !important; }
+#trimFactsNote{display:none;font-size:12.5px;color:var(--muted,#706B5D);line-height:1.45;padding:10px 12px;border-radius:10px;background:rgba(201,150,58,.08);border-left:3px solid var(--gold,#C9963A)}
+#trimFactsNote a{color:var(--gold-ink,#8E6414);font-weight:600}
+.trim-v1.facts-v1 #trimFactsNote{display:block}
 /* ARIA : les icônes « Prix » et « Tâche » refaisaient les puces « Prix pour une période »
    et « Brief équipe » juste au-dessus. Restent « Rédiger » et « Extraire », avec leur nom. */
 .trim-v1 .aria-actions .aria-action-btn[onclick*="'price'"],
@@ -44326,6 +44341,37 @@ window.auditTones = auditTones;
     if (!root) return;
     try { new MutationObserver(ensure).observe(root, { attributes: true, attributeFilter: ['style', 'aria-hidden'] }); } catch(e){}
     ensure();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+})();
+</script>
+<!-- v505 — RÉGLAGES ALLÉGÉS (sous stafflo_trim_v1). Pour Villa Dar J (villaFactsActive),
+     classe facts-v1 + une note à la place des champs qui doublent la fiche maison.
+     Ajout pur : les champs restent dans le DOM, leurs valeurs ne changent pas. -->
+<script>
+(function(){
+  'use strict';
+  var on = true;
+  try { on = localStorage.getItem('stafflo_trim_v1') !== 'off'; } catch(e){}
+  if (!on) return;
+  function fr(){ try { return typeof lang === 'undefined' || lang !== 'en'; } catch(e){ return true; } }
+  function apply(){
+    var facts = false;
+    try { facts = typeof villaFactsActive === 'function' && villaFactsActive(); } catch(e){}
+    document.documentElement.classList.toggle('facts-v1', !!facts);
+    var bed = document.getElementById('cfgBedrooms');
+    var field = bed && bed.parentNode;
+    if (!field || !field.parentNode) return;
+    var n = document.getElementById('trimFactsNote');
+    if (!n) { n = document.createElement('div'); n.id = 'trimFactsNote'; field.parentNode.insertBefore(n, field); }
+    n.innerHTML = fr()
+      ? 'Chambres, capacité, supplément voyageurs, équipe et faits pour ARIA : dans la <b>fiche maison</b>, la même que le livret. Un fait ne s’écrit qu’une fois. <a href="espace.html#maison">Voir dans l’Espace</a>'
+      : 'Bedrooms, capacity, extra-guest fee, team and facts for ARIA: in the <b>house sheet</b>, the same as the guest guide. A fact is written only once. <a href="espace.html#maison">See it in the Espace</a>';
+  }
+  function watch(){
+    apply();
+    var m = document.getElementById('settingsModal');
+    if (m) { try { new MutationObserver(apply).observe(m, { attributes: true, attributeFilter: ['style', 'class'] }); } catch(e){} }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
 })();
