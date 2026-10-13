@@ -188,7 +188,7 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 ## 12. Limitations connues à NE PAS toucher dans v1
 
 - **Gmail OAuth** : Implicit flow → tokens expirent ~1h, daily reconnect nécessaire. Upgrade vers Authorization Code flow scopé pour un patch séparé, pas dans le pivot ARIA-first.
-- **`deleted_at`** (suppression douce) existe sur `crm_clients`, `client_context`, `chat_history`, `prestataires`, `push_subscriptions`. Aucun `DELETE` HTTP dans l'app, sauf `forgetClient` (effacement RGPD volontaire).
+- **`deleted_at`** (suppression douce) existe sur `crm_clients`, `client_context`, `chat_history`, `prestataires`, `push_subscriptions`. Aucun `DELETE` HTTP dans l'app, sauf `forgetClient` (effacement RGPD volontaire) et `runDiagnostic` (retire la ligne de test qu'il vient de créer).
 
 ## 13. Fiche maison — `villa-facts.js` (source unique des faits de la villa)
 
