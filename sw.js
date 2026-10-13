@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v500 (ARIA : actions nommées, doublons retirés)
-const CACHE = 'stafflo-v500';
+// Stafflo Service Worker — v501 (événements : doublons supprimés exclus du contexte ARIA)
+const CACHE = 'stafflo-v501';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

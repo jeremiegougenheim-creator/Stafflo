@@ -38,5 +38,6 @@ check('Aujourd’hui : « NET <année> » au lieu d’un total depuis toujours',
 check('Aujourd’hui : pipeline = demandes encore vivantes', /if \(!_trim\) return true;\s*if \(c\.arrival\) return new Date\(String\(c\.arrival\)\.slice\(0,10\) \+ 'T12:00:00'\) >= today;/.test(app));
 check('Aujourd’hui : pas de carte « Opportunité » en double pour un client déjà listé', /items\.some\(function\(x\)\{ return x\.client && x\.client\.id === nextNew\.id; \}\)\) nextNew = null;/.test(app));
 
+check('ARIA : événements supprimés (doublons) exclus du contexte', /rest\/v1\/events\?select=[^']*&deleted_at=is\.null/.test(app));
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
