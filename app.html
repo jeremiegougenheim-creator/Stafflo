@@ -44284,5 +44284,51 @@ window.auditTones = auditTones;
   };
 })();
 </script>
+<!-- v504 — ONBOARDING : SE DÉCONNECTER (passation du 30/07, §3a).
+     Un compte connecté sans villa_settings restait enfermé dans l'onboarding :
+     « J'ai déjà un compte » recharge l'app, qui relance l'onboarding. Ajout pur :
+     une ligne « Connecté · email · Se déconnecter » au-dessus des boutons, visible
+     seulement quand une session existe (jamais en démo, jamais pour un nouvel inscrit
+     qui n'a pas encore de compte). Rien d'existant n'est modifié. -->
+<style>
+.onbV3-signout{flex-shrink:0;margin:0;padding:6px 16px 0;font-size:12.5px;color:var(--muted-on-light,#6B6457);text-align:center;background:inherit}
+.onbV3-signout bdi{font-weight:600;color:#1A1208}
+.onbV3-signout button{background:none;border:0;padding:8px 6px;min-height:36px;font:inherit;font-weight:600;color:#8E6414;text-decoration:underline;cursor:pointer}
+@media (min-width:600px){.onbV3-signout{max-width:560px;width:100%;margin:0 auto}}
+</style>
+<script>
+(function(){
+  'use strict';
+  function sess(){ try { return (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token && !window._demoMode) ? _stafflo_session : null; } catch(e){ return null; } }
+  function fr(){ try { return typeof lang === 'undefined' || lang !== 'en'; } catch(e){ return true; } }
+  function ensure(){
+    var root = document.getElementById('onboardingV3');
+    if (!root) return;
+    var bar = document.getElementById('onbV3SignOut'), s = sess();
+    var open = root.style.display !== 'none' && root.getAttribute('aria-hidden') !== 'true';
+    if (!open || !s) { if (bar) bar.style.display = 'none'; return; }
+    if (!bar) {
+      var nav = root.querySelector('.onbV3-nav');
+      if (!nav) return;
+      bar = document.createElement('p');
+      bar.id = 'onbV3SignOut'; bar.className = 'onbV3-signout';
+      bar.innerHTML = '<span data-fr="Connecté" data-en="Signed in as"></span> <bdi></bdi> · <button type="button" data-fr="Se déconnecter" data-en="Sign out"></button>';
+      bar.querySelector('button').addEventListener('click', function(){ if (typeof doSignOut === 'function') doSignOut(); });
+      root.insertBefore(bar, nav);
+    }
+    bar.style.display = '';
+    bar.querySelector('span').textContent = fr() ? 'Connecté' : 'Signed in as';
+    bar.querySelector('button').textContent = fr() ? 'Se déconnecter' : 'Sign out';
+    bar.querySelector('bdi').textContent = (s.user && s.user.email) || '';
+  }
+  function watch(){
+    var root = document.getElementById('onboardingV3');
+    if (!root) return;
+    try { new MutationObserver(ensure).observe(root, { attributes: true, attributeFilter: ['style', 'aria-hidden'] }); } catch(e){}
+    ensure();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+})();
+</script>
 </body>
 </html>

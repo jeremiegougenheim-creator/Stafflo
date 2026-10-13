@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v503 (vue équipe equipe.html, jamais en cache)
-const CACHE = 'stafflo-v503';
+// Stafflo Service Worker — v504 (onboarding : se déconnecter)
+const CACHE = 'stafflo-v504';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
