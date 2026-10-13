@@ -63,5 +63,9 @@ check('abonnement : « trial_expired » affiché « Essai terminé » (plus le c
 check('clients : barres par canal remplies (le remplissage n’est plus un span en ligne sans taille)', /\.v5-perf-bar-fill \{ display:block; \}/.test(app));
 check('clients (téléphone) : barres sous les chiffres, plus de bande qui défile hors écran', /@media \(max-width: 560px\) \{\s*\.v5-perf \{ flex-wrap:wrap; overflow-x:visible;/.test(app));
 
+// v520 — Villa › Prix sur téléphone : rien de caché hors écran
+check('prix (téléphone) : signaux en grille 2×2 et modes à la ligne (plus de défilement caché)', /@media \(max-width: 519px\) \{\s*\.v4-signals \{ display:grid; grid-template-columns:repeat\(2, minmax\(0, 1fr\)\); overflow:visible; \}/.test(app) && /\.v4-hero-modes \{ flex-wrap:wrap; overflow:visible; \}/.test(app));
+check('prix : libellé « Vols » traduit', /id="v4SigFlightsLbl" data-fr="Vols" data-en="Flights"/.test(app));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
