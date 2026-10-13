@@ -86,5 +86,7 @@ check('vols RAK : seulement pour une villa à Marrakech (affichage et appel en d
 check('événements de Marrakech (ancien moteur de prix, +15 %) : seulement à Marrakech', app.includes('if ' + MKG + ' { MARRAKECH_EVENTS = []; return; }') && app.includes('if ' + MKG + ' return null; // v510'));
 check('séjour (décompte) : villa du compte, MAD seulement au Maroc', !/villa_name: 'DarJ Marrakech'/.test(app) && /devise: \(\/maroc\|morocco\/i\.test/.test(app));
 
+check('concurrents : « Suggestions Marrakech » seulement pour une villa à Marrakech', app.includes("if (!document.getElementById('compSuggestions') && !(typeof isMarrakechVilla === 'function' && !isMarrakechVilla())) {"));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
