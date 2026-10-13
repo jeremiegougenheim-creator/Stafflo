@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v506 (exemples anonymisés)
-const CACHE = 'stafflo-v506';
+// Stafflo Service Worker — v507 (onboarding SaaS : plus de boucle, plus de valeurs Dar J)
+const CACHE = 'stafflo-v507';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

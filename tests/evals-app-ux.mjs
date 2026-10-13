@@ -51,5 +51,11 @@ const rg = app.slice(app.indexOf('<!-- v505 — RÉGLAGES ALLÉGÉS'));
 check('réglages : URL et clé Supabase masquées (tout propriétaire)', trim.includes('.trim-v1 #settingsModal .settings-section:has(#cfgSbUrl)'));
 check('réglages : doublons de la fiche masqués seulement si la fiche maison est active', trim.includes('.trim-v1.facts-v1 #settingsModal .field:has(> #cfgBedrooms)') && /villaFactsActive\(\)/.test(rg) && /classList\.toggle\('facts-v1'/.test(rg));
 check('réglages : aucun champ retiré du DOM (valeurs intactes)', !/\.remove\(\)|removeChild/.test(rg.slice(0, rg.indexOf('</script>'))));
+// Onboarding SaaS (v507) : un compte déjà connecté ne refait pas d'inscription ; pas de valeurs de Dar J.
+check('onboarding : compte connecté → complete(), jamais une 2e inscription', /async function submitOnbAccount\(\)\{\n(?:\s*\/\/[^\n]*\n)*\s*if \(window\._stafflo_session && window\._stafflo_session\.access_token && !window\._demoMode\) \{ complete\(false\); return; \}/.test(app));
+check('onboarding : écran compte valide sans saisie quand connecté', /if \(step === 4 && onbAuthed\(\)\) return true;/.test(app) && /if \(onbAuthed\(\)\) \{ next\(\); return; \}/.test(app));
+check('inscription : plus de « 5 chambres / 750 € » envoyés par défaut', !/bedrooms: 5, base_price: 750/.test(app));
+check('exemples neutres (ni Villa DarJ ni jeremie@)', !/placeholder="Villa DarJ"/.test(app) && !/placeholder="jeremie@villa\.com"/.test(app));
+check('lien magique inerte masqué', /#onboardingV3 #onbV3AcctMagic/.test(app));
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

@@ -3722,7 +3722,7 @@ window.addEventListener('keydown', function(e){
         </div>
         <form id="onbV3AcctForm" autocomplete="on">
           <label class="onbV3-label" data-fr="Email" data-en="Email">Email</label>
-          <input type="email" class="onbV3-input" id="onbV3AcctEmail" name="email" autocomplete="email" placeholder="jeremie@villa.com" inputmode="email" autocapitalize="none" spellcheck="false">
+          <input type="email" class="onbV3-input" id="onbV3AcctEmail" name="email" autocomplete="email" placeholder="nom@email.com" inputmode="email" autocapitalize="none" spellcheck="false">
           <label class="onbV3-label" id="onbV3AcctPwLbl" data-fr="Mot de passe" data-en="Password">Mot de passe</label>
           <div style="position:relative">
             <input type="password" class="onbV3-input" id="onbV3AcctPw" name="password" autocomplete="new-password" placeholder="8 caractères minimum" data-placeholder-fr="8 caractères minimum" data-placeholder-en="8 characters minimum" style="padding-right:44px">
@@ -7039,7 +7039,7 @@ window.renderSetupOneLiner = function(){
 
 <div class="settings-section">
     <div class="settings-title" data-fr="VOTRE VILLA" data-en="YOUR VILLA">VOTRE VILLA</div>
-    <div class="field"><label data-fr="Nom de la villa" data-en="Villa name">Nom de la villa</label><input id="cfgVilla" placeholder="Villa DarJ"></div>
+    <div class="field"><label data-fr="Nom de la villa" data-en="Villa name">Nom de la villa</label><input id="cfgVilla" placeholder="Villa Les Oliviers"></div>
     <div class="field"><label data-fr="Photo de la maison (URL)" data-en="House photo (URL)">Photo de la maison (URL)</label><input id="cfgCoverPhoto" placeholder="https://…jpg"></div>
     <div class="field"><label data-fr="Votre prénom" data-en="Your first name">Votre prénom</label><input id="cfgOwner" placeholder="Jérémie"></div>
     <div class="field"><label data-fr="Ville" data-en="City">Ville</label><input id="cfgCity" placeholder="Marrakech"></div>
@@ -8506,7 +8506,7 @@ async function handleAuthSignup() {
   if (btn) { btn.disabled = true; btn.textContent = fr?'Création...':'Creating...'; }
   setAuthMsg(fr?'Création du compte...':'Creating account...');
   try {
-    var data = await authSignUp(email, pass, { villa_name: name || 'Ma Villa', bedrooms: 5, base_price: 750 });
+    var data = await authSignUp(email, pass, { villa_name: name || 'Ma Villa' });
     // v-onbpurge : un compte neuf héritait de l'onboarding laissé par un autre compte dans
     // ce navigateur. loadState() (~28857) donne la priorité absolue à cette clé, et le reload
     // ci-dessous la conservait → le nouvel utilisateur voyait la villa/ville d'un autre, puis
@@ -8597,7 +8597,7 @@ async function handleAuthMagicLinkSignup() {
   try {
     await authMagicLink(email, {
       allowSignup: true,
-      metadata: { villa_name: name || 'Ma Villa', bedrooms: 5, base_price: 750 }
+      metadata: { villa_name: name || 'Ma Villa' }
     });
     _renderMagicLinkSent(email, true);
   } catch(e) {
@@ -32387,6 +32387,7 @@ window.addEventListener('DOMContentLoaded', function() {
         4: { fr:'Créer mon compte', en:'Create my account' }
       };
       var L = labels[state.step] || labels[1];
+      if (state.step === 4 && onbAuthed()) L = { fr:'Entrer dans Stafflo →', en:'Enter Stafflo →' };
       primary.textContent = L[lang] || L.en || L.fr;
       primary.disabled = !isStepValid(state.step);
     }
@@ -32400,8 +32401,12 @@ window.addEventListener('DOMContentLoaded', function() {
     }
   }
 
+  // v507 : compte déjà connecté → l'écran compte n'a rien à saisir (voir submitOnbAccount).
+  function onbAuthed(){ try { return !!(window._stafflo_session && window._stafflo_session.access_token && !window._demoMode); } catch(e){ return false; } }
+
   function isStepValid(step){
     var d = state.data;
+    if (step === 4 && onbAuthed()) return true;
     switch (step) {
       case 0: return true; // splash always advances
       case 1: return true; // wow — optionnel, passer sans interagir autorisé
@@ -32638,6 +32643,10 @@ window.addEventListener('DOMContentLoaded', function() {
   // (même chemin que le gate d'auth existant, app.html:6817) : pas de nouveau client,
   // pas de nouvelle fonction d'auth. complete() n'est appelée qu'après succès confirmé.
   async function submitOnbAccount(){
+    // v507 (audit SaaS) : compte déjà connecté (créé depuis l'écran de connexion) →
+    // pas de seconde inscription, qui échouait (« déjà inscrit ») et relançait
+    // l'onboarding à chaque chargement. On enregistre la villa et on entre.
+    if (window._stafflo_session && window._stafflo_session.access_token && !window._demoMode) { complete(false); return; }
     // v-authfill : l'autofill navigateur/gestionnaire de mots de passe n'émet pas
     // toujours d'événement `input` — state.data.email et acctPwDraft restaient donc
     // vides alors que les champs étaient visuellement remplis, et next() sortait en
@@ -33071,6 +33080,7 @@ window.addEventListener('DOMContentLoaded', function() {
     // Sans ça, une soumission invalide ne produit strictement aucun retour visible.
     if (acctForm) acctForm.addEventListener('submit', function(e){
       e.preventDefault();
+      if (onbAuthed()) { next(); return; }
       var em = $('onbV3AcctEmail'), pwf = $('onbV3AcctPw');
       if (em && em.value) { state.data.email = em.value.trim(); }
       if (pwf && pwf.value) { acctPwDraft = pwf.value; }
@@ -44372,6 +44382,43 @@ window.auditTones = auditTones;
     apply();
     var m = document.getElementById('settingsModal');
     if (m) { try { new MutationObserver(apply).observe(m, { attributes: true, attributeFilter: ['style', 'class'] }); } catch(e){} }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+})();
+</script>
+<!-- v507 — ONBOARDING SaaS (audit du 13/10/2026). Ajout pur.
+     · Compte déjà connecté : l'écran « Créer mon compte » devient « Entrer dans Stafflo »
+       (champs email / mot de passe masqués) — submitOnbAccount() appelle complete().
+     · « Recevoir un lien magique » n'était relié à rien : masqué (jamais de bouton inerte). -->
+<style>
+#onboardingV3 #onbV3AcctMagic, #onboardingV3 #onbV3AcctForm > div:has(+ #onbV3AcctMagic) { display:none !important; }
+#onboardingV3.onb-authed #onbV3AcctForm > label,
+#onboardingV3.onb-authed #onbV3AcctForm > div:has(> #onbV3AcctPw),
+#onboardingV3.onb-authed #onbV3AcctEmail,
+#onboardingV3.onb-authed #onbV3AcctSignInLink,
+#onboardingV3.onb-authed #onbV3AcctForgot { display:none !important; }
+</style>
+<script>
+(function(){
+  'use strict';
+  function authed(){ try { return !!(window._stafflo_session && window._stafflo_session.access_token && !window._demoMode); } catch(e){ return false; } }
+  function fr(){ try { return typeof lang === 'undefined' || lang !== 'en'; } catch(e){ return true; } }
+  function apply(){
+    var r = document.getElementById('onboardingV3');
+    if (!r) return;
+    var on = authed();
+    r.classList.toggle('onb-authed', on);
+    if (!on) return;
+    var b = document.getElementById('onbV3AcctSubmit');
+    if (b && !b.disabled) { b.setAttribute('data-fr', 'Entrer dans Stafflo →'); b.setAttribute('data-en', 'Enter Stafflo →'); b.textContent = fr() ? 'Entrer dans Stafflo →' : 'Enter Stafflo →'; }
+    var sub = document.getElementById('onbV3AcctSub');
+    if (sub) { sub.setAttribute('data-fr', 'Votre compte est actif : tout est enregistré dessus.'); sub.setAttribute('data-en', 'Your account is active: everything is saved to it.'); sub.textContent = fr() ? 'Votre compte est actif : tout est enregistré dessus.' : 'Your account is active: everything is saved to it.'; }
+  }
+  function watch(){
+    apply();
+    var r = document.getElementById('onboardingV3');
+    if (r) { try { new MutationObserver(apply).observe(r, { attributes: true, attributeFilter: ['style', 'aria-hidden', 'class'], subtree: false }); } catch(e){} }
+    document.addEventListener('click', function(){ setTimeout(apply, 0); }, true);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
 })();
