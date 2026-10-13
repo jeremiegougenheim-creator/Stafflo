@@ -1,11 +1,16 @@
 // gmail-sync — v1 (12/10/2026). Synchronisation SERVEUR des emails Airbnb.
+// v5 (13/10/2026, audit SaaS) — MULTI-PROPRIÉTAIRE : la fonction ne connaît plus
+// un seul compte en dur. Elle boucle sur chaque villa_settings dont la boîte Gmail
+// est connectée (email_connection.refresh_token) ; tout ce qu'elle lit ou écrit est
+// rattaché à CE propriétaire (séjours, emails, versements, sync_runs). Une erreur
+// sur un compte (jeton révoqué…) est notée dans SES sync_runs et n'arrête pas les autres.
 //
 // Pourquoi : jusqu'ici les emails n'entraient dans Stafflo que quand l'app
 // était ouverte (syncGmailDirect, côté navigateur). App fermée = rien. Depuis
 // mi-septembre, 0 email relié à un séjour. Cette fonction tourne toute seule
 // (pg_cron, toutes les 10 min) :
 //   1. rafraîchit le jeton Google stocké (villa_settings.email_connection) ;
-//   2. lit les nouveaux emails Airbnb de marrakech.villadarj@gmail.com ;
+//   2. lit les nouveaux emails Airbnb de la boîte connectée de chaque propriétaire ;
 //   3. les range dans email_inbox (dédoublonné par gmail_id) ;
 //   4. les relie au bon séjour et met à jour le CRM :
 //        · confirmation → séjour créé (ou complété) : dates, voyageurs,
@@ -22,7 +27,8 @@
 //
 // Accès : en-tête x-sync-key comparé au secret Vault « gmail_sync_key » via la
 // RPC gmail_sync_key_ok (service_role uniquement). Fail closed.
-// Paramètres (JSON) : { dry?: bool, days?: 1..30, mode?: 'sync' | 'reparse', limit? }
+// Paramètres (JSON) : { dry?: bool, days?: 1..30, mode?: 'sync' | 'reparse', limit?, owner?: uuid }
+//   owner : limite le passage à un seul propriétaire (essais).
 //   mode 'reparse' : relit les emails Airbnb DÉJÀ en base (aucun appel Gmail)
 //   — sert à tester le parseur et à rattraper les emails jamais reliés.
 
@@ -31,8 +37,6 @@ const SRK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 // Client OAuth qui a émis le jeton (le même que gmail-token-exchange) — identifiant public, pas un secret.
 const GID = "657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com";
 const GSEC = Deno.env.get("GOOGLE_CLIENT_SECRET") || "";
-const OWNER_ID = "0f25a319-8cbb-44ae-96e3-7befcda16c9b"; // Villa DarJ (mono-locataire)
-const VILLA_KEY = "villadarj";
 
 const H = { apikey: SRK, Authorization: "Bearer " + SRK, "Content-Type": "application/json" };
 async function db(path: string, init: RequestInit = {}) {
@@ -181,8 +185,8 @@ export function parseAirbnb(subject: string, text: string): Parsed {
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
 const SEL = "id,name,arrival,departure,guests,adults,children,infants,price,commission,source,booking_status,details,deleted_at";
-async function findStay(p: Parsed): Promise<Row | null> {
-  const base = `crm_clients?select=${SEL}&user_id=eq.${OWNER_ID}&deleted_at=is.null`;
+async function findStay(p: Parsed, owner: string): Promise<Row | null> {
+  const base = `crm_clients?select=${SEL}&user_id=eq.${owner}&deleted_at=is.null`;
   if (p.code) {
     const r = await db(`${base}&details->>reservation_code=eq.${p.code}&limit=1`);
     if (r?.length) return r[0];
@@ -212,9 +216,9 @@ async function patchStay(id: string, body: Row) {
 }
 
 // deno-lint-ignore no-explicit-any
-async function applyToCrm(p: Parsed, emailId: string | null, dry: boolean, log: any[]): Promise<string | null> {
-  if (p.type === "payout") return applyPayout(p, emailId, dry, log);
-  const stay = await findStay(p);
+async function applyToCrm(p: Parsed, emailId: string | null, dry: boolean, log: any[], owner: string): Promise<string | null> {
+  if (p.type === "payout") return applyPayout(p, emailId, dry, log, owner);
+  const stay = await findStay(p, owner);
   if (p.type === "confirmation" || (p.type === "reminder" && stay)) {
     if (stay) {
       // Compléter sans jamais écraser une valeur existante (le CRM a pu être corrigé à la main).
@@ -237,7 +241,7 @@ async function applyToCrm(p: Parsed, emailId: string | null, dry: boolean, log: 
     if (!(p.name && p.checkin && p.checkout)) { log.push({ action: "skip_incomplete_confirmation", code: p.code }); return null; }
     const id = String(Date.now());
     const row: Row = {
-      id, user_id: OWNER_ID, name: p.name, arrival: p.checkin, departure: p.checkout,
+      id, user_id: owner, name: p.name, arrival: p.checkin, departure: p.checkout,
       guests: p.adults != null ? p.adults + (p.children || 0) : null, adults: p.adults, children: p.children, infants: p.infants,
       price: p.payout_eur, commission: p.payout_eur != null ? 0 : null, source: "Airbnb", booking_status: "confirmed",
       details: {
@@ -272,11 +276,11 @@ async function applyToCrm(p: Parsed, emailId: string | null, dry: boolean, log: 
 // rempli que s'il est vide, pour un séjour de moins de 28 nuits (au-delà, Airbnb
 // verse par mois et la ligne n'est qu'une partie du total).
 // deno-lint-ignore no-explicit-any
-async function applyPayout(p: Parsed, emailId: string | null, dry: boolean, log: any[]): Promise<string | null> {
+async function applyPayout(p: Parsed, emailId: string | null, dry: boolean, log: any[], owner: string): Promise<string | null> {
   if (!p.payout) return null;
   let first: string | null = null;
   for (const it of p.payout.items) {
-    const rows: Row[] = await db(`crm_clients?select=${SEL}&user_id=eq.${OWNER_ID}&deleted_at=is.null&details->>reservation_code=eq.${it.code}&limit=2`);
+    const rows: Row[] = await db(`crm_clients?select=${SEL}&user_id=eq.${owner}&deleted_at=is.null&details->>reservation_code=eq.${it.code}&limit=2`);
     if (rows?.length !== 1) { log.push({ action: "payout_unmatched", code: it.code, amount: it.amount_eur }); continue; }
     const stay = rows[0];
     first = first || stay.id;
@@ -310,18 +314,9 @@ async function googleToken(refresh: string) {
   return { token: d.access_token as string, scope: (d.scope || "") as string };
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-  const key = req.headers.get("x-sync-key") || "";
-  if (!SRK || !key) return json({ error: "unauthorized" }, 401);
-  const ok = await fetch(SB_URL + "/rest/v1/rpc/gmail_sync_key_ok", { method: "POST", headers: H, body: JSON.stringify({ k: key }) }).then((r) => r.json()).catch(() => false);
-  if (ok !== true) return json({ error: "unauthorized" }, 401);
-
-  // deno-lint-ignore no-explicit-any
-  let opts: any = {};
-  try { opts = await req.json(); } catch { opts = {}; }
-  const dry = !!opts.dry, mode = opts.mode === "reparse" ? "reparse" : "sync";
-  const days = Math.min(30, Math.max(1, +opts.days || 3)), limit = Math.min(60, Math.max(1, +opts.limit || 40));
+// Un passage pour UN propriétaire : ses emails, ses séjours, son sync_runs.
+// deno-lint-ignore no-explicit-any
+async function runOwner(OWNER_ID: string, VILLA_KEY: string, refresh: string, mode: string, dry: boolean, days: number, limit: number): Promise<any> {
   const started = new Date().toISOString();
   // deno-lint-ignore no-explicit-any
   const log: any[] = [];
@@ -332,14 +327,12 @@ Deno.serve(async (req: Request) => {
       for (const r of rows) {
         const p = parseAirbnb(r.subject, r.body);
         stats.parsed++;
-        const cid = await applyToCrm(p, r.id, dry, log);
+        const cid = await applyToCrm(p, r.id, dry, log, OWNER_ID);
         if (cid) stats.linked++;
         log.push({ email: r.id, subject: String(r.subject).slice(0, 70), type: p.type, code: p.code, name: p.name, in: p.checkin, out: p.checkout, a: p.adults, c: p.children, i: p.infants, earn: p.payout_eur, client: cid });
         if (!dry) await db(`email_inbox?id=eq.${r.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ extracted: { ...(r.extracted || {}), airbnb: p, parsed_by: "gmail_sync_v2" }, ...(cid && !r.client_id ? { client_id: cid } : {}) }) });
       }
     } else {
-      const vs: Row[] = await db(`villa_settings?select=email_connection&villa_key=eq.${VILLA_KEY}&owner_id=eq.${OWNER_ID}&limit=1`);
-      const refresh = vs?.[0]?.email_connection?.refresh_token;
       if (!refresh) throw new Error("no_refresh_token");
       const { token, scope } = await googleToken(refresh);
       stats.scope = scope;
@@ -367,7 +360,7 @@ Deno.serve(async (req: Request) => {
               status: "new", source: "gmail_sync", extracted: { airbnb: p, parsed_by: "gmail_sync_v2" } }),
           });
         }
-        const cid = await applyToCrm(p, rowId, dry, log);
+        const cid = await applyToCrm(p, rowId, dry, log, OWNER_ID);
         if (cid) {
           stats.linked++;
           if (!dry) await db(`email_inbox?gmail_id=eq.${gid}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ client_id: cid }) });
@@ -376,10 +369,40 @@ Deno.serve(async (req: Request) => {
       }
     }
     stats.created = log.filter((l) => l.action === "create").length;
-    if (!dry) await db("sync_runs", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ owner_id: OWNER_ID, source: "gmail_sync:" + mode, started_at: started, finished_at: new Date().toISOString(), ok: true, stats }) }).catch(() => {});
-    return json({ ok: true, dry, mode, stats, log });
+    // Re-parse sans aucun email Airbnb pour ce compte : rien à noter (pas de ligne vide toutes les 30 min).
+    if (!dry && !(mode === "reparse" && stats.parsed === 0)) await db("sync_runs", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ owner_id: OWNER_ID, source: "gmail_sync:" + mode, started_at: started, finished_at: new Date().toISOString(), ok: true, stats }) }).catch(() => {});
+    return { owner: OWNER_ID.slice(0, 8), ok: true, stats, log };
   } catch (e) {
     if (!dry) await db("sync_runs", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ owner_id: OWNER_ID, source: "gmail_sync:" + mode, started_at: started, finished_at: new Date().toISOString(), ok: false, stats, error: String(e).slice(0, 300) }) }).catch(() => {});
-    return json({ ok: false, error: String(e).slice(0, 300), stats, log }, 500);
+    return { owner: OWNER_ID.slice(0, 8), ok: false, error: String(e).slice(0, 300), stats, log };
   }
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  const key = req.headers.get("x-sync-key") || "";
+  if (!SRK || !key) return json({ error: "unauthorized" }, 401);
+  const ok = await fetch(SB_URL + "/rest/v1/rpc/gmail_sync_key_ok", { method: "POST", headers: H, body: JSON.stringify({ k: key }) }).then((r) => r.json()).catch(() => false);
+  if (ok !== true) return json({ error: "unauthorized" }, 401);
+
+  // deno-lint-ignore no-explicit-any
+  let opts: any = {};
+  try { opts = await req.json(); } catch { opts = {}; }
+  const dry = !!opts.dry, mode = opts.mode === "reparse" ? "reparse" : "sync";
+  const days = Math.min(30, Math.max(1, +opts.days || 3)), limit = Math.min(60, Math.max(1, +opts.limit || 40));
+  const only = /^[0-9a-f-]{36}$/i.test(String(opts.owner || "")) ? String(opts.owner) : null;
+  // Comptes concernés : boîte connectée pour la synchro ; tous les comptes pour le re-parse.
+  const owners: Row[] = await db(mode === "sync"
+    ? `villa_settings?select=owner_id,villa_key,email_connection&email_connection->>refresh_token=not.is.null${only ? "&owner_id=eq." + only : ""}`
+    : `villa_settings?select=owner_id,villa_key${only ? "&owner_id=eq." + only : ""}`);
+  // deno-lint-ignore no-explicit-any
+  const results: any[] = [];
+  const done = new Set<string>();
+  for (const o of owners) {
+    if (!o.owner_id || done.has(String(o.owner_id))) continue;
+    done.add(String(o.owner_id));
+    results.push(await runOwner(String(o.owner_id), String(o.villa_key || ""), o.email_connection?.refresh_token || "", mode, dry, days, limit));
+  }
+  const okAll = results.every((r) => r.ok);
+  return json({ ok: okAll, dry, mode, owners: results.length, results }, okAll ? 200 : 207);
 });

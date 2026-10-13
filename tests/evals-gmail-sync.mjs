@@ -123,6 +123,14 @@ check('aucune suppression en base', !/method:\s*["']DELETE["']/.test(src));
 check('clé de synchro vérifiée côté base', /gmail_sync_key_ok/.test(src));
 check('annulation seulement sur code exact', /cancellation/.test(src) && /reservation_code/.test(src));
 check('chaque passage journalisé (sync_runs)', /sync_runs/.test(src));
+// v5 — multi-propriétaire : aucun compte en dur, chaque lecture/écriture rattachée au propriétaire du passage
+check('multi-propriétaire : aucun identifiant de compte ni villa en dur', !/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(src) && !/"villadarj"/.test(src));
+check('multi-propriétaire : boucle sur les boîtes connectées (villa_settings)', /email_connection->>refresh_token=not\.is\.null/.test(src) && /await runOwner\(/.test(src));
+check('multi-propriétaire : un compte = un passage (dédoublonné)', /done\.has\(String\(o\.owner_id\)\)/.test(src));
+check('multi-propriétaire : toute lecture de séjour filtrée par propriétaire', (src.match(/crm_clients\?select=/g) || []).length === (src.match(/crm_clients\?select=\$\{SEL\}&user_id=eq\.\$\{owner\}/g) || []).length);
+check('multi-propriétaire : séjour créé au nom du propriétaire', /id, user_id: owner, name: p\.name/.test(src));
+check('multi-propriétaire : email rangé et journal écrits au nom du propriétaire', /owner_id: OWNER_ID, user_id: OWNER_ID, villa_key: VILLA_KEY/.test(src) && /owner_id: OWNER_ID, source: "gmail_sync:" \+ mode/.test(src));
+check('multi-propriétaire : un compte en erreur n’arrête pas les autres (207)', /okAll \? 200 : 207/.test(src));
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
