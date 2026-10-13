@@ -71,6 +71,12 @@ check('logistique des courses lue dans la fiche maison', /MAD de logistique/.tes
 check('décompte : avance déduite, équivalent € seulement au taux saisi', /var rest = Math\.max\(0, total - adv\);/.test(script) && /isFinite\(rate\) && rate > 0 \? rate : 0/.test(script));
 check('Maison : lien vers le planning équipe', /href="planning\.html"/.test(script));
 check('séjour commencé : plus de vérifications « en retard »', /if \(c\.a < t\) ck = \[\];/.test(script));
+// v6 — dates fortes (table events, sourcée)
+check('dates fortes : lues dans la base, suppressions douces exclues', /events\?select=[^']*deleted_at=is\.null/.test(script));
+check('dates fortes : aucune date d’événement en dur', !/20\d\d-\d\d-\d\d/.test(script));
+check('dates fortes : nuits sans séjour calculées en code', /function eventNights\(e\)/.test(script) && /c\.a <= x && x < c\.d/.test(script));
+check('dates fortes : dates lunaires signalées approximatives', /e\.category === 'religious'/.test(script) && /evApprox:/.test(script));
+check('ARIA : dates fortes sans prix chiffré', /ne propose jamais de prix chiffré ni de hausse en %/.test(script) && /eventsForAI\(\)/.test(script));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 check('sw.js ne met pas espace.html en cache', sw.includes("url.includes('espace.html')"));
 check('sw.js affiche les alertes et ouvre l’Espace au clic', /addEventListener\('push'/.test(sw) && /addEventListener\('notificationclick'/.test(sw) && /espace\.html/.test(sw));

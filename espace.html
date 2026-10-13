@@ -192,6 +192,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       noStay: 'Personne à la villa en ce moment.', noNext: 'Aucune arrivée dans les 3 prochaines semaines.', seeAll: 'Voir tous les séjours',
       tUpcoming: 'À venir', tNights: 'Nuits ce mois', tNet: 'Net à venir',
       recent: 'Partis récemment', noPayout: 'Versement Airbnb pas encore vu dans les emails',
+      evTitle: 'Dates fortes', evHelp: 'Vacances et événements qui font la demande. Nuits comptées depuis vos séjours enregistrés (pas les blocages faits directement sur Airbnb).',
+      evFree: function (n) { return 'Aucun séjour enregistré · ' + n + (n > 1 ? ' nuits' : ' nuit'); },
+      evPart: function (f, n, who) { return f + (f > 1 ? ' nuits' : ' nuit') + ' sans séjour sur ' + n + ' · ' + who; },
+      evFull: function (who) { return 'Complet · ' + who; },
+      evApprox: 'Dates approximatives (calendrier lunaire), à confirmer.', evZone: 'zone', evSource: 'Source : ',
+      evPrices: 'Régler les prix sur Airbnb', evAll: 'Toutes les dates fortes',
       nights: function (n) { return n + (n > 1 ? ' nuits' : ' nuit'); },
       pax: function (n) { return n + ' pers.'; },
       inDays: function (n) { return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : 'dans ' + n + ' jours'; },
@@ -259,6 +265,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       noStay: 'Nobody at the villa right now.', noNext: 'No arrival in the next 3 weeks.', seeAll: 'See all stays',
       tUpcoming: 'Upcoming', tNights: 'Nights this month', tNet: 'Net to come',
       recent: 'Recently left', noPayout: 'Airbnb payout not seen in emails yet',
+      evTitle: 'Key dates', evHelp: 'Holidays and events that drive demand. Nights counted from your recorded stays (not dates blocked directly on Airbnb).',
+      evFree: function (n) { return 'No stay recorded · ' + n + (n > 1 ? ' nights' : ' night'); },
+      evPart: function (f, n, who) { return f + ' of ' + n + (n > 1 ? ' nights' : ' night') + ' without a stay · ' + who; },
+      evFull: function (who) { return 'Fully booked · ' + who; },
+      evApprox: 'Approximate dates (lunar calendar), to be confirmed.', evZone: 'zone', evSource: 'Source: ',
+      evPrices: 'Set prices on Airbnb', evAll: 'All key dates',
       nights: function (n) { return n + (n > 1 ? ' nights' : ' night'); },
       pax: function (n) { return n + (n > 1 ? ' guests' : ' guest'); },
       inDays: function (n) { return n === 0 ? 'today' : n === 1 ? 'tomorrow' : 'in ' + n + ' days'; },
@@ -322,7 +334,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
 
   /* ── État ─────────────────────────────────────────────────────────── */
   var U = { tab: 'jour', lang: 'fr', open: {}, panel: {}, toast: '', toastErr: false, busy: false, loginErr: '' };
-  var D = { stays: [], past: [], msgs: [], sync: null, loaded: false, online: navigator.onLine !== false, error: false, user: null };
+  var D = { stays: [], past: [], msgs: [], events: [], sync: null, loaded: false, online: navigator.onLine !== false, error: false, user: null };
   var DR = {}; /* brouillons ARIA par message : { busy, text } */
   var RV = {}; /* panneau avis ouvert par séjour : 'ask' | 'host' */
   var A = { msgs: [], busy: false, draft: '' };
@@ -538,11 +550,14 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return Promise.all([
       api('crm_clients?select=' + FIELDS + '&deleted_at=is.null&order=arrival.asc'),
       api('email_inbox?select=id,subject,received_at,client_id,extracted&from_email=ilike.*airbnb.com&archived_at=is.null&received_at=gte.' + encodeURIComponent(since) + '&order=received_at.desc&limit=80').catch(function () { return []; }),
-      api('sync_runs?select=finished_at,ok&source=like.gmail_sync*&order=id.desc&limit=1').catch(function () { return []; })
+      api('sync_runs?select=finished_at,ok&source=like.gmail_sync*&order=id.desc&limit=1').catch(function () { return []; }),
+      // Dates fortes : table events (sourcée, une ligne par période), suppressions douces exclues.
+      api('events?select=id,name,name_en,category,start_date,end_date,source,notes,zones&deleted_at=is.null&end_date=gte.' + new Date(todayNum() * 86400000).toISOString().slice(0, 10) + '&order=start_date.asc&limit=40').catch(function () { return []; })
     ]).then(function (res) {
       var rows = res[0];
       D.msgs = buildMsgs(res[1] || []);
       D.sync = (res[2] || [])[0] || null;
+      D.events = res[3] || [];
       var t = todayNum();
       D.stays = (rows || []).filter(function (c) {
         if (FIRM_OUT.indexOf(String(c.booking_status || '').toLowerCase()) > -1) return false;
@@ -984,14 +999,17 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         'Règles :\n- Utilise UNIQUEMENT la fiche maison et la liste des séjours ci-dessous. Une information absente se dit « à confirmer », jamais inventée (prix, nom, horaire, numéro, code).\n' +
         '- Les dates, nuits et délais sont déjà calculés : ne les recalcule jamais.\n- Le « suggested door code » des emails Airbnb n’est PAS un code de la villa : ne le donne jamais.\n' +
         '- Un message pour un client est prêt à copier, dans sa langue, signé ' + owner() + '. Un brief équipe est en français, simple.\n' +
-        '- Prix des repas : par service et pour tout le groupe, jamais par personne.\n'
+        '- Prix des repas : par service et pour tout le groupe, jamais par personne.\n' +
+        '- Dates fortes : dis si la villa est libre ou réservée ; ne propose jamais de prix chiffré ni de hausse en %.\n'
       : 'You are ARIA, ' + owner() + '’s assistant for Villa Dar J in Marrakech. Answer in the language of the question, short and concrete.\n' +
         'Rules:\n- Use ONLY the house facts and the list of stays below. Anything missing is "to be confirmed", never invented (price, name, time, number, code).\n' +
         '- Dates, nights and deadlines are already computed: never recompute them.\n- The Airbnb "suggested door code" is NOT a villa code: never give it.\n' +
         '- A guest message is ready to copy, in the guest’s language, signed ' + owner() + '. A team brief is in French and simple.\n' +
-        '- Meal prices are per service for the whole group, never per person.\n') +
+        '- Meal prices are per service for the whole group, never per person.\n' +
+        '- Key dates: say whether the villa is free or booked; never suggest a price figure or a % increase.\n') +
       '\n' + (fr ? 'Aujourd’hui : ' : 'Today: ') + fmtLongDay(t) + '\n\n' + F.digest(fr ? 'fr' : 'en') +
       '\n\n=== ' + (fr ? 'SÉJOURS À VENIR ET EN COURS' : 'UPCOMING AND CURRENT STAYS') + ' ===\n' + (staysForAI() || (fr ? '(aucun)' : '(none)')) +
+      '\n\n=== ' + (fr ? 'DATES FORTES (6 MOIS)' : 'KEY DATES (6 MONTHS)') + ' ===\n' + (eventsForAI() || (fr ? '(aucune)' : '(none)')) +
       '\n\n=== ' + (fr ? 'MESSAGES AIRBNB NON TRAITÉS' : 'UNHANDLED AIRBNB MESSAGES') + ' ===\n' + (D.msgs.map(function (m) {
         var c = m.client_id ? byId(m.client_id) : null;
         return '- ' + (m.first || '?') + ' · ' + (TXT.fr.mtype[m.type] || m.type) + ' · ' + L().ago(m.ageH) + (c ? ' · séjour ' + c.name : (m.checkin ? ' · ' + m.checkin + ' → ' + m.checkout : '')) + ' : « ' + String(m.text || '').slice(0, 300) + ' »';
@@ -1016,6 +1034,57 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var ICON = { phone: 'phone', livret: 'file-text', meals: 'tools-kitchen-2', brief: 'clipboard-list' };
   function toast(msg, err) { U.toast = msg; U.toastErr = !!err; renderToast(); clearTimeout(toast._t); toast._t = setTimeout(function () { U.toast = ''; renderToast(); }, 2600); }
   function renderToast() { document.getElementById('toastHost').innerHTML = U.toast ? '<div class="toast' + (U.toastErr ? ' err' : '') + '" role="status">' + esc(U.toast) + '</div>' : ''; }
+  /* ── Dates fortes : nuits sans séjour, calculées ici depuis les séjours
+        enregistrés. Les dates viennent de la table events (source notée). ── */
+  var fmtDM = function (n) { return new Date(n * 86400000).toLocaleDateString(U.lang === 'en' ? 'en-GB' : 'fr-FR', { day: 'numeric', month: 'short', timeZone: 'UTC' }); };
+  function evApprox(e) { return e.category === 'religious' || /estimat|approx/i.test(String(e.source || '') + ' ' + String(e.name || '')); }
+  function eventNights(e) {
+    var a = dayNum(e.start_date), b = dayNum(e.end_date), t = todayNum();
+    if (a == null || b == null) return null;
+    if (b <= a) b = a + 1; // un seul jour : la nuit de l'événement
+    var from = Math.max(a, t), total = b - from, free = 0, who = [];
+    if (total <= 0) return null;
+    for (var x = from; x < b; x++) {
+      var on = D.stays.filter(function (c) { return c.a <= x && x < c.d; });
+      if (!on.length) free++;
+      on.forEach(function (c) { var f = firstName(c); if (f && who.indexOf(f) < 0) who.push(f); });
+    }
+    return { a: a, b: dayNum(e.end_date), total: total, free: free, who: who.join(', ') };
+  }
+  function eventsAhead(days) {
+    var t = todayNum();
+    return (D.events || []).map(function (e) { return { e: e, n: eventNights(e) }; })
+      .filter(function (x) { return x.n && x.n.a - t <= days; });
+  }
+  function eventLine(x) {
+    var l = L(), e = x.e, n = x.n, ap = evApprox(e);
+    var name = U.lang === 'en' && e.name_en ? e.name_en : e.name;
+    var dates = n.b > n.a ? fmtDM(n.a) + ' → ' + fmtDM(n.b) : fmtDay(n.a);
+    var st = n.free === n.total ? l.evFree(n.total) : n.free ? l.evPart(n.free, n.total, n.who) : l.evFull(n.who);
+    var tone = ap ? 'var(--muted)' : n.free ? 'var(--wait)' : 'var(--go)';
+    var zones = Array.isArray(e.zones) ? e.zones.map(function (z) { return l.evZone + ' ' + z.z + ' ' + fmtDM(dayNum(z.from)) + ' → ' + fmtDM(dayNum(z.to)); }).join(' · ') : '';
+    return '<div class="line" style="flex-direction:column;align-items:stretch;gap:2px"><span><b style="white-space:normal">' + esc(name) + '</b> · <span style="white-space:nowrap">' + esc(dates) + '</span></span>' +
+      (zones ? '<span class="sub">' + esc(zones) + '</span>' : '') +
+      '<span class="sub" style="color:' + tone + '">' + esc(st) + '</span>' +
+      '<span class="sub">' + esc(ap ? l.evApprox : (e.source ? l.evSource + e.source : '')) + '</span></div>';
+  }
+  function eventsCard(days, max, full) {
+    var l = L(), list = eventsAhead(days);
+    if (max) list = list.slice(0, max);
+    if (!list.length) return '';
+    var sell = list.some(function (x) { return !evApprox(x.e) && x.n.free > 0; });
+    return card('calendar-star', l.evTitle, (full ? '<span class="sub">' + esc(l.evHelp) + '</span>' : '') + list.map(eventLine).join('') +
+      '<div class="row2">' + (sell ? '<a class="btn ghost" href="https://www.airbnb.com/multicalendar" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.evPrices) + '</a>' : '') +
+      (full ? '' : '<button type="button" class="btn ghost" data-a="tab" data-v="sejours">' + esc(l.evAll) + '</button>') + '</div>');
+  }
+  function eventsForAI() {
+    var fr = U.lang !== 'en', l = L();
+    return eventsAhead(183).map(function (x) {
+      var n = x.n;
+      return '- ' + (fr || !x.e.name_en ? x.e.name : x.e.name_en) + ' · ' + fmtLongDay(n.a) + (n.b > n.a ? ' → ' + fmtLongDay(n.b) : '') + (evApprox(x.e) ? (fr ? ' (dates approximatives)' : ' (approximate dates)') : '') + ' · ' +
+        (n.free === n.total ? l.evFree(n.total) : n.free ? l.evPart(n.free, n.total, n.who) : l.evFull(n.who));
+    }).join('\n');
+  }
   function card(icon, title, body, pill) {
     return '<section class="card"><div class="h"><span class="i"><i class="ti ti-' + icon + '" aria-hidden="true"></i></span><h2>' + esc(title) + '</h2>' + (pill ? '<span class="pill gold">' + esc(pill) + '</span>' : '') + '</div><div class="b">' + body + '</div></section>';
   }
@@ -1142,6 +1211,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (deps.length) h += card('door-exit', l.departures, deps.map(function (c) {
       return '<div class="line"><span>' + esc(c.name) + '</span><b>' + esc(fmtDay(c.d)) + '</b></div>';
     }).join('') + '<span class="sub">' + esc(flat(P(F.PRACTICAL.filter(function (p) { return /^Arrivée et départ/.test(p[0]); })[0] || ['', '']))).replace(/^[^:]*:\s*/, '').split('. ').slice(1, 3).join('. ') + '</span>');
+    h += eventsCard(75, 3, false);
     return h;
   }
   /* Avis Airbnb : 14 jours après le départ. Demander le sien, rédiger le nôtre, le marquer fait. */
@@ -1168,6 +1238,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (!D.loaded) return '<div class="card"><div class="b"><span class="sub">' + esc(l.loading) + '</span></div></div>';
     var list = D.stays.filter(function (c) { return c.d >= t; });
     var h = card('calendar-event', l.upcomingAll, list.length ? list.map(function (c) { return stayCard(c, c.a <= t ? 'in' : 'next'); }).join('') : '<p class="empty">' + esc(l.noNext) + '</p>', list.length ? String(list.length) : '');
+    h += eventsCard(366, 0, true);
     // Partis récemment : y compris le départ d'hier (encore dans D.stays).
     var past = D.stays.filter(function (c) { return c.d < t; }).concat(D.past || []).filter(function (c) { return c.d >= t - 30; })
       .sort(function (x, y) { return y.d - x.d; });
