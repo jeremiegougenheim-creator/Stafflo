@@ -59,8 +59,11 @@ check('signature ES256 valide', okSig);
 const idx = fs.readFileSync(path.join(root, 'supabase/functions/push-notify/index.ts'), 'utf8');
 const seg = idx.slice(idx.indexOf('// ── Textes des alertes'), idx.indexOf('async function subsOf'));
 const segJs = esbuild.transformSync(seg.replace(/^export /gm, ''), { loader: 'ts' }).code;
-const MOD = await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert, buildBrief };').toString('base64'));
-const A = MOD.buildAlert, B = MOD.buildBrief;
+const MOD = await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert, buildBrief, tzFor, localDay, BRIEF_HOUR };').toString('base64'));
+const A = MOD.buildAlert, B0 = MOD.buildBrief;
+// Compte pilote : fiche maison (livret, repas, message de départ comptés).
+const PILOT = { name: 'Villa Dar J', facts: true };
+const B = (s, n, t, l) => B0(s, n, t, l, PILOT);
 let a = A({ type: 'inquiry', first_name: 'Daniel', checkin: '2026-10-13', checkout: '2026-10-16', adults: 9, children: 0, infants: 0, guest_message: 'Is the villa available?', thread_id: '123' }, 'fr');
 check('demande : titre et délai 24 h', a && a.title === 'Nouvelle demande — Daniel' && /13 oct\. → 16 oct\. · 9 adultes · 24 h pour répondre/.test(a.body), a && a.body);
 check('demande : message du client cité', a && /« Is the villa available\? »/.test(a.body));
@@ -102,7 +105,28 @@ check('clé privée VAPID jamais renvoyée au navigateur', /action === "public_k
   check('brief : rien à signaler → pas de notification', B([], 0, T, 'fr') === null);
   const e = B(S, 1, T, 'en');
   check('brief : anglais', e && e.title === 'Villa Dar J — today' && /Arriving: Tomas \(7 guests\)/.test(e.body) && /1 guest message to handle/.test(e.body), e && e.body);
+  // Compte sans fiche maison : seulement téléphone et brief équipe, comme l'Espace (pas de livret, repas, message de départ).
+  const n = B0(S, 0, T, 'fr', { name: 'Casa Lumi', facts: false });
+  check('brief multi-villa : titre = nom de la villa du compte', n && n.title === 'Casa Lumi — aujourd’hui', n && n.title);
+  check('brief multi-villa : sans fiche, ni livret ni repas ni départ comptés', n && /2 à faire, dont 2 en retard/.test(n.body), n && n.body);
+  const z = B0(S, 1, T, 'en');
+  check('brief multi-villa : sans nom de villa → « Stafflo », jamais le pilote', z && z.title === 'Stafflo — today', z && z.title);
 }
+{
+  const { tzFor, localDay, BRIEF_HOUR } = MOD;
+  check('fuseau : Maroc (pilote) → Casablanca', tzFor('Maroc', 'Marrakech, Maroc') === 'Africa/Casablanca');
+  check('fuseau : pays absent, ville « …, Thailand »', tzFor(null, 'Ko Pha-ngan District, Thailand') === 'Asia/Bangkok');
+  check('fuseau : accents et anglais (Grèce, Spain)', tzFor('Grèce', '') === 'Europe/Athens' && tzFor('Spain', '') === 'Europe/Madrid');
+  check('fuseau : inconnu → UTC, jamais deviné', tzFor('', '') === 'UTC' && tzFor('Atlantis', '') === 'UTC');
+  // 7 h 30 UTC le 13/10/2026 : 8 h 30 à Casablanca (UTC+1) → le pilote reçoit son point comme avant.
+  const d = localDay('Africa/Casablanca', new Date('2026-10-13T07:30:00Z'));
+  check('pilote : point du matin toujours à 8 h 30 (cron :30, heure 8)', d.iso === '2026-10-13' && d.hour === BRIEF_HOUR, d);
+  const b = localDay('Asia/Bangkok', new Date('2026-10-13T20:30:00Z'));
+  check('jour local : Bangkok passe au lendemain avant UTC', b.iso === '2026-10-14' && b.hour === 3, b);
+}
+check('multi-propriétaire : aucun compte ni email de villa en dur', !/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(idx) && !/villadarj|Dar J/i.test(idx));
+check('multi-propriétaire : chaque alerte part chez le propriétaire de l’email', /select=id,owner_id,from_email/.test(idx) && /subsBy\.set\(owner, await subsOf\(owner\)\)/.test(idx));
+check('multi-propriétaire : point du matin par compte, à 8 h dans SON fuseau', /tzFor\(v\.country, v\.city\)/.test(idx) && /here\.hour !== BRIEF_HOUR/.test(idx) && /facts: v\.house_facts_ref === "villa-facts\.js"/.test(idx));
 check('brief : protégé par la clé de synchro, aperçu possible (dry)', /action === "brief"[\s\S]{0,200}gmail_sync_key_ok/.test(idx) && /body\.dry/.test(idx));
 
 console.log(`\n${pass}/${pass + fail} PASS`);
