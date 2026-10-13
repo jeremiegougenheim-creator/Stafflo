@@ -59,8 +59,18 @@ check('pastille de synchro : seulement les passages gmail-sync', /sync_runs\?sel
 // v4 — « À faire » : une ligne par action, tous séjours confondus
 check('« À faire » en tête du Jour', /h \+= todoCard\(\);\s*h \+= '<div class="tiles">/.test(script));
 check('« À faire » : retards et messages d’abord', /var rank = function \(x\) \{ return x\.k === 'msg' \? 0 : x\.late \? 1 : 2; \}/.test(script));
-check('« À faire » ouvre le séjour sur le bon panneau', /a === 'goto' && c/.test(script) && /id="st-' \+ esc\(c\.id\)/.test(script));
+check('« À faire » ouvre le séjour sur le bon panneau', /a === 'goto' && \(c = c \|\| pastById\(id\)\)/.test(script) && /id="st-' \+ esc\(c\.id\)/.test(script));
 check('une arrivée du jour n’apparaît qu’une fois', /c\.a > t && c\.a - t <= 21/.test(script));
+// v5 — départ, avis, décompte complet, planning équipe
+check('message de départ tiré de la fiche maison (pas de texte figé)', /function departFacts\(i\)/.test(script) && /F\.PRACTICAL\.filter/.test(script));
+check('pas de lookbehind regex (Safari iOS < 16.4)', !/\(\?<[=!]/.test(script));
+check('avis Airbnb : fenêtre de 14 jours, jamais pour un séjour offert', /return c\.d \+ 14;/.test(script) && /!c\.is_comp && !c\.details\.reviewDoneAt/.test(script));
+check('avis hôte ARIA : 3e personne, jamais « X’s group », rien d’inventé', /N’écris jamais « ' \+ firstName\(c\) \+ '’s group »/.test(script) && /N’invente aucun détail/.test(script));
+check('« À faire » : message de départ et avis', /k: 'depart'/.test(script) && /k: 'review'/.test(script));
+check('logistique des courses lue dans la fiche maison', /MAD de logistique/.test(script) && /function logiUnit\(\)/.test(script));
+check('décompte : avance déduite, équivalent € seulement au taux saisi', /var rest = Math\.max\(0, total - adv\);/.test(script) && /isFinite\(rate\) && rate > 0 \? rate : 0/.test(script));
+check('Maison : lien vers le planning équipe', /href="planning\.html"/.test(script));
+check('séjour commencé : plus de vérifications « en retard »', /if \(c\.a < t\) ck = \[\];/.test(script));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 check('sw.js ne met pas espace.html en cache', sw.includes("url.includes('espace.html')"));
 check('sw.js affiche les alertes et ouvre l’Espace au clic', /addEventListener\('push'/.test(sw) && /addEventListener\('notificationclick'/.test(sw) && /espace\.html/.test(sw));
