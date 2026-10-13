@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v495 (dates : le jour d’arrivée ne s’affiche plus « demain »)
-const CACHE = 'stafflo-v495';
+// Stafflo Service Worker — v496 (Villa › Entretien : charges et tâches de nouveau visibles)
+const CACHE = 'stafflo-v496';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
