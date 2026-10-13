@@ -22834,6 +22834,32 @@ async function generateAlerts(weatherTemp) {
   setTimeout(renderTodayQV, 50);
 }
 
+/* v511 — position GPS saisie dans Réglages : décimal (« 31.63, -7.98 ») ou degrés
+   (« 31°37'46.2"N 7°58'52.0"W »). Illisible → null : pas de position devinée. */
+function parseGpsLatLon(v) {
+  var s = String(v || '').trim();
+  if (!s) return null;
+  var lat, lon;
+  var m = s.match(/(\d{1,3})\s*°\s*(\d{1,2})\s*['′’]\s*([\d.]+)\s*(?:["″”]|'')?\s*([NS])[\s,;]*(\d{1,3})\s*°\s*(\d{1,2})\s*['′’]\s*([\d.]+)\s*(?:["″”]|'')?\s*([EW])/i);
+  if (m) {
+    lat = (+m[1] + m[2] / 60 + m[3] / 3600) * (/s/i.test(m[4]) ? -1 : 1);
+    lon = (+m[5] + m[6] / 60 + m[7] / 3600) * (/w/i.test(m[8]) ? -1 : 1);
+  } else {
+    m = s.match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);
+    if (!m) return null;
+    lat = +m[1]; lon = +m[2];
+  }
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat: Math.round(lat * 10000) / 10000, lon: Math.round(lon * 10000) / 10000 };
+}
+window.parseGpsLatLon = parseGpsLatLon;
+/* v511 — weather-proxy (Open-Meteo) donne un code d'icône (« 01d ») et pas le libellé
+   OpenWeather (« Clear ») qu'attend getWeatherIcon. */
+function weatherMainFromIcon(ic) {
+  var k = String(ic || '').slice(0, 2);
+  return k === '01' ? 'Clear' : (k === '02' || k === '03' || k === '04') ? 'Clouds' : (k === '09' || k === '10') ? 'Rain' : k === '11' ? 'Thunderstorm' : k === '13' ? 'Snow' : k === '50' ? 'Mist' : '';
+}
+
 async function loadWeather() {
   // COMMIT X2 : `fr` nu (sans parenthèses) était utilisé partout dans cette
   // fonction — try ET catch — sans jamais être déclaré dans sa portée :
@@ -22843,9 +22869,19 @@ async function loadWeather() {
   var fr = (typeof lang !== 'undefined' && lang === 'fr');
   try {
     // Fetch current weather + 5-day forecast (cnt=40 = 5 days x 8 per day)
+    /* v511 — multi-villa : météo de LA villa du compte (GPS des Réglages). À défaut, Marrakech
+       seulement pour une villa à Marrakech ; sinon pas de météo — jamais celle d'une autre ville.
+       (Le paramètre q= était ignoré par weather-proxy : tout le monde avait Marrakech.) */
+    var _wcfg = getCfg();
+    var _wll = parseGpsLatLon(_wcfg.gps);
+    var _wplace = String(_wcfg.city || '').split(',')[0].trim();
+    var _wq;
+    if (_wll) _wq = 'lat=' + _wll.lat + '&lon=' + _wll.lon + '&tz=auto' + (_wplace ? '&name=' + encodeURIComponent(_wplace) : '');
+    else if (typeof isMarrakechVilla === 'function' && isMarrakechVilla()) _wq = 'name=Marrakech';
+    else throw new Error('no_location');
     const [curRes, foreRes] = await Promise.all([
-      fetch(`${SB_URL}/functions/v1/weather-proxy?q=Marrakech,MA&lang=fr&mode=current`),
-      fetch(`${SB_URL}/functions/v1/weather-proxy?q=Marrakech,MA&lang=fr&mode=forecast`)
+      fetch(`${SB_URL}/functions/v1/weather-proxy?${_wq}&lang=fr&mode=current`),
+      fetch(`${SB_URL}/functions/v1/weather-proxy?${_wq}&lang=fr&mode=forecast`)
     ]);
     const cur = await curRes.json();
     const fore = await foreRes.json();
@@ -22855,20 +22891,24 @@ async function loadWeather() {
     const feels = Math.round(cur.main.feels_like);
     const desc = cur.weather[0].description;
     const humidity = cur.main.humidity;
-    const wind = Math.round(cur.wind.speed * 3.6);
-    const tempMin = Math.round(cur.main.temp_min);
-    const tempMax = Math.round(cur.main.temp_max);
-    const sunrise = new Date(cur.sys.sunrise * 1000).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'});
-    const sunset = new Date(cur.sys.sunset * 1000).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'});
-    const icon = getWeatherIcon(cur.weather[0].main);
+    // v511 : weather-proxy = Open-Meteo → vent déjà en km/h, pas de lever/coucher (sys),
+    // min/max du jour lus dans la première prévision. Avant : cur.sys.sunrise levait une
+    // erreur et la carte affichait toujours des valeurs inventées.
+    const _d0 = (fore && Array.isArray(fore.list) && fore.list[0] && fore.list[0].main) || {};
+    const wind = Math.round(cur.wind.speed);
+    const tempMin = Math.round(cur.main.temp_min != null ? cur.main.temp_min : _d0.temp_min);
+    const tempMax = Math.round(cur.main.temp_max != null ? cur.main.temp_max : _d0.temp_max);
+    const sunrise = cur.sys ? new Date(cur.sys.sunrise * 1000).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'}) : '';
+    const sunset = cur.sys ? new Date(cur.sys.sunset * 1000).toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'}) : '';
+    const icon = getWeatherIcon(cur.weather[0].main || weatherMainFromIcon(cur.weather[0].icon));
     // Expose for collapsed-card peek summaries
-    window._weatherData = { temp: temp, condition: desc, icon: icon, min: tempMin, max: tempMax, humidity: humidity, wind: wind };
+    window._weatherData = { temp: temp, condition: desc, icon: icon, min: isFinite(tempMin) ? tempMin : null, max: isFinite(tempMax) ? tempMax : null, humidity: humidity, wind: wind }; // v511 : jamais NaN
 
     let impact = fr?'Conditions normales':'Normal conditions';
     let impactColor = 'var(--green)';
     if (temp > 38) { impact = fr?'Canicule — piscine essentielle · +15% prix recommandé':'Heatwave — pool essential · +15% price recommended'; impactColor = '#A32D2D'; }
     else if (temp > 30) { impact = fr?'Très chaud — piscine très demandée · +8% prix':'Very hot — pool in high demand · +8% price'; impactColor = '#854F0B'; }
-    else if (temp >= 18 && temp <= 28) { impact = fr?'Météo idéale pour Marrakech · Prix optimal':'Ideal Marrakech weather · Optimal pricing'; impactColor = '#3B6D11'; }
+    else if (temp >= 18 && temp <= 28) { impact = fr?'Météo idéale · Prix optimal':'Ideal weather · Optimal pricing'; impactColor = '#3B6D11'; }
     else if (temp < 12) { impact = fr?'Frais · Cheminée appréciée · Impact neutre':'Cool · Fireplace appreciated · Neutral price impact'; impactColor = '#185FA5'; }
 
     document.getElementById('factorWeather').textContent = temp + '°C · ' + desc;
@@ -22876,7 +22916,7 @@ async function loadWeather() {
     // Update today tab weather strip
     const strip = document.getElementById('weatherStripContent');
     if (strip) {
-      const icon2 = getWeatherIcon(cur.weather[0].main);
+      const icon2 = getWeatherIcon(cur.weather[0].main || weatherMainFromIcon(cur.weather[0].icon));
       const impactShort = temp > 38 ? (fr?'🔥 Canicule — piscine essentielle':'🔥 Heatwave — pool essential') : temp > 30 ? (fr?'☀️ Très chaud — piscine demandée':'☀️ Very hot — pool in demand') : temp >= 18 ? (fr?'✅ Météo idéale':'✅ Ideal weather') : (fr?'🔥 Frais — cheminée appréciée':'🔥 Cool — fireplace appreciated');
       // COMMIT X2 : span sans couleur explicite héritait de var(--ink) (fait
       // pour fond clair), mesuré 1.12:1 sur cette bande sombre — jamais
@@ -22889,11 +22929,14 @@ async function loadWeather() {
 
     // Group forecast by day — pick midday slot, compute real min/max per day
     const dayMap = {};
-    fore.list.forEach(item => {
-      const d = new Date(item.dt * 1000);
-      // Use local Marrakech time (UTC+1)
-      const localHour = (d.getUTCHours() + 1) % 24;
-      const dateKey = new Date(item.dt * 1000 + 3600000).toISOString().slice(0,10);
+    (fore && Array.isArray(fore.list) ? fore.list : []).forEach(item => { // v511 : prévisions facultatives (un échec ne masque plus la météo du jour)
+      // v511 : weather-proxy (Open-Meteo) renvoie un jour par entrée (dt_txt = date locale de la
+      // villa), sans horodatage dt. Sans ce repli, toISOString() levait une erreur.
+      const _hasDt = typeof item.dt === 'number';
+      const d = _hasDt ? new Date(item.dt * 1000) : null;
+      const localHour = _hasDt ? (d.getUTCHours() + 1) % 24 : 12;
+      const dateKey = _hasDt ? new Date(item.dt * 1000 + 3600000).toISOString().slice(0,10) : String(item.dt_txt || '').slice(0,10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
       if (!dayMap[dateKey]) {
         dayMap[dateKey] = {
           ref: item, min: item.main.temp_min, max: item.main.temp_max, localHour
@@ -22910,7 +22953,7 @@ async function loadWeather() {
       }
     });
 
-    const today = new Date(Date.now() + 3600000).toISOString().slice(0,10);
+    const today = (fore && Array.isArray(fore.list) && fore.list[0] && typeof fore.list[0].dt !== 'number' && fore.list[0].dt_txt) ? String(fore.list[0].dt_txt).slice(0,10) : new Date(Date.now() + 3600000).toISOString().slice(0,10); // v511 : jour de la villa
     const days = Object.keys(dayMap).sort().slice(0,5);
 
     const dayNames = fr?['Dim','Lun','Mar','Mer','Jeu','Ven','Sam']:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -22923,20 +22966,20 @@ async function loadWeather() {
       const isToday = dateKey === today;
       const isTomorrow = i === 1;
       const label = isToday ? (fr?"Aujourd'hui":'Today') : isTomorrow ? (fr?'Demain':'Tomorrow') : dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + monthNames[d.getMonth()];
-      const ftemp = Math.round(f.main.temp);
+      const ftemp = Math.round(f.main.temp != null ? f.main.temp : f.main.temp_max); // v511
       const fmin = Math.round(entry.min);
       const fmax = Math.round(entry.max);
       const fdesc = f.weather[0].description;
-      const ficon = getWeatherIcon(f.weather[0].main);
+      const ficon = getWeatherIcon(f.weather[0].main || weatherMainFromIcon(f.weather[0].icon));
       const fhum = f.main.humidity;
-      const fwind = Math.round(f.wind.speed * 3.6);
+      const fwind = f.wind ? Math.round(f.wind.speed * 3.6) : null; // v511 : absent des prévisions Open-Meteo
       return `<div style="flex:1;min-width:100px;background:${isToday?'var(--green)':'var(--bg)'};border-radius:var(--r-sm);padding:12px 8px;text-align:center;border:1px solid ${isToday?'transparent':'rgba(44,31,20,.08)'}">
         <div style="font-size:10px;letter-spacing:1px;color:${isToday?'rgba(253,246,236,.6)':'var(--text3)'};margin-bottom:6px">${label}</div>
         <div style="font-size:22px;margin-bottom:4px">${ficon}</div>
         <div style="font-size:20px;font-weight:400;color:${isToday?'var(--cream)':'var(--text)'};line-height:1">${ftemp}°</div>
         <div style="font-size:10px;color:${isToday?'rgba(253,246,236,.5)':'var(--text3)'};margin-top:3px">${fmin}° — ${fmax}°</div>
         <div style="font-size:10px;color:${isToday?'rgba(253,246,236,.5)':'var(--text3)'};margin-top:2px">${fdesc}</div>
-        <div style="font-size:10px;color:${isToday?'rgba(253,246,236,.4)':'var(--text3)'};margin-top:4px">💧${fhum}% · 💨${fwind}km/h</div>
+        ${fhum != null && fwind != null ? `<div style="font-size:10px;color:${isToday?'rgba(253,246,236,.4)':'var(--text3)'};margin-top:4px">💧${fhum}% · 💨${fwind}km/h</div>` : ''}
       </div>`;
     }).join('');
 
@@ -22944,29 +22987,28 @@ async function loadWeather() {
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
         <div style="font-size:20px">${icon}</div>
         <div style="flex:1">
-          <div style="font-size:22px;font-weight:400;color:var(--text);line-height:1">${temp}° <span style="font-size:13px;color:var(--text3)">${tempMin}°–${tempMax}°</span></div>
+          <div style="font-size:22px;font-weight:400;color:var(--text);line-height:1">${temp}° ${isFinite(tempMin) && isFinite(tempMax) ? `<span style="font-size:13px;color:var(--text3)">${tempMin}°–${tempMax}°</span>` : ''}</div>
           <div style="font-size:12px;color:var(--text);margin-top:2px">${desc.charAt(0).toUpperCase()+desc.slice(1)}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">Ressenti ${feels}° · 💧${humidity}% · 💨${wind}km/h · 🌅${sunrise} 🌇${sunset}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Ressenti ${feels}° · 💧${humidity}% · 💨${wind}km/h${sunrise ? ` · 🌅${sunrise} 🌇${sunset}` : ''}</div>
         </div>
       </div>
       <div style="padding:8px 10px;border-radius:var(--r-sm);margin-bottom:12px;font-size:12px;color:${impactColor};background:${impactColor}18;border-left:3px solid ${impactColor}">${impact}</div>
       <div style="font-size:10px;letter-spacing:3px;color:var(--text3);margin-bottom:8px">PRÉVISIONS 5 JOURS</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${forecastCards}</div>
-      <div style="font-size:10px;color:var(--text3);margin-top:8px;text-align:right">OpenWeatherMap · Marrakech · Mis à jour ${new Date().toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}</div>`;
+      <div style="font-size:10px;color:var(--text3);margin-top:8px;text-align:right">Open-Meteo · ${String(cur.name || '').replace(/[<>&]/g, '')} · Mis à jour ${new Date().toLocaleTimeString('fr',{hour:'2-digit',minute:'2-digit'})}</div>`;
 
   } catch(e) {
-    // Expose fallback for collapsed-card peek summaries
-    window._weatherData = { temp: 24, condition: 'Ensoleillé', icon: '☀️', min: 18, max: 27, humidity: 45, wind: 12 };
-    document.getElementById('weatherContent').innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-        <div style="font-size:28px">🌤</div>
-        <div>
-          <div style="font-size:22px;color:var(--text)">24°C</div>
-          <div style="font-size:12px;color:var(--text3)">${fr?'Données offline — Marrakech':'Offline data — Marrakech'}</div>
-        </div>
-      </div>
-      <div style="padding:8px 10px;border-radius:var(--r-sm);font-size:12px;color:#3B6D11;background:#EAF3DE;border-left:3px solid #3B6D11">${fr?'Météo normale pour la saison':'Normal weather for the season'}</div>`;
-    document.getElementById('factorWeather').textContent = fr?'24°C · Ensoleillé':'24°C · Sunny';
+    /* v511 — plus jamais de météo inventée. Avant : « 24°C · Ensoleillé — Marrakech » pour
+       tout le monde dès qu'un champ manquait, et ces chiffres partaient dans les prompts ARIA
+       (window._weatherData). Maintenant : rien n'est exposé, la carte dit pourquoi. */
+    window._weatherData = null;
+    var _wmsg = (e && e.message === 'no_location')
+      ? (fr ? 'Météo : ajoutez la position GPS de la villa dans Réglages.' : 'Weather: add the villa GPS position in Settings.')
+      : (fr ? 'Météo indisponible pour le moment.' : 'Weather unavailable right now.');
+    var _wc = document.getElementById('weatherContent');
+    if (_wc) _wc.innerHTML = '<div style="padding:14px 4px;font-size:12px;color:var(--text3)">' + _wmsg + '</div>';
+    var _wf = document.getElementById('factorWeather');
+    if (_wf) _wf.textContent = '—';
   }
 }
 
