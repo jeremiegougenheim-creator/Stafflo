@@ -45,5 +45,13 @@ check('accueil : un navigateur en chinois arrive sur zh.html (plus sur en.html)'
   check('inscription (login.html) : avis + liens', /id="s-btn"[\s\S]{0,200}En créant votre compte, vous acceptez les <a href="terms\.html\?lang=fr"/.test(login) && /href="privacy\.html\?lang=fr"/.test(login));
 }
 
+// ── Boutons d'essai → « Créer un compte » ─────────────────────────────────
+for (const f of ['index.html', 'en.html', 'ar.html', 'th.html', 'zh.html']) {
+  const h = read(f);
+  check(`${f} : boutons d'essai → inscription (?signup=1), « Se connecter » reste la connexion`,
+    (h.match(/href="app\.html\?lang=[a-z]{2}&amp;signup=1"/g) || []).length === 3 && /href="app\.html\?lang=[a-z]{2}" class="btn btn-ghost btn-sm nav-cta-login"/.test(h));
+}
+check('app : ?signup=1 ouvre l’onglet « Créer un compte »', /\[\?&\]signup=1\\b\/\.test\(location\.search\)\) setTimeout\(function\(\)\{ if \(typeof switchAuthTab === 'function'\) switchAuthTab\('signup'\)/.test(read('app.html')));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
