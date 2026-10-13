@@ -20,8 +20,8 @@
 @font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url('./fonts/Inter-400-700-ext.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
 @font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url('./fonts/Inter-400-700.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
 </style>
-<!-- Fiche maison : source unique (livret, app, Espace). -->
-<script src="villa-facts.js"></script>
+<!-- Fiche maison : moteur sans données (house-facts.js) ; la fiche du compte vient de la base. -->
+<script src="house-facts.js"></script>
 <style>
 :root{color-scheme:light;
   --paper:#F4EFE3;--cream:#FAF6EE;--card:#FFFDF8;--gd:#0F2318;--gm:#1d4d3a;--gold:#C9963A;--gold-ink:#8e6414;
@@ -168,7 +168,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
    des actions prêtes, aucun réglage caché.
    · Mêmes données que l'app : Supabase crm_clients (RLS par compte), même
      session (localStorage.stafflo_session) — se connecter ici connecte l'app.
-   · Tous les faits de la villa viennent de villa-facts.js (prix, équipe,
+   · Tous les faits de la villa viennent de la fiche maison du compte
+     (villa_settings.house_facts, moteur house-facts.js : prix, équipe,
      horaires, règles). Rien n'est recopié ici.
    · Les nuits, dates et délais sont calculés en code, jamais par l'IA.
    · ARIA : un appel ai-proxy (Mistral, UE) avec la fiche maison + la liste
@@ -180,10 +181,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var SB_URL = 'https://rcjhgilpmojohmrqzokx.supabase.co';
   var SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjamhnaWxwbW9qb2htcnF6b2t4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2NDg4NzYsImV4cCI6MjA5MDIyNDg3Nn0.J7As0S5aw2ViIyKZXPNH6Kga5IUhn5XCz1khKcul8uQ';
   var PROXY = SB_URL + '/functions/v1/ai-proxy';
-  /* Multi-villa (13/10/2026) : la fiche maison est celle du compte connecté.
-     villa_settings.house_facts_ref = 'villa-facts.js' → la fiche de la villa pilote ;
-     sinon une fiche vide : aucune donnée d'une autre villa n'apparaît, ARIA dit « à confirmer ». */
-  var PILOT_F = window.VILLA_FACTS;
+  /* Multi-villa (13/10/2026) : la fiche maison est celle du compte connecté, lue en base
+     (villa_settings.house_facts, plus un fichier public) ; house_facts_ref = 'villa-facts.js'
+     reste le drapeau « fiche en place » du pilote. Sinon une fiche vide : aucune donnée
+     d'une autre villa n'apparaît, ARIA dit « à confirmer ». */
+  var HF = window.StaffloHouseFacts;
   var EMPTY_F = { VILLA: { name: '', host: '', address: '', pin: null }, PRACTICAL: [], MEALS: [], MEAL_NOTES: [], TEXT: {}, RULES: [], ROOMS: [], GOOD_TO_KNOW: [], TEAM: [], digest: function () { return ''; } };
   var F = EMPTY_F, HAS_FACTS = false;
   var SESSION_KEY = 'stafflo_session';
@@ -239,7 +241,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       mSheetTitle: 'Fiche maison', mSheetTxt: 'Horaires, règles, repas, adresse : la fiche maison n’est pas encore remplie. Tant qu’elle est vide, ARIA répond « à confirmer » sur ces sujets et les messages aux clients restent simples. Les bases de la villa se règlent dans Réglages.',
       mMeals: 'Repas & prix', mOrder: 'Commande des repas', mTeam: 'Équipe', mArrival: 'Arrivée & départ', mRules: 'Règles de la maison', mRooms: 'Chambres',
       mGroup16: '1–6 pers.', mGroup710: '7–10 pers.', mDigest: 'Ce qu’ARIA sait de la maison',
-      mHow: 'Ces faits viennent de la fiche maison (villa-facts.js), la même que le livret. Pour changer un prix, un horaire ou une règle, demandez-le à Claude : le livret, ARIA et les messages suivent ensemble.',
+      mHow: 'Ces faits viennent de la fiche maison, la même que le livret. Pour changer un prix, un horaire ou une règle, demandez-le à Claude : le livret, ARIA et les messages suivent ensemble.',
       fullApp: 'Ouvrir l’app complète',
       loginTitle: 'Connexion', loginSub: 'Le même compte que l’app Stafflo.', email: 'Email', password: 'Mot de passe', signin: 'Se connecter', loginErr: 'Email ou mot de passe incorrect.',
       loadErr: 'Impossible de charger les séjours.', retry: 'Réessayer',
@@ -322,7 +324,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       mSheetTitle: 'House sheet', mSheetTxt: 'Times, rules, meals, address: the house sheet is not filled in yet. While it is empty, ARIA answers “to be confirmed” on these topics and guest messages stay simple. The villa basics are set in Settings.',
       mMeals: 'Meals & prices', mOrder: 'Ordering meals', mTeam: 'Team', mArrival: 'Arrival & departure', mRules: 'House rules', mRooms: 'Bedrooms',
       mGroup16: '1–6 guests', mGroup710: '7–10 guests', mDigest: 'What ARIA knows about the house',
-      mHow: 'These facts come from the house file (villa-facts.js), the same one as the guest guide. To change a price, a time or a rule, ask Claude: the guide, ARIA and the messages all follow.',
+      mHow: 'These facts come from the house file, the same one as the guest guide. To change a price, a time or a rule, ask Claude: the guide, ARIA and the messages all follow.',
       fullApp: 'Open the full app',
       loginTitle: 'Sign in', loginSub: 'The same account as the Stafflo app.', email: 'Email', password: 'Password', signin: 'Sign in', loginErr: 'Wrong email or password.',
       loadErr: 'Could not load the stays.', retry: 'Retry',
@@ -517,6 +519,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     p.set('lang', detectLivretLang({ nat: c.nat, phone: c.phone, message: firstLivretMessageText(c.messages) }));
     var grp = detectLivretGroup({ message: firstLivretMessageText(c.messages), guestMessage: c.details && c.details.guest_message, notes: c.notes });
     if (grp && (!pax || pax >= 3)) p.set('groupe', grp);
+    var tk = LINKS ? LINKS.get(c.id) : ''; // lien personnel du séjour : c'est lui qui ouvre la fiche (livret-view)
+    if (tk) p.set('t', tk);
     return 'livret.html?' + p.toString();
   }
   /* Langue des messages au client : celle du livret, bilingue → anglais. */
@@ -568,6 +572,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       });
     });
   }
+  /* Liens personnels du livret (un par séjour, le même que dans l'app) : obtenus ou créés
+     par la base (rpc livret_token), copie locale par compte. Voir house-facts.js. */
+  var LINKS = HF && HF.livretLinks ? HF.livretLinks({
+    owner: function () { var s = readSession(); return (s && s.user && s.user.id) || ''; },
+    list: function () { return api('livret_links?select=client_id,token&deleted_at=is.null'); },
+    create: function (id) { return api('rpc/livret_token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ p_client_id: String(id) }) }); }
+  }) : null;
   function signIn(email, password) {
     return fetch(SB_URL + '/auth/v1/token?grant_type=password', {
       method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SB_ANON },
@@ -591,13 +602,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       // Dates fortes : table events (sourcée, une ligne par période), suppressions douces exclues.
       api('events?select=id,name,name_en,category,start_date,end_date,source,notes,zones&deleted_at=is.null&end_date=gte.' + new Date(todayNum() * 86400000).toISOString().slice(0, 10) + '&order=start_date.asc&limit=40').catch(function () { return []; }),
       api('staff_links?select=id,name,lang,created_at,last_seen_at&deleted_at=is.null&order=created_at.desc').catch(function () { return []; }),
-      api('villa_settings?select=villa_name,city,country,owner_name,bedrooms,max_guests,house_facts_ref&order=created_at.asc&limit=1').catch(function () { return []; }),
-      api('staff?select=name,role,wa&active=eq.true&order=name.asc').catch(function () { return []; })
+      api('villa_settings?select=villa_name,city,country,owner_name,bedrooms,max_guests,house_facts_ref,house_facts&order=created_at.asc&limit=1').catch(function () { return []; }),
+      api('staff?select=name,role,wa&active=eq.true&order=name.asc').catch(function () { return []; }),
+      LINKS ? LINKS.load() : null
     ]).then(function (res) {
       D.villa = (res[5] || [])[0] || null;
       D.staff = res[6] || [];
-      HAS_FACTS = !!(D.villa && D.villa.house_facts_ref === 'villa-facts.js' && PILOT_F);
-      F = HAS_FACTS ? PILOT_F : EMPTY_F;
+      var built = D.villa && D.villa.house_facts_ref === 'villa-facts.js' && HF ? HF.build(D.villa.house_facts) : null;
+      HAS_FACTS = !!built;
+      F = built || EMPTY_F;
       var rows = res[0];
       D.msgs = buildMsgs(res[1] || []);
       D.sync = (res[2] || [])[0] || null;
@@ -617,6 +630,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       }).map(decorate).sort(function (x, y) { return y.d - x.d; });
       D.loaded = true; D.online = true;
       var s = readSession(); D.user = s && s.user;
+      // Lien personnel du livret prêt pour chaque séjour affiché, avant le rendu.
+      if (HAS_FACTS && LINKS) return Promise.all(D.stays.map(function (c) { return LINKS.ensure(c.id); }));
     }).catch(function (e) {
       if (String(e.message) === 'no_session') { D.user = null; D.loaded = true; return; }
       D.error = true; D.loaded = true; D.online = navigator.onLine !== false;
@@ -1316,7 +1331,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     msgsFor(c).forEach(function (m) { h += inboxItem(m, true); });
     var wa = waDigits(c.phone);
     h += '<div class="acts">' +
-      (HAS_FACTS ? '<a class="act" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener" title="' + esc(l.act.livret) + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</a>' : '') +
+      (HAS_FACTS && LINKS && LINKS.get(c.id) ? '<a class="act" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener" title="' + esc(l.act.livret) + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</a>' : '') +
       (wa ? '<a class="act" href="https://wa.me/' + wa + '" target="_blank" rel="noopener" title="WhatsApp"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
       (c.a < todayNum() || !HAS_FACTS ? ['brief'] : (F.MEALS.length ? ['meals', 'arrival', 'passports', 'brief'] : ['arrival', 'passports', 'brief'])).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
         return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', brief: 'clipboard-list' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
@@ -1486,7 +1501,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       nt.textContent = mins > 40 || D.sync.ok === false ? l.syncOld : l.syncAgo(mins); nt.className = 'chip' + (mins > 40 || D.sync.ok === false ? ' off' : '');
     } else { nt.textContent = D.online ? l.online : l.offline; nt.className = 'chip' + (D.online ? '' : ' off'); }
     [].forEach.call(document.querySelectorAll('.langsw button'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === U.lang)); });
-    if (!F) { main.innerHTML = '<div class="card"><div class="b"><span class="err">villa-facts.js</span></div></div>'; return; }
+    if (!F) { main.innerHTML = '<div class="card"><div class="b"><span class="err">house_facts</span></div></div>'; return; }
     var draft = document.getElementById('ariaIn'); if (draft) A.draft = draft.value;
     var loggedOut = D.loaded && !D.user && !D.error;
     if (loggedOut) { main.innerHTML = viewLogin(); document.getElementById('tabs').innerHTML = ''; return; }

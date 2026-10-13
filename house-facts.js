@@ -5,7 +5,8 @@
    villa_settings.house_facts (jsonb, propriétaire seulement). Ils arrivent :
      · app.html / espace.html — avec la ligne villa_settings du compte (RLS) ;
      · livret.html             — par la fonction livret-view, avec le lien
-                                 personnel du séjour (jamais publics).
+                                 personnel du séjour (jamais publics) ; pour le
+                                 propriétaire connecté, sa ligne villa_settings.
    StaffloHouseFacts.build(data) → objet gelé aux mêmes clés que l'ancien
    window.VILLA_FACTS (+ digest(lang), le résumé injecté dans les prompts ARIA).
    Le code ci-dessous (pick, flat, head, digest) est une copie exacte de l'ancien
@@ -100,5 +101,57 @@ out.digest = digest;
 return Object.freeze(out);
 }
 
-window.StaffloHouseFacts = Object.freeze({ build: build, KEYS: KEYS });
+/* ── Lien personnel du livret (un par séjour) ─────────────────────────────
+   Le jeton vient de la base : public.livret_token(client_id) l'obtient OU le crée
+   en une opération (le même lien sur tous les appareils, app et Espace). Copie
+   locale par compte (stafflo_livret_tokens) pour que livretUrl(), synchrone,
+   ait le lien dès l'ouverture. Chaque page fournit ses propres appels
+   authentifiés : opt.owner() → id du compte, opt.list() → lignes
+   {client_id, token} actives, opt.create(clientId) → jeton (texte) ou null. */
+const TOKEN_RE = /^[A-Za-z0-9_-]{32,64}$/;
+function livretLinks(opt) {
+  const KEY = 'stafflo_livret_tokens';
+  const owner = () => { try { return String(opt.owner() || ''); } catch (e) { return ''; } };
+  const readStore = (o) => {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (o && s && s.owner === o && s.map && typeof s.map === 'object') return s.map;
+    } catch (e) {}
+    return {};
+  };
+  // La copie locale suit le compte : session ouverte plus tard, ou autre compte → sa propre copie.
+  let mapOwner = owner(), map = readStore(mapOwner);
+  const sync = () => { const o = owner(); if (o !== mapOwner) { mapOwner = o; map = readStore(o); } return o; };
+  const inflight = {};
+  const save = () => { try { if (mapOwner) localStorage.setItem(KEY, JSON.stringify({ owner: mapOwner, map: map })); } catch (e) {} };
+  function get(id) { sync(); const t = map[String(id || '')]; return TOKEN_RE.test(t || '') ? t : ''; }
+  function ensure(id) {
+    id = String(id || '');
+    const o = sync();
+    if (!id || !o) return Promise.resolve('');
+    if (get(id)) return Promise.resolve(get(id));
+    const k = o + ':' + id;
+    if (inflight[k]) return inflight[k];
+    const p = Promise.resolve().then(() => opt.create(id)).then((t) => {
+      if (typeof t === 'string' && TOKEN_RE.test(t) && o === mapOwner) { map[id] = t; save(); return t; }
+      return '';
+    }).catch(() => '').then((t) => { delete inflight[k]; return t; });
+    inflight[k] = p;
+    return p;
+  }
+  function load() {
+    const o = sync();
+    if (!o) return Promise.resolve(false);
+    return Promise.resolve().then(() => opt.list()).then((rows) => {
+      if (!Array.isArray(rows) || o !== mapOwner) return false;
+      const m = {};
+      rows.forEach((r) => { if (r && r.client_id && TOKEN_RE.test(r.token || '')) m[String(r.client_id)] = r.token; });
+      map = m; save();
+      return true;
+    }).catch(() => false);
+  }
+  return Object.freeze({ get: get, ensure: ensure, load: load });
+}
+
+window.StaffloHouseFacts = Object.freeze({ build: build, KEYS: KEYS, livretLinks: livretLinks });
 })();

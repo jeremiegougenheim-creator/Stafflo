@@ -125,8 +125,8 @@ for (const bad of ["Staff : Said, Faiza, Bouchra", "Briefer Said + Faiza", "Brie
                    "return ['Said','Faiza','Bouchra']", "'Said, Faiza, Bouchra'", "Piscine 28°C",
                    "au cœur de la Palmeraie", "Brunch : 300 MAD pour le groupe"])
   check(`app.html sans « ${bad} »`, !app.includes(bad));
-check('app.html charge villa-facts.js avant tout script', app.indexOf('<script src="villa-facts.js"></script>') > 0 &&
-  app.indexOf('<script src="villa-facts.js"></script>') < app.indexOf('<script>'));
+check('app.html charge le moteur de la fiche (house-facts.js) avant tout script, plus villa-facts.js', app.indexOf('<script src="house-facts.js"></script>') > 0 &&
+  app.indexOf('<script src="house-facts.js"></script>') < app.indexOf('<script>') && !app.includes('<script src="villa-facts.js">'));
 const livret = fs.readFileSync(path.join(root, 'livret.html'), 'utf8');
 // 13/10/2026 : la fiche n'est plus un fichier public ; le livret la reçoit de livret-view (tests/evals-livret-load.mjs).
 check('livret.html lit la fiche maison (house-facts.js → window.VILLA_FACTS)', livret.includes('<script src="house-facts.js"></script>') && livret.includes('= window.VILLA_FACTS;'));

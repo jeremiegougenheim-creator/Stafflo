@@ -61,8 +61,8 @@ if (src) {
 const code = app.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n'); // hors commentaires
 check('fiche maison choisie par la base (house_facts_ref), plus par le nom de la villa',
   /return c\.houseFactsRef === 'villa-facts\.js';/.test(app) && !/dar\\s\*-\?\\s\*j/.test(app));
-check('drapeau fiche maison relu à chaque démarrage, avant les sorties anticipées',
-  /cfg\.houseFactsRef = _hf;[\s\S]{0,400}if \(!row\.onboarded\) return;/.test(app));
+check('drapeau ET fiche maison (base) relus à chaque démarrage, avant les sorties anticipées',
+  /cfg\.houseFactsRef = _hf;[\s\S]{0,1200}staffloHouseFactsHydrate\(row\.house_facts \|\| null\)[\s\S]{0,400}if \(!row\.onboarded\) return;/.test(app));
 check('aucun indicatif de Hong Kong (numéro perso du pilote) dans app.html', !/\+852/.test(app));
 check('aucun repli sur le prénom du pilote', !/'Jérémie'/.test(code));
 check('aucun repli sur le nom de la villa pilote', !/'Villa DarJ|'DarJ'|Villa DarJ \(vous\)|de Villa DarJ|saison Villa DarJ/.test(code));

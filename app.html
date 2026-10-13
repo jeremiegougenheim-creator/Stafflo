@@ -28,9 +28,30 @@
 ═══════════════════════════════════════════════════════════════════
 -->
 <meta charset="UTF-8">
-<!-- Fiche maison (source unique des faits de la villa, partagée avec livret.html).
-     Chargée avant tout : ARIA et les réponses types la lisent via villaFactsActive(). -->
-<script src="villa-facts.js"></script>
+<!-- Fiche maison (source unique des faits de la villa, partagée avec livret.html et l'Espace).
+     En base (villa_settings.house_facts), plus dans le site public : house-facts.js est le moteur,
+     sans aucune donnée. ARIA et les réponses types la lisent via villaFactsActive(). -->
+<script src="house-facts.js"></script>
+<script>
+/* v522 — fiche maison en base. Au démarrage : copie locale du MÊME compte
+   (stafflo_house_facts, rattachée à l'id de la session), pour qu'ARIA ait la fiche
+   dès la première seconde ; pullVillaSettings() la relit ensuite depuis la base
+   (staffloHouseFactsHydrate). Autre compte ou pas de session → aucune fiche. */
+(function(){
+  var KEY = 'stafflo_house_facts';
+  function uid(){ try { var s = JSON.parse(localStorage.getItem('stafflo_session') || 'null'); return (s && s.user && s.user.id) || ''; } catch(e){ return ''; } }
+  window.staffloHouseFactsHydrate = function(data){
+    var HF = window.StaffloHouseFacts, built = (HF && data) ? HF.build(data) : null, u = uid();
+    window.VILLA_FACTS = built || undefined;
+    try { if (built && u) localStorage.setItem(KEY, JSON.stringify({ owner: u, facts: data })); else localStorage.removeItem(KEY); } catch(e){}
+    return !!built;
+  };
+  try {
+    var c = JSON.parse(localStorage.getItem(KEY) || 'null'), u = uid();
+    if (c && c.owner && u && c.owner === u && c.facts && window.StaffloHouseFacts) window.VILLA_FACTS = window.StaffloHouseFacts.build(c.facts) || undefined;
+  } catch(e){}
+})();
+</script>
 <script>
 /* garde-fou mono-domaine : toute visite sur github.io est renvoyée sur stafflo.app,
    en préservant le chemin, les query params (?demo=1) et le hash. */
@@ -7658,7 +7679,8 @@ const STAFFLO_PROXY_SECRET = '';
 // FICHE MAISON → ARIA (villa-facts.js)
 // ════════════════════════════════════════════════════════════════════════
 // Les faits de la villa (prix des repas, équipe, horaires, règles, chambres)
-// vivent dans villa-facts.js, le même fichier que le livret. Avant, l'app en
+// vivent dans la fiche maison — en base depuis le 13/10/2026 (villa_settings.house_facts,
+// moteur house-facts.js, voir v522 en tête de fichier), la même que le livret. Avant, l'app en
 // gardait des copies figées (Faiza, « 300 MAD par personne », « la Palmeraie »)
 // et ARIA répondait faux. Ici, un seul branchement :
 //   · toute requête ai-proxy de RÉDACTION (write_*, chat_*, reason, brief)
@@ -20278,6 +20300,9 @@ async function doSignOut() {
   // REFUSE ensuite de corriger depuis la base. Prouvé en prod le 16/07.
   localStorage.removeItem('stafflo_cfg');
   localStorage.removeItem('stafflo_onboarding_state');
+  // v522 : la fiche maison (wifi, téléphones) et les liens du livret ne restent pas sur l'appareil.
+  localStorage.removeItem('stafflo_house_facts');
+  localStorage.removeItem('stafflo_livret_tokens');
   delete window._demoMode;
   location.reload();
 }
@@ -25621,6 +25646,13 @@ async function pullVillaSettings() {
       var _hf = row.house_facts_ref || '';
       if (cfg.houseFactsRef !== _hf) { cfg.houseFactsRef = _hf; setCfg(cfg); }
     } catch(e) { console.warn('house_facts_ref hydrate:', e); }
+    /* v522 — la fiche elle-même (villa_settings.house_facts), plus un fichier public.
+       Jamais copiée dans cfg (elle ne doit pas repartir avec pushVillaSettings). Puis les
+       liens personnels du livret des séjours à venir (un par séjour, le même partout). */
+    try {
+      if (typeof window.staffloHouseFactsHydrate === 'function') window.staffloHouseFactsHydrate(row.house_facts || null);
+      if (window.livretLinks) window.livretLinks.load().then(function(){ staffloEnsureLivretLinks(); });
+    } catch(e) { console.warn('house_facts hydrate:', e); }
 
     // Only hydrate if remote has been onboarded (otherwise defaults from trigger may be wrong)
     if (!row.onboarded) return;
@@ -31038,6 +31070,8 @@ window.addEventListener('DOMContentLoaded', function() {
   function _appendLivretLink(a, content){
     if (!a || a.purpose !== 'welcome' || !a.guest || typeof window.livretUrl !== 'function') return content;
     if (typeof villaFactsActive === 'function' && !villaFactsActive()) return content; // v510 : pas de livret d'une autre villa
+    // v522 : sans lien personnel, le client n'aurait qu'un « lien expiré » — aucun lien plutôt qu'un lien mort.
+    if (window.livretLinks && !window.livretLinks.get(a.guest.id)) { window.livretLinks.ensure(a.guest.id); return content; }
     try {
       var abs = new URL(window.livretUrl(a.guest), location.href).href;
       var label = fr() ? 'Livret d\'accueil : ' : 'Welcome booklet: ';
@@ -31061,8 +31095,11 @@ window.addEventListener('DOMContentLoaded', function() {
     btn.disabled = true; btn.textContent = '⏳ ' + (f?'Génération...':'Generating...');
     try {
       var p = buildAiPrompt(a);
+      // v522 : le lien personnel du livret se prépare pendant la rédaction.
+      var _lk = (a.purpose === 'welcome' && a.guest && window.livretLinks && typeof villaFactsActive === 'function' && villaFactsActive()) ? window.livretLinks.ensure(a.guest.id) : null;
       var content = await window.callBestAI(a.ai_task, p.system, p.user, 600);
       content = (content||'').trim();
+      if (_lk) await _lk;
       content = _appendLivretLink(a, content);
       // Affiche le résultat
       var resEl = document.querySelector('.aria-smart-result[data-group="'+groupId+'"][data-idx="'+idx+'"]');
@@ -31141,7 +31178,9 @@ window.addEventListener('DOMContentLoaded', function() {
     btn.disabled = true; var orig = btn.textContent; btn.textContent = '⏳';
     try {
       var p = buildAiPrompt(a);
+      var _lk = (a.purpose === 'welcome' && a.guest && window.livretLinks && typeof villaFactsActive === 'function' && villaFactsActive()) ? window.livretLinks.ensure(a.guest.id) : null; // v522
       var content = await window.callBestAI(a.ai_task, p.system, p.user, 600);
+      if (_lk) await _lk;
       a.generated_content = _appendLivretLink(a, (content||'').trim());
       // Re-render le résultat
       var resEl = document.querySelector('.aria-smart-result[data-group="'+groupId+'"][data-idx="'+idx+'"]');
@@ -34817,8 +34856,37 @@ function startTour(){
     var grp = detectLivretGroup({ message: firstLivretMessageText(msgs),
       guestMessage: c.details && c.details.guest_message, notes: c.notes });
     if (grp && (!pax || pax >= 3)) p.set('groupe', grp);
+    // v522 — lien personnel du séjour : c'est lui qui ouvre la fiche maison (livret-view).
+    var tk = window.livretLinks ? window.livretLinks.get(c.id) : '';
+    if (tk) p.set('t', tk); else if (window.livretLinks && c.id) window.livretLinks.ensure(c.id);
     return 'livret.html?' + p.toString();
   }
+
+  /* v522 — liens personnels du livret (fiche maison hors du site public).
+     StaffloHouseFacts.livretLinks (house-facts.js) : jeton obtenu ou créé par la base
+     (rpc livret_token, le même lien sur l'app et l'Espace), copie locale par compte.
+     Les appels passent par l'intercepteur fetch (jeton de session, rafraîchi sur 401). */
+  window.livretLinks = (window.StaffloHouseFacts && window.StaffloHouseFacts.livretLinks) ? window.StaffloHouseFacts.livretLinks({
+    owner: function(){ return (typeof _stafflo_user !== 'undefined' && _stafflo_user && _stafflo_user.id) || ''; },
+    list: function(){
+      return fetch(SB_URL + '/rest/v1/livret_links?select=client_id,token&deleted_at=is.null', { headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON } })
+        .then(function(r){ return r.ok ? r.json() : null; });
+    },
+    create: function(id){
+      return fetch(SB_URL + '/rest/v1/rpc/livret_token', { method: 'POST', headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_client_id: String(id) }) })
+        .then(function(r){ return r.ok ? r.json() : null; });
+    }
+  }) : null;
+  // Séjours à venir (réservations fermes) : lien prêt avant qu'on le montre ou l'envoie.
+  window.staffloEnsureLivretLinks = function(){
+    if (!window.livretLinks || typeof villaFactsActive !== 'function' || !villaFactsActive()) return;
+    var today = new Date().toISOString().slice(0, 10);
+    (window.clients || []).forEach(function(c){
+      if (!c || !c.id || c.deleted_at || String(c.departure || '').slice(0, 10) < today) return;
+      if (typeof isFirmBooking === 'function' && !isFirmBooking(c)) return;
+      window.livretLinks.ensure(c.id);
+    });
+  };
 
   // Action livret unique, appelée depuis la fiche client et depuis les cartes
   // "Ce qui compte aujourd'hui" (autre bloc <script>) — exposée sur window pour
@@ -34829,6 +34897,26 @@ function startTour(){
        Sans fiche maison en base, jamais d'ouverture : un client recevrait l'adresse et le wifi d'une autre villa. */
     if (typeof villaFactsActive === 'function' && !villaFactsActive()) {
       if (typeof toast === 'function') toast((typeof lang !== 'undefined' && lang === 'en') ? 'Welcome booklet: available once your house sheet is set up' : 'Livret d\'accueil : disponible une fois votre fiche maison en place');
+      return;
+    }
+    /* v522 — sans lien personnel, le client n'aurait qu'un « lien expiré ». Lien pas encore
+       en mémoire (séjour tout juste créé) : fenêtre ouverte tout de suite (pas de blocage de
+       fenêtre), puis dirigée vers le livret dès que la base a donné le lien. */
+    if (window.livretLinks && !window.livretLinks.get(c.id)) {
+      var w = window.open('', '_blank');
+      window.livretLinks.ensure(c.id).then(function(tk){
+        if (!tk || !w) {
+          try { if (w) w.close(); } catch(e){}
+          if (typeof toast === 'function') toast((typeof lang !== 'undefined' && lang === 'en') ? 'Welcome booklet link unavailable — check your connection and try again' : 'Lien du livret indisponible — vérifiez la connexion et réessayez');
+          return; // pas de lien → pas marqué « envoyé »
+        }
+        try { w.opener = null; } catch(e){}
+        w.location.href = new URL(livretUrl(c), location.href).href;
+        c.details = c.details || {};
+        c.details.livretSentAt = new Date().toISOString();
+        persistClient(c);
+        if (state.clientId === c.id) renderLivretStatus(c);
+      });
       return;
     }
     window.open(livretUrl(c), '_blank', 'noopener');

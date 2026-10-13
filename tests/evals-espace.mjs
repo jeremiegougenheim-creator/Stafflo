@@ -32,7 +32,7 @@ check('MONTHS_FR identique', /var MONTHS_FR = \['JAN','FEV','MAR','AVR','MAI','J
 const script = esp.slice(esp.indexOf('ESPACE STAFFLO'));
 for (const bad of ['650', '850', 'Faiza', 'Palmeraie', 'Bouchra', '+212', '14h00', '8h30'])
   check(`aucun fait en dur : « ${bad} »`, !script.includes(bad));
-check('charge villa-facts.js', esp.includes('<script src="villa-facts.js"></script>'));
+check('charge le moteur de la fiche (house-facts.js), plus le fichier public villa-facts.js', esp.includes('<script src="house-facts.js"></script>') && !esp.includes('<script src="villa-facts.js">'));
 check('ARIA reçoit la fiche', /F\.digest\(/.test(script));
 check('ARIA reçoit les séjours calculés', /staysForAI\(\)/.test(script));
 check('nuits calculées en code', /c\.n = c\.d - c\.a/.test(script));
@@ -88,10 +88,10 @@ check('brief équipe : la consigne remplace les notes privées', /if \(sn\) line
 check('ARIA : jeton de session envoyé à ai-proxy (quota et journal par propriétaire)', /function aiPost\(payload\)/.test(script) && /h\.Authorization = 'Bearer ' \+ s\.access_token/.test(script) && !/fetch\(PROXY, \{ method: 'POST', headers: \{ 'Content-Type': 'application\/json' \}/.test(script));
 // v9 — multi-villa : chaque compte voit SA villa, jamais celle du pilote
 check('multi-villa : aucun nom de villa écrit en dur', !/Villa Dar J|Dar J ·/.test(esp) && !/'Jérémie'/.test(script));
-check('multi-villa : fiche maison choisie par villa_settings.house_facts_ref', /HAS_FACTS = !!\(D\.villa && D\.villa\.house_facts_ref === 'villa-facts\.js' && PILOT_F\)/.test(script) && /F = HAS_FACTS \? PILOT_F : EMPTY_F/.test(script));
+check('multi-villa : fiche maison du compte, lue en base (house_facts), drapeau house_facts_ref', /var built = D\.villa && D\.villa\.house_facts_ref === 'villa-facts\.js' && HF \? HF\.build\(D\.villa\.house_facts\) : null;/.test(script) && /HAS_FACTS = !!built;/.test(script) && /F = built \|\| EMPTY_F;/.test(script) && /house_facts_ref,house_facts&/.test(script));
 check('multi-villa : en-tête = villa et ville du compte', /kk\.textContent = D\.loaded && D\.user \? \(villaName\(\)/.test(script));
 check('multi-villa : sans fiche, ARIA reçoit les bases et « à confirmer »', /HAS_FACTS \? F\.digest\(fr \? 'fr' : 'en'\) : basicsForAI\(fr\)/.test(script) && /jamais inventée/.test(script));
-check('multi-villa : livret, décompte et messages d’avant arrivée seulement avec une fiche maison', /HAS_FACTS \? '<a class="act" href="' \+ esc\(livretUrl\(c\)\)/.test(script) && /HAS_FACTS && F\.MEALS\.length \? '<button type="button" class="act" data-a="panel" data-id="' \+ esc\(c\.id\) \+ '" data-v="bill"/.test(script) && /if \(!HAS_FACTS\) return viewMaisonBasics\(\);/.test(script));
+check('multi-villa : livret, décompte et messages d’avant arrivée seulement avec une fiche maison', /HAS_FACTS && LINKS && LINKS\.get\(c\.id\) \? '<a class="act" href="' \+ esc\(livretUrl\(c\)\)/.test(script) && /HAS_FACTS && F\.MEALS\.length \? '<button type="button" class="act" data-a="panel" data-id="' \+ esc\(c\.id\) \+ '" data-v="bill"/.test(script) && /if \(!HAS_FACTS\) return viewMaisonBasics\(\);/.test(script));
 check('multi-villa : « Envoyer à » la personne de l’équipe, pas un prénom écrit en dur', /sendTo: function \(n\)/.test(script) && !/sendSaid:/.test(script));
 // v10 — compte neuf : « Mise en route » cochée d'après les vraies données, disparaît une fois le compte prêt
 check('mise en route : Gmail (synchro serveur), premier séjour, équipe — cochés d’après les données', /var gmail = !!D\.sync, stay = \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) > 0, team = teamList\(\)\.length > 0;/.test(script));

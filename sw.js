@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v507 (onboarding SaaS : plus de boucle, plus de valeurs Dar J)
-const CACHE = 'stafflo-v521';
+// Stafflo Service Worker — v522 (fiche maison en base, livret par lien personnel)
+const CACHE = 'stafflo-v522';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
@@ -50,6 +50,9 @@ self.addEventListener('fetch', e => {
   // changé doit atteindre ARIA au prochain chargement. Hors ligne, l'app
   // tourne sans fiche (villaFactsActive() = false), sans erreur.
   if (url.includes('villa-facts.js')) return;
+  // Moteur de la fiche (house-facts.js, sans données) : même règle — moteur et fiche en base
+  // changent ensemble ; hors ligne, l'app tourne sans fiche, sans erreur.
+  if (url.includes('house-facts.js')) return;
   // Espace Stafflo : toujours la dernière version, comme livret et planning.
   if (url.includes('espace.html')) return;
   // Vue équipe : données du jour, jamais en cache.
