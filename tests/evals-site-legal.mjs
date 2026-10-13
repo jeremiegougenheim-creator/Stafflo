@@ -53,5 +53,11 @@ for (const f of ['index.html', 'en.html', 'ar.html', 'th.html', 'zh.html']) {
 }
 check('app : ?signup=1 ouvre l’onglet « Créer un compte »', /\[\?&\]signup=1\\b\/\.test\(location\.search\)\) setTimeout\(function\(\)\{ if \(typeof switchAuthTab === 'function'\) switchAuthTab\('signup'\)/.test(read('app.html')));
 
+// ── Téléphone : aucune page ne défile en largeur (mesuré dans Chromium à 320/375/414 px) ──
+for (const f of ['index.html', 'en.html', 'ar.html', 'th.html', 'zh.html']) {
+  const h = read(f);
+  check(`${f} : barre du haut et carte tarif tiennent sur un téléphone`, /@media\(max-width:560px\)\{\.lang a\{padding:5px 6px\}/.test(h) && /@media\(max-width:430px\)\{\.nav-right \.btn-gold\.btn-sm\{display:none\}\}/.test(h) && /\.plans\{grid-template-columns:minmax\(0,1fr\)\}\.plan\{min-width:0\}/.test(h));
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
