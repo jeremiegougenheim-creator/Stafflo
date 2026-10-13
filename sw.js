@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v496 (Villa › Entretien : charges et tâches de nouveau visibles)
-const CACHE = 'stafflo-v496';
+// Stafflo Service Worker — v497 (fiche : frais Airbnb calculés, brut − net)
+const CACHE = 'stafflo-v497';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
