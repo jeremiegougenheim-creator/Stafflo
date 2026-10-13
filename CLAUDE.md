@@ -5,13 +5,13 @@
 
 ## Contexte du repo
 
-- **App** : single-file `app.html` (~13 000+ lignes), hébergé sur GitHub Pages
+- **App** : single-file `app.html` (~44 000 lignes, 48 blocs `<script>`), hébergé sur GitHub Pages (stafflo.app). **Gelé** : corrections seulement, les nouveaux écrans vont dans l'Espace (§14)
   - URL live : <https://jeremiegougenheim-creator.github.io/Stafflo/>
   - Repo path : `app.html` à la racine
 - **Landing** : `index.html` (FR) + `en.html` (EN) dans le même repo
 - **Backend** : Supabase project `rcjhgilpmojohmrqzokx` — Auth, Postgres + RLS multi-tenant, Edge Functions Deno, Realtime
-- **Proxy AI** : Cloudflare Worker `stafflo-proxy.jeremiegougenheim.workers.dev`
-- **LLM cascade** : Groq `llama-3.1-8b-instant` (primaire) → DeepSeek → Gemini → Mistral → OpenAI (fallback)
+- **Proxy AI** : edge function Supabase `ai-proxy` — **Mistral EU (Paris) uniquement**. L'ancien Worker Cloudflare et la cascade Groq/DeepSeek/Gemini/OpenAI ne sont plus utilisés.
+- **Appel IA direct depuis le navigateur** (`callProviderAPI`) : coupé ; réactivable seulement par `localStorage.stafflo_direct_ai = 'on'` (garde-fou : `tests/evals-app-securite.mjs`)
 - **Voix (v1)** : Web Speech API pour l'input, ElevenLabs pour le TTS (prévu)
 - **Icons** : Tabler Icons via webfont, centralisés via `iconFor()`
 - **Typographie** : Cormorant Garamond (titres, voix ARIA) + Inter (UI)
@@ -93,7 +93,7 @@ Si un critère échoue, le flag reste et l'ancien code reste.
 - **Localiser** : `grep -n "pattern_unique" app.html`
 - **Vérifier le contexte** : `view` avec range 20-40 lignes autour
 - **`str_replace`** avec 3-5 lignes d'ancrage (sinon match ambigu)
-- Pre-existing brace balance delta `-4` = baseline mesurée sur le live (JS-only, 13 blocs `<script>`). Pas un bug. Un delta plus négatif = quelque chose est cassé.
+- Delta d'accolades de référence : **`-3`** (mesuré sur tout le fichier, oct. 2026). Pas un bug. Toute autre valeur = quelque chose est cassé.
 
 ## 4. Validation après chaque édition
 
@@ -175,7 +175,7 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 
 ## 11. Conventions techniques
 
-- **ARIA orchestrator** : point d'entrée AI unique. Ne jamais écrire vers l'ancien `#chatMessages v1`. Tous les appels AI passent par le **proxy Cloudflare Worker only**, jamais d'appel direct provider depuis le client. Intent classification heuristique route vers : `reason`, `write_fr`, `extract`, `fast_classify`, `chat_fr`. Override manuel : préfixe `/deep`.
+- **ARIA orchestrator** : point d'entrée AI unique. Ne jamais écrire vers l'ancien `#chatMessages v1`. Tous les appels AI passent par **`ai-proxy` (Supabase, Mistral EU) only**, jamais d'appel direct provider depuis le client. Intent classification heuristique route vers : `reason`, `write_fr`, `extract`, `fast_classify`, `chat_fr`. Override manuel : préfixe `/deep`.
 - **localStorage = source of truth runtime** : les settings vivent en localStorage pour une UI snappy. `villa_settings` Supabase = backup multi-device, synced au save. **Ne jamais assumer que Supabase a le dernier état pendant une session** — toujours lire localStorage en premier.
 - **`isMarrakechVilla()`** : certaines features sont gated par ce check. Quand on bosse sur une feature qui doit être universelle, vérifier qu'elle n'est PAS dans ce gate.
 - **Service Worker** : `sw.js` filtre les requêtes non-HTTP/API pour éviter les erreurs cache chrome-extension. Si on ajoute des ressources externes, vérifier qu'elles ne cassent pas le filtre. **Toujours bump `CACHE_NAME` après un déploiement** pour forcer le refresh sur les devices users.
@@ -188,7 +188,7 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 ## 12. Limitations connues à NE PAS toucher dans v1
 
 - **Gmail OAuth** : Implicit flow → tokens expirent ~1h, daily reconnect nécessaire. Upgrade vers Authorization Code flow scopé pour un patch séparé, pas dans le pivot ARIA-first.
-- **`deleted_at`** : pas encore d'historique soft-delete dans Supabase. Ne pas ajouter sans demande.
+- **`deleted_at`** (suppression douce) existe sur `crm_clients`, `client_context`, `chat_history`, `prestataires`, `push_subscriptions`. Aucun `DELETE` HTTP dans l'app, sauf `forgetClient` (effacement RGPD volontaire).
 
 ## 13. Fiche maison — `villa-facts.js` (source unique des faits de la villa)
 
@@ -208,3 +208,12 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
 - **Rapprochement strict** (`findStay`) : code HM… → fil Airbnb → dates exactes avec un seul séjour → (rappel) nom complet exact. Sinon rien n'est relié. Une confirmation sans séjour crée le séjour (`details.origin = 'gmail_sync'`, `pending: ['price']` si pas de versement). Une annulation n'agit que sur code exact. Ne remplit que les champs vides, ne supprime jamais.
 - **Espace Stafflo** (`espace.html`, noindex, jamais en cache) : poste de pilotage simple sur la même session que l'app. Jour / Séjours / ARIA / Maison, FR/EN. Lit `crm_clients`, `email_inbox` (non archivés), `sync_runs`. « Traité » = `archived_at` (soft). Aucun fait de la villa en dur : tout vient de `villa-facts.js`. Garde-fou : `node tests/evals-espace.mjs`.
 - Claude Code reste en lecture seule sur la base : les migrations, cron et secrets sont gérés par Claude (claude.ai).
+
+
+## 15. Alertes, iCal, garde-fous (oct. 2026)
+
+- **Alertes sur le téléphone (Web Push, sans service tiers)** : `supabase/functions/push-notify` (+ `webpush.ts`, chiffrement aes128gcm / VAPID en WebCrypto). Cron `push-notify-5min` : une alerte par nouvel email Airbnb utile (demande, message, confirmation, modification, annulation, versement), puis `email_inbox.notified_at` — jamais deux fois. Abonnements dans `push_subscriptions` (RLS propriétaire). Clé privée VAPID dans Vault, jamais dans le client. L'Espace propose « Activer les alertes » ; `sw.js` gère `push` et `notificationclick` (ouvre l'Espace). Sur iPhone : l'Espace doit être ajouté à l'écran d'accueil (`espace.webmanifest`).
+- **iCal** : `supabase/functions/ical-fetch` lit les calendriers côté serveur (utilisateur connecté, https, liste fermée de plateformes, redirections vérifiées). Les proxys CORS publics de `fetchIcal` ne servent plus que si `localStorage.stafflo_public_cors = 'on'`.
+- **Point du matin** : tâche planifiée claude.ai « Villa Dar J — à faire du jour (8h45) » (lecture seule de la base → email à marrakech.villadarj@gmail.com + notification). Pas de code dans ce dépôt.
+- **Garde-fous à lancer avant tout push** : `node tests/evals-app-securite.mjs`, `evals-fiche-maison`, `evals-espace`, `evals-gmail-sync`, `evals-push`, plus `node tests/visual.mjs` (puis `git checkout -- tests/baseline.json`).
+- **Architecture cible** (doc projet `ARCHI-CIBLE-2026-10-12`) : la base est la seule vérité, le serveur fait les automatisations, les écrans restent fins. L'Espace (`espace.html`) est l'écran principal ; app.html est éteint écran par écran, derrière interrupteur, 14 jours sans retour avant tout retrait.
