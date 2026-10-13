@@ -28,5 +28,13 @@ check('confidentialité : ouverte dans la langue du lien (?lang=fr)', /lang=\(fr
 check('mentions légales FR et legal notice EN', /id="mentions-legales"/.test(terms) && /id="legal-notice"/.test(terms) && (terms.match(/GitHub, Inc\., 88 Colin P\. Kelly Jr\. Street/g) || []).length === 2);
 check('conditions : ouvertes dans la langue du lien (?lang=fr)', /lang=\(fr\|en\)/.test(terms));
 
+// ── Site : liens légaux, équipe de démonstration, langues ────────────────
+for (const f of ['index.html', 'en.html', 'ar.html', 'th.html', 'zh.html']) {
+  const h = read(f);
+  check(`${f} : pied de page → confidentialité, conditions, mentions légales`, /href="privacy\.html\?lang=(fr|en)"/.test(h) && /href="terms\.html\?lang=(fr|en)"/.test(h) && /href="terms\.html\?lang=(fr|en)#(mentions-legales|legal-notice)"/.test(h));
+  check(`${f} : équipe de démonstration fictive (jamais l'équipe réelle du pilote)`, !/\bSaid\b|Saïd|Faiza|Bouchra/.test(h));
+}
+check('accueil : un navigateur en chinois arrive sur zh.html (plus sur en.html)', /zh:'zh\.html'/.test(read('index.html')));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
