@@ -4169,10 +4169,23 @@ window.renderSoloTurnoverCard = function(){
     // que COMMIT Z3 sur #v5Perf. Sans ça, Aujourd'hui et Clients affichaient
     // deux totaux différents pour le même mois (le second lit déjà le net
     // réconcilié depuis "YOU EARN" quand il existe ; celui-ci l'ignorait).
-    var net = firmList.filter(function(c){return !c.is_comp;}).reduce(function(s,c){
+    // v499 (interrupteur stafflo_trim_v1, 'off' = avant) : « NET » sans période
+    // additionnait tous les séjours depuis toujours (55 435 €) ; « PIPELINE »
+    // comptait des demandes expirées depuis des mois. Net de l'année en cours,
+    // demandes encore vivantes (arrivée à venir, ou créées il y a moins de 30 j).
+    var _trim = (function(){ try { return localStorage.getItem('stafflo_trim_v1') !== 'off'; } catch(e){ return true; } })();
+    var _yr = String(today.getFullYear());
+    var net = firmList.filter(function(c){return !c.is_comp && (!_trim || String(c.arrival||'').slice(0,4) === _yr);}).reduce(function(s,c){
       return s + netAmt(c);
     }, 0);
-    var pipeline = clients.filter(function(c){ var bs=c.bookingStatus; return bs==='lead'||bs==='inquiry'||bs==='quoted'; }).length;
+    var pipeline = clients.filter(function(c){
+      var bs=c.bookingStatus; if (!(bs==='lead'||bs==='inquiry'||bs==='quoted')) return false;
+      if (!_trim) return true;
+      if (c.arrival) return new Date(String(c.arrival).slice(0,10) + 'T12:00:00') >= today;
+      var cr = c.createdAt ? new Date(c.createdAt) : null;
+      return !!cr && !isNaN(cr) && (today - cr) < 30 * 86400000;
+    }).length;
+    var _netLbl = _trim ? ('NET ' + _yr) : 'NET';
     var next = upcoming[0];
     var nextLbl = next ? (relDate(next.arrival, FR) + ' · ' + firstName(next.name)) : (FR?'aucun départ prévu':'no upcoming stay');
     var _clk = (function(){ try { return localStorage.getItem('stafflo_clickstats_v1') !== 'off'; } catch(e){ return true; } })();
@@ -4186,7 +4199,7 @@ window.renderSoloTurnoverCard = function(){
       '<div class="v19-kpis">' +
         '<div class="v19-stat'+_cls+'" data-stat="net" style="'+_cur+'">' +
           '<span class="v19-stat__v">' + net.toLocaleString(FR?'fr-FR':'en-US') + '€</span>' +
-          '<span class="v19-stat__l" data-fr="NET" data-en="NET">NET</span>' +
+          '<span class="v19-stat__l" data-fr="' + _netLbl + '" data-en="' + _netLbl + '">' + _netLbl + '</span>' +
         '</div>' +
         '<div class="v19-stat'+_cls+'" data-stat="upcoming" style="'+_cur+'">' +
           '<span class="v19-stat__v">' + upcoming.length + '</span>' +
@@ -4367,6 +4380,8 @@ window.renderSoloTurnoverCard = function(){
     var p2 = items.filter(function(x){return x.tier==='p2';}).slice(0,2);
     var opps = [];
     var nextNew = firmList.filter(function(c){ return c.arrival && new Date(c.arrival)>today; }).sort(function(a,b){ return new Date(a.arrival)-new Date(b.arrival);})[0];
+    var _trimOpp = (function(){ try { return localStorage.getItem('stafflo_trim_v1') !== 'off'; } catch(e){ return true; } })();
+    if (nextNew && _trimOpp && items.some(function(x){ return x.client && x.client.id === nextNew.id; })) nextNew = null; // v499 : déjà une carte pour ce client
     if (nextNew) {
       var nextArr = new Date(nextNew.arrival); nextArr.setHours(0,0,0,0);
       opps.push({ tier:'opp', tone:'go', icon:'✨',
@@ -20550,6 +20565,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (k === 'entretien' && typeof renderMaisonInto === 'function') renderMaisonInto();
     renderVillaSegs();
+    try { if (typeof window.staffloTrimTonight === 'function') window.staffloTrimTonight(); } catch(e){}
   }
   window.setVillaTab = setVillaTab;
   // Nav v2 étape D : carte résumé cliquable sur le Today, à la place du détail complet
@@ -44182,6 +44198,80 @@ window.auditTones = auditTones;
     wrapped.__budgetWrapped = true;
     window.renderMaisonInto = wrapped;
   })();
+})();
+</script>
+<!-- v499 — ALLÈGEMENT (revue UX/UI du 13/10/2026). Interrupteur : localStorage
+     stafflo_trim_v1 = 'off' rétablit tout. Rien n'est supprimé du DOM : masquage
+     CSS + bandeau informatif + lien vers l'Espace. -->
+<style>
+.trim-v1 #v4PushBtn,
+.trim-v1 .v4-card-opps,
+.trim-v1 .v4-card-scenarios,
+.trim-v1 .v2-card:has(> .v2-card-hd [data-en="Next 14 days"]),
+.trim-v1 .settings-section:has(> .settings-title[data-en="OPERATION PROFILE"]),
+.trim-v1 #settingsMealPricing { display:none !important; }
+#trimTonight{margin:0 0 10px;padding:10px 12px;border-radius:12px;background:#EAF2EC;color:#1F4D36;font-size:13px;line-height:1.4}
+#trimTonight b{font-weight:600}
+#trimMealNote{font-size:12.5px;color:var(--muted,#706B5D);line-height:1.45}
+#hdrEspaceBtn{display:none}
+/* Pas la classe .hdr-btn : au-delà de 600px une règle !important masque tous les
+   .hdr-btn de l'en-tête sauf Boîte et avatar. */
+.trim-v1 #hdrEspaceBtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;color:#E5C77A;background:none;border:1px solid rgba(201,150,58,.35);border-radius:var(--r-xs,6px);padding:5px 10px;font:600 12px/1 'DM Sans','Inter',sans-serif;white-space:nowrap}
+.trim-v1 #hdrEspaceBtn:hover{background:rgba(201,150,58,.12)}
+@media(max-width:430px){ .trim-v1 #hdrEspaceBtn{min-width:44px;min-height:44px;padding:0} .trim-v1 #hdrEspaceBtn span{display:none}
+  /* 4 boutons de 44px : l'en-tête ne doit plus rogner « FR » à gauche */
+  .trim-v1 header .header-right{flex:1 0 auto} .trim-v1 header #logoLink{min-width:0;flex-shrink:1;overflow:hidden} }
+</style>
+<script>
+(function(){
+  var on = true;
+  try { on = localStorage.getItem('stafflo_trim_v1') !== 'off'; } catch(e){}
+  if (!on) return;
+  document.documentElement.classList.add('trim-v1');
+  var FR = function(){ return (typeof lang === 'undefined') || lang !== 'en'; };
+  // Lien vers l'Espace (écran du quotidien) dans l'en-tête, avant la Boîte.
+  try {
+    var inbox = document.getElementById('hdrInboxBtn');
+    if (inbox && !document.getElementById('hdrEspaceBtn')) {
+      var a = document.createElement('a');
+      a.id = 'hdrEspaceBtn'; a.href = 'espace.html';
+      a.setAttribute('aria-label', 'Espace'); a.title = FR() ? 'Espace : à faire du jour' : 'Espace: today’s to-do';
+      a.innerHTML = '<i class="ti ti-checklist" style="font-size:15px" aria-hidden="true"></i><span>Espace</span>';
+      inbox.parentNode.insertBefore(a, inbox);
+    }
+  } catch(e){}
+  // Réglages : les tarifs repas viennent de la fiche maison, pas d'ici.
+  try {
+    var meal = document.getElementById('settingsMealPricing');
+    if (meal && !document.getElementById('trimMealNote')) {
+      var n = document.createElement('div');
+      n.className = 'settings-section'; n.id = 'trimMealNote';
+      n.innerHTML = '<div class="settings-title" data-fr="TARIFS REPAS" data-en="MEAL PRICING">' + (FR() ? 'TARIFS REPAS' : 'MEAL PRICING') + '</div>' +
+        '<span data-fr="Les prix des repas viennent de la fiche maison (livret, ARIA, décompte). Pour les voir : Espace › Maison." data-en="Meal prices come from the house facts (guide, ARIA, billing). To see them: Espace › House.">' +
+        (FR() ? 'Les prix des repas viennent de la fiche maison (livret, ARIA, décompte). Pour les voir : Espace › Maison.' : 'Meal prices come from the house facts (guide, ARIA, billing). To see them: Espace › House.') + '</span>';
+      meal.parentNode.insertBefore(n, meal);
+    }
+  } catch(e){}
+  // Villa › Prix : un prix « ce soir » n'a pas de sens quand la villa est occupée.
+  function iso(d){ return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function fmt(s){ try { return new Date(s + 'T12:00:00').toLocaleDateString(FR() ? 'fr-FR' : 'en-GB', { weekday:'short', day:'numeric', month:'short' }); } catch(e){ return s; } }
+  window.staffloTrimTonight = function(){
+    var hero = document.querySelector('.v4-hero .v4-hero-body');
+    if (!hero || typeof clients === 'undefined') return;
+    var firm = clients.filter(function(c){ return c && c.arrival && c.departure && !c.deletedAt && (typeof isFirmBooking !== 'function' || isFirmBooking(c)); });
+    var cover = function(day){ return firm.filter(function(c){ var a = String(c.arrival).slice(0,10), d = String(c.departure).slice(0,10); return a <= day && day < d; })[0]; };
+    var t = new Date(); var today = iso(t);
+    var guest = cover(today);
+    var box = document.getElementById('trimTonight');
+    if (!guest) { if (box) box.remove(); return; }
+    var free = null, x = new Date(t);
+    for (var i = 1; i < 400; i++) { x.setDate(x.getDate() + 1); if (!cover(iso(x))) { free = iso(x); break; } }
+    if (!box) { box = document.createElement('div'); box.id = 'trimTonight'; hero.insertBefore(box, hero.firstChild); }
+    var esc = function(v){ return String(v == null ? '' : v).replace(/[&<>"]/g, function(ch){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[ch]; }); };
+    box.innerHTML = FR()
+      ? '<b>Occupé ce soir</b> · ' + esc(guest.name) + (free ? '<br>Prochaine nuit libre : <b>' + esc(fmt(free)) + '</b>' : '') + '<br><span style="opacity:.75">Le prix ci-dessous est indicatif.</span>'
+      : '<b>Booked tonight</b> · ' + esc(guest.name) + (free ? '<br>Next free night: <b>' + esc(fmt(free)) + '</b>' : '') + '<br><span style="opacity:.75">The price below is indicative.</span>';
+  };
 })();
 </script>
 </body>

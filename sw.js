@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v498 (langue FR/EN lisible, boîte lisible sur téléphone)
-const CACHE = 'stafflo-v498';
+// Stafflo Service Worker — v499 (allègement : écrans recentrés, lien Espace, occupé ce soir)
+const CACHE = 'stafflo-v499';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
