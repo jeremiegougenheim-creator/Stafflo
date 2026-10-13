@@ -23,7 +23,7 @@ const SENT = [];
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
   if (url === 'https://sb.test/auth/v1/user') return (init.headers.Authorization === 'Bearer good') ? new Response('{"id":"owner-1"}', { status: 200 }) : new Response('{}', { status: 401 });
-  if (url === 'https://api.mistral.ai/v1/audio/transcriptions') { SENT.push(init.body); return new Response('{"text":" Felipe arrive à 15 h "}', { status: 200 }); }
+  if (url === 'https://api.mistral.ai/v1/audio/transcriptions') { SENT.push(init.body); return new Response('{"text":" Tomas arrive à 15 h "}', { status: 200 }); }
   throw new Error('inattendu ' + url);
 };
 const js = esbuild.transformSync(src, { loader: 'ts', format: 'esm' }).code;
@@ -40,7 +40,7 @@ r = await call({ auth: 'good', origin: 'https://evil.example' });
 check('origine inconnue → 403', r.status === 403);
 r = await call({ auth: 'good', lang: 'fr-FR' });
 const d = await r.json();
-check('connecté : texte transcrit, espaces retirés', r.status === 200 && d.text === 'Felipe arrive à 15 h');
+check('connecté : texte transcrit, espaces retirés', r.status === 200 && d.text === 'Tomas arrive à 15 h');
 check('modèle voxtral imposé, langue « fr »', SENT.at(-1).get('model') === 'voxtral-mini-latest' && SENT.at(-1).get('language') === 'fr');
 check('langue illisible → détection automatique', M.langCode('n\'importe') === '' && M.langCode('en') === 'en' && M.langCode('ar_MA') === 'ar');
 console.log(`\n${pass}/${pass + fail} PASS`);

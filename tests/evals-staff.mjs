@@ -30,7 +30,7 @@ check('empreinte sha-256 (vecteur « abc »)', await M.sha256hex('abc') === 'ba7
 check('empreinte du jeton = sha-256 standard', await M.sha256hex(tok) === crypto.createHash('sha256').update(tok).digest('hex'));
 
 // ── Noms ─────────────────────────────────────────────────────────────────
-check('prénom + initiale', M.shortName('Felipe Villalobos') === 'Felipe V.');
+check('prénom + initiale', M.shortName('Tomas Herrera') === 'Tomas H.');
 check('un seul mot tel quel', M.shortName('Seán') === 'Seán');
 check('nom vide → « ? »', M.shortName('') === '?' && M.shortName(null) === '?');
 check('nom composé : dernière initiale', M.shortName('  jean  de la fontaine ') === 'jean F.');
@@ -38,8 +38,8 @@ check('nom composé : dernière initiale', M.shortName('  jean  de la fontaine '
 // ── Séjours visibles ─────────────────────────────────────────────────────
 const T = '2026-10-13';
 const ROWS = [
-  { name: 'Felipe Villalobos', arrival: '2026-10-13', departure: '2026-10-16', adults: 7, children: 0, infants: 0, guests: 7, booking_status: 'confirmed', price: 1298, notes: 'TARIFS APPLICABLES 850 MAD', phone: '+44 7000', email: 'f@x.com', nat: 'Royaume-Uni', meals: '  Dîner du 13 : tajine  ', details: { arrival_time: 'Vol AT801 · 15h20', beds: '3 couples + 1 seul', staff_note: 'Mariage : prévoir des fleurs', payouts: [{ amount_eur: 1298 }], reservation_code: 'HMX', conversation: 'privé' } },
-  { name: 'Thibaut Vauclare', arrival: '2026-10-19', departure: '2026-10-23', adults: 8, children: 2, infants: 1, guests: 10, booking_status: 'confirmed', details: null },
+  { name: 'Tomas Herrera', arrival: '2026-10-13', departure: '2026-10-16', adults: 7, children: 0, infants: 0, guests: 7, booking_status: 'confirmed', price: 1298, notes: 'TARIFS APPLICABLES 850 MAD', phone: '+44 7000', email: 'f@x.com', nat: 'Royaume-Uni', meals: '  Dîner du 13 : tajine  ', details: { arrival_time: 'Vol AT801 · 15h20', beds: '3 couples + 1 seul', staff_note: 'Mariage : prévoir des fleurs', payouts: [{ amount_eur: 1298 }], reservation_code: 'HMX', conversation: 'privé' } },
+  { name: 'Arnaud Delorme', arrival: '2026-10-19', departure: '2026-10-23', adults: 8, children: 2, infants: 1, guests: 10, booking_status: 'confirmed', details: null },
   { name: 'Seán', arrival: '2026-10-25', departure: '2026-11-01', guests: 11, booking_status: 'confirmed', details: 'pas un objet' },
   { name: 'Lead Demande', arrival: '2026-10-20', departure: '2026-10-22', booking_status: 'inquiry', guests: 4 },
   { name: 'Refus', arrival: '2026-10-20', departure: '2026-10-22', booking_status: 'declined', guests: 4 },
@@ -55,17 +55,17 @@ check('demandes et refus exclus', !names.includes('Lead D.') && !names.includes(
 check('séjour terminé hier exclu, départ du jour inclus', !names.includes('Parti H.') && names.includes('Part A.'), names);
 check('au-delà de 30 jours exclu', !names.includes('Trop L.'), names);
 check('dates incohérentes exclues', !names.includes('Dates F.'), names);
-check('ordre par arrivée', names.join('|') === 'Part A.|Felipe V.|Thibaut V.|Rotation J.|Seán', names.join('|'));
+check('ordre par arrivée', names.join('|') === 'Part A.|Tomas H.|Arnaud D.|Rotation J.|Seán', names.join('|'));
 const KEYS = ['name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'beds', 'meals', 'note', 'same_day'];
 check('champs exactement ceux prévus (aucun prix, note, téléphone, email, code)', V.every((s) => Object.keys(s).join(',') === KEYS.join(',')), Object.keys(V[0]).join(','));
 const flat = JSON.stringify(V);
-for (const bad of ['1298', 'TARIFS', '+44', 'f@x.com', 'Royaume', 'HMX', 'privé', 'Villalobos'])
+for (const bad of ['1298', 'TARIFS', '+44', 'f@x.com', 'Royaume', 'HMX', 'privé', 'Herrera'])
   check(`rien ne fuit : « ${bad} »`, !flat.includes(bad));
-const f = V.find((s) => s.name === 'Felipe V.');
+const f = V.find((s) => s.name === 'Tomas H.');
 check('champs équipe lus dans details', f.arrival_time === 'Vol AT801 · 15h20' && f.beds === '3 couples + 1 seul' && f.note === 'Mariage : prévoir des fleurs');
 check('repas nettoyés', f.meals === 'Dîner du 13 : tajine');
 check('nuits calculées', f.nights === 3 && V.find((s) => s.name === 'Seán').nights === 7);
-const th = V.find((s) => s.name === 'Thibaut V.');
+const th = V.find((s) => s.name === 'Arnaud D.');
 check('personnes = adultes + enfants (bébés à part)', th.pax === 10 && th.infants === 1);
 check('sans composition : nombre de voyageurs', V.find((s) => s.name === 'Seán').pax === 11);
 check('details absent ou invalide : champs vides, pas d’erreur', th.beds === '' && V.find((s) => s.name === 'Seán').note === '');

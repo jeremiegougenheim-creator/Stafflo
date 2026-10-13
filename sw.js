@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v505 (réglages allégés)
-const CACHE = 'stafflo-v505';
+// Stafflo Service Worker — v506 (exemples anonymisés)
+const CACHE = 'stafflo-v506';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

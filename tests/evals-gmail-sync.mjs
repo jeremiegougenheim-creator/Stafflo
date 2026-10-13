@@ -91,15 +91,15 @@ p = P('Réservation confirmée', 'Check-in Check-out 13 oct. 2026 16 oct. 2026 V
 check('montant FR « 1 549,86 € » → 1549.86', p.payout_eur === 1549.86, p.payout_eur);
 
 // 13. Versement Airbnb (format réel .co.uk, anonymisé)
-const PAYOUT = `€ 1,549.86 EUR was sent today Your money was sent on 8 October and should arrive by 15 October 2026. View earnings [https://www.airbnb.co.uk/users/transaction_history/1] Bank account Jean Dupont, IBAN 1234 (EUR) Payout ID M-6KIKMHXFSXEXN6 We share this unique identifier with your bank. Airbnb account ID 1 Details Helen Twelvetrees € 1,549.86 EUR Home • 07/10/2026 - 10/10/2026 1-hectare estate, pool, butler & home-cooked meals (756889438032872685) HMY5QCBESA Total paid: € 1,549.86 EUR Get help with payouts`;
+const PAYOUT = `€ 1,549.86 EUR was sent today Your money was sent on 8 October and should arrive by 15 October 2026. View earnings [https://www.airbnb.co.uk/users/transaction_history/1] Bank account Jean Dupont, IBAN 1234 (EUR) Payout ID M-6KIKMHXFSXEXN6 We share this unique identifier with your bank. Airbnb account ID 1 Details Clara Whitfield € 1,549.86 EUR Home • 07/10/2026 - 10/10/2026 1-hectare estate, pool, butler & home-cooked meals (756889438032872685) HMTEST0004 Total paid: € 1,549.86 EUR Get help with payouts`;
 p = P('We sent a payout of € 1,549.86 EUR', PAYOUT);
 check('versement : type payout', p.type === 'payout', p.type);
 check('versement : identifiant', p.payout && p.payout.id === 'M-6KIKMHXFSXEXN6', p.payout);
 check('versement : total', p.payout && p.payout.total_eur === 1549.86, p.payout);
 check('versement : arrivée prévue', p.payout && p.payout.expected_by === '2026-10-15', p.payout);
-check('versement : une ligne, code exact', p.payout && p.payout.items.length === 1 && p.payout.items[0].code === 'HMY5QCBESA', p.payout && p.payout.items);
+check('versement : une ligne, code exact', p.payout && p.payout.items.length === 1 && p.payout.items[0].code === 'HMTEST0004', p.payout && p.payout.items);
 check('versement : montant de la ligne', p.payout && p.payout.items[0].amount_eur === 1549.86, p.payout && p.payout.items);
-check('versement : nom sans « Details »', p.payout && p.payout.items[0].name === 'Helen Twelvetrees', p.payout && p.payout.items);
+check('versement : nom sans « Details »', p.payout && p.payout.items[0].name === 'Clara Whitfield', p.payout && p.payout.items);
 
 // 14. Versement groupé (deux réservations)
 const PAYOUT2 = PAYOUT.replace('Total paid:', 'Ana Ruiz € 980.00 EUR Home • 01/11/2026 - 04/11/2026 Villa (1) HMABCD1234 Total paid:');

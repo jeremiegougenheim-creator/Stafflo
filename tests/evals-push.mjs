@@ -66,16 +66,16 @@ check('demande : titre et délai 24 h', a && a.title === 'Nouvelle demande — D
 check('demande : message du client cité', a && /« Is the villa available\? »/.test(a.body));
 a = A({ type: 'inquiry', first_name: 'Daniel' }, 'fr');
 check('demande sans dates ni voyageurs : rien d\'inventé', a && a.body === '24 h pour répondre', a && a.body);
-a = A({ type: 'message', first_name: 'Felipe', guest_message: 'Reacted 👍 to your message' }, 'fr');
+a = A({ type: 'message', first_name: 'Tomas', guest_message: 'Reacted 👍 to your message' }, 'fr');
 check('réaction « Reacted » : pas d\'alerte', a === null);
-a = A({ type: 'message', first_name: 'Felipe', guest_message: '' }, 'fr');
+a = A({ type: 'message', first_name: 'Tomas', guest_message: '' }, 'fr');
 check('message vide : pas d\'alerte', a === null);
 a = A({ type: 'confirmation', name: 'Ana Ruiz', first_name: 'Ana', checkin: '2026-10-13', checkout: '2026-10-16', adults: 5, children: 2, infants: 0, payout_eur: 1735.2 }, 'fr');
 check('confirmation : net lu dans l\'email', a && a.title === 'Réservation confirmée — Ana Ruiz' && /5 adultes, 2 enfants · net 1\s?735,2 €/.test(a.body), a && a.body);
 a = A({ type: 'confirmation', name: 'Ana Ruiz', checkin: '2026-10-13', checkout: '2026-10-16' }, 'en');
 check('confirmation sans montant : pas de net', a && !/net/.test(a.body) && /Oct 13 → Oct 16/.test(a.body), a && a.body);
-a = A({ type: 'payout', payout: { id: 'M-1', total_eur: 1549.86, expected_by: '2026-10-15', items: [{ code: 'HMY5', name: 'Helen Twelvetrees', amount_eur: 1549.86 }] } }, 'fr');
-check('versement : montant et date d\'arrivée', a && /1\s?549,86 €/.test(a.title) && /Helen Twelvetrees · en banque vers le 15 oct\./.test(a.body), a && (a.title + ' | ' + a.body));
+a = A({ type: 'payout', payout: { id: 'M-1', total_eur: 1549.86, expected_by: '2026-10-15', items: [{ code: 'HMY5', name: 'Clara Whitfield', amount_eur: 1549.86 }] } }, 'fr');
+check('versement : montant et date d\'arrivée', a && /1\s?549,86 €/.test(a.title) && /Clara Whitfield · en banque vers le 15 oct\./.test(a.body), a && (a.title + ' | ' + a.body));
 check('rappel, avis, autre : pas d\'alerte', ['reminder', 'review', 'other'].every((t) => A({ type: t, first_name: 'X' }, 'fr') === null));
 check('cron : chaque email marqué notified_at (jamais deux fois)', /notified_at=is\.null/.test(idx) && /notified_at: new Date/.test(idx));
 check('abonnement expiré (404/410) : désactivé en douceur', /r\.gone \? \{ deleted_at/.test(idx));
@@ -85,23 +85,23 @@ check('clé privée VAPID jamais renvoyée au navigateur', /action === "public_k
 {
   const T = '2026-10-13';
   const S = [
-    { name: 'Felipe Villalobos', arrival: '2026-10-13', departure: '2026-10-16', adults: 7, children: 0, phone: '', meals: '', staff_briefed_at: null, details: { livretSentAt: '2026-10-08' }, source: 'Airbnb', booking_status: 'confirmed' },
+    { name: 'Tomas Herrera', arrival: '2026-10-13', departure: '2026-10-16', adults: 7, children: 0, phone: '', meals: '', staff_briefed_at: null, details: { livretSentAt: '2026-10-08' }, source: 'Airbnb', booking_status: 'confirmed' },
     { name: 'Paul Partant', arrival: '2026-10-10', departure: '2026-10-13', adults: 5, details: {}, source: 'Airbnb', booking_status: 'confirmed' },
-    { name: 'Helen Twelvetrees', arrival: '2026-10-07', departure: '2026-10-10', details: {}, source: 'Airbnb', booking_status: 'confirmed' },
+    { name: 'Clara Whitfield', arrival: '2026-10-07', departure: '2026-10-10', details: {}, source: 'Airbnb', booking_status: 'confirmed' },
     { name: 'Lead Fantome', arrival: '2026-10-13', departure: '2026-10-15', booking_status: 'inquiry', details: {} },
     { name: 'Famille Offert', arrival: '2026-10-01', departure: '2026-10-05', is_comp: true, source: 'Airbnb', booking_status: 'confirmed', details: {} },
   ];
   const b = B(S, 2, T, 'fr');
-  check('brief : arrivée du jour avec le groupe', b && /Arrivée : Felipe \(7 pers\.\)/.test(b.body), b && b.body);
+  check('brief : arrivée du jour avec le groupe', b && /Arrivée : Tomas \(7 pers\.\)/.test(b.body), b && b.body);
   check('brief : départ du jour', b && /Départ : Paul/.test(b.body), b && b.body);
-  // Felipe : téléphone (J-3), repas (J-2), brief (J-1) en retard ; Paul : message de départ (jour J)
+  // Tomas : téléphone (J-3), repas (J-2), brief (J-1) en retard ; Paul : message de départ (jour J)
   check('brief : à faire compté depuis la base (3 en retard + 1 départ)', b && /4 à faire, dont 3 en retard/.test(b.body), b && b.body);
   check('brief : messages clients et avis à laisser', b && /2 messages clients à traiter/.test(b.body) && /1 avis Airbnb à laisser/.test(b.body), b && b.body);
   check('brief : une demande (lead) n’est jamais une arrivée', b && !/Lead/.test(b.body));
   check('brief : séjour offert → pas d’avis demandé', B([S[4]], 0, '2026-10-07', 'fr') === null);
   check('brief : rien à signaler → pas de notification', B([], 0, T, 'fr') === null);
   const e = B(S, 1, T, 'en');
-  check('brief : anglais', e && e.title === 'Villa Dar J — today' && /Arriving: Felipe \(7 guests\)/.test(e.body) && /1 guest message to handle/.test(e.body), e && e.body);
+  check('brief : anglais', e && e.title === 'Villa Dar J — today' && /Arriving: Tomas \(7 guests\)/.test(e.body) && /1 guest message to handle/.test(e.body), e && e.body);
 }
 check('brief : protégé par la clé de synchro, aperçu possible (dry)', /action === "brief"[\s\S]{0,200}gmail_sync_key_ok/.test(idx) && /body\.dry/.test(idx));
 

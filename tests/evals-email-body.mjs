@@ -75,12 +75,12 @@ ev('« à » corrompu par l\'ancienne ingestion', () => {
   return out === 'Merci à bientôt à la villa, à 14h';
 });
 
-const nominal = "Massi Mekla\nParis, France\nCONFIRMATION CODE\nHMF8MQ49HW\nCheck-in\nCheckout\nFri 15 May\nTue 19 May\nGUESTS\n2 adults, 1 child, 1 infant\nGUEST PAID\n2035.20 EUR\nGET READY FOR MASSI'S ARRIVAL\nProvide directions to your place";
+const nominal = "Marc Duval\nParis, France\nCONFIRMATION CODE\nHMTEST0003\nCheck-in\nCheckout\nFri 15 May\nTue 19 May\nGUESTS\n2 adults, 1 child, 1 infant\nGUEST PAID\n2035.20 EUR\nGET READY FOR MARC'S ARRIVAL\nProvide directions to your place";
 
 ev('texte pour LLM : les données de réservation restent', () => {
   const out = T.toPromptText(nominal);
   const flat = out.replace(/\s+/g, ' ');
-  return ['HMF8MQ49HW', 'Fri 15 May', 'Tue 19 May', '2 adults, 1 child, 1 infant', '2035.20 EUR'].every((k) => out.includes(k))
+  return ['HMTEST0003', 'Fri 15 May', 'Tue 19 May', '2 adults, 1 child, 1 infant', '2035.20 EUR'].every((k) => out.includes(k))
     && !out.includes('Provide directions')
     && /Check-in Checkout Fri 15 May Tue 19 May/.test(flat)
     && noNewWords(nominal, out);

@@ -54,11 +54,11 @@ ev('premier message en anglais → en', () =>
 ev('téléphone +33 mais message en anglais → conflit → bi', () =>
   detectLivretLang({ phone: '+33 6 12 34 56 78', message: 'Hi, we will arrive around 3pm, thank you!' }) === 'bi');
 
-ev('nom seul (Felipe Villalobos) — jamais un signal → bi', () => {
+ev('nom seul (Tomas Herrera) — jamais un signal → bi', () => {
   // detectLivretLang ne prend même pas de paramètre "name" : impossible d'en
   // faire un signal par construction. On vérifie que le nom seul, passé par
   // erreur dans un champ non lu par la fonction, n'influence rien.
-  const out = detectLivretLang({ name: 'Felipe Villalobos' });
+  const out = detectLivretLang({ name: 'Tomas Herrera' });
   return out === 'bi';
 });
 

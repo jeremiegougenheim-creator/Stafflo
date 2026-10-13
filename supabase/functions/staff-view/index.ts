@@ -46,7 +46,7 @@ export async function sha256hex(s: string): Promise<string> {
   const b = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
   return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 }
-/** « Felipe Villalobos » → « Felipe V. » ; un seul mot → tel quel. */
+/** « Tomas Herrera » → « Tomas H. » ; un seul mot → tel quel. */
 export function shortName(n: unknown): string {
   const p = String(n || "").trim().split(/\s+/).filter(Boolean);
   if (!p.length) return "?";

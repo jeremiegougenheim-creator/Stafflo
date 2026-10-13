@@ -31,42 +31,42 @@ const parseAirbnbReservationPage = ctx.parseAirbnbReservationPage;
 const evals = [];
 const ev = (name, fn) => evals.push({ name, fn });
 
-// ─── Confirmation Felipe (e-mail réel, HMWXHRPEHR) ───
+// ─── Confirmation Tomas (e-mail réel, HMTEST0001) ───
 const FELIPE_EMAIL = `
-Reservation confirmed - Felipe arrives Jun 17
-CONFIRMATION CODE HMWXHRPEHR
+Reservation confirmed - Tomas arrives Jun 17
+CONFIRMATION CODE HMTEST0001
 Identity verified · 21 reviews
-Tackley, United Kingdom
+Oxford, United Kingdom
 Hi Jeremie,
 Looking forward to our stay, we will arrive around 4pm.
-Send Felipe a Message
+Send Tomas a Message
 GUESTS
 7 adults
 `;
 
-ev('Confirmation Felipe : total 7, country United Kingdom, lang en', () => {
+ev('Confirmation Tomas : total 7, country United Kingdom, lang en', () => {
   const out = parseAirbnbConfirmationEmail(FELIPE_EMAIL);
   const lang = detectLivretLang({ nat: out.country });
-  return out.total === 7 && out.code === 'HMWXHRPEHR'
+  return out.total === 7 && out.code === 'HMTEST0001'
     && out.country === 'United Kingdom' && lang === 'en';
 });
 
-// ─── Fiche Gautier complète (texte collé, HMPFEE5KAW) ───
+// ─── Fiche Hugo complète (texte collé, HMTEST0002) ───
 const GAUTIER_FICHE_COMPLETE = `
-Gautier Giffard
+Hugo Marchand
 Lieu de résidence : Cannes, France
-Groupe de 10 réservé par Gautier
+Groupe de 10 réservé par Hugo
 +9
 6 adultes, 3 enfants
 Confirmation code
-HMPFEE5KAW
+HMTEST0002
 `;
 
-ev('Fiche Gautier complète : total 10, adults/children 1+6+3, country France, lang fr, code', () => {
+ev('Fiche Hugo complète : total 10, adults/children 1+6+3, country France, lang fr, code', () => {
   const out = parseAirbnbReservationPage(GAUTIER_FICHE_COMPLETE);
   const lang = detectLivretLang({ nat: out.country });
   return out.total === 10 && out.adults === 7 && out.children === 3
-    && out.country === 'France' && lang === 'fr' && out.code === 'HMPFEE5KAW';
+    && out.country === 'France' && lang === 'fr' && out.code === 'HMTEST0002';
 });
 
 // ─── Fiche sans "Groupe de N" ───
@@ -116,7 +116,7 @@ ev('E-mail de modification : sans chiffres → aucun champ, drapeau "modifiée"'
 
 // ─── Nom seul ───
 ev('Nom seul : aucun autre champ → aucun pays, aucune langue déduits', () => {
-  const out = parseAirbnbReservationPage('Gautier Giffard');
+  const out = parseAirbnbReservationPage('Hugo Marchand');
   const lang = detectLivretLang({ nat: out.country });
   return out.country === null && lang === 'bi';
 });

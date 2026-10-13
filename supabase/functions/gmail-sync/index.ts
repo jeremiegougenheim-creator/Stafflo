@@ -134,7 +134,7 @@ export function parseAirbnb(subject: string, text: string): Parsed {
     const mm = t.match(/\]\s*([A-ZÀ-Ý][\p{L}'’ -]{1,60}?)\s+\[https:\/\/www\.airbnb\.[a-z.]+\/hosting\/reservations\/details\//u);
     if (mm) name = mm[1].trim();
   }
-  // Nom complet présent dans le corps (« Felipe Villalobos [https://…/reservations/details/HM…] »)
+  // Nom complet présent dans le corps (« Tomas Herrera [https://…/reservations/details/HM…] »)
   const mFull = t.match(/\s([A-ZÀ-Ý][\p{L}'’-]+(?: [A-ZÀ-Ý][\p{L}'’-]+){1,3}) \[https:\/\/www\.airbnb\.[a-z.]+\/hosting\/reservations\/details\/HM/u);
   if (mFull && (!name || mFull[1].startsWith(name))) name = mFull[1].trim();
   let first_name = name ? name.split(/\s+/)[0] : null;
@@ -198,7 +198,7 @@ async function findStay(p: Parsed): Promise<Row | null> {
     const live = (r || []).filter((x) => !/cancel|declin/i.test(String(x.booking_status || "")));
     if (live.length === 1) return live[0];
   }
-  // Rappel « Felipe is coming soon » : pas de dates dans l'email → nom complet
+  // Rappel « Tomas is coming soon » : pas de dates dans l'email → nom complet
   // exact, séjour à venir, un seul résultat.
   if (p.type === "reminder" && p.name && p.name.includes(" ")) {
     const since = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);

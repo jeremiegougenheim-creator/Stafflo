@@ -73,10 +73,10 @@ Statut   : PASS
 ```
 [REGRESSION — texte pour LLM : les données de réservation restent]
 Entrée   : email Airbnb nominal (retours à la ligne conservés) :
-           "Massi Mekla\nParis, France\nCONFIRMATION CODE\nHMF8MQ49HW\nCheck-in\nCheckout\n
+           "Marc Duval\nParis, France\nCONFIRMATION CODE\nHMTEST0003\nCheck-in\nCheckout\n
             Fri 15 May\nTue 19 May\nGUESTS\n2 adults, 1 child, 1 infant\nGUEST PAID\n2035.20 EUR\n
-            GET READY FOR MASSI'S ARRIVAL\nProvide directions to your place"
-Attendu  : toPromptText(...) contient "HMF8MQ49HW", "Fri 15 May", "Tue 19 May",
+            GET READY FOR MARC'S ARRIVAL\nProvide directions to your place"
+Attendu  : toPromptText(...) contient "HMTEST0003", "Fri 15 May", "Tue 19 May",
            "2 adults, 1 child, 1 infant", "2035.20 EUR" ;
            ne contient pas "Provide directions" (bloc GET READY FOR coupé par
            cleanEmailBoilerplate, comportement existant de l'ancien pipeline l.31033) ;

@@ -29,7 +29,7 @@ const evals = [];
 const ev = (name, fn) => evals.push({ name, fn });
 
 // Positifs
-ev('Thibaut (message Airbnb réel) → famille', () =>
+ev('Arnaud (message Airbnb réel) → famille', () =>
   g({ guestMessage: "Bonjour Jeremie, nous sommes une famille du Sud de la France qui venons à Marrakech pour fêter les 50 ans de mariage de nos parents." }) === 'famille');
 ev('notes « GROUPE : 10 adultes, famille du Sud » → famille', () =>
   g({ notes: 'GROUPE : 10 adultes, famille du Sud de la France.' }) === 'famille');
@@ -58,8 +58,8 @@ ev('« amicalement » ne déclenche pas amis', () =>
   g({ message: 'Bien amicalement, Paul' }) === null);
 ev('« familier » ne déclenche pas famille', () =>
   g({ message: 'Le quartier nous est familier.' }) === null);
-ev('nom de famille seul (« Vauclare ») → null', () =>
-  g({ message: 'Thibaut Vauclare' }) === null);
+ev('nom de famille seul (« Delorme ») → null', () =>
+  g({ message: 'Arnaud Delorme' }) === null);
 
 let fail = 0;
 for (const { name, fn } of evals) {
