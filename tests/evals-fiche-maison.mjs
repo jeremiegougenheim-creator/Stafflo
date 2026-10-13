@@ -51,7 +51,8 @@ function slice(startMarker, endMarker) {
 }
 const helpers = slice('function villaFactsActive() {', '})();\nfunction proxyHeaders() {').replace(/\nfunction proxyHeaders\(\) \{$/, '');
 
-function harness({ villa = 'Villa DarJ', demo = false, killed = false } = {}) {
+// v509 : le pilote est reconnu par villa_settings.house_facts_ref (relu dans cfg.houseFactsRef), plus par son nom.
+function harness({ villa = 'Villa DarJ', facts = 'villa-facts.js', demo = false, killed = false } = {}) {
   const seen = [];
   const store = killed ? { stafflo_facts_ai: 'off' } : {};
   const sandbox = {
@@ -59,7 +60,7 @@ function harness({ villa = 'Villa DarJ', demo = false, killed = false } = {}) {
     localStorage: { getItem: k => (k in store ? store[k] : null) },
     STAFFLO_AUTH: { mode: demo ? 'demo' : 'auth' },
     STAFFLO_PROXY: 'https://x.supabase.co/functions/v1/ai-proxy',
-    getCfg: () => ({ villa }),
+    getCfg: () => ({ villa, houseFactsRef: facts }),
     lang: 'fr',
     JSON, String, Object, Array, RegExp
   };
@@ -86,10 +87,12 @@ function harness({ villa = 'Villa DarJ', demo = false, killed = false } = {}) {
   check('villaStaffNames = Saïd, Bouchra, Léa', JSON.stringify(vm.runInContext('villaStaffNames()', h.sandbox)) === JSON.stringify(['Saïd', 'Bouchra', 'Léa']));
   check('villaTeamLine sans Faiza', !/Faiza/.test(vm.runInContext("villaTeamLine('fr')", h.sandbox)));
 }
-check('autre villa : rien ajouté', !harness({ villa: 'Villa Les Oliviers' }).send({ task: 'write_fr', system: 'S', user: 'U' }).system.includes('FICHE'));
+check('autre villa : rien ajouté', !harness({ villa: 'Villa Les Oliviers', facts: '' }).send({ task: 'write_fr', system: 'S', user: 'U' }).system.includes('FICHE'));
+check('villa nommée « Dar Jnane » sans fiche en base : rien ajouté (plus de test sur le nom)', !harness({ villa: 'Riad Dar Jnane', facts: '' }).send({ task: 'write_fr', system: 'S', user: 'U' }).system.includes('FICHE'));
+check('pilote renommé : la fiche suit le compte, pas le nom', harness({ villa: 'Maison Atlas', facts: 'villa-facts.js' }).send({ task: 'write_fr', system: 'S', user: 'U' }).system.includes('FICHE'));
 check('mode démo : rien ajouté', !harness({ demo: true }).send({ task: 'write_fr', system: 'S', user: 'U' }).system.includes('FICHE'));
 check('coupe-circuit stafflo_facts_ai=off', !harness({ killed: true }).send({ task: 'write_fr', system: 'S', user: 'U' }).system.includes('FICHE'));
-check('autre villa : villaStaffNames() = null', vm.runInContext('villaStaffNames()', harness({ villa: 'Autre' }).sandbox) === null);
+check('autre villa : villaStaffNames() = null', vm.runInContext('villaStaffNames()', harness({ villa: 'Autre', facts: '' }).sandbox) === null);
 
 // ── 3. Réponses types Direct / Airbnb ─────────────────────────────────
 const tmplBlock = slice('          if ((isDirect || isAirbnb) && villaFactsActive()) {', '\n          }\n          if (tmplText) {').replace(/\n          if \(tmplText\) \{$/, '');

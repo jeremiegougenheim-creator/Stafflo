@@ -40,12 +40,39 @@ if (src) {
     vm.runInNewContext(src + '\nthis.r = inboxSendersIn();', ctx);
     return ctx.r;
   };
-  const a = run({ email_connection: { email: 'Boite.Villa@gmail.com' } }, { email: 'proprio@example.com' });
-  check('expéditeurs : Airbnb + boîte connectée + email du compte', a === 'in.(automated%40airbnb.com,boite.villa%40gmail.com,proprio%40example.com)', a);
+  const a = run({ email_connection: { email: 'Boite.Villa@example.org' } }, { email: 'proprio@example.com' });
+  check('expéditeurs : Airbnb + boîte connectée + email du compte', a === 'in.(automated%40airbnb.com,boite.villa%40example.org,proprio%40example.com)', a);
   const b = run({}, null);
   check('expéditeurs : sans compte ni boîte → Airbnb seulement (jamais une adresse d\'un autre compte)', b === 'in.(automated%40airbnb.com)', b);
   const c = run({ email_connection: { email: 'x@y.com,z@w.com' } }, { email: 'a@b.com)' });
   check('expéditeurs : une valeur qui casserait le filtre est ignorée', c === 'in.(automated%40airbnb.com)', c);
+}
+
+// ── v509 : identité — fiche maison, nom, propriétaire, WhatsApp ─────────
+const code = app.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n'); // hors commentaires
+check('fiche maison choisie par la base (house_facts_ref), plus par le nom de la villa',
+  /return c\.houseFactsRef === 'villa-facts\.js';/.test(app) && !/dar\\s\*-\?\\s\*j/.test(app));
+check('drapeau fiche maison relu à chaque démarrage, avant les sorties anticipées',
+  /cfg\.houseFactsRef = _hf;[\s\S]{0,400}if \(!row\.onboarded\) return;/.test(app));
+check('aucun numéro de téléphone du pilote', !/67684852|\+852/.test(app));
+check('aucun repli sur le prénom du pilote', !/'Jérémie'/.test(code));
+check('aucun repli sur le nom de la villa pilote', !/'Villa DarJ|'DarJ'|Villa DarJ \(vous\)|de Villa DarJ|saison Villa DarJ/.test(code));
+check('modèles de messages : identité du compte aux deux endroits', (app.match(/ownerTemplateCtx\(\)/g) || []).length >= 2 && !/owner_whatsapp: '/.test(app));
+check('bulles d’aide Prix : ni chiffres ni événements du pilote', !/Net ≥ 700|Festival du Film, Marathon, Marrakech du Rire|Film Festival, Marathon, Marrakech du Rire|capacité Villa DarJ/.test(app));
+check('ville vide ≠ Marrakech (seul le pilote garde l’ancien repli)', /if \(!city\) return c\.houseFactsRef === 'villa-facts\.js';/.test(app));
+{
+  const helpers = fnSource(app, 'villaNameOr') + '\n' + fnSource(app, 'ownerNameOr');
+  const run = (cfg, lng, expr) => { const ctx = { getCfg: () => cfg, lang: lng, String }; vm.runInNewContext(helpers + '\nthis.r = ' + expr + ';', ctx); return ctx.r; };
+  check('villaNameOr : nom du compte', run({ villa: 'Casa Lumi' }, 'fr', 'villaNameOr()') === 'Casa Lumi');
+  check('villaNameOr : vide → « la villa » / « the villa », jamais le pilote', run({}, 'fr', 'villaNameOr()') === 'la villa' && run({ villa: '  ' }, 'en', 'villaNameOr()') === 'the villa');
+  check('ownerNameOr : vide → repli demandé ou « le propriétaire »', run({}, 'fr', "ownerNameOr('?')") === '?' && run({}, 'fr', 'ownerNameOr()') === 'le propriétaire' && run({ owner: 'Ana' }, 'en', 'ownerNameOr()') === 'Ana');
+}
+{
+  const i = app.indexOf('  function ownerTemplateCtx(){'), j = app.indexOf('\n  }\n', i);
+  const src2 = app.slice(i, j + 5);
+  const run = (cfg) => { const ctx = { getCfg: () => cfg, String }; vm.runInNewContext(src2 + '\nthis.r = ownerTemplateCtx();', ctx); return ctx.r; };
+  check('modèles : réglages vides → aucun champ rempli (les {trous} restent signalés)', JSON.stringify(run({})) === '{}');
+  check('modèles : nom, propriétaire et WhatsApp du compte', JSON.stringify(run({ villa: 'Casa Lumi', owner: 'Ana', wa: '+351 900' })) === JSON.stringify({ villa_name: 'Casa Lumi', owner_name: 'Ana', owner_whatsapp: '+351 900' }));
 }
 
 console.log(`\n${pass}/${pass + fail} PASS`);

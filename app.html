@@ -3565,7 +3565,7 @@ window.addEventListener('keydown', function(e){
         <h2 class="onbV3-h2" data-fr="Votre villa" data-en="Your villa">Your villa</h2>
         <p class="onbV3-sub" data-fr="Juste l'essentiel pour commencer." data-en="Just the essentials to get started.">Juste l'essentiel pour commencer.</p>
         <label class="onbV3-label" data-fr="Nom" data-en="Name">Name</label>
-        <input type="text" class="onbV3-input" id="onbV3VillaName" placeholder="Villa Santi" data-placeholder-fr="Villa DarJ" data-placeholder-en="Villa Santi">
+        <input type="text" class="onbV3-input" id="onbV3VillaName" placeholder="Villa Santi" data-placeholder-fr="Villa Les Oliviers" data-placeholder-en="Villa Santi">
         <label class="onbV3-label" data-fr="Ville" data-en="City">City</label>
         <div class="onbV3-city-wrap" style="position:relative">
           <div class="onbV3-input-row">
@@ -7143,7 +7143,7 @@ window.renderSetupOneLiner = function(){
     </div>
     <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5" data-fr="Informations qu'ARIA connaîtra à chaque conversation : email type, tarifs, règles villa, codes wifi, contacts. Organisez en sections avec ===." data-en="Info ARIA will know in every conversation: email template, prices, villa rules, wifi codes, contacts. Organize with === sections.">Informations qu'ARIA connaîtra à chaque conversation : email type, tarifs, règles villa, codes wifi, contacts. Organisez en sections avec ===.</div>
     <div class="field" style="margin-bottom:6px">
-      <textarea id="cfgAriaMemory" rows="14" placeholder="=== EMAIL DE BIENVENUE TYPE ===&#10;Bonjour [nom], merci d'avoir choisi Villa DarJ...&#10;&#10;=== TARIFS ===&#10;Basse saison: 2500€/sem&#10;Haute saison: 4500€/sem" style="font-family:'JetBrains Mono','Menlo',monospace;font-size:12px;line-height:1.5"></textarea>
+      <textarea id="cfgAriaMemory" rows="14" placeholder="=== EMAIL DE BIENVENUE TYPE ===&#10;Bonjour [nom], merci d'avoir choisi notre villa...&#10;&#10;=== TARIFS ===&#10;Basse saison: 2500€/sem&#10;Haute saison: 4500€/sem" style="font-family:'JetBrains Mono','Menlo',monospace;font-size:12px;line-height:1.5"></textarea>
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted)">
       <span id="ariaMemoryCount">0 / 3000 caractères</span>
@@ -7494,7 +7494,7 @@ window.renderSetupOneLiner = function(){
       <div style="font-size:12px;color:var(--muted);margin-bottom:18px" data-fr="Ces infos personnalisent l'app et les alertes." data-en="This info personalizes the app and alerts.">Ces infos personnalisent l'app et les alertes.</div>
 
       <label style="display:block;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.4px;margin-bottom:4px;text-transform:uppercase" data-fr="Nom de la villa" data-en="Villa name">Nom de la villa</label>
-      <input id="owVilla" type="text" placeholder="Ex: Villa DarJ" style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:14px;font-family:'DM Sans',sans-serif;margin-bottom:14px;box-sizing:border-box">
+      <input id="owVilla" type="text" placeholder="Ex : Villa Les Oliviers" style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:14px;font-family:'DM Sans',sans-serif;margin-bottom:14px;box-sizing:border-box">
 
       <label style="display:block;font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.4px;margin-bottom:4px;text-transform:uppercase" data-fr="Votre prénom" data-en="Your first name">Votre prénom</label>
       <input id="owOwner" type="text" placeholder="Ex: Jérémie" style="width:100%;padding:11px 14px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:14px;font-family:'DM Sans',sans-serif;margin-bottom:14px;box-sizing:border-box">
@@ -7655,9 +7655,23 @@ function villaFactsActive() {
     if (localStorage.getItem('stafflo_facts_ai') === 'off') return false;
     if (typeof STAFFLO_AUTH !== 'undefined' && STAFFLO_AUTH && STAFFLO_AUTH.mode === 'demo') return false;
     var c = (typeof getCfg === 'function') ? getCfg() : {};
-    return /dar\s*-?\s*j\b/i.test(String(c.villa || ''));
+    /* v509 — multi-villa : choisie par la base (villa_settings.house_facts_ref, relu à chaque
+       démarrage), comme dans l'Espace. Avant : le NOM de la villa (/dar j/) → une villa nommée
+       « Dar Jnane » aurait reçu l'équipe, le wifi et les prix du pilote. */
+    return c.houseFactsRef === 'villa-facts.js';
   } catch (e) { return false; }
 }
+/* v509 — multi-villa : nom de la villa et du propriétaire du COMPTE (Réglages).
+   Jamais ceux du pilote par défaut : vide → libellé neutre. */
+function villaNameOr(fallbackFr, fallbackEn) {
+  try { var v = String(((typeof getCfg === 'function') ? getCfg() : {}).villa || '').trim(); if (v) return v; } catch (e) {}
+  return (typeof lang !== 'undefined' && lang === 'en') ? (fallbackEn || 'the villa') : (fallbackFr || 'la villa');
+}
+function ownerNameOr(fallbackFr, fallbackEn) {
+  try { var o = String(((typeof getCfg === 'function') ? getCfg() : {}).owner || '').trim(); if (o) return o; } catch (e) {}
+  return (typeof lang !== 'undefined' && lang === 'en') ? (fallbackEn || 'the owner') : (fallbackFr || 'le propriétaire');
+}
+window.villaNameOr = villaNameOr; window.ownerNameOr = ownerNameOr;
 function villaFactsForAI(lng) {
   return villaFactsActive() ? window.VILLA_FACTS.digest(lng === 'en' ? 'en' : 'fr') : '';
 }
@@ -7785,13 +7799,13 @@ const INFO_CONTENT = {
   },
   modifiers: {
     title_fr: 'Modificateurs', title_en: 'Modifiers',
-    body_fr: 'Ajustements appliqués au prix de base selon les conditions :<br><br><strong>• Événement +15%</strong> — Festival du Film, Marathon, Marrakech du Rire (auto-détecté)<br><strong>• Week-end +50€</strong> — vendredi et samedi (auto-détecté)<br><strong>• Last min -15%</strong> — réservation moins de 7 jours avant<br><strong>• Long séjour -20%</strong> — 14 nuits ou plus<br><br>Les modificateurs auto sont marqués <span style="color:#3B6D11;font-weight:700">AUTO</span>. Tu peux toujours forcer manuellement.',
-    body_en: 'Adjustments applied to base price based on conditions:<br><br><strong>• Event +15%</strong> — Film Festival, Marathon, Marrakech du Rire (auto)<br><strong>• Weekend +50€</strong> — Friday and Saturday (auto)<br><strong>• Last min -15%</strong> — booking less than 7 days ahead<strong>• Long stay -20%</strong> — 14 nights or more<br><br>Auto modifiers are tagged <span style="color:#3B6D11;font-weight:700">AUTO</span>. You can always override manually.'
+    body_fr: 'Ajustements appliqués au prix de base selon les conditions :<br><br><strong>• Événement +15%</strong> — dates fortes de votre destination (auto-détecté)<br><strong>• Week-end +50€</strong> — vendredi et samedi (auto-détecté)<br><strong>• Last min -15%</strong> — réservation moins de 7 jours avant<br><strong>• Long séjour -20%</strong> — 14 nuits ou plus<br><br>Les modificateurs auto sont marqués <span style="color:#3B6D11;font-weight:700">AUTO</span>. Tu peux toujours forcer manuellement.',
+    body_en: 'Adjustments applied to base price based on conditions:<br><br><strong>• Event +15%</strong> — key dates of your destination (auto)<br><strong>• Weekend +50€</strong> — Friday and Saturday (auto)<br><strong>• Last min -15%</strong> — booking less than 7 days ahead<strong>• Long stay -20%</strong> — 14 nights or more<br><br>Auto modifiers are tagged <span style="color:#3B6D11;font-weight:700">AUTO</span>. You can always override manually.'
   },
   guestSuppl: {
     title_fr: 'Supplément invités', title_en: 'Guest supplement',
-    body_fr: 'Le prix de base couvre jusqu\'à 8 personnes.<br><br><strong>+50€/nuit par personne au-delà de 8</strong>, jusqu\'à 10 max (capacité Villa DarJ).<br><br>Cohérent avec ta règle Airbnb : "Base rate covers up to 8 guests · Additional guests: €50/night per person".',
-    body_en: 'Base price covers up to 8 guests.<br><br><strong>+50€/night per person above 8</strong>, up to 10 max (Villa DarJ capacity).<br><br>Matches your Airbnb rule: "Base rate covers up to 8 guests · Additional guests: €50/night per person".'
+    body_fr: 'Le prix de base couvre la <strong>capacité de base</strong> de votre villa (Réglages).<br><br>Au-delà : <strong>supplément par personne et par nuit</strong> (Réglages), jusqu\'à la capacité maximale.<br><br>Gardez les mêmes valeurs que dans votre annonce Airbnb.',
+    body_en: 'Base price covers your villa\'s <strong>base capacity</strong> (Settings).<br><br>Above it: <strong>a supplement per guest per night</strong> (Settings), up to maximum capacity.<br><br>Keep the same values as your Airbnb listing.'
   },
   commission: {
     title_fr: 'Commission Airbnb', title_en: 'Airbnb commission',
@@ -7800,8 +7814,8 @@ const INFO_CONTENT = {
   },
   netPayout: {
     title_fr: 'Net pour vous', title_en: 'Your net payout',
-    body_fr: 'Ce que tu touches réellement après commission plateforme.<br><br><strong>Formule :</strong> (Prix nuit × Nuits + Supplément invités) − Commission<br><br>Pour comparer entre canaux :<br>• Direct = 100% du brut<br>• Airbnb = 84.5% du brut<br>• Booking = 85% du brut<br><br>L\'objectif Stafflo recommandé : <strong>Net ≥ 700€/nuit</strong> pour rester rentable sur Villa DarJ.',
-    body_en: 'What you actually receive after platform commission.<br><br><strong>Formula:</strong> (Price/night × Nights + Guest supplement) − Commission<br><br>To compare across channels:<br>• Direct = 100% of gross<br>• Airbnb = 84.5% of gross<br>• Booking = 85% of gross<br><br>Stafflo recommended target: <strong>Net ≥ 700€/night</strong> to stay profitable on Villa DarJ.'
+    body_fr: 'Ce que tu touches réellement après commission plateforme.<br><br><strong>Formule :</strong> (Prix nuit × Nuits + Supplément invités) − Commission<br><br>Pour comparer entre canaux :<br>• Direct = 100% du brut<br>• Airbnb = 84.5% du brut<br>• Booking = 85% du brut',
+    body_en: 'What you actually receive after platform commission.<br><br><strong>Formula:</strong> (Price/night × Nights + Guest supplement) − Commission<br><br>To compare across channels:<br>• Direct = 100% of gross<br>• Airbnb = 84.5% of gross<br>• Booking = 85% of gross'
   }
 };
 
@@ -8345,7 +8359,7 @@ function showAuthGate() {
         '</div>' +
         '<div id="authSignupForm" style="display:none">' +
           '<div style="font-size:12px;font-weight:500;color:rgba(15,35,24,.60);margin-bottom:6px">' + (fr?'Nom de votre villa':'Your villa name') + '</div>' +
-          '<input id="authSuName" type="text" placeholder="' + (fr?'Villa DarJ':'Villa DarJ') + '" style="width:100%;padding:14px;border:1px solid #E8E2D8;border-radius:var(--r-md);font-size:15px;margin-bottom:16px;font-family:inherit;box-sizing:border-box;color:#0F2318">' +
+          '<input id="authSuName" type="text" placeholder="' + (fr?'Villa Les Oliviers':'Villa Santi') + '" style="width:100%;padding:14px;border:1px solid #E8E2D8;border-radius:var(--r-md);font-size:15px;margin-bottom:16px;font-family:inherit;box-sizing:border-box;color:#0F2318">' +
           '<div style="font-size:12px;font-weight:500;color:rgba(15,35,24,.60);margin-bottom:6px">Email</div>' +
           '<input id="authSuEmail" type="email" placeholder="vous@exemple.com" autocomplete="email" style="width:100%;padding:14px;border:1px solid #E8E2D8;border-radius:var(--r-md);font-size:15px;margin-bottom:16px;font-family:inherit;box-sizing:border-box;color:#0F2318">' +
           '<div style="font-size:12px;font-weight:500;color:rgba(15,35,24,.60);margin-bottom:6px">' + (fr?'Mot de passe':'Password') + '</div>' +
@@ -10185,7 +10199,7 @@ function renderResidenceV1() {
     var fr = (typeof lang !== 'undefined') ? lang === 'fr' : true;
     var ico = (typeof iconFor === 'function') ? iconFor : function(){ return ''; };
     var cfg = (typeof getCfg === 'function') ? getCfg() : {};
-    var villa = (cfg && cfg.villa) ? cfg.villa : 'Villa DarJ';
+    var villa = villaNameOr(); // v509
     var GOLD = '#C9963A', GREEN_MID = '#1d4d3a', GREEN_DARK = '#0F2318', CREAM = '#FAF6EE';
     // Aria card (étape 2 partie 1) — démo d'écran : les boutons toastent, aucune action réelle.
     var ariaMsg = fr ? 'Inès (ménage) doit venir jeudi 10h. Je confirme avec elle et je préviens le gardien ?' : 'Inès (housekeeping) is due Thursday 10am. Shall I confirm with her and notify the guardian?';
@@ -15308,7 +15322,7 @@ async function handleSendCommand(client, originalText) {
     "Commande: \"" + originalText + "\"",  // what user typed
     '',
     'Écris un message WhatsApp de relance/suivi en ' + (fr ? 'français' : 'English') + '.',
-    'Court, chaleureux, personnalisé. Max 5 lignes. Signe: ' + (getCfg().owner || 'Jérémie') + '.',
+    'Court, chaleureux, personnalisé. Max 5 lignes. Signe: ' + ownerNameOr(villaNameOr()) + '.',
     'Retourne UNIQUEMENT le message, sans explication.'
   ].filter(Boolean).join('\n');
 
@@ -15829,8 +15843,8 @@ async function _prewarmAriaCache(clientList) {
 // recap / fin de séjour / facture AND the pasted WhatsApp block mentions the chef.
 async function handleMealRecap(parts, chefName) {
   var cfg = (typeof getCfg === 'function') ? getCfg() : {};
-  var ownerName = cfg.owner || 'Jérémie';
-  var villaName = cfg.villa || 'Villa DarJ';
+  var ownerName = ownerNameOr(); // v509
+  var villaName = villaNameOr(); // v509
 
   var client = findGuestInInstruction(parts.instruction);
   var nights = 0;
@@ -15966,8 +15980,8 @@ async function handleMealRecap(parts, chefName) {
 // Branches to handleMealRecap when WhatsApp + chef + meal-intent are detected.
 async function handleInstructionWithContext(parts) {
   var cfg = (typeof getCfg === 'function') ? getCfg() : {};
-  var ownerName = cfg.owner || 'Jérémie';
-  var villaName = cfg.villa || 'Villa DarJ';
+  var ownerName = ownerNameOr(); // v509
+  var villaName = villaNameOr(); // v509
 
   // Meal recap special path: WhatsApp + chef name in block + meal-intent in instruction
   if (parts.contextType === 'whatsapp') {
@@ -16039,8 +16053,8 @@ async function handleChatQuestion(text) {
     return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
   })();
   var cfg = getCfg();
-  var ownerName = cfg.owner || 'Jérémie';
-  var villaName = cfg.villa || 'Villa DarJ';
+  var ownerName = ownerNameOr(); // v509
+  var villaName = villaNameOr(); // v509
   // Staff first names — fiche maison (villa-facts.js) d'abord, puis
   // cfg.staffMembers (array) ou cfg.staff (multi-line "Name (role)").
   var staffNames = (function(){
@@ -16390,7 +16404,7 @@ async function handleChatSendCommand(client, text) {
     'Commande: "' + text + '"',
     '',
     'Écris un message WhatsApp court et chaleureux en ' + (fr ? 'français' : 'English') + '.',
-    'Max 5 lignes. Signe avec: ' + (getCfg().owner || 'Jérémie') + '.',
+    'Max 5 lignes. Signe avec: ' + ownerNameOr(villaNameOr()) + '.',
     'UNIQUEMENT le message, rien d\'autre.'
   ].filter(Boolean).join('\n');
   
@@ -17100,8 +17114,8 @@ window.openInboxReply = openInboxReply;
 
 async function handleInboxEmailFull(row, ex) {
   var fr = lang === 'fr';
-  var owner = getCfg().owner || 'Jérémie';
-  var villa = getCfg().villa || 'Villa DarJ';
+  var owner = ownerNameOr(); // v509
+  var villa = villaNameOr(); // v509
   var emailType = ex.email_type || 'email';
 
   // Build rich prompt
@@ -17616,8 +17630,8 @@ async function handleChatContextCommand(client, instruction) {
 
   // 3. Build full prompt
   var prompt = [
-    'Tu es l\'assistant de la Villa ' + (getCfg().villa || 'DarJ') + ', Marrakech.',
-    'Propriétaire: ' + (getCfg().owner || 'Jérémie') + '.',
+    'Tu es l\'assistant de ' + villaNameOr() + (String(getCfg().city || '').trim() ? ', ' + String(getCfg().city).trim() : '') + '.', // v509 : plus « Villa DarJ, Marrakech » pour tous
+    'Propriétaire: ' + ownerNameOr('?') + '.',
     '',
     '=== CLIENT ===',
     'Nom: ' + client.name + (client.nat ? ' ' + client.nat : ''),
@@ -17631,10 +17645,10 @@ async function handleChatContextCommand(client, instruction) {
     sentLog ? '=== MESSAGES WA ENVOYÉS ===\n' + sentLog : '',
     buildChatHistoryBlock(4),
     '',
-    '=== INSTRUCTION DE ' + (getCfg().owner || 'Jérémie').toUpperCase() + ' ===',
+    '=== INSTRUCTION DE ' + ownerNameOr().toUpperCase() + ' ===',
     instruction,
     '',
-    'CONTEXTE: Les messages à rédiger sont écrits PAR ' + (getCfg().owner || 'Jérémie') + ' AU client.',
+    'CONTEXTE: Les messages à rédiger sont écrits PAR ' + ownerNameOr() + ' AU client.',
     'Utilise toujours "je" pour Jérémie, jamais "nous" sauf si c\'est le ton souhaité.',
     '',
     'Réponds en JSON avec ce format EXACT (pas de markdown):',
@@ -17813,7 +17827,7 @@ function buildChatHistoryBlock(maxTurns) {
   if (!history.length) return '';
   var lines = ['=== CONVERSATION EN COURS ==='];
   history.forEach(function(h) {
-    var role = h.role === 'user' ? 'Jérémie' : 'Assistant';
+    var role = h.role === 'user' ? ownerNameOr() : 'Assistant';
     var text = (h.text || '').replace(/\*\*(.+?)\*\*/g, '$1').slice(0, 300);
     lines.push(role + ': ' + text);
   });
@@ -17871,7 +17885,7 @@ async function loadClientChatContext(clientId, clientName) {
   rows.forEach(function(row) {
     var d = new Date(row.created_at);
     var dt = d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');
-    var who = row.role === 'user' ? 'Jérémie' : 'Assistant';
+    var who = row.role === 'user' ? ownerNameOr() : 'Assistant';
     lines.push('['+dt+'] ' + who + ': ' + (row.content||'').slice(0,250));
   });
   lines.push('=== FIN HISTORIQUE ===');
@@ -17884,7 +17898,7 @@ async function loadRecentChatContext(limit) {
   if (!rows.length) return '';
   var lines = ['=== CONVERSATION EN COURS ==='];
   rows.forEach(function(row) {
-    var who = row.role === 'user' ? 'Jérémie' : 'Assistant';
+    var who = row.role === 'user' ? ownerNameOr() : 'Assistant';
     lines.push(who + ': ' + (row.content||'').slice(0,200));
   });
   lines.push('=== FIN ===');
@@ -17927,7 +17941,7 @@ function showClientChatHistory(clientId, clientName) {
       html += '<div style="padding:6px 8px;border-radius:var(--r-sm);font-size:11px;line-height:1.5;' +
         (isUser ? 'background:var(--green);color:#fff;align-self:flex-end;max-width:85%' : 'background:var(--paper);border:1px solid var(--border);max-width:85%') +
         '">' +
-        '<div style="font-size:9px;opacity:.6;margin-bottom:2px">' + (isUser ? 'Jérémie' : 'IA') + ' · ' + dt + '</div>' +
+        '<div style="font-size:9px;opacity:.6;margin-bottom:2px">' + (isUser ? ownerNameOr('Vous', 'You') : 'IA') + ' · ' + dt + '</div>' +
         (row.content||'').slice(0,200) +
         '</div>';
     });
@@ -18191,8 +18205,8 @@ async function handleChatContextCommandWithText(client, fullText) {
     }
   } catch(e) {}
 
-  var owner = getCfg().owner || 'Jérémie';
-  var villa = getCfg().villa || 'Villa DarJ';
+  var owner = ownerNameOr(); // v509
+  var villa = villaNameOr(); // v509
   var fr = lang === 'fr';
 
   var prompt = [
@@ -21995,7 +22009,7 @@ function renderCompetitors() {
       <!-- COMMIT X1 : #BA7517 mesurait 3.45:1 sur ce fond \u2014 jamais exerc\u00e9
            avant que la d\u00e9mo ait un prix r\u00e9el \u00e0 afficher ici (COMMIT X1 pt.1).
            var(--gold-ink) passe (4.89:1). -->
-      <div class="comp-name" style="color:var(--gold-ink);font-weight:500">Villa DarJ (vous)</div>
+      <div class="comp-name" style="color:var(--gold-ink);font-weight:500">${String(villaNameOr('Votre villa', 'Your villa')).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')} (vous)</div>
       <div class="comp-bar"><div class="comp-fill comp-you" style="width:${Math.round(yourPrice/maxPrice*100)}%"></div></div>
       <div class="comp-price" style="color:var(--gold-ink)">${Math.round(yourPrice).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'\u202f')}EUR</div>
       <div style="font-size:10px;color:#3B6D11;min-width:40px;text-align:right">ref</div>
@@ -24519,7 +24533,7 @@ function generateStaffChecklist() {
     : (fr ? "Pas d'arrivee prevue" : "No arrival scheduled");
   
   const briefText = [
-    (fr ? '📋 BRIEF STAFF — ' : '📋 STAFF BRIEF — ') + (cfg.villa || 'Villa DarJ'),
+    (fr ? '📋 BRIEF STAFF — ' : '📋 STAFF BRIEF — ') + villaNameOr(),
     (fr ? 'Pour: ' : 'To: ') + staffName,
     (fr ? 'Date: ' : 'Date: ') + today,
     clientInfo,
@@ -24527,7 +24541,7 @@ function generateStaffChecklist() {
     fr ? 'CHECKLIST PRÉPARATION:' : 'PREPARATION CHECKLIST:',
     ...checklist.map((item, i) => '  ' + (i+1) + '. ' + item),
     '',
-    fr ? 'Merci — ' + (cfg.owner || 'Jérémie') : 'Thank you — ' + (cfg.owner || 'Jérémie'),
+    fr ? 'Merci — ' + ownerNameOr(villaNameOr()) : 'Thank you — ' + ownerNameOr(villaNameOr()),
   ].join('\n');
   
   // Show modal with checklist + send options
@@ -24584,7 +24598,7 @@ function sendByEmail() {
   const text = document.getElementById('msgBody').textContent;
   const tab = document.querySelector('.msg-tab.on')?.textContent?.trim() || '';
   const guestEmail = window._currentResult?.guest?.email || '';
-  const subject = encodeURIComponent('Villa DarJ — ' + tab);
+  const subject = encodeURIComponent(villaNameOr('Stafflo', 'Stafflo') + ' — ' + tab); // v509
   const body = encodeURIComponent(text);
   window.open('mailto:' + guestEmail + '?subject=' + subject + '&body=' + body);
 }
@@ -24809,7 +24823,7 @@ function sendStaffBriefAll() {
   
   const todo = tasks.filter(t => t.status !== 'done');
   const lines = todo.map(t => '• [' + t.label + '] ' + t.text);
-  const msg = (fr ? '📋 Brief staff — Villa ' : '📋 Staff brief — Villa ') + (cfg.villa || 'DarJ') + '\n' + lines.join('\n');
+  const msg = (fr ? '📋 Brief staff — ' : '📋 Staff brief — ') + villaNameOr() + '\n' + lines.join('\n'); // v509 : plus « Villa Villa DarJ »
   
   const url = staffPhone 
     ? 'https://wa.me/' + staffPhone + '?text=' + encodeURIComponent(msg)
@@ -25156,7 +25170,8 @@ function isMarrakechVilla() {
   try {
     var c = (typeof getCfg === 'function') ? getCfg() : {};
     var city = (c.city || '').trim().toLowerCase();
-    if (!city) return true; // legacy/empty cfg: assume Marrakech (back-compat)
+    // v509 — multi-villa : ville vide ≠ Marrakech. Seul le pilote (fiche maison) garde l'ancien repli.
+    if (!city) return c.houseFactsRef === 'villa-facts.js';
     return /^marra|^marrak/.test(city);
   } catch(e) { return true; }
 }
@@ -25521,6 +25536,13 @@ async function pullVillaSettings() {
       }
     } catch(e) { console.warn('email_connection hydrate:', e); }
 
+    /* v509 — multi-villa : fiche maison choisie par la base (drapeau serveur), relue à
+       chaque démarrage, avant les sorties anticipées — comme email_connection ci-dessus. */
+    try {
+      var _hf = row.house_facts_ref || '';
+      if (cfg.houseFactsRef !== _hf) { cfg.houseFactsRef = _hf; setCfg(cfg); }
+    } catch(e) { console.warn('house_facts_ref hydrate:', e); }
+
     // Only hydrate if remote has been onboarded (otherwise defaults from trigger may be wrong)
     if (!row.onboarded) return;
     // Local has been onboarded too → don't overwrite (local is current source of truth in session)
@@ -25777,7 +25799,7 @@ function updateSetupChecklist() {
   var cfg = (typeof getCfg === 'function') ? getCfg() : {};
   var fr = lang === 'fr';
   var items = [
-    { id:'villa',    label: fr ? 'Nommer votre villa'      : 'Name your villa',     done: !!(cfg.villa && cfg.villa !== 'Villa DarJ'), action: 'openSettings()' },
+    { id:'villa',    label: fr ? 'Nommer votre villa'      : 'Name your villa',     done: !!String(cfg.villa || '').trim(), action: 'openSettings()' }, // v509
     { id:'calendar', label: fr ? 'Synchroniser un calendrier' : 'Sync your calendar', done: !!(cfg.icalFeeds && cfg.icalFeeds.some(function(f){return f && f.url})), action: 'openIcalSettings()' },
     { id:'email',    label: fr ? 'Connecter votre email'   : 'Connect your email',  done: !!(cfg.email_connection && cfg.email_connection.access_token), action: "connectEmailProvider('google')" },
     { id:'staff',    label: fr ? 'Ajouter votre staff'     : 'Add your staff',      done: !!(cfg.staffMembers && cfg.staffMembers.length > 0 && cfg.staffMembers[0] && cfg.staffMembers[0].name), action: 'openSettings()' }
@@ -30671,8 +30693,8 @@ window.addEventListener('DOMContentLoaded', function() {
     var dates = (g.arrival || '') + (g.departure ? ' → ' + g.departure : '');
     var nights = (g.arrival && g.departure) ? Math.round((new Date(g.departure)-new Date(g.arrival))/86400000) : 0;
     var ctx = (typeof getCfg==='function')?getCfg():{};
-    var owner = ctx.owner || 'Jérémie';
-    var villa = ctx.villa || 'Villa DarJ Marrakech';
+    var owner = ctx.owner || ownerNameOr(); // v509
+    var villa = ctx.villa || villaNameOr();
 
     var system, user;
     switch(action.purpose){
@@ -31389,7 +31411,7 @@ window.addEventListener('DOMContentLoaded', function() {
   async function classifyConversation(convId, body, fromName, fromHandle, typingEl){
     try {
       var _cfg2 = (typeof getCfg === 'function') ? getCfg() : {};
-      var _ownerName2 = (_cfg2.owner || 'Jérémie').trim();
+      var _ownerName2 = ownerNameOr().trim(); // v509
       var _staffNames2 = [];
       try {
         if (Array.isArray(_cfg2.staffMembers) && _cfg2.staffMembers.length) {
@@ -31409,7 +31431,7 @@ window.addEventListener('DOMContentLoaded', function() {
       var _clientList = _clientRef.length ? _clientRef.map(function(c){ return c.id + ' = ' + c.name; }).join(', ') : '(aucun)';
 
       var _sys = [
-        'Tu es le moteur de tri de Villa DarJ. Classe CE message. Retourne UNIQUEMENT du JSON valide, sans markdown.',
+        'Tu es le moteur de tri de ' + villaNameOr() + '. Classe CE message. Retourne UNIQUEMENT du JSON valide, sans markdown.',
         'Référentiel (seule source de vérité) :',
         '- Clients : ' + _clientList,
         '- Équipe : ' + _staffNames2.join(', '),
@@ -32930,7 +32952,7 @@ window.addEventListener('DOMContentLoaded', function() {
         '<div style="background:#0F2318;border-radius:var(--r-lg);padding:16px 18px;margin-top:14px;color:#FAF6EE">' +
           '<div style="font-size:9px;letter-spacing:3px;color:rgba(229,199,122,.6);margin-bottom:16px">ARIA · VOTRE VILLA</div>' +
           '<label style="display:block;font-size:11px;color:rgba(250,246,238,.6);margin-bottom:5px">' + (isFr ? 'Nom de votre villa' : 'Villa name') + '</label>' +
-          '<input id="onbV3V2VillaName" type="text" autocomplete="off" placeholder="' + (isFr ? 'Villa DarJ…' : 'Villa Santi…') + '" ' +
+          '<input id="onbV3V2VillaName" type="text" autocomplete="off" placeholder="' + (isFr ? 'Villa Les Oliviers…' : 'Villa Santi…') + '" ' +
             'style="display:block;width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid rgba(250,246,238,.25);border-radius:var(--r-sm);background:rgba(255,255,255,.07);color:#FAF6EE;font-size:14px;font-family:DM Sans,sans-serif;margin-bottom:14px;">' +
           '<label style="display:block;font-size:11px;color:rgba(250,246,238,.6);margin-bottom:5px">' + (isFr ? 'Personnes sur place (staff, gardien…)' : 'People on site (staff, caretaker…)') + '</label>' +
           '<input id="onbV3V2Staff" type="text" autocomplete="off" placeholder="' + (isFr ? 'Saïd, Bouchra, Léa' : 'Saïd, Bouchra, Léa') + '" ' +
@@ -36269,8 +36291,8 @@ function startTour(){
         try {
           var cfg=(typeof getCfg==='function')?getCfg():{};
           wise = cfg.wiseDetails || cfg.wise_details || '';
-          if (!s.input.stay.owner_name) s.input.stay.owner_name = cfg.owner || 'Jérémie';
-        } catch(e){ if (!s.input.stay.owner_name) s.input.stay.owner_name = 'Jérémie'; }
+          if (!s.input.stay.owner_name) s.input.stay.owner_name = ownerNameOr(); // v509
+        } catch(e){ if (!s.input.stay.owner_name) s.input.stay.owner_name = ownerNameOr(); }
         s.input.wise_details = wise;
         var r = B.buildMessage(s.input, body);
         if (!r.ok) { say(Q('Il me manque encore : ','Still missing: ') + (r.missing||[]).join(', ')); STATE=null; return; }
@@ -37092,8 +37114,8 @@ function startTour(){
           return days[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
         })();
         var cfg = getCfg();
-        var ownerName = cfg.owner || 'Jérémie';
-        var villaName = cfg.villa || 'Villa DarJ';
+        var ownerName = ownerNameOr(); // v509
+        var villaName = villaNameOr(); // v509
         var staffList = (function(){
           try {
             var _vf3 = villaStaffNames(); if (_vf3 && _vf3.length) return _vf3.join(', ');
@@ -37288,7 +37310,7 @@ function startTour(){
             else if(_pm===5||_pm===6){_pp=650;_pl=fr?'Basse saison (mai/juin)':'Low season (May/Jun)';}
             else{_pp=750;_pl=fr?'Saison normale':'Normal season';}
             var _pLabel=_pDate.toLocaleDateString(fr?'fr-FR':'en-GB',{month:'long',year:'numeric'});
-            var _pResp=fr?'Suggestion de prix pour '+_pLabel+' :\n'+_pp+'€/nuit — '+_pl+'.\nAucun comparable marché · Prix de saison Villa DarJ · Mesuré, pas modélisé.\n_Configurez vos tarifs dans Réglages si besoin._':'Price suggestion for '+_pLabel+':\n'+_pp+'€/night — '+_pl+'.\nNo market comps · Villa DarJ seasonal rate · Measured, not modelled.\n_Adjust in Settings._';
+            var _pResp=fr?'Suggestion de prix pour '+_pLabel+' :\n'+_pp+'€/nuit — '+_pl+'.\nAucun comparable marché · Prix de saison (Réglages) · Mesuré, pas modélisé.\n_Configurez vos tarifs dans Réglages si besoin._':'Price suggestion for '+_pLabel+':\n'+_pp+'€/night — '+_pl+'.\nNo market comps · Seasonal rate (Settings) · Measured, not modelled.\n_Adjust in Settings._';
             var _ptyp=document.getElementById('chatTyping');if(_ptyp)_ptyp.style.display='none';
             addChatBubble('ai',_pResp,[]);
             return;
@@ -37474,8 +37496,8 @@ function startTour(){
           (async function(){
             try {
               var cfg = getCfg();
-              var ownerName = cfg.owner || 'Jérémie';
-              var villaName = cfg.villa || 'Villa DarJ';
+              var ownerName = ownerNameOr(); // v509
+              var villaName = villaNameOr(); // v509
               var fr = lang === 'fr';
               var systemPrompt = (fr
                 ? 'Tu es ARIA pour ' + villaName + '. Équipe : ' + (villaTeamLine('fr') || 'l\'équipe de la villa') + '.\nRÈGLE : N\'invente jamais un montant, prénom ou contact absent des données. Info absente → omets ou « non précisé ».\nINTENTION NOUVEAU SÉJOUR : si énoncé d\'un nouveau contact + dates, retourne UNE action kind:"create_client". Si contexte gratuit/offert/famille, is_comp:true dans fields.\nPropose 2-3 actions. JSON array uniquement :\n[{"label":"max 5 mots","kind":"whatsapp|email|sms|internal_note|create_client","target":"staff|guest|owner","fields":{},"content":"message complet signé ' + ownerName + '"}]'
@@ -39166,8 +39188,8 @@ function startTour(){
       window._extractInProgress = true;
       try {
         var cfg = (typeof getCfg === 'function') ? getCfg() : {};
-        var owner = cfg.owner || 'Jérémie';
-        var villa = cfg.villa || 'Villa DarJ';
+        var owner = ownerNameOr(); // v509
+        var villa = villaNameOr(); // v509
         var fixMojibake = window.fixMojibake || function(s){return s;};
 
         var cleanRow = Object.assign({}, row);
@@ -39459,7 +39481,7 @@ function startTour(){
         var srcLow = (g.source || cleanRow.from_email || '').toLowerCase();
         var isDirect = srcLow.indexOf('direct') !== -1 || srcLow.indexOf('whatsapp') !== -1 || srcLow.indexOf('sms') !== -1;
         var isAirbnb = srcLow.indexOf('airbnb') !== -1;
-        var ownerName = (typeof getCfg === 'function' ? getCfg().owner : '') || 'Jérémie';
+        var ownerName = ownerNameOr(); // v509
         var _mois = parseInt(((g.arrival||'').match(/-(\d{2})-/)||[])[1], 10) || 0;
         var _weather = fr
           ? (_mois>=6 && _mois<=8 ? "En été il peut faire très chaud à Marrakech (38-40°C), mais la villa est climatisée dans toutes les chambres et la piscine est parfaite pour se rafraîchir."
@@ -41997,16 +42019,23 @@ window._setNotifPref = function(key, val){ try { window._notifPrefs[key] = !!val
     });
   }
   
+  function ownerTemplateCtx(){
+    var c = (typeof getCfg === 'function') ? getCfg() : {}, o = {};
+    if (String(c.villa || '').trim()) o.villa_name = String(c.villa).trim();
+    if (String(c.owner || '').trim()) o.owner_name = String(c.owner).trim();
+    if (String(c.wa || '').trim()) o.owner_whatsapp = String(c.wa).trim();
+    return o;
+  }
   function buildContextFromClient(client, lang){
     if (!client) return {};
     lang = lang || 'fr';
     var ctx = {
       guest_first_name: (client.name || '').split(/\s+/)[0] || '',
       guest_full_name: client.name || '',
-      villa_name: 'Villa DarJ',
-      owner_name: 'Jérémie',
-      owner_whatsapp: '+852 67684852',
     };
+    /* v509 — multi-villa : identité du COMPTE (Réglages). Avant : nom, prénom et WhatsApp du
+       pilote pour tout le monde. Un champ vide reste un {trou} signalé « à compléter ». */
+    Object.assign(ctx, ownerTemplateCtx());
     if (client.arrival) {
       ctx.arrival_date = F.formatDateHuman(client.arrival, {lang:lang, includeRelative:false});
       var d = new Date(client.arrival + 'T12:00:00');
@@ -42206,9 +42235,7 @@ window._setNotifPref = function(key, val){ try { window._notifPrefs[key] = !!val
         if (tmpl) {
           // Determine context: any client mentioned in text?
           var clientCtx = F.detectClientByName ? F.detectClientByName(trimmed) : null;
-          var ctx = clientCtx ? buildContextFromClient(clientCtx, lang) : {
-            owner_name: 'Jérémie', villa_name: 'Villa DarJ', owner_whatsapp: '+852 67684852'
-          };
+          var ctx = clientCtx ? buildContextFromClient(clientCtx, lang) : ownerTemplateCtx(); // v509 : identité du compte
           var preview = fillTemplate(tmpl, ctx);
           var missing = (preview.match(/\{[a-z_]+\}/g) || []);
           var chipLabel = lang === 'fr'
