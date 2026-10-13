@@ -57,7 +57,7 @@ check('alertes : désactiver = suppression douce de l’abonnement', /push_subsc
 check('installable : manifeste et icône écran d’accueil', esp.includes('<link rel="manifest" href="espace.webmanifest">') && esp.includes('<link rel="apple-touch-icon" href="assets/icon-180.png">'));
 check('pastille de synchro : seulement les passages gmail-sync', /sync_runs\?select=finished_at,ok&source=like\.gmail_sync\*/.test(script));
 // v4 — « À faire » : une ligne par action, tous séjours confondus
-check('« À faire » en tête du Jour', /h \+= todoCard\(\);\s*h \+= '<div class="tiles">/.test(script));
+check('« À faire » en tête du Jour (après la mise en route d’un compte neuf)', /h \+= setup;\s*h \+= todoCard\(\);\s*if \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) h \+= '<div class="tiles">/.test(script));
 check('« À faire » : retards et messages d’abord', /var rank = function \(x\) \{ return x\.k === 'msg' \? 0 : x\.late \? 1 : 2; \}/.test(script));
 check('« À faire » ouvre le séjour sur le bon panneau', /a === 'goto' && \(c = c \|\| pastById\(id\)\)/.test(script) && /id="st-' \+ esc\(c\.id\)/.test(script));
 check('une arrivée du jour n’apparaît qu’une fois', /c\.a > t && c\.a - t <= 21/.test(script));
@@ -93,6 +93,14 @@ check('multi-villa : en-tête = villa et ville du compte', /kk\.textContent = D\
 check('multi-villa : sans fiche, ARIA reçoit les bases et « à confirmer »', /HAS_FACTS \? F\.digest\(fr \? 'fr' : 'en'\) : basicsForAI\(fr\)/.test(script) && /jamais inventée/.test(script));
 check('multi-villa : livret, décompte et messages d’avant arrivée seulement avec une fiche maison', /HAS_FACTS \? '<a class="act" href="' \+ esc\(livretUrl\(c\)\)/.test(script) && /HAS_FACTS && F\.MEALS\.length \? '<button type="button" class="act" data-a="panel" data-id="' \+ esc\(c\.id\) \+ '" data-v="bill"/.test(script) && /if \(!HAS_FACTS\) return viewMaisonBasics\(\);/.test(script));
 check('multi-villa : « Envoyer à » la personne de l’équipe, pas un prénom écrit en dur', /sendTo: function \(n\)/.test(script) && !/sendSaid:/.test(script));
+// v10 — compte neuf : « Mise en route » cochée d'après les vraies données, disparaît une fois le compte prêt
+check('mise en route : Gmail (synchro serveur), premier séjour, équipe — cochés d’après les données', /var gmail = !!D\.sync, stay = \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) > 0, team = teamList\(\)\.length > 0;/.test(script));
+check('mise en route : disparaît quand Gmail, séjours et équipe sont là (jamais pour un compte établi)', /if \(gmail && stay && team\) return '';/.test(script));
+check('mise en route : chaque étape mène au bon écran de l’app (?open=)', /href: 'app\.html\?open=gmail'/.test(script) && /href: 'app\.html\?open=stay'/.test(script) && /href: 'app\.html\?open=settings'/.test(script));
+check('mise en route : pas de doublon avec l’invitation aux alertes', /if \(!setup\) h \+= nudgeCard\(\);/.test(script));
+check('compte sans aucun séjour : pas de tuiles « 0 / 0 / 0 € »', /if \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) h \+= '<div class="tiles">/.test(script));
+const appH = fs.readFileSync(path.join(root, 'app.html'), 'utf8');
+check('app : ?open=gmail|settings|stay ouvre l’écran une fois la session prête', /\[\?&\]open=\(gmail\|settings\|stay\)\\b/.test(appH) && /what === 'gmail' && typeof showEmailConnectModal === 'function'/.test(appH));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 check('sw.js ne met pas espace.html en cache', sw.includes("url.includes('espace.html')"));
 check('sw.js affiche les alertes et ouvre l’Espace au clic', /addEventListener\('push'/.test(sw) && /addEventListener\('notificationclick'/.test(sw) && /espace\.html/.test(sw));

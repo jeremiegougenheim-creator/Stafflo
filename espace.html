@@ -60,6 +60,8 @@ main{flex:1 1 auto;padding:14px 14px calc(96px + env(safe-area-inset-bottom))}
 .todo .tx .sub{margin:0}.todo>.ti:last-child{color:#A79F8C;flex:none}
 .stay{scroll-margin-top:12px}
 .todo.late{border-color:var(--alert-bg);box-shadow:inset 3px 0 0 var(--alert)}
+.todo.setup{text-decoration:none}.todo.setup>.ti:first-child{color:var(--gold-ink);font-size:20px;flex:none}
+.todo.setup.done{cursor:default;background:transparent;border-style:dashed}.todo.setup.done>.ti:first-child{color:var(--go)}.todo.setup.done b{font-weight:500;color:#7A7365}
 .t-go{background:var(--go-bg);color:var(--go)}.t-wait{background:var(--wait-bg);color:var(--wait)}
 .t-house{background:var(--house-bg);color:var(--house)}.t-alert{background:var(--alert-bg);color:var(--alert)}
 .gold{background:var(--wait-bg);color:var(--gold-ink)}
@@ -211,6 +213,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       leaves: function (d) { return 'départ ' + d; }, leavesToday: 'part aujourd’hui',
       ck: { phone: 'Téléphone', livret: 'Livret', meals: 'Repas', brief: 'Brief équipe' },
       ckLate: 'en retard', ckDue: function (d) { return 'avant ' + d; },
+      setup: { title: 'Mise en route', gmail: 'Connecter votre boîte Gmail', gmailSub: 'Les réservations et messages Airbnb arrivent seuls, toutes les 10 minutes.', stay: 'Ajouter votre premier séjour', staySub: 'Ou laissez Gmail le créer à la prochaine réservation Airbnb.', team: 'Ajouter votre équipe', teamSub: 'Pour envoyer le brief et donner un accès en lecture.', push: 'Activer les alertes sur ce téléphone', pushSub: 'Demandes, messages et réservations, en direct.', done: 'Fait' },
       todo: { title: 'À faire', none: 'Rien d’urgent pour les 3 prochains jours.', msg: 'Répondre au message', phone: 'Demander son téléphone', livret: 'Envoyer le livret', meals: 'Obtenir les choix de repas', brief: 'Briefer l’équipe' },
       arrivesToday: 'arrive aujourd’hui',
       todo2: { depart: 'Envoyer le message de départ', review: 'Laisser l’avis Airbnb' },
@@ -293,6 +296,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       leaves: function (d) { return 'leaves ' + d; }, leavesToday: 'leaves today',
       ck: { phone: 'Phone', livret: 'Guide', meals: 'Meals', brief: 'Team brief' },
       ckLate: 'late', ckDue: function (d) { return 'by ' + d; },
+      setup: { title: 'Getting started', gmail: 'Connect your Gmail inbox', gmailSub: 'Airbnb bookings and messages arrive on their own, every 10 minutes.', stay: 'Add your first stay', staySub: 'Or let Gmail create it with the next Airbnb booking.', team: 'Add your team', teamSub: 'To send the brief and give read-only access.', push: 'Turn on alerts on this phone', pushSub: 'Enquiries, messages and bookings, live.', done: 'Done' },
       todo: { title: 'To do', none: 'Nothing urgent for the next 3 days.', msg: 'Reply to the message', phone: 'Ask for their phone', livret: 'Send the guide', meals: 'Get meal choices', brief: 'Brief the team' },
       arrivesToday: 'arrives today',
       todo2: { depart: 'Send the departure message', review: 'Leave the Airbnb review' },
@@ -1240,6 +1244,28 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var rank = function (x) { return x.k === 'msg' ? 0 : x.late ? 1 : 2; };
     return out.sort(function (x, y) { return (rank(x) - rank(y)) || (x.due - y.due) || (x.c.a - y.c.a); });
   }
+  /* v10 — Mise en route d'un compte neuf : tant que Gmail, un premier séjour ou l'équipe
+     manquent. Chaque étape est cochée d'après les vraies données (synchro serveur, séjours,
+     équipe, alertes de CE téléphone) ; la carte disparaît d'elle-même une fois le compte prêt. */
+  function setupCard() {
+    var l = L(), s = l.setup;
+    var gmail = !!D.sync, stay = (D.stays.length + (D.past || []).length) > 0, team = teamList().length > 0;
+    if (gmail && stay && team) return '';
+    var steps = [
+      { k: 'gmail', done: gmail, icon: 'brand-gmail', href: 'app.html?open=gmail' },
+      { k: 'stay', done: stay, icon: 'calendar-plus', href: 'app.html?open=stay' },
+      { k: 'team', done: team, icon: 'user-plus', href: 'app.html?open=settings' }
+    ];
+    if (PUSH.state !== 'unsupported') steps.push({ k: 'push', done: PUSH.state === 'on', icon: 'bell', tab: 'maison' });
+    var n = steps.filter(function (x) { return x.done; }).length;
+    var body = steps.map(function (x) {
+      var inner = '<i class="ti ti-' + (x.done ? 'check' : x.icon) + '" aria-hidden="true"></i><span class="tx"><b>' + esc(s[x.k]) + '</b><span class="sub">' + esc(s[x.k + 'Sub']) + '</span></span>' +
+        (x.done ? '<span class="pill t-go">' + esc(s.done) + '</span>' : '<i class="ti ti-chevron-right" aria-hidden="true"></i>');
+      if (x.done) return '<div class="todo setup done">' + inner + '</div>';
+      return x.tab ? '<button type="button" class="todo setup" data-a="tab" data-v="' + x.tab + '">' + inner + '</button>' : '<a class="todo setup" href="' + x.href + '">' + inner + '</a>';
+    }).join('');
+    return card('rocket', s.title, body, n + '/' + steps.length);
+  }
   function todoCard() {
     var l = L(), t = todayNum(), it = todoItems();
     var body = it.length ? it.map(function (x) {
@@ -1336,11 +1362,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var m0 = new Date(), mStart = Date.UTC(m0.getFullYear(), m0.getMonth(), 1) / 86400000, mEnd = Date.UTC(m0.getFullYear(), m0.getMonth() + 1, 1) / 86400000;
     var nightsMonth = D.stays.concat(D.past || []).reduce(function (s, c) { return s + Math.max(0, Math.min(c.d, mEnd) - Math.max(c.a, mStart)); }, 0);
     var net = up.reduce(function (s, c) { return s + (c.is_comp ? 0 : (+c.price || 0)); }, 0);
+    var setup = setupCard(); // v10 : vide dès que le compte est prêt
+    h += setup;
     h += todoCard();
-    h += '<div class="tiles"><div class="tile"><span class="l">' + esc(l.tUpcoming) + '</span><span class="v">' + up.length + '</span></div>' +
+    if (D.stays.length + (D.past || []).length) h += '<div class="tiles"><div class="tile"><span class="l">' + esc(l.tUpcoming) + '</span><span class="v">' + up.length + '</span></div>' +
       '<div class="tile"><span class="l">' + esc(l.tNights) + '</span><span class="v">' + nightsMonth + '</span></div>' +
       '<div class="tile"><span class="l">' + esc(l.tNet) + '</span><span class="v" style="font-size:21px">' + esc(euro(net)) + '</span></div></div>';
-    h += nudgeCard();
+    if (!setup) h += nudgeCard(); // la carte « Mise en route » propose déjà les alertes
     var free = D.msgs.filter(function (m) { return !m.client_id || !byId(m.client_id); });
     if (free.length) h += card('message-chatbot', l.inbox, '<span class="sub">' + esc(l.inboxHelp) + '</span>' + free.map(function (m) { return inboxItem(m, false); }).join(''), String(free.length));
     h += card('home', l.inStay, cur.length ? cur.map(function (c) { return stayCard(c, 'in'); }).join('') : '<p class="empty">' + esc(l.noStay) + '</p>');

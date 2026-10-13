@@ -44552,5 +44552,30 @@ window.auditTones = auditTones;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
 })();
 </script>
+<script>
+/* v518 — liens profonds depuis l'Espace (carte « Mise en route ») : ?open=gmail | settings | stay.
+   Attend que la session et l'interface soient prêtes (10 s max), ouvre l'écran une seule fois,
+   puis retire le paramètre de l'adresse. Sans paramètre : rien. Additif, ne touche à rien d'autre. */
+(function () {
+  try {
+    var m = /[?&]open=(gmail|settings|stay)\b/.exec(location.search);
+    if (!m) return;
+    var what = m[1], tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      var ready = (typeof _stafflo_session !== 'undefined' && _stafflo_session && _stafflo_session.access_token) && document.getElementById('settingsModal');
+      if (!ready && tries < 20) return;
+      clearInterval(timer);
+      if (!ready) return;
+      try { history.replaceState(null, '', location.pathname + location.search.replace(/([?&])open=[a-z]+&?/, '$1').replace(/[?&]$/, '') + location.hash); } catch (e) {}
+      try {
+        if (what === 'gmail' && typeof showEmailConnectModal === 'function') showEmailConnectModal();
+        else if (what === 'settings' && typeof openSettings === 'function') openSettings();
+        else if (what === 'stay' && typeof openForm === 'function') openForm();
+      } catch (e) { try { console.warn('[open]', e); } catch (_) {} }
+    }, 500);
+  } catch (e) {}
+})();
+</script>
 </body>
 </html>
