@@ -56,7 +56,7 @@ async function open(qs, { view = () => ({ status: 404, body: '{"error":"not_foun
   await page.goto(`http://127.0.0.1:${PORT}/livret.html?${qs}`);
   await page.waitForFunction(() => { const s = document.getElementById('sheet'); return s.innerHTML.length > 1000 || s.querySelector('[role=status]'); }, null, { timeout: 9000 }).catch(() => {});
   await page.waitForTimeout(150);
-  const r = await page.evaluate(() => { const s = document.getElementById('sheet'); return { len: s.innerHTML.length, msg: (s.querySelector('[role=status]') || {}).innerText || '', qr: s.querySelectorAll('svg.qr-svg').length }; });
+  const r = await page.evaluate(() => { const s = document.getElementById('sheet'); const bar = document.querySelector('.bar'); return { len: s.innerHTML.length, msg: (s.querySelector('[role=status]') || {}).innerText || '', qr: s.querySelectorAll('svg.qr-svg').length, bar: !!(bar && bar.offsetParent !== null) }; });
   return { ...r, calls, errs, page, ctx };
 }
 const ok200 = () => ({ status: 200, body: '{"facts":' + FACTS + '}' });
@@ -65,13 +65,22 @@ const msgOnly = (r) => r.len < 2000 && r.qr === 0;
 let r = await open('t=' + TOK + '&guest=Ana&lang=fr', { view: ok200 });
 check('lien personnel → livret complet (QR compris), une seule demande, sans erreur', r.len > 30000 && r.qr === 2 && r.calls.filter((c) => c.kind === 'view').length === 1 && r.calls[0].u.includes('t=' + TOK) && !r.errs.length, { len: r.len, qr: r.qr, errs: r.errs });
 check('villa-facts.js jamais demandé', !r.calls.some((c) => c.kind === 'villa-facts'));
-await r.page.fill('#g', 'Zélie Martin'); await r.page.waitForTimeout(100);
-check('le livret reste éditable après chargement (le nom saisi s’affiche)', (await r.page.evaluate(() => document.getElementById('sheet').innerText)).includes('Zélie'));
+check('client (lien personnel, pas de session) : la barre d’édition du propriétaire est cachée', r.bar === false);
 await r.ctx.close();
 
 r = await open('guest=Ana&dates=1%20JAN%20%E2%80%93%205%20JAN%2027&lang=fr', { session: sessionFor(3600), rest: () => ({ status: 200, body: '[{"house_facts":' + FACTS + '}]' }) });
 const rc = r.calls.find((c) => c.kind === 'rest');
 check('propriétaire connecté (sans jeton) → sa fiche, lue avec SA session et son id', r.len > 30000 && rc && rc.auth === 'Bearer jwt-test' && rc.u.includes('owner_id=eq.' + UID) && !r.calls.some((c) => c.kind === 'view'), { len: r.len });
+check('propriétaire connecté : la barre d’édition est là', r.bar === true);
+await r.ctx.close();
+
+r = await open('t=' + TOK + '&lang=fr', { session: sessionFor(3600), view: ok200 });
+check('propriétaire connecté qui ouvre un lien personnel (depuis l’app) : barre d’édition visible', r.len > 30000 && r.bar === true);
+await r.ctx.close();
+r = await open('t=' + TOK + '&lang=fr&edit=1', { view: ok200 });
+check('?edit=1 : barre d’édition visible même sans session', r.len > 30000 && r.bar === true);
+await r.page.fill('#g', 'Zélie Martin'); await r.page.waitForTimeout(100);
+check('le livret reste éditable après chargement (le nom saisi s’affiche)', (await r.page.evaluate(() => document.getElementById('sheet').innerText)).includes('Zélie'));
 await r.ctx.close();
 
 r = await open('guest=Ana&dates=1%20JAN%20%E2%80%93%205%20JAN%2027&lang=fr', { session: sessionFor(-60), view: (u) => (u.includes('guest=Ana') ? ok200() : { status: 404, body: '{}' }) });
