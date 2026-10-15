@@ -318,7 +318,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       ariaErr: 'ARIA ne répond pas pour le moment. Réessayez dans un instant.',
       chips: ['Prochaines arrivées et ce qui manque', 'Brief équipe pour la prochaine arrivée', 'Combien coûte un dîner pour 9 personnes ?', 'Rédige la réponse à ce message client :'],
       clear: 'Effacer la conversation',
-      mYourVilla: 'Votre villa', mCity: 'Ville', mBedrooms: 'Chambres', mCapacity: 'Capacité', mNoTeam: 'Aucune personne enregistrée. Ajoutez votre équipe dans Réglages.', mSettings: 'Ouvrir les réglages',
+      mYourVilla: 'Votre villa', mCity: 'Ville', mBedrooms: 'Chambres', mCapacity: 'Capacité', mNoTeam: 'Aucune personne enregistrée.', mTeamEdit: 'Modifier l’équipe', mTeamAdd: 'Ajouter votre équipe', mSettings: 'Ouvrir les réglages',
       mSheetTitle: 'Fiche maison', mSheetTxt: 'Horaires, règles, repas, adresse : la fiche maison n’est pas encore remplie. Tant qu’elle est vide, ARIA répond « à confirmer » sur ces sujets et les messages aux clients restent simples. Les bases de la villa se règlent dans Réglages.',
       mMeals: 'Repas & prix', mOrder: 'Commande des repas', mTeam: 'Équipe', mArrival: 'Arrivée & départ', mRules: 'Règles de la maison', mRooms: 'Chambres',
       mGroup16: '1–6 pers.', mGroup710: '7–10 pers.', mDigest: 'Ce qu’ARIA sait de la maison',
@@ -450,7 +450,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       ariaErr: 'ARIA is not answering right now. Try again in a moment.',
       chips: ['Next arrivals and what is missing', 'Team brief for the next arrival', 'How much is a dinner for 9 people?', 'Write the reply to this guest message:'],
       clear: 'Clear the conversation',
-      mYourVilla: 'Your villa', mCity: 'City', mBedrooms: 'Bedrooms', mCapacity: 'Capacity', mNoTeam: 'No one recorded yet. Add your team in Settings.', mSettings: 'Open settings',
+      mYourVilla: 'Your villa', mCity: 'City', mBedrooms: 'Bedrooms', mCapacity: 'Capacity', mNoTeam: 'No one recorded yet.', mTeamEdit: 'Edit the team', mTeamAdd: 'Add your team', mSettings: 'Open settings',
       mSheetTitle: 'House sheet', mSheetTxt: 'Times, rules, meals, address: the house sheet is not filled in yet. While it is empty, ARIA answers “to be confirmed” on these topics and guest messages stay simple. The villa basics are set in Settings.',
       mMeals: 'Meals & prices', mOrder: 'Ordering meals', mTeam: 'Team', mArrival: 'Arrival & departure', mRules: 'House rules', mRooms: 'Bedrooms',
       mGroup16: '1–6 guests', mGroup710: '7–10 guests', mDigest: 'What ARIA knows about the house',
@@ -774,7 +774,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       // Dates fortes : table events (sourcée, une ligne par période), suppressions douces exclues.
       api('events?select=id,name,name_en,category,start_date,end_date,source,notes,zones&deleted_at=is.null&end_date=gte.' + new Date(todayNum() * 86400000).toISOString().slice(0, 10) + '&order=start_date.asc&limit=40').catch(function () { return []; }),
       api('staff_links?select=id,name,lang,created_at,last_seen_at&deleted_at=is.null&order=created_at.desc').catch(function () { return []; }),
-      api('villa_settings?select=villa_name,city,country,owner_name,bedrooms,max_guests,house_facts_ref,house_facts,gmail:email_connection->>email,gmail_at:email_connection->>connected_at&order=created_at.asc&limit=1').catch(function () { return []; }),
+      api('villa_settings?select=villa_name,city,country,owner_name,bedrooms,max_guests,house_facts_ref,house_facts,staff_members,gmail:email_connection->>email,gmail_at:email_connection->>connected_at&order=created_at.asc&limit=1').catch(function () { return []; }),
       api('staff?select=name,role,wa&active=eq.true&order=name.asc').catch(function () { return []; }),
       LINKS ? LINKS.load() : null,
       // Retours de l'équipe (chambres prêtes, problème) des 7 derniers jours — lus par le propriétaire (RLS).
@@ -1301,9 +1301,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return (/^(villa|maison|résidence|demeure|bastide|ferme|casa)\b/i.test(n) ? 'la ' : /^(riad|domaine|mas|château|chalet|palais|manoir)\b/i.test(n) ? 'le ' : '') + n;
   }
   var owner = function () { return (F && F.VILLA.host) || cap1(D.villa && D.villa.owner_name) || villaName() || 'Stafflo'; };
+  /* Sans fiche maison : l'équipe de la table staff (actifs), sinon celle saisie à l'inscription dans
+     l'app complète (villa_settings.staff_members) — lue, jamais réécrite. */
+  function staffRows() {
+    if ((D.staff || []).length) return D.staff;
+    var sm = D.villa && Array.isArray(D.villa.staff_members) ? D.villa.staff_members : [];
+    return sm.filter(function (m) { return m && typeof m === 'object' && String(m.name || '').trim(); });
+  }
   function teamList() {
     return HAS_FACTS ? F.TEAM.filter(function (m) { return m.name && m.brief; }).map(function (m) { return { name: m.name, phone: m.phone || '' }; })
-      : (D.staff || []).filter(function (m) { return m.name; }).map(function (m) { return { name: String(m.name), phone: m.wa || '' }; });
+      : staffRows().filter(function (m) { return m.name; }).map(function (m) { return { name: String(m.name), phone: m.wa || '' }; });
   }
   function mealsRow(c) { return c.pax >= 7 ? 'b' : 'a'; }
   function msgMeals(c) {
@@ -1738,7 +1745,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var steps = [
       { k: 'gmail', done: gmail, icon: 'brand-gmail', href: 'app.html?open=gmail' },
       { k: 'stay', done: stay, icon: 'calendar-plus', act: 'nsopen' },
-      { k: 'team', done: team, icon: 'user-plus', href: 'app.html?open=settings' }
+      { k: 'team', done: team, icon: 'user-plus', act: 'feopen', v: 'team' } // l'équipe se saisit dans la fiche maison, ici
     ];
     if (PUSH.state !== 'unsupported') steps.push({ k: 'push', done: PUSH.state === 'on', icon: 'bell', tab: 'maison' });
     var n = steps.filter(function (x) { return x.done; }).length;
@@ -1746,7 +1753,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       var inner = '<i class="ti ti-' + (x.done ? 'check' : x.icon) + '" aria-hidden="true"></i><span class="tx"><b>' + esc(s[x.k]) + '</b><span class="sub">' + esc(s[x.k + 'Sub']) + '</span></span>' +
         (x.done ? '<span class="pill t-go">' + esc(s.done) + '</span>' : '<i class="ti ti-chevron-right" aria-hidden="true"></i>');
       if (x.done) return '<div class="todo setup done">' + inner + '</div>';
-      if (x.act) return '<button type="button" class="todo setup" data-a="' + x.act + '">' + inner + '</button>';
+      if (x.act) return '<button type="button" class="todo setup" data-a="' + x.act + '"' + (x.v ? ' data-v="' + x.v + '"' : '') + '>' + inner + '</button>';
       return x.tab ? '<button type="button" class="todo setup" data-a="tab" data-v="' + x.tab + '">' + inner + '</button>' : '<a class="todo setup" href="' + x.href + '">' + inner + '</a>';
     }).join('');
     return card('rocket', s.title, body, n + '/' + steps.length);
@@ -2337,7 +2344,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var FE_PLACES = ['MEDINA', 'GOLF', 'ACTIVITIES', 'RESTAURANTS'];
   var FE_TEXTS = ['roomsIntro', 'orderRule', 'mealsIntro', 'earlyBrk', 'menuIntro', 'menuNote', 'kidsBox'];
   function feBlank() { return { VILLA: { name: '', host: '', hostPhone: '', address: '', pin: null, wifi: { net: '', pass: '' }, staff: '', said: '', extraGuest: null }, TEXT: {}, TEAM: [], ROOMS: [], MEALS: [] }; }
-  function feOpen() {
+  function feOpen(focus) {
     var src = HAS_FACTS && D.villa && D.villa.house_facts ? D.villa.house_facts : null;
     FE.data = src ? JSON.parse(JSON.stringify(src)) : feBlank();
     FE.data.VILLA = Object.assign({ name: '', city: '', host: '', hostPhone: '', address: '', staff: '', said: '' }, FE.data.VILLA || {});
@@ -2347,11 +2354,14 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       FE.data.VILLA.city = String(v.city || '').split(',')[0].trim();
       FE.data.VILLA.host = cap1(v.owner_name) || '';
       // L'équipe déjà enregistrée dans Réglages (table staff) sert de point de départ : prénoms seulement.
-      FE.data.TEAM = (D.staff || []).filter(function (m) { return m.name; }).map(function (m) { return { name: String(m.name), role: [String(m.role || ''), ''], phone: m.wa ? String(m.wa) : undefined, brief: true }; });
+      FE.data.TEAM = staffRows().filter(function (m) { return m.name; }).map(function (m) { return { name: String(m.name), role: [String(m.role || ''), ''], phone: m.wa ? String(m.wa) : undefined, brief: true }; });
     }
     FE_PAIRS.concat(FE_PLACES, ['TEAM', 'ROOMS', 'MEALS', 'CAFES', 'EXTRAS']).forEach(function (k) { if (!Array.isArray(FE.data[k])) FE.data[k] = []; });
     if (!FE.data.TEXT || typeof FE.data.TEXT !== 'object') FE.data.TEXT = {};
-    FE.on = true; FE.tr = false; FE.open = {}; U.tab = 'maison'; render(); window.scrollTo(0, 0);
+    FE.on = true; FE.tr = false; FE.open = {}; U.tab = 'maison';
+    if (focus === 'team') FE.open['fe:' + L().fe.s.team] = true; // « Modifier l'équipe » : la section Équipe ouverte, à l'écran
+    render(); window.scrollTo(0, 0);
+    if (focus === 'team') { var tc = document.querySelector('[data-fold="fe:' + L().fe.s.team + '"]'); if (tc && tc.scrollIntoView) tc.scrollIntoView({ block: 'start' }); }
   }
   function feGet(path) { return path.split('.').reduce(function (o, k) { return o == null ? undefined : o[k]; }, FE.data); }
   function fePut(path, val) {
@@ -2676,7 +2686,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var line = function (k, val) { return '<div class="line"><span>' + esc(k) + '</span><b>' + esc(val == null || val === '' ? dash : String(val)) + '</b></div>'; };
     if (false) h += card('home', villaName() || l.mYourVilla, line(l.mCity, v.city) + line(l.mBedrooms, v.bedrooms) + line(l.mCapacity, v.max_guests)); // 15/10 : remplacée par Réglages › La villa (modifiable)
     var team = teamList();
-    h += card('users', l.mTeam, team.length ? team.map(function (m) { return '<div class="line"><span><b>' + esc(m.name) + '</b></span>' + (m.phone ? '<span class="sub">' + esc(m.phone) + '</span>' : '') + '</div>'; }).join('') : '<p class="empty">' + esc(l.mNoTeam) + '</p>');
+    h += card('users', l.mTeam, (team.length ? team.map(function (m) { return '<div class="line"><span><b>' + esc(m.name) + '</b></span>' + (m.phone ? '<span class="sub">' + esc(m.phone) + '</span>' : '') + '</div>'; }).join('') : '<p class="empty">' + esc(l.mNoTeam) + '</p>') +
+      '<button type="button" class="btn ghost" data-a="feopen" data-v="team"><i class="ti ti-user-plus" aria-hidden="true"></i>' + esc(team.length ? l.mTeamEdit : l.mTeamAdd) + '</button>');
     h += eqCard();
     // v13 — la fiche se remplit ici même, sans détour par les réglages ni par Claude
     h += card('file-text', l.mSheetTitle, '<p style="margin:0;font-size:14px">' + esc(l.mSheetTxt) + '</p>' +
@@ -2699,7 +2710,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     h += card('clipboard-list', l.mOrder, '<p style="margin:0;font-size:14px;white-space:pre-line">' + esc(P(F.TEXT.orderRule)) + '</p>', '', true);
     var presence = F.PRACTICAL.filter(function (p) { return /^Présence de l'équipe/.test(p[0]); })[0];
     h += card('users', l.mTeam, F.TEAM.map(function (m) { return '<div class="line"><span>' + (m.name ? '<b>' + esc(m.name) + '</b> — ' : '') + esc(P(m.role)) + '</span>' + (m.phone ? '<b>' + esc(m.phone) + '</b>' : '') + '</div>'; }).join('') +
-      (presence ? '<p class="sub" style="white-space:pre-line">' + esc(P(presence)) + '</p>' : ''), '', true);
+      (presence ? '<p class="sub" style="white-space:pre-line">' + esc(P(presence)) + '</p>' : '') +
+      '<button type="button" class="btn ghost" data-a="feopen" data-v="team"><i class="ti ti-pencil" aria-hidden="true"></i>' + esc(l.mTeamEdit) + '</button>', '', true);
     var arr = F.PRACTICAL.filter(function (p) { return /^Arrivée et départ/.test(p[0]); })[0];
     if (arr) h += card('door-exit', l.mArrival, '<p style="margin:0;font-size:14px">' + esc(flat(P(arr))) + '</p>', '', true);
     h += card('info-circle', l.mRules, '<ul class="f">' + F.RULES.map(function (r) { return '<li>' + esc(flat(P(r))) + '</li>'; }).join('') + '</ul>', '', true);
@@ -2830,7 +2842,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'eqcreate') createLink();
     else if (a === 'eqrevoke' && v) revokeLink(v);
     else if (a === 'eqcopy') { var em = document.getElementById('eq-msg'); if (em) copyText(em.value); }
-    else if (a === 'feopen') feOpen();
+    else if (a === 'feopen') feOpen(v);
     else if (a === 'fecancel') { FE.on = false; FE.data = null; render(); window.scrollTo(0, 0); }
     else if (a === 'fesave') feSave();
     else if (a === 'feadd' && v) feAddRow(v);

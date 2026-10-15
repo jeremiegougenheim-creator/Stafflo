@@ -1,5 +1,5 @@
 // Stafflo Service Worker — v525 (équipe → base : chambres prêtes, problème signalé)
-const CACHE = 'stafflo-v539';
+const CACHE = 'stafflo-v540';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

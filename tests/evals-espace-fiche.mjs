@@ -78,7 +78,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
   page.on('pageerror', (e) => errs.push(String(e)));
   await page.addInitScript(([s, on, one]) => { if (one) { if (sessionStorage.getItem('__init')) return; sessionStorage.setItem('__init', '1'); } localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); if (on) localStorage.setItem('stafflo_email_in', 'on'); }, [SESSION, emailIn, once]);
   await page.goto(`http://127.0.0.1:${PORT}/espace.html#${tab}`);
-  await page.waitForSelector(tab === 'maison' ? '[data-a="feopen"]' : 'article, .card', { timeout: 8000 });
+  await page.waitForSelector(tab === 'maison' ? '[data-a="feopen"]:not([data-v])' : 'article, .card', { timeout: 8000 });
   return { page, ctx, calls, errs };
 }
 const txt = (page) => page.evaluate(() => document.getElementById('main').innerText);
@@ -87,7 +87,7 @@ const unfold = (page) => page.evaluate(() => { document.querySelectorAll('detail
 // ── 1. Compte neuf : fiche vide, remplie ici, sauvegardée sur sa ligne ────────────────
 let r = await open({ villa: { villa_name: 'Riad Zina', city: 'Marrakech', owner_name: 'nadia', house_facts_ref: null, house_facts: null }, staff: [{ name: 'Omar', role: 'gardien', wa: '+212600000000' }] });
 check('compte neuf : 0 erreur, bouton « Remplir la fiche maison », plus de « demandez-le à Claude »', !r.errs.length && /Remplir la fiche maison/.test(await txt(r.page)) && !/demandez-le à Claude/.test(await txt(r.page)), r.errs);
-await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name');
+await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name');
 let t = await txt(r.page);
 check('éditeur ouvert : nom et hôte pré-remplis depuis le compte, équipe depuis la table staff (prénom seulement), rien du pilote', (await r.page.inputValue('#fe-VILLA\\.name')) === 'Riad Zina' && (await r.page.inputValue('#fe-VILLA\\.host')) === 'Nadia' && (await r.page.inputValue('#fe-TEAM\\.0\\.name')) === 'Omar' && !/Dar J|Saïd|Douar|650/.test(t));
 check('rien n’est envoyé à l’ouverture', !r.calls.length);
@@ -109,14 +109,14 @@ await r.ctx.close();
 
 // ── 2. Nom manquant : rien n'est envoyé ───────────────────────────────────────────────
 r = await open({ villa: { villa_name: '', owner_name: '', house_facts: null } });
-await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name');
+await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name');
 await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(200);
 check('sans nom de villa : message, aucun envoi', !r.calls.length && /Indiquez le nom de la villa/.test(await r.page.evaluate(() => document.getElementById('toastHost').innerText)));
 // Compte sans ligne villa_settings : la sauvegarde crée la ligne (clé neutre), jamais une clé dérivée du nom
 await r.page.fill('#fe-VILLA\\.name', 'Villa Test');
 await r.ctx.close();
 r = await open({ villa: null });
-await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name');
+await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name');
 await r.page.fill('#fe-VILLA\\.name', 'Villa Test'); await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
 const ins = r.calls.filter((c) => c.kind === 'POST')[0];
 check('sans ligne villa_settings : PATCH vide puis création avec owner_id et villa_key = villa_<id>', !!r.calls.filter((c) => c.kind === 'PATCH').length && !!ins && ins.body.owner_id === UID && ins.body.villa_key === 'villa_' + UID && ins.body.house_facts_ref === 'villa-facts.js');
@@ -125,7 +125,7 @@ await r.ctx.close();
 // ── 3. Pilote : une modification ne touche que ce qui a changé, QR conservé ───────────
 r = await open({ villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT } });
 check('fiche en place : bouton « Modifier la fiche maison »', /Modifier la fiche maison/.test(await txt(r.page)));
-await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
+await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
 check('éditeur : la fiche du pilote est chargée (repas, équipe, chambres)', (await r.page.inputValue('#fe-MEALS\\.1\\.a')) === PILOT.MEALS[1].a[0] && (await r.page.$$('[data-fe^="TEAM."][data-fe$=".name"]')).length === PILOT.TEAM.length && (await r.page.$$('[data-fe^="ROOMS."][data-fe$=".t.0"]')).length === PILOT.ROOMS.length);
 await r.page.fill('#fe-MEALS\\.1\\.a', '700 MAD');
 await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
@@ -143,7 +143,7 @@ await r.ctx.close();
 // ── 4. Traduction explicite : ne remplit que les champs anglais vides, via ai-proxy ────
 r = await open({ villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' }, RULES: [['Non-fumeur.', ''], ['Pas de fête.', 'No parties.']], TEXT: { kidsBox: ['Avec des enfants : parc à 5 min.', ''] } } },
   ai: (b) => ({ text: b.user.split('\n').map((l) => l.replace(/^(\d+) \|\|\| .*/, '$1 ||| EN:' + l.split(' ||| ')[1])).join('\n') }) });
-await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('[data-fe="RULES.0.1"]', { state: 'attached' }); await unfold(r.page);
+await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('[data-fe="RULES.0.1"]', { state: 'attached' }); await unfold(r.page);
 await r.page.click('[data-a="fetr"]'); await r.page.waitForTimeout(500);
 const aiCall = r.calls.filter((c) => c.kind === 'ai')[0];
 check('traduction : un appel ai-proxy write_en, texte numéroté, seulement les champs vides', !!aiCall && aiCall.body.task === 'write_en' && /1 \|\|\| Non-fumeur\./.test(aiCall.body.user) && /2 \|\|\| Avec des enfants/.test(aiCall.body.user) && !/Pas de fête/.test(aiCall.body.user));
@@ -259,7 +259,7 @@ await r.ctx.close();
   await r.ctx.close();
   // Éditeur : la case « Demander les fiches voyageurs » se coche et s'enregistre sur la fiche (VILLA), décochée = absente.
   r = await open({ villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' } } } });
-  await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
+  await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
   await r.page.check('[data-fe="VILLA.guest_registration"]'); await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
   const sv = r.calls.filter((x) => x.kind === 'PATCH').pop();
   check('éditeur : « Demander les fiches voyageurs » → VILLA.guest_registration = true', sv && sv.body.house_facts.VILLA.guest_registration === true, sv && sv.body.house_facts.VILLA);
@@ -596,6 +596,32 @@ await r.ctx.close();
   await r.ctx.close();
 }
 
+// ── 5 undecies. Équipe dans Maison : un seul endroit, la fiche maison ──────────────────
+{
+  // Compte sans fiche ni table staff, équipe saisie à l'inscription dans l'app (villa_settings.staff_members)
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null, staff_members: [{ name: 'Omar', role: 'gardien', wa: '+212600000001' }, { name: '', role: 'x' }] };
+  r = await open({ villa: V });
+  await r.page.waitForTimeout(200);
+  let tt = await txt(r.page);
+  check('sans fiche : l’équipe saisie à l’inscription (app) s’affiche dans Maison, avec « Modifier l’équipe »', /Omar/.test(tt) && !!(await r.page.$('[data-a="feopen"][data-v="team"]')) && !/Ajoutez votre équipe dans Réglages/.test(tt));
+  await r.page.click('[data-a="feopen"][data-v="team"]'); await r.page.waitForSelector('[data-fe="TEAM.0.name"]');
+  const teamOpen = await r.page.evaluate(() => { const d = document.querySelector('details[data-fold="fe:Équipe"]'); return !!d && d.open; });
+  check('« Modifier l’équipe » : éditeur de la fiche, section Équipe ouverte, pré-remplie (prénom, téléphone)', teamOpen && (await r.page.inputValue('[data-fe="TEAM.0.name"]')) === 'Omar' && (await r.page.inputValue('#fe-TEAM\\.0\\.phone')) === '+212600000001', teamOpen);
+  await r.page.click('[data-a="feadd"][data-v="TEAM"]'); await r.page.waitForSelector('[data-fe="TEAM.1.name"]');
+  await r.page.fill('[data-fe="TEAM.1.name"]', 'Khadija'); await r.page.fill('[data-fe="TEAM.1.role.0"]', 'ménage');
+  await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
+  const ts = r.calls.filter((c) => c.kind === 'PATCH').pop(), T = ts && ts.body.house_facts && ts.body.house_facts.TEAM;
+  check('enregistrer : l’équipe va dans la fiche maison du compte (Omar + Khadija)', !!T && T.length === 2 && T[0].name === 'Omar' && T[1].name === 'Khadija' && T[1].role[0] === 'ménage', T);
+  await r.ctx.close();
+  // Compte neuf sans personne : « Ajouter votre équipe » ; la mise en route y mène aussi (plus vers l’app)
+  r = await open({ villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null }, tab: 'jour' });
+  await r.page.waitForTimeout(200);
+  check('mise en route : « Ajouter votre équipe » ouvre la section Équipe de la fiche (plus de détour par l’app)', !!(await r.page.$('button.todo.setup[data-a="feopen"][data-v="team"]')) && !(await r.page.$('a.todo.setup[href="app.html?open=settings"]')));
+  await r.page.click('button.todo.setup[data-a="feopen"][data-v="team"]'); await r.page.waitForTimeout(150);
+  check('… et l’éditeur s’ouvre dans Maison, section Équipe ouverte', await r.page.evaluate(() => { const d = document.querySelector('details[data-fold="fe:Équipe"]'); return !!d && d.open; }) && !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
 // ── 6. Commande du client (livret) : visible, à confirmer, chiffre « extras commandés » ────
 const ORD = { items: [{ id: 'm1', kind: 'meal', n: ['Dîner', 'Dinner'], q: 2, unit: 850, sub: 1700 }, { id: 'x0', kind: 'extra', n: ['Transfert aéroport', 'Airport transfer'], q: 1, unit: 400, sub: 400 }], total: 2100, cur: 'MAD', at: new Date(Date.now() - 3600e3).toISOString() };
 r = await open({ tab: 'jour', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT },
@@ -617,7 +643,7 @@ await r.ctx.close();
 
 // ── 7. Extras à commander : saisis dans l'éditeur, prix numérique, devise de la villa ──
 r = await open({ villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' } } } });
-await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
+await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
 await r.page.fill('#fe-VILLA\\.currency', '€');
 await r.page.click('[data-a="feadd"][data-v="EXTRAS"]'); await r.page.waitForSelector('[data-fe="EXTRAS.0.n.0"]');
 await r.page.fill('[data-fe="EXTRAS.0.n.0"]', 'Transfert aéroport'); await r.page.fill('#fe-EXTRAS\\.0\\.price', '40'); await r.page.fill('[data-fe="EXTRAS.0.unit.0"]', 'par trajet');
