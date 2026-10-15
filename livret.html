@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Livret d'accueil — Villa Dar J</title>
+<title>Livret d'accueil</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Display:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
@@ -204,7 +204,7 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
 <body>
 
 <div class="bar">
-  <h1>Livret <span>Villa Dar J</span></h1>
+  <h1>Livret <span id="barVilla"></span></h1>
   <div class="f"><label for="g">Client</label><input id="g" value="Fuji" autocomplete="off"></div>
   <div class="f"><label for="d">Dates</label><input id="d" value="3–6 JUL 26" autocomplete="off"></div>
   <div class="f" id="pWrap"><label for="p">Personnes</label><input id="p" type="number" min="1" max="10" placeholder="?" style="min-width:80px"></div>
@@ -273,6 +273,9 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
 
   function start(F) {
     window.VILLA_FACTS = F;
+    // Nom de la villa du livret (toute villa, 15/10/2026) : onglet et barre d'édition, avant le script du livret.
+    var vn = String((F.VILLA && F.VILLA.name) || '').trim();
+    if (vn) { document.title = 'Livret d\'accueil — ' + vn; var bv = document.getElementById('barVilla'); if (bv) bv.textContent = vn; }
     var main = document.getElementById('livret-main'), s = document.createElement('script');
     s.text = main.textContent;
     document.body.appendChild(s);
@@ -314,8 +317,26 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
    Source unique, lue aussi par l'app (ARIA, réponses types). Changer un prix
    ou une règle dans la fiche le change partout, livret compris. */
 const {VILLA, PRACTICAL, ROOMS, GOOD_TO_KNOW, MEAL_NOTES, MEALS, LEISURE, RULES, BREAKFAST, GOUTER, STARTERS, MAINS, SIMPLE, DESSERTS, MEDINA, GOLF, ACTIVITIES, RESTAURANTS, CAFES, TEXT: FACT_TEXT} = window.VILLA_FACTS;
-const villaMapUrl = 'https://www.google.com/maps/search/?api=1&query=' +
-  encodeURIComponent(VILLA.pin.lat + ',' + VILLA.pin.lng);
+/* Toute villa (15/10/2026) : le livret ne nomme plus le pilote. Nom, hôte, premier contact,
+   ville viennent de la fiche ; une section vide n'est pas rendue ; un anglais vide reprend le
+   français. Sur la fiche complète du pilote, le rendu est identique au caractère près
+   (tests/evals-livret-load.mjs, empreintes). */
+const VNAME = String(VILLA.name || '').trim();
+/* Ville : VILLA.city, sinon le dernier mot de l'adresse (« …, 40000 Marrakech »). */
+const VCITY = String(VILLA.city || (String(VILLA.address || '').trim().match(/([A-Za-zÀ-ÿ' -]+)$/) || ['', ''])[1] || '').trim();
+/* « à la Villa X », « au Riad Y », sinon « à X » / « chez nous ». */
+const AT_VILLA = (() => {
+  if (!VNAME) return ['chez nous', 'our villa'];
+  if (/^(villa|maison|résidence|demeure|bastide|ferme|casa|finca)\b/i.test(VNAME)) return ['à la ' + VNAME, 'to ' + VNAME];
+  if (/^(riad|domaine|mas|château|chalet|palais|manoir|dar)\b/i.test(VNAME)) return ['au ' + VNAME, 'to ' + VNAME];
+  return ['à ' + VNAME, 'to ' + VNAME];
+})();
+const PIN = VILLA.pin && VILLA.pin.lat != null && VILLA.pin.lng != null ? VILLA.pin : null;
+const villaMapUrl = PIN ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(PIN.lat + ',' + PIN.lng) : '';
+/* Rôle du premier contact (TEAM), avant le tiret : « majordome — … » → « majordome ». */
+const STAFF = String(VILLA.staff || '').trim();
+const STAFF_ROLE = (() => { const m = (window.VILLA_FACTS.TEAM || []).find(x => x && x.name === STAFF); const r = m && Array.isArray(m.role) ? m.role : ['', '']; const head = v => String(v || '').split(' — ')[0].trim(); return [head(r[0]), head(r[1] || r[0])]; })();
+const HOST = String(VILLA.host || '').trim();
 
 /* QR WhatsApp — encodent https://wa.me/<numero>, pas un lien wa.me/qr/... qui
    se reinitialise si le QR WhatsApp est regenere cote app. SVG inline, sans
@@ -326,7 +347,7 @@ const QR_JEREMIE = (window.VILLA_FACTS.QR || {}).host || '';
 
 /* Valeurs derivees du supplement voyageurs, pour le texte des chambres. */
 const XG = (() => {
-  const x = VILLA.extraGuest, n = x.from;
+  const x = VILLA.extraGuest || {from: 0, fee: 0, max: 0}, n = x.from;
   const ord = (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ({1:'st',2:'nd',3:'rd'}[n % 10] || 'th');
   return {from:n, fee:x.fee, max:x.max, ex:(x.max - n + 1) * x.fee, ord};
 })();
@@ -340,12 +361,12 @@ const T = {
      famille », amis -> « et tout le groupe », vide -> prenom seul. */
   hiGroup:{famille:[' et toute la famille',' and all the family'],
            amis:[' et tout le groupe',' and the whole group']},
-  lede:["Nous sommes ravis de vous accueillir à la Villa Dar J. Ce livret rassemble tout ce dont vous avez besoin pour un séjour détendu et mémorable.",
-        "We are delighted to welcome you to Villa Dar J. This guide gathers everything you need for a relaxed and memorable stay."],
+  lede:["Nous sommes ravis de vous accueillir " + AT_VILLA[0] + ". Ce livret rassemble tout ce dont vous avez besoin pour un séjour détendu et mémorable.",
+        "We are delighted to welcome you " + AT_VILLA[1] + ". This guide gathers everything you need for a relaxed and memorable stay."],
   net:['Réseau','Network'], pass:['Mot de passe','Password'],
   maps:['Voir sur Google Maps','View on Google Maps'],
   practical:['Informations pratiques','Practical Information'],
-  rooms:['Les 5 chambres','The 5 Bedrooms'],
+  rooms:ROOMS.length === 1 ? ['La chambre','The Bedroom'] : ['Les ' + ROOMS.length + ' chambres','The ' + ROOMS.length + ' Bedrooms'],
   roomsIntro:FACT_TEXT.roomsIntro,
   bed:['Lit','Bed'], bath:['Salle de bain','Bathroom'],
   goodToKnow:['Bon à savoir','Good to know'],
@@ -364,15 +385,15 @@ const T = {
   menuNote:FACT_TEXT.menuNote,
   brk:['Petit-déjeuner — inclus chaque jour','Breakfast — included daily'],
   gouter:['Goûter','Afternoon tea'],
-  saidLine:[VILLA.staff+', majordome — votre premier contact sur place',VILLA.staff+', house manager — your first point of contact on site'],
-  hostLine:["En dernier recours, si Saïd n'est pas joignable",'As a last resort, if Saïd cannot be reached'],
-  hostName:['Jérémie, votre hôte — souvent à l\'étranger','Jérémie, your host — often abroad'],
-  qrSaid:['Saïd — WhatsApp','Saïd — WhatsApp'],
-  qrJeremie:['Jérémie — WhatsApp','Jérémie — WhatsApp'],
+  saidLine:[STAFF + (STAFF_ROLE[0] ? ', ' + STAFF_ROLE[0] : '') + ' — votre premier contact sur place', STAFF + (STAFF_ROLE[1] ? ', ' + STAFF_ROLE[1] : '') + ' — your first point of contact on site'],
+  hostLine:["En dernier recours, si " + STAFF + " n'est pas joignable", 'As a last resort, if ' + STAFF + ' cannot be reached'],
+  hostName:[HOST + ', votre hôte — souvent à l\'étranger', HOST + ', your host — often abroad'],
+  qrSaid:[STAFF + ' — WhatsApp', STAFF + ' — WhatsApp'],
+  qrJeremie:[HOST + ' — WhatsApp', HOST + ' — WhatsApp'],
   qrNote:["Scannez avec l'appareil photo de votre téléphone pour ouvrir une conversation WhatsApp.",'Scan with your phone camera to open a WhatsApp chat.'],
   starters:['Entrées','Starters'], mains:['Plats principaux','Main Dishes'], desserts:['Desserts','Desserts'],
   simple:['Pour les enfants','For children'],
-  discover:['Découvrir Marrakech','Discover Marrakech'],
+  discover:['Découvrir ' + VCITY, 'Discover ' + VCITY],
   medina:['La Médina','The Medina'],
   ysl:['Musée Yves Saint Laurent & Jardin Majorelle (20 min)','Saint Laurent Museum & Majorelle Garden (20 min)'],
   yslTxt:["Un hommage à Yves Saint Laurent, à côté du jardin botanique créé par Jacques Majorelle — plantes exotiques et couleurs éclatantes.",
@@ -417,7 +438,7 @@ function parseTarifs(raw){
 /* ═══ Rendu ═══ */
 let LANG = 'bi';
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const mapUrl = n => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(n + ' Marrakech');
+const mapUrl = n => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(n + (VCITY ? ' ' + VCITY : ''));
 /* wa.me veut le numero international sans + ni espaces ; "(0)" est un prefixe
    de composition nationale, pas un chiffre du numero -> retire avant le strip. */
 const waDigits = raw => raw.replace(/\(0\)/g, '').replace(/\D/g, '');
@@ -434,8 +455,11 @@ const linkifyTel = html => html.replace(/\+\d[\d \-]{5,}\d/g,
    directement : la conversion se fait apres echappement. Cela permet d'aerer
    les blocs de trois ou quatre phrases sans toucher a leur contenu. */
 const br = txt => esc(txt).replace(/\n/g, '<br>');
+/* Un anglais absent ou vide (fiche remplie en français seulement) reprend le français. */
+const enOf = pair => (pair[1] === undefined || pair[1] === '') ? pair[0] : pair[1];
 function t(pair, tag){
-  const fr = pair[0], en = pair[1] === undefined ? pair[0] : pair[1];
+  if (!Array.isArray(pair)) pair = [String(pair == null ? '' : pair)];
+  const fr = pair[0], en = enOf(pair);
   if (LANG === 'fr') return br(fr);
   if (LANG === 'en') return br(en);
   if (fr === en) return br(fr);
@@ -443,7 +467,8 @@ function t(pair, tag){
 }
 /* version courte pour les libellés inline (titres de tableau, etc.) */
 function ti(pair){
-  const fr = pair[0], en = pair[1] === undefined ? pair[0] : pair[1];
+  if (!Array.isArray(pair)) pair = [String(pair == null ? '' : pair)];
+  const fr = pair[0], en = enOf(pair);
   if (LANG === 'fr') return esc(fr);
   if (LANG === 'en') return esc(en);
   return fr === en ? esc(fr) : esc(fr) + ' / ' + esc(en);
@@ -497,7 +522,7 @@ function labelled(escaped){
            : emph(escaped);
 }
 function tLabelled(pair){
-  const fr = pair[0], en = pair[1] === undefined ? pair[0] : pair[1];
+  const fr = pair[0], en = enOf(pair);
   if (LANG === 'fr') return labelled(br(fr));
   if (LANG === 'en') return labelled(br(en));
   if (fr === en)     return labelled(br(fr));
@@ -521,14 +546,21 @@ function linksOf(arr){
    comporte comme avant (groupe de 8, 145 a 185 MAD). Arrondi au 5 MAD le
    plus proche : au 10 le plus proche, le groupe de 10 (prep 850) retombe
    sur 130-170 au lieu du 125-165 attendu. */
+/* Prix de préparation lus dans la fiche (2e ligne des repas : brunch / déjeuner / dîner) ;
+   sans prix chiffré, pas d'estimation. */
+const PREP = (() => { const m = MEALS[1]; const n = v => parseInt(String(Array.isArray(v) ? v[0] : v || '').replace(/\s/g, ''), 10); return m ? {a: n(m.a), b: n(m.b)} : null; })();
 function mealEstimateText(pax, tarifs){
   const p = pax ? parseInt(pax, 10) : 8;
-  const prep = p <= 6 ? 650 : 850;
+  /* Fourchette de courses par personne : celle écrite dans la première note des repas
+     (« environ 40 à 80 MAD par personne ») — rien en dur. Sans elle, pas d'estimation. */
+  const gm = /(\d{1,4})\s*(?:à|to)\s*(\d{1,4})\s*MAD\s*(?:par personne|per person)/.exec(String((MEAL_NOTES[0] || [''])[0]));
+  if (!gm || !(tarifs || (PREP && PREP.a > 0 && PREP.b > 0))) return ['', ''];
+  const prep = PREP ? (p <= 6 ? PREP.a : PREP.b) : 0;
   /* Tarif negocie : fourchette du repas le moins cher au plus cher. */
   const lo = tarifs ? Math.min(tarifs.brunch, tarifs.dej, tarifs.diner) : prep;
   const hi = tarifs ? Math.max(tarifs.brunch, tarifs.dej, tarifs.diner) : prep;
-  const bas  = Math.round((lo + p * 40) / p / 5) * 5;
-  const haut = Math.round((hi + p * 80) / p / 5) * 5;
+  const bas  = Math.round((lo + p * +gm[1]) / p / 5) * 5;
+  const haut = Math.round((hi + p * +gm[2]) / p / 5) * 5;
   return [
     ' À titre indicatif, pour un groupe de ' + p + ', un repas revient à environ ' + bas + ' à ' + haut + ' MAD par personne, courses comprises.',
     ' As a guide, for a group of ' + p + ', a meal comes to about ' + bas + ' to ' + haut + ' MAD per person, groceries included.'
@@ -610,9 +642,9 @@ function render(){
   /* ── Page 1 ── */
   h += '<div class="page"><div class="cover">' +
        '<div class="eyebrow">' + ti(T.welcome) + '</div>' +
-       '<div class="villa">Villa Dar J</div>' +
+       '<div class="villa">' + esc(VNAME) + '</div>' +
        '<div class="diamonds">◆ ◆ ◆</div>' +
-       '<div class="eyebrow">Marrakech</div>' +
+       (VCITY ? '<div class="eyebrow">' + esc(VCITY) + '</div>' : '') +
        (stay ? '<div class="stay" style="margin-top:12px">' + esc(stay) + '</div>' : '') +
        '</div>';
 
@@ -620,27 +652,31 @@ function render(){
   h += '<div class="lede">' + t(T.lede) + '</div>';
   h += arrivalBlock();
 
+  const wifi = VILLA.wifi && VILLA.wifi.net ? VILLA.wifi : null, said = String(VILLA.said || '').trim(), hostPhone = String(VILLA.hostPhone || '').trim();
   h += '<div class="infobox">' +
-       '<div><span class="k">Wi-Fi</span> · ' + ti(T.net) + ' : ' + esc(VILLA.wifi.net) +
-       ' · ' + ti(T.pass) + ' : ' + esc(VILLA.wifi.pass) + '</div>' +
-       '<div><span class="k">' + ti(T.saidLine) + '</span><br>WhatsApp / SMS : <a href="' + waLink(VILLA.said) + '" target="_blank" rel="noopener">' + esc(VILLA.said) + '</a></div>' +
-       '<div class="host-fallback">' + ti(T.hostLine) + ' — ' + ti(T.hostName) +
-       ' · WhatsApp <a href="' + waLink(VILLA.hostPhone) + '" target="_blank" rel="noopener">' + esc(VILLA.hostPhone) + '</a></div>' +
-       '<div>Villa Dar J — ' + esc(VILLA.address) +
-       ' <a href="' + villaMapUrl + '" target="_blank" rel="noopener">' + ti(T.maps) + '</a></div>' +
+       (wifi ? '<div><span class="k">Wi-Fi</span> · ' + ti(T.net) + ' : ' + esc(wifi.net) +
+       ' · ' + ti(T.pass) + ' : ' + esc(wifi.pass) + '</div>' : '') +
+       (STAFF ? '<div><span class="k">' + ti(T.saidLine) + '</span>' + (said ? '<br>WhatsApp / SMS : <a href="' + waLink(said) + '" target="_blank" rel="noopener">' + esc(said) + '</a>' : '') + '</div>' : '') +
+       (HOST ? '<div class="host-fallback">' + (STAFF ? ti(T.hostLine) + ' — ' : '') + ti(T.hostName) +
+       (hostPhone ? ' · WhatsApp <a href="' + waLink(hostPhone) + '" target="_blank" rel="noopener">' + esc(hostPhone) + '</a>' : '') + '</div>' : '') +
+       (VILLA.address ? '<div>' + esc(VNAME) + ' — ' + esc(VILLA.address) +
+       (villaMapUrl ? ' <a href="' + villaMapUrl + '" target="_blank" rel="noopener">' + ti(T.maps) + '</a>' : '') + '</div>' : '') +
        '</div>';
 
-  h += '<div class="qr-block">' +
-       '<div class="qr-item">' + QR_SAID + '<div class="qr-cap">' + ti(T.qrSaid) + '</div></div>' +
-       '<div class="qr-item">' + QR_JEREMIE + '<div class="qr-cap">' + ti(T.qrJeremie) + '</div></div>' +
+  if (QR_SAID || QR_JEREMIE) h += '<div class="qr-block">' +
+       (QR_SAID ? '<div class="qr-item">' + QR_SAID + '<div class="qr-cap">' + ti(T.qrSaid) + '</div></div>' : '') +
+       (QR_JEREMIE ? '<div class="qr-item">' + QR_JEREMIE + '<div class="qr-cap">' + ti(T.qrJeremie) + '</div></div>' : '') +
        '</div>' +
        '<div class="qr-note">' + t(T.qrNote) + '</div>';
 
-  h += '<h2>' + ti(T.practical) + '</h2>' + listOfLabelled(PRACTICAL) + '</div>';
+  if (PRACTICAL.length) h += '<h2>' + ti(T.practical) + '</h2>' + listOfLabelled(PRACTICAL);
+  h += '</div>';
 
   /* ── Page 2 : chambres ── */
-  h += '<div class="page"><h2>' + ti(T.rooms) + '</h2>';
-  h += '<p>' + emph(t(T.roomsIntro)) + '</p>';
+  if (ROOMS.length || GOOD_TO_KNOW.length) {
+  h += '<div class="page">';
+  if (ROOMS.length) h += '<h2>' + ti(T.rooms) + '</h2>';
+  if (T.roomsIntro) h += '<p>' + emph(t(T.roomsIntro)) + '</p>';
   ROOMS.forEach((r, i) => {
     h += '<div class="room"><div class="rn">' + (i+1) + '</div><div class="rb">' +
          (r.tag ? '<div class="tag">' + ti(r.tag) + '</div>' : '') +
@@ -649,17 +685,24 @@ function render(){
          '<b>' + ti(T.bath) + '</b> ' + ti(r.bath) + '<br>' +
          t(r.d) + '</div></div></div>';
   });
-  h += '<h3>' + ti(T.goodToKnow) + '</h3>' + listOfLabelled(GOOD_TO_KNOW) + '</div>';
+  if (GOOD_TO_KNOW.length) h += '<h3>' + ti(T.goodToKnow) + '</h3>' + listOfLabelled(GOOD_TO_KNOW);
+  h += '</div>';
+  }
 
   /* ── Page 3 : regles de la maison, page dediee ── */
+  if (RULES.length) {
   h += '<div class="page"><h2>' + ti(T.houseRules) + '</h2>';
   h += listOfLabelled(RULES) + '</div>';
+  }
 
   /* ── Page 3 : repas, loisirs, règles ── */
-  h += '<div class="page"><h2>' + ti(T.meals) + '</h2>';
-  h += '<p>' + emph(t(T.mealsIntro)) + '</p>';
-  h += '<div class="callout">' + emph(t(T.orderRule)) + '</div>';
-  if (tarifs) {
+  if (MEALS.length || LEISURE.length) {
+  h += '<div class="page">';
+  if (MEALS.length) {
+  h += '<h2>' + ti(T.meals) + '</h2>';
+  if (T.mealsIntro) h += '<p>' + emph(t(T.mealsIntro)) + '</p>';
+  if (T.orderRule) h += '<div class="callout">' + emph(t(T.orderRule)) + '</div>';
+  if (tarifs && MEALS.length >= 3) {
     /* Une seule colonne de prix : celui annonce au groupe. */
     const pp = pax ? parseInt(pax, 10) : 8;
     const gt = tarifs.gouter || parseInt((pp <= 6 ? MEALS[2].a : MEALS[2].b)[0], 10);
@@ -681,38 +724,47 @@ function render(){
   }
   const mealNotes = MEAL_NOTES.map(x => x.slice());
   const est = mealEstimateText(pax, tarifs);
-  mealNotes[0] = [mealNotes[0][0] + est[0], mealNotes[0][1] + est[1]];
-  h += '</tbody></table><div class="note">' + listOfLabelled(mealNotes) + '</div>';
-  h += '<div class="callout">' + emph(t(T.earlyBrk)) + '</div>';
-  h += '<h2>' + ti(T.leisure) + '</h2>' + listOfLabelled(LEISURE) + '</div>';
+  if (mealNotes.length) mealNotes[0] = [mealNotes[0][0] + est[0], (mealNotes[0][1] === undefined ? mealNotes[0][0] : mealNotes[0][1]) + est[1]];
+  h += '</tbody></table>' + (mealNotes.length ? '<div class="note">' + listOfLabelled(mealNotes) + '</div>' : '');
+  if (T.earlyBrk) h += '<div class="callout">' + emph(t(T.earlyBrk)) + '</div>';
+  }
+  if (LEISURE.length) h += '<h2>' + ti(T.leisure) + '</h2>' + listOfLabelled(LEISURE);
+  h += '</div>';
+  }
 
   /* ── Page 4 : menu ── */
+  const MENUS = [[T.brk, BREAKFAST], [T.gouter, GOUTER], [T.starters, STARTERS], [T.mains, MAINS], [T.simple, SIMPLE], [T.desserts, DESSERTS]].filter(x => x[1].length);
+  if (MENUS.length) {
   h += '<div class="page"><h2>' + ti(T.menu) + '</h2>';
-  h += '<p>' + emph(t(T.menuIntro)) + '</p>';
-  h += '<p>' + t(T.menuNote) + '</p>';
-  h += '<h3>' + ti(T.brk) + '</h3>' + listOf(BREAKFAST);
-  h += '<h3>' + ti(T.gouter) + '</h3>' + listOf(GOUTER);
-  h += '<h3>' + ti(T.starters) + '</h3>' + listOf(STARTERS);
-  h += '<h3>' + ti(T.mains) + '</h3>' + listOf(MAINS);
-  h += '<h3>' + ti(T.simple) + '</h3>' + listOf(SIMPLE);
-  h += '<h3>' + ti(T.desserts) + '</h3>' + listOf(DESSERTS) + '</div>';
+  if (T.menuIntro) h += '<p>' + emph(t(T.menuIntro)) + '</p>';
+  if (T.menuNote) h += '<p>' + t(T.menuNote) + '</p>';
+  MENUS.forEach(x => { h += '<h3>' + ti(x[0]) + '</h3>' + listOf(x[1]); });
+  h += '</div>';
+  }
 
-  /* ── Page 5 : Marrakech ── */
-  h += '<div class="page"><h2>' + ti(T.discover) + '</h2>';
-  h += '<h3>' + ti(T.medina) + '</h3>' + linksOf(MEDINA);
-  h += '<h3>' + ti(T.ysl) + '</h3><p>' + t(T.yslTxt) +
+  /* ── Page 5 : la ville ── */
+  const AROUND = MEDINA.length + GOLF.length + ACTIVITIES.length + RESTAURANTS.length + CAFES.length;
+  h += '<div class="page">';
+  if (AROUND) {
+  h += '<h2>' + ti(T.discover) + '</h2>';
+  if (MEDINA.length) h += '<h3>' + ti(T.medina) + '</h3>' + linksOf(MEDINA);
+  /* Encart Majorelle : seulement avec une médina listée à Marrakech (texte de la page, pas de la fiche). */
+  if (MEDINA.length && VCITY === 'Marrakech') h += '<h3>' + ti(T.ysl) + '</h3><p>' + t(T.yslTxt) +
        ' <a href="https://www.jardinmajorelle.com/" target="_blank" rel="noopener">' + ti(T.tickets) + '</a></p>';
-  h += '<h3>' + ti(T.golf) + '</h3>' + linksOf(GOLF);
-  h += '<h3>' + ti(T.activities) + '</h3>' + linksOf(ACTIVITIES);
-  h += '<h3>' + ti(T.restaurants) + '</h3>' + linksOf(RESTAURANTS);
-  h += '<h3>' + ti(T.cafes) + '</h3><ul class="links">' +
+  if (GOLF.length) h += '<h3>' + ti(T.golf) + '</h3>' + linksOf(GOLF);
+  if (ACTIVITIES.length) h += '<h3>' + ti(T.activities) + '</h3>' + linksOf(ACTIVITIES);
+  if (RESTAURANTS.length) h += '<h3>' + ti(T.restaurants) + '</h3>' + linksOf(RESTAURANTS);
+  if (CAFES.length) h += '<h3>' + ti(T.cafes) + '</h3><ul class="links">' +
        CAFES.map(c => '<li><b>' + esc(c[0]) + '</b> <a href="' + mapUrl(c[0]) +
          '" target="_blank" rel="noopener">' + ti(T.map) + '</a>' +
          (c[1] ? ' · <a href="' + esc(c[1]) + '" target="_blank" rel="noopener">' + ti(T.site) + '</a>' : '') +
          '</li>').join('') + '</ul>';
-  h += '<div class="callout">' + kidsBoxHtml() + '</div>';
-  h += '<div class="sig">' + t(T.bye) + '<br>' + esc(VILLA.host) + '</div>';
-  h += '<div class="foot">Villa Dar J · Marrakech</div></div>';
+  }
+  if (T.kidsBox) h += '<div class="callout">' + kidsBoxHtml() + '</div>';
+  h += '<div class="sig">' + t(T.bye) + (HOST ? '<br>' + esc(HOST) : '') + '</div>';
+  h += '<div class="foot">' + esc([VNAME, VCITY].filter(Boolean).join(' · ')) + '</div>';
+  /* Signature discrète : les invités d'une villa sont souvent eux-mêmes propriétaires. */
+  h += '<div class="foot foot-stafflo">' + ti(['Livret préparé avec', 'Guest booklet made with']) + ' <a href="https://stafflo.app/" target="_blank" rel="noopener">Stafflo</a></div></div>';
 
   document.getElementById('sheet').innerHTML = h;
 }

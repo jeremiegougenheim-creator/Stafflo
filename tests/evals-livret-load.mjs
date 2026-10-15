@@ -140,6 +140,33 @@ r = await open('t=' + TOK + '&lang=fr', { view: () => ({ status: 200, body: '{"f
 check('fiche incomplète → message, jamais un livret à moitié vide', msgOnly(r) && !r.errs.length, { msg: r.msg, errs: r.errs });
 await r.ctx.close();
 
+// ── Toute villa (15/10/2026) : le livret ne nomme plus le pilote ──────────────────────
+// 1. Fiche complète (pilote) : rendu identique au caractère près (empreintes du 15/10/2026, hors
+//    bloc « Votre arrivée » et signature Stafflo). Si le livret est modifié VOLONTAIREMENT, recalculer.
+const crypto = await import('node:crypto');
+const sheetHash = async (page) => crypto.createHash('sha256').update(await page.evaluate(() => { const s = document.getElementById('sheet').cloneNode(true); s.querySelectorAll('#arrive, .foot-stafflo').forEach((e) => e.remove()); return s.innerHTML; })).digest('hex').slice(0, 16);
+for (const [qs, h] of [['guest=Felipe%20Villalobos&dates=13%20OCT%20%E2%80%93%2016%20OCT%2026&pax=7&groupe=famille&lang=bi', '723c0835fdcab1fa'], ['guest=Hugo&dates=20%20DEC%20%E2%80%93%2027%20DEC%2026&pax=10&groupe=amis&lang=fr&tarifs=400/400/500', '02270c66b3eb6dd2'], ['guest=Se%C3%A1n&dates=23%20OCT%20%E2%80%93%2026%20OCT%2026&pax=6&lang=en&tarifs=500/500/600/350', 'fb54de2d5c14395b']]) {
+  r = await open('t=' + TOK + '&' + qs, { view: ok200 });
+  const got = await sheetHash(r.page);
+  check('fiche complète : rendu inchangé (' + qs.slice(6, 20) + '…)', got === h && !r.errs.length, got);
+  if (qs.startsWith('guest=Felipe')) check('pilote : onglet inchangé « Livret d’accueil — Villa Dar J »', (await r.page.title()) === "Livret d'accueil — Villa Dar J", await r.page.title());
+  check('signature « Livret préparé avec Stafflo » au pied', /stafflo\.app/.test(await r.page.evaluate(() => (document.querySelector('.foot-stafflo') || {}).innerHTML || '')));
+  await r.ctx.close();
+}
+// 2. Fiche minimale d'une autre villa (remplie dans l'Espace, français seulement) : un livret
+//    complet et propre — rien du pilote, pas de section vide, pas de blanc là où l'anglais manque.
+const MINI = JSON.stringify({ VILLA: { name: 'Riad Zina', host: 'Nadia', hostPhone: '+33 6 00 00 00 00', address: 'Derb Sidi Bouloukat, Marrakech', staff: 'Omar', said: '+212 600 000 000' },
+  TEAM: [{ name: 'Omar', role: ['gardien — sur place tous les jours', ''], brief: true }], PRACTICAL: [['Arrivée et départ : chambres prêtes à partir de 15h, départ avant 11h.', '']], RULES: [['Non-fumeur à l’intérieur.', 'No smoking inside.']] });
+r = await open('t=' + TOK + '&guest=Ana&lang=bi', { view: () => ({ status: 200, body: '{"facts":' + MINI + '}' }) });
+let txt = await r.page.evaluate(() => document.getElementById('sheet').innerText);
+check('autre villa : livret rendu sans erreur, nom et ville depuis la fiche (« au Riad Zina », Marrakech)', r.len > 1500 && !r.errs.length && /RIAD ZINA|Riad Zina/.test(txt) && /accueillir au Riad Zina/.test(txt) && /welcome you to Riad Zina/.test(txt), r.errs);
+check('autre villa : premier contact et hôte depuis la fiche, rôle lu dans l’équipe (« Omar, gardien »), jamais « majordome », « Saïd » ni « Jérémie »', /Omar, gardien — votre premier contact/.test(txt) && /si Omar n'est pas joignable/.test(txt) && /Nadia, votre hôte/.test(txt) && !/majordome|Saïd|Jérémie|Dar J/.test(txt));
+check('autre villa : pas de Wi-Fi, pas de QR, pas de chambres, repas, menus ni « Découvrir » quand la fiche n’en a pas ; pas de Majorelle', !/Wi-Fi/.test(txt) && r.qr === 0 && !/Les \d chambres|La chambre|Bedrooms|Repas & horaires|Menu & spécialités|Découvrir|Majorelle|Petit-déjeuner/.test(txt));
+check('autre villa : anglais vide → le français est repris, jamais un blanc (bilingue : une seule ligne)', /Arrivée et départ : chambres prêtes/.test(txt) && (txt.match(/chambres prêtes à partir de 15h/g) || []).length === 1 && /No smoking inside/.test(txt));
+check('autre villa : pied de page = nom · ville, signature Stafflo', /Riad Zina · Marrakech/i.test(txt) && /Livret préparé avec/i.test(txt));
+check('autre villa : onglet « Livret d’accueil — Riad Zina », jamais « Villa Dar J »', (await r.page.title()) === "Livret d'accueil — Riad Zina" && !/Dar J/.test(await r.page.content()), await r.page.title());
+await r.ctx.close();
+
 await browser.close(); server.close();
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
