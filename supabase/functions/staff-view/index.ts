@@ -13,7 +13,8 @@
 //
 // Données minimales, en lecture seule : prénom + initiale, dates, nombre de
 // personnes, et trois champs écrits POUR l'équipe dans l'Espace
-// (details.arrival_time, details.beds, details.staff_note) + les repas.
+// (details.arrival_time, details.beds, details.staff_note) + les repas, + les extras
+// commandés par le client dans son livret (quoi et combien, sans prix).
 // Jamais : prix, versements, notes du propriétaire, téléphone, email,
 // nationalité, code de réservation. Les demandes (leads) n'apparaissent pas.
 
@@ -39,7 +40,7 @@ type Row = Record<string, any>;
 export type StaffStay = {
   id: string; name: string; a: string; d: string; nights: number;
   adults: number | null; children: number | null; infants: number | null; pax: number | null;
-  arrival_time: string; beds: string; meals: string; note: string; same_day: boolean;
+  arrival_time: string; beds: string; meals: string; note: string; extras: string; same_day: boolean;
 };
 // Même liste que l'Espace (espace.html, FIRM_OUT) : l'équipe voit les séjours que voit le propriétaire.
 const FIRM_OUT = ["inquiry", "lead", "quoted", "declined", "cancelled", "canceled"];
@@ -82,6 +83,11 @@ export function limited(key: string, max: number, windowMs: number, now = Date.n
   recent.push(now); hits.set(key, recent);
   return recent.length > max;
 }
+export function extrasLine(o: unknown): string {
+  const items = o && typeof o === "object" && Array.isArray((o as Row).items) ? (o as Row).items : [];
+  return items.filter((x: Row) => x && x.kind === "extra" && Number.isInteger(x.q) && x.q > 0)
+    .map((x: Row) => x.q + " × " + String(Array.isArray(x.n) ? x.n[0] : x.n || "").trim().slice(0, 80)).join(" · ").slice(0, 300);
+}
 const int = (v: unknown): number | null => (v == null || v === "" || !isFinite(+v) || +v < 0 ? null : Math.round(+v));
 
 export function staffView(rows: Row[], todayIso: string): StaffStay[] {
@@ -103,6 +109,8 @@ export function staffView(rows: Row[], todayIso: string): StaffStay[] {
         adults, children, infants, pax: pax || null,
         arrival_time: txt(det.arrival_time, 120), beds: txt(det.beds, 300),
         meals: txt(c.meals, 600), note: txt(det.staff_note, 600),
+        // Extras commandés par le client dans son livret (transfert, massage…) : quoi et combien, jamais le prix.
+        extras: extrasLine(det.guest_orders),
         same_day: departures.has(a),
       };
     });
