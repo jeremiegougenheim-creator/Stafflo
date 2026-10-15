@@ -260,6 +260,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief équipe', phone: 'Téléphone', reg: 'Fiches voyageurs' },
       copy: 'Copier', copied: 'Copié', openWa: 'Ouvrir WhatsApp', close: 'Fermer',
       markLivret: 'Marquer le livret envoyé', seeLivret: 'Voir le livret',
+      ein: { title: 'Emails Airbnb sans Gmail', intro: 'Faites suivre vos emails Airbnb à votre adresse Stafflo : réservations, messages et versements arrivent dans l’Espace comme avec Gmail relié — Outlook, iCloud ou toute autre boîte.', gmailOn: 'Votre boîte Gmail est déjà reliée : cette adresse est une autre façon de faire, rien d’obligatoire.', get: 'Obtenir mon adresse', s1: 'Dans Gmail : Paramètres › Voir tous les paramètres › Transfert et POP/IMAP › « Ajouter une adresse de transfert », collez cette adresse.', s2: 'Google envoie un code de confirmation à cette adresse : il s’affiche ici.', code: 'Code de confirmation Gmail', confirm: 'Ou ouvrir le lien de confirmation', wait: 'Pas encore de code — revenez dans une minute.', refresh: 'Actualiser', s3: 'Puis un filtre : De « airbnb.com » → « Transférer à » cette adresse.', other: 'Outlook, iCloud… : une règle « transférer les emails venant d’airbnb.com » vers cette adresse.', got: function (n) { return n ? n + (n > 1 ? ' emails Airbnb reçus' : ' email Airbnb reçu') + ' par cette adresse ces 7 derniers jours' : 'Aucun email Airbnb reçu par cette adresse pour l’instant'; } },
       rg: { line: 'Fiches voyageurs', got: function (n, d) { return n + (n > 1 ? ' reçues le ' : ' reçue le ') + d; }, none: 'pas encore reçues', decl: 'déclarées le ', print: 'Imprimer les fiches', csv: 'Télécharger (CSV)', mark: 'Marquer déclarées aux autorités', loading: 'Ouverture des fiches…', err: 'Lecture impossible — réessayez', purge: 'Effacées automatiquement le ',
         fiche: 'Fiche individuelle', last: 'Nom', first: 'Prénom(s)', born: 'Date et lieu de naissance', nat: 'Nationalité', doc: 'Pièce d’identité', job: 'Profession', addr: 'Adresse habituelle', arr: 'Arrivée', dep: 'Départ prévu', place: 'Hébergement', host: 'Exploitant', sign: 'Signature du voyageur', docs: { passport: 'Passeport', id_card: 'Carte d’identité', other: 'Autre pièce' } }, unmarkLivret: 'Livret pas encore envoyé',
       markBrief: 'Marquer le brief envoyé', briefDone: 'Brief envoyé le ',
@@ -368,6 +369,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'Team brief', phone: 'Phone', reg: 'Guest forms' },
       copy: 'Copy', copied: 'Copied', openWa: 'Open WhatsApp', close: 'Close',
       markLivret: 'Mark guide as sent', seeLivret: 'Open the guide',
+      ein: { title: 'Airbnb emails without Gmail', intro: 'Forward your Airbnb emails to your Stafflo address: bookings, messages and payouts arrive in the Espace just as with Gmail connected — Outlook, iCloud or any other inbox.', gmailOn: 'Your Gmail inbox is already connected: this address is another way to do it, nothing required.', get: 'Get my address', s1: 'In Gmail: Settings › See all settings › Forwarding and POP/IMAP › “Add a forwarding address”, paste this address.', s2: 'Google sends a confirmation code to this address: it shows up here.', code: 'Gmail confirmation code', confirm: 'Or open the confirmation link', wait: 'No code yet — check again in a minute.', refresh: 'Refresh', s3: 'Then a filter: From “airbnb.com” → “Forward it to” this address.', other: 'Outlook, iCloud…: a rule “forward emails from airbnb.com” to this address.', got: function (n) { return n ? n + ' Airbnb email' + (n > 1 ? 's' : '') + ' received at this address in the last 7 days' : 'No Airbnb email received at this address yet'; } },
       rg: { line: 'Guest forms', got: function (n, d) { return n + ' received on ' + d; }, none: 'not received yet', decl: 'registered on ', print: 'Print the forms', csv: 'Download (CSV)', mark: 'Mark as registered with the authorities', loading: 'Opening the forms…', err: 'Could not read — try again', purge: 'Deleted automatically on ',
         fiche: 'Individual form', last: 'Surname', first: 'First name(s)', born: 'Date and place of birth', nat: 'Nationality', doc: 'ID document', job: 'Occupation', addr: 'Home address', arr: 'Arrival', dep: 'Planned departure', place: 'Accommodation', host: 'Operator', sign: 'Guest signature', docs: { passport: 'Passport', id_card: 'ID card', other: 'Other document' } }, unmarkLivret: 'Guide not sent yet',
       markBrief: 'Mark brief as sent', briefDone: 'Brief sent on ',
@@ -1919,8 +1921,49 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     };
     run(0);
   }
+  /* Entrée sans Gmail (15/10/2026) : adresse in-<jeton>@stafflo.app (rpc inbound_address), emails transférés
+     → Cloudflare Email Routing → Worker → email-in → email_inbox. Derrière interrupteur tant que le routage
+     Cloudflare n'est pas en place : EMAIL_IN_LIVE, ou localStorage.stafflo_email_in = 'on' pour essayer. */
+  var EMAIL_IN_LIVE = false;
+  function emailInOn() { if (EMAIL_IN_LIVE) return true; try { return localStorage.getItem('stafflo_email_in') === 'on'; } catch (e) { return false; } }
+  var INS = { loaded: false, busy: false, addr: '', n: 0, code: '', link: '' };
+  function inLoad() {
+    if (INS.busy) return; INS.busy = true;
+    var since = new Date(Date.now() - 7 * 86400000).toISOString();
+    Promise.all([
+      api('inbound_addresses?select=token').catch(function () { return []; }),
+      api('email_inbox?select=from_email,subject,body,received_at&source=eq.email_in&received_at=gte.' + encodeURIComponent(since) + '&order=received_at.desc&limit=50').catch(function () { return []; })
+    ]).then(function (res) {
+      var t = (res[0] || [])[0]; INS.addr = t && t.token ? 'in-' + t.token + '@stafflo.app' : INS.addr;
+      var rows = res[1] || [];
+      INS.n = rows.filter(function (m) { return /airbnb\./i.test(m.from_email || ''); }).length;
+      var g = rows.filter(function (m) { return /^forwarding-noreply@google\.com$/i.test(m.from_email || ''); })[0];
+      INS.code = g ? ((String(g.subject || '') + ' ' + String(g.body || '')).match(/\b(\d{9})\b/) || [])[1] || '' : '';
+      INS.link = g ? (String(g.body || '').match(/https:\/\/mail(?:-settings)?\.google\.com\/mail\/[^\s"<>]+/) || [])[0] || '' : '';
+      INS.loaded = true;
+    }).finally(function () { INS.busy = false; render(); });
+  }
+  function inGet() {
+    U.busy = true; render();
+    api('rpc/inbound_address', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+      .then(function (a) { if (typeof a === 'string' && /^in-[a-z0-9]{10,16}@stafflo\.app$/.test(a)) INS.addr = a; })
+      .catch(function () { toast(L().saveErr, true); })
+      .finally(function () { U.busy = false; render(); });
+  }
+  function inCard() {
+    if (!emailInOn()) return '';
+    if (!INS.loaded) { inLoad(); }
+    var l = L().ein, h = '<p style="margin:0;font-size:14px">' + esc(l.intro) + '</p>' + (D.sync ? '<p class="sub" style="margin:0">' + esc(l.gmailOn) + '</p>' : '');
+    if (!INS.addr) return card('mail-forward', l.title, h + '<button type="button" class="btn gold" data-a="inget"' + (U.busy || !INS.loaded ? ' disabled' : '') + '><i class="ti ti-at" aria-hidden="true"></i>' + esc(l.get) + '</button>');
+    h += '<div class="line"><b style="font-family:ui-monospace,Menlo,monospace;word-break:break-all">' + esc(INS.addr) + '</b><button type="button" class="btn ghost" data-a="incopy"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(L().copy) + '</button></div>' +
+      '<ol class="f" style="margin:0;padding-left:20px;font-size:14px"><li>' + esc(l.s1) + '</li><li>' + esc(l.s2) +
+      (INS.code ? '<br><b>' + esc(l.code) + ' : ' + esc(INS.code) + '</b>' + (INS.link ? ' · <a href="' + esc(INS.link) + '" target="_blank" rel="noopener">' + esc(l.confirm) + '</a>' : '') : '<br><span class="sub">' + esc(l.wait) + '</span> <button type="button" class="btn ghost" data-a="inrefresh">' + esc(l.refresh) + '</button>') +
+      '</li><li>' + esc(l.s3) + '</li></ol><p class="sub" style="margin:0">' + esc(l.other) + '</p>' +
+      '<p class="sub" style="margin:0">' + esc(l.got(INS.n)) + '</p>';
+    return card('mail-forward', l.title, h);
+  }
   function viewMaisonBasics() {
-    var l = L(), v = D.villa || {}, h = pushCard(), dash = '?';
+    var l = L(), v = D.villa || {}, h = pushCard() + inCard(), dash = '?';
     var line = function (k, val) { return '<div class="line"><span>' + esc(k) + '</span><b>' + esc(val == null || val === '' ? dash : String(val)) + '</b></div>'; };
     h += card('home', villaName() || l.mYourVilla, line(l.mCity, v.city) + line(l.mBedrooms, v.bedrooms) + line(l.mCapacity, v.max_guests));
     var team = teamList();
@@ -1935,7 +1978,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function viewMaison() {
     if (FE.on && FE.data) return feView();
     if (!HAS_FACTS) return viewMaisonBasics();
-    var l = L(), i = I(), h = pushCard() + eqCard(); // v12 — ce qui demande une action d'abord, la fiche repliée ensuite
+    var l = L(), i = I(), h = pushCard() + eqCard() + inCard(); // v12 — ce qui demande une action d'abord, la fiche repliée ensuite
     var rows = F.MEALS.map(function (m) { return '<tr><td>' + esc(P(m.n)) + '<br><span class="sub">' + esc(P(m.h)) + '</span></td><td class="n">' + esc(P(m.a)) + '</td><td class="n">' + esc(P(m.b)) + '</td></tr>'; }).join('');
     h += card('tools-kitchen-2', l.mMeals, '<table class="fact-t"><thead><tr><th></th><th>' + esc(l.mGroup16) + '</th><th>' + esc(l.mGroup710) + '</th></tr></thead><tbody>' + rows + '</tbody></table>' +
       '<ul class="f">' + F.MEAL_NOTES.map(function (n) { return '<li>' + esc(flat(P(n))) + '</li>'; }).join('') + '</ul>', '', true);
@@ -2028,6 +2071,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'rv') { var cr = byId(id) || pastById(id); if (cr) { RV[cr.id] = RV[cr.id] === v ? '' : v; if (v === 'host' && !(DR['rv-' + cr.id] && DR['rv-' + cr.id].text)) reviewDraft(cr); render(); } }
     else if (a === 'rvdone') { var cd = byId(id) || pastById(id); if (cd && !cd.details.reviewDoneAt) { RV[cd.id] = ''; setDetail(cd, 'reviewDoneAt', new Date().toISOString()); } }
     else if (a === 'panel' && c) { U.panel[c.id] = U.panel[c.id] === v ? '' : v; render(); }
+    else if (a === 'inget') inGet();
+    else if (a === 'incopy' && INS.addr) copyText(INS.addr);
+    else if (a === 'inrefresh') { INS.loaded = false; inLoad(); }
     else if (a === 'regprint' && c) regPrint(c);
     else if (a === 'regcsv' && c) regCsv(c);
     else if (a === 'regretry' && c) { delete REGD[String(c.id)]; render(); }

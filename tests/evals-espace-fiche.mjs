@@ -34,7 +34,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, tab = 'maison' } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison' } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width: 390, height: 844 } });
   const calls = [];
   await ctx.route('**/*', (route) => {
@@ -50,6 +50,9 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/staff?')) return json(staff);
     if (u.includes('/rest/v1/livret_links')) return json(links);
     if (u.includes('/rest/v1/guest_registrations')) return json(regs);
+    if (u.includes('/rest/v1/inbound_addresses')) return json(inbound);
+    if (u.includes('/rest/v1/rpc/inbound_address')) { calls.push({ kind: 'inaddr' }); return json('in-abcdefghij12@stafflo.app'); }
+    if (u.includes('/rest/v1/email_inbox') && u.includes('source=eq.email_in')) return json(inMails);
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
     if (u.includes('/rest/v1/crm_clients') && m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'stay', url: u, body: b }); return json([{ ...stays[0], ...b }]); }
     if (u.includes('/rest/v1/crm_clients')) return json(stays);
@@ -58,7 +61,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
   });
   const page = await ctx.newPage(); const errs = [];
   page.on('pageerror', (e) => errs.push(String(e)));
-  await page.addInitScript((s) => { localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); }, SESSION);
+  await page.addInitScript(([s, on]) => { localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); if (on) localStorage.setItem('stafflo_email_in', 'on'); }, [SESSION, emailIn]);
   await page.goto(`http://127.0.0.1:${PORT}/espace.html#${tab}`);
   await page.waitForSelector(tab === 'maison' ? '[data-a="feopen"]' : 'article, .card', { timeout: 8000 });
   return { page, ctx, calls, errs };
@@ -244,6 +247,29 @@ await r.ctx.close();
   await r.page.check('[data-fe="VILLA.guest_registration"]'); await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
   const sv = r.calls.filter((x) => x.kind === 'PATCH').pop();
   check('éditeur : « Demander les fiches voyageurs » → VILLA.guest_registration = true', sv && sv.body.house_facts.VILLA.guest_registration === true, sv && sv.body.house_facts.VILLA);
+  await r.ctx.close();
+}
+
+// ── 5 quater. Emails Airbnb sans Gmail : derrière interrupteur, adresse du compte, code de confirmation Gmail ──
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' } } };
+  r = await open({ villa: V });
+  check('interrupteur coupé (par défaut) : pas de carte « Emails Airbnb sans Gmail »', !/Emails Airbnb sans Gmail/i.test(await txt(r.page)) && !r.errs.length);
+  await r.ctx.close();
+  r = await open({ villa: V, emailIn: true });
+  await r.page.waitForTimeout(250);
+  check('interrupteur : carte avec « Obtenir mon adresse », aucune adresse créée sans geste', /Emails Airbnb sans Gmail/i.test(await txt(r.page)) && !!(await r.page.$('[data-a="inget"]')) && !r.calls.some((x) => x.kind === 'inaddr'), { t: (await txt(r.page)).slice(0, 400), errs: r.errs, calls: r.calls.map((x) => x.kind) });
+  await r.page.click('[data-a="inget"]'); await r.page.waitForTimeout(300);
+  const t7 = await txt(r.page);
+  check('« Obtenir mon adresse » → in-<jeton>@stafflo.app affichée, étapes Gmail et autres boîtes', r.calls.some((x) => x.kind === 'inaddr') && /in-abcdefghij12@stafflo\.app/.test(t7) && /Ajouter une adresse de transfert/.test(t7) && /Outlook, iCloud/.test(t7) && /Pas encore de code/.test(t7), t7.slice(0, 600));
+  await r.ctx.close();
+  r = await open({ villa: V, emailIn: true, inbound: [{ token: 'abcdefghij12' }], inMails: [
+    { from_email: 'forwarding-noreply@google.com', subject: '(#123456789) Confirmation de transfert Gmail', body: 'Pour confirmer : https://mail-settings.google.com/mail/vf-%5BABC%5D-xyz ou le code 123456789', received_at: new Date().toISOString() },
+    { from_email: 'automated@airbnb.com', subject: 'Réservation confirmée', body: 'x', received_at: new Date().toISOString() },
+    { from_email: 'express@airbnb.com', subject: 'Message', body: 'y', received_at: new Date().toISOString() }] });
+  await r.page.waitForTimeout(300);
+  const t8 = await txt(r.page);
+  check('adresse existante + confirmation Gmail reçue → code affiché, lien de confirmation, 2 emails Airbnb comptés', /in-abcdefghij12@stafflo\.app/.test(t8) && /Code de confirmation Gmail : 123456789/.test(t8) && /2 emails Airbnb reçus/.test(t8) && !!(await r.page.$('a[href^="https://mail-settings.google.com/mail/vf-"]')) && !r.errs.length, t8.slice(0, 700));
   await r.ctx.close();
 }
 
