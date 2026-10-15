@@ -205,7 +205,7 @@ Deno.serve(async (req: Request) => {
       const o = f ? cleanOrders(body.orders, f, paxOf(r.stay)) : null;
       if (o) patch = applyOrders(r.stay, patch, o);
       if (!Object.keys(patch).length) return out({ error: "empty" }, 400);
-      await db(`crm_clients?id=eq.${encodeURIComponent(r.stay.id)}&user_id=eq.${r.owner}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(patch) });
+      await db(`crm_clients?id=eq.${encodeURIComponent(r.stay.id)}&user_id=eq.${r.owner}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(patch) });
       return out({ ok: true, answers: a || answersOf(r.stay), orders: o || ordersOf(r.stay) });
     }
     const t = q.get("t");

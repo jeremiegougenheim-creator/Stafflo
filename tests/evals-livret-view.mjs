@@ -28,7 +28,7 @@ globalThis.Deno = { env: { get: (k) => ({ SUPABASE_URL: 'https://sb.test', SUPAB
 globalThis.fetch = async (url, init) => {
   url = decodeURIComponent(String(url)); CALLS.push(url);
   const ok = (b) => new Response(JSON.stringify(b), { status: 200 });
-  if (init && init.method === 'PATCH') { PATCHES.push({ url, body: JSON.parse(init.body) }); return new Response(null, { status: 204 }); }
+  if (init && init.method === 'PATCH') { const ct = Object.entries(init.headers || {}).find(([k]) => k.toLowerCase() === 'content-type'); if (!ct || !/application\/json/.test(ct[1])) return new Response('{"code":"PGRST102"}', { status: 400 }); PATCHES.push({ url, body: JSON.parse(init.body) }); return new Response(null, { status: 204 }); }
   if (url.includes('/rest/v1/livret_links')) { const t = url.match(/token=eq\.([^&]+)/)[1]; return ok(DB.links.filter((l) => l.token === t)); }
   if (url.includes('/rest/v1/crm_clients') && url.includes('id=eq.')) { const id = url.match(/[?&]id=eq\.([^&]+)/)[1]; return ok(DB.stays.filter((s) => s.id === id)); }
   if (url.includes('/rest/v1/crm_clients') && url.includes('name=eq.')) { const n = url.match(/name=eq\.([^&]+)/)[1]; return ok(DB.stays.filter((s) => s.name === n)); }
