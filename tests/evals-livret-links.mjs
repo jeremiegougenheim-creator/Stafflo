@@ -90,7 +90,7 @@ check('app : liens des séjours à venir préparés au démarrage', /window\.liv
 const esp = read('espace.html');
 check('Espace : livretUrl ajoute le jeton du séjour', /var tk = LINKS \? LINKS\.get\(c\.id\) : '';[^\n]*\n\s*if \(tk\) p\.set\('t', tk\);/.test(esp));
 check('Espace : liens chargés avec les données, puis préparés avant le rendu', /LINKS \? LINKS\.load\(\) : null/.test(esp) && /if \(HAS_FACTS && LINKS\) return Promise\.all\(D\.stays\.map\(function \(c\) \{ return LINKS\.ensure\(c\.id\); \}\)\);/.test(esp));
-check('Espace : bouton livret seulement avec un lien personnel', /HAS_FACTS && LINKS && LINKS\.get\(c\.id\) \? '<a class="act" href="' \+ esc\(livretUrl\(c\)\)/.test(esp));
+check('Espace : bouton livret seulement avec un lien personnel', /HAS_FACTS && LINKS && LINKS\.get\(c\.id\) \? '<button type="button" class="act" data-a="panel" data-id="' \+ esc\(c\.id\) \+ '" data-v="livret"/.test(esp) && /pn === 'livret' \? '<a class="btn ghost" href="' \+ esc\(livretUrl\(c\)\)/.test(esp));
 check('Espace : liens créés par la base (rpc livret_token)', /api\('rpc\/livret_token'/.test(esp));
 
 console.log(`\n${pass}/${pass + fail} PASS`);

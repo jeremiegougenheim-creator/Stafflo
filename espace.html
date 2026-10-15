@@ -259,7 +259,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       mPlanning: 'Planning équipe', mPlanningTxt: 'Les plannings à envoyer à Saïd et à Léa (arrivées, groupes, repas), générés depuis les séjours.', mPlanningBtn: 'Ouvrir le planning équipe',
       act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief équipe', phone: 'Téléphone' },
       copy: 'Copier', copied: 'Copié', openWa: 'Ouvrir WhatsApp', close: 'Fermer',
-      markLivret: 'Marquer le livret envoyé', unmarkLivret: 'Livret pas encore envoyé',
+      markLivret: 'Marquer le livret envoyé', seeLivret: 'Voir le livret', unmarkLivret: 'Livret pas encore envoyé',
       markBrief: 'Marquer le brief envoyé', briefDone: 'Brief envoyé le ',
       payout: function (amt, by) { return 'Versement Airbnb ' + amt + ' envoyé' + (by ? ' · sur le compte vers le ' + by : ''); },
       livretDone: 'Livret envoyé le ', saved: 'Enregistré', saveErr: 'Enregistrement impossible — réessayez',
@@ -365,7 +365,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       mPlanning: 'Team planning', mPlanningTxt: 'The schedules to send to Saïd and Léa (arrivals, groups, meals), built from the stays.', mPlanningBtn: 'Open the team planning',
       act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'Team brief', phone: 'Phone' },
       copy: 'Copy', copied: 'Copied', openWa: 'Open WhatsApp', close: 'Close',
-      markLivret: 'Mark guide as sent', unmarkLivret: 'Guide not sent yet',
+      markLivret: 'Mark guide as sent', seeLivret: 'Open the guide', unmarkLivret: 'Guide not sent yet',
       markBrief: 'Mark brief as sent', briefDone: 'Brief sent on ',
       payout: function (amt, by) { return 'Airbnb payout ' + amt + ' sent' + (by ? ' · due in the bank by ' + by : ''); },
       livretDone: 'Guide sent on ', saved: 'Saved', saveErr: 'Could not save — try again',
@@ -1071,6 +1071,29 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       (drinks ? '• ' + drinks + '\n' : '') + '\n' +
       'The menus are in your guide: for each service the group chooses one starter, one main and one dessert. ' + (m3 ? m3[0] : '') + '\n\nSee you soon,\n' + owner();
   }
+  /* Message « livret » : le lien personnel du séjour (jeton), et ce que le client peut y faire :
+     répondre « Votre arrivée », commander à l'avance ce que la fiche chiffre (repas, extras). */
+  function livretAbs(c) { try { return new URL(livretUrl(c), location.href).href; } catch (e) { return livretUrl(c); } }
+  function orderable(i) {
+    var out = [], num = function (v) { return /\d/.test(String(Array.isArray(v) ? v[0] : v == null ? '' : v)); };
+    if ((F.MEALS || []).some(function (m) { return m && num(m.a); })) out.push(i ? 'meals' : 'repas');
+    (F.EXTRAS || []).forEach(function (x) {
+      if (!x || !x.n || !num(x.price)) return;
+      var n = P(x.n, i).split(/\s+[—–(]/)[0].trim(); n = n.charAt(0).toLowerCase() + n.slice(1);
+      if (n && out.indexOf(n) < 0) out.push(n);
+    });
+    return out.slice(0, 4);
+  }
+  function msgLivret(c) {
+    var g = guestLang(c), fr = g === 'fr', can = orderable(fr ? 0 : 1);
+    var dates = fmtDay(c.a, g) + ' → ' + fmtDay(c.d, g);
+    if (fr) return 'Bonjour ' + firstName(c) + ',\n\nVoici le livret de votre séjour à ' + atVilla(true) + ' (' + dates + ') : la maison, l’équipe, les repas, les adresses.\n\n' + livretAbs(c) + '\n\n' +
+      'Dans « Votre arrivée », dites-nous votre heure d’arrivée et la composition du groupe' + (can.length ? ', et réservez à l’avance : ' + can.join(', ') + '. Rien à payer en ligne, nous confirmons avec vous.' : '.') +
+      '\n\nÀ très vite,\n' + owner();
+    return 'Hello ' + firstName(c) + ',\n\nHere is the guide for your stay at ' + atVilla(false) + ' (' + dates + '): the house, the team, meals and places nearby.\n\n' + livretAbs(c) + '\n\n' +
+      'Under “Your arrival”, tell us your arrival time and who is coming' + (can.length ? ', and book ahead: ' + can.join(', ') + '. Nothing to pay online, we confirm with you.' : '.') +
+      '\n\nSee you soon,\n' + owner();
+  }
   function msgArrival(c) {
     var g = guestLang(c), i = g === 'en' ? 1 : 0;
     var arr = flat(P(F.PRACTICAL.filter(function (p) { return /^(Arrivée et départ|Arrival and departure)/.test(p[0]) || /^Arrival and departure/.test(p[1]); })[0] || ['', ''], i));
@@ -1471,7 +1494,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     msgsFor(c).forEach(function (m) { h += inboxItem(m, true); });
     var wa = waDigits(c.phone);
     h += '<div class="acts">' +
-      (HAS_FACTS && LINKS && LINKS.get(c.id) ? '<a class="act" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener" title="' + esc(l.act.livret) + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</a>' : '') +
+      (HAS_FACTS && LINKS && LINKS.get(c.id) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="livret" aria-pressed="' + (pn === 'livret') + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</button>' : '') +
       (wa ? '<a class="act" href="https://wa.me/' + wa + '" target="_blank" rel="noopener" title="WhatsApp"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
       (c.a < todayNum() || !HAS_FACTS ? ['brief'] : (['meals', 'arrival', 'passports', 'brief'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'passports' ? !!passRule() : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
         return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', brief: 'clipboard-list' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
@@ -1492,11 +1515,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     } else if (pn === 'bill') {
       h += billPanel(c);
     } else if (pn) {
-      var txt = pn === 'meals' ? msgMeals(c) : pn === 'arrival' ? msgArrival(c) : pn === 'passports' ? msgPassports(c) : pn === 'depart' ? msgDepart(c) : msgBrief(c);
+      var txt = pn === 'livret' ? msgLivret(c) : pn === 'meals' ? msgMeals(c) : pn === 'arrival' ? msgArrival(c) : pn === 'passports' ? msgPassports(c) : pn === 'depart' ? msgDepart(c) : msgBrief(c);
       h += '<div class="panel"><span class="ttl">' + esc(pn === 'depart' ? l.actDepart : l.act[pn]) + (pn === 'brief' ? '' : ' · ' + guestLang(c).toUpperCase()) + '</span>' +
         '<textarea class="t" id="tx-' + esc(c.id) + '">' + esc(txt) + '</textarea><div class="row2">' +
         '<button type="button" class="btn gold" data-a="copy" data-id="' + esc(c.id) + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
         (wa && pn !== 'brief' ? '<button type="button" class="btn ghost" data-a="sendwa" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.openWa) + '</button>' : '') +
+        (pn === 'livret' ? '<a class="btn ghost" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.seeLivret) + '</a>' : '') +
         (pn === 'brief' && saidWa() ? '<button type="button" class="btn ghost" data-a="sendsaid" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(saidName())) + '</button>' : '') +
         (pn === 'brief' ? '<button type="button" class="btn ghost" data-a="briefdone" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' +
           esc(c.staff_briefed_at ? l.briefDone + fmtDay(dayNum(String(c.staff_briefed_at).slice(0, 10))) : l.markBrief) + '</button>' : '') +

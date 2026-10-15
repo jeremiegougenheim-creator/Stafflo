@@ -34,7 +34,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], tab = 'maison' } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], tab = 'maison' } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width: 390, height: 844 } });
   const calls = [];
   await ctx.route('**/*', (route) => {
@@ -48,6 +48,7 @@ async function open({ villa, staff = [], ai = null, stays = [], tab = 'maison' }
       return json(villa ? [villa] : []);
     }
     if (u.includes('/rest/v1/staff?')) return json(staff);
+    if (u.includes('/rest/v1/livret_links')) return json(links);
     if (u.includes('/rest/v1/crm_clients') && m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'stay', url: u, body: b }); return json([{ ...stays[0], ...b }]); }
     if (u.includes('/rest/v1/crm_clients')) return json(stays);
     if (u.includes('/rest/v1/')) return json([]);
@@ -168,6 +169,28 @@ check('pilote : tous les boutons (repas, arrivée, passeports, brief, décompte)
 await r.page.click('[data-a="panel"][data-v="meals"][data-id="s1"]'); await r.page.waitForTimeout(100);
 const mm = await r.page.inputValue('#tx-s1');
 check('pilote : message repas inchangé (service, goûter, logistique, boissons)', /par service pour tout le groupe/.test(mm) && /Goûter/.test(mm) && /logistique/.test(mm) && /Courses au prix réel/.test(mm), mm.slice(0, 300));
+await r.ctx.close();
+
+// ── 5 bis. Message « Livret » : lien personnel absolu + ce que le client peut commander ──
+const TK = 'T'.repeat(43);
+r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT }, links: [{ client_id: 's1', token: TK }],
+  stays: [{ id: 's1', name: 'Thibaut Vauclare', arrival: iso(4), departure: iso(8), adults: 10, booking_status: 'confirmed', source: 'airbnb', nat: 'France', phone: '+33600000000', details: {} }] });
+await r.page.waitForTimeout(250);
+{ const t = await r.page.$('[data-a="toggle"][data-id="s1"]'); if (t) { await t.click(); await r.page.waitForTimeout(100); } }
+await r.page.click('[data-a="panel"][data-v="livret"][data-id="s1"]'); await r.page.waitForSelector('#tx-s1');
+const lv = await r.page.inputValue('#tx-s1');
+const see = await r.page.$eval('a.btn[href*="livret.html"]', (a) => a.getAttribute('href')).catch(() => '');
+check('Msg livret (pilote, FR) : lien absolu avec le jeton, « Votre arrivée », à commander : repas + transfert, rien à payer, signé Jérémie',
+  new RegExp('http://127\\.0\\.0\\.1:' + PORT + '/livret\\.html\\?[^\\s]*t=' + TK).test(lv) && /Dans « Votre arrivée »/.test(lv) && /réservez à l’avance : repas, transfert aéroport ↔ villa\. Rien à payer en ligne/.test(lv) && /Jérémie$/.test(lv) && /^Bonjour Thibaut,/.test(lv) && !r.errs.length, { lv, errs: r.errs });
+check('Msg livret : « Voir le livret » ouvre le même lien, WhatsApp proposé', /t=T{43}/.test(see) && !!(await r.page.$('[data-a="sendwa"][data-id="s1"]')), see);
+await r.ctx.close();
+r = await open({ tab: 'sejours', villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: ZINA }, links: [{ client_id: 's1', token: TK }],
+  stays: [{ id: 's1', name: 'Ana Ruiz', arrival: iso(5), departure: iso(8), adults: 2, booking_status: 'confirmed', source: 'airbnb', nat: 'United Kingdom', details: {} }] });
+await r.page.waitForTimeout(250);
+{ const t = await r.page.$('[data-a="toggle"][data-id="s1"]'); if (t) { await t.click(); await r.page.waitForTimeout(100); } }
+await r.page.click('[data-a="panel"][data-v="livret"][data-id="s1"]'); await r.page.waitForSelector('#tx-s1');
+const lv2 = await r.page.inputValue('#tx-s1');
+check('Msg livret (fiche partielle, EN, rien de chiffré) : pas de « book ahead », pas de français', /^Hello Ana,/.test(lv2) && /Under “Your arrival”/.test(lv2) && !/book ahead/.test(lv2) && !/Bonjour|réservez/.test(lv2) && !r.errs.length, { lv2, errs: r.errs });
 await r.ctx.close();
 
 // ── 6. Commande du client (livret) : visible, à confirmer, chiffre « extras commandés » ────
