@@ -229,6 +229,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       leaves: function (d) { return 'départ ' + d; }, leavesToday: 'part aujourd’hui',
       ck: { phone: 'Téléphone', livret: 'Livret', meals: 'Repas', team: 'Infos équipe', brief: 'Brief équipe' },
       stLate: 'En retard :', stMissing: 'Il manque :', stReady: 'Prêt — rien ne manque',
+      guestAns: 'Réponse du client', gaArrival: 'arrivée', gaMeals: 'repas', gaCouples: function (n) { return n + (n > 1 ? ' couples' : ' couple'); }, gaSingles: function (n) { return n + (n > 1 ? ' personnes seules' : ' personne seule'); },
       ckLate: 'en retard', ckDue: function (d) { return 'avant ' + d; }, more: '… voir la suite',
       setup: { title: 'Mise en route', gmail: 'Connecter votre boîte Gmail', gmailSub: 'Les réservations et messages Airbnb arrivent seuls, toutes les 10 minutes.', stay: 'Ajouter votre premier séjour', staySub: 'Ou laissez Gmail le créer à la prochaine réservation Airbnb.', team: 'Ajouter votre équipe', teamSub: 'Pour envoyer le brief et donner un accès en lecture.', push: 'Activer les alertes sur ce téléphone', pushSub: 'Demandes, messages et réservations, en direct.', done: 'Fait' },
       todo: { title: 'À faire', none: 'Rien d’urgent pour les 3 prochains jours.', msg: 'Répondre au message', phone: 'Demander son téléphone', livret: 'Envoyer le livret', meals: 'Obtenir les choix de repas', team: 'Heure d’arrivée et couchages pour l’équipe', brief: 'Briefer l’équipe' },
@@ -313,6 +314,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       leaves: function (d) { return 'leaves ' + d; }, leavesToday: 'leaves today',
       ck: { phone: 'Phone', livret: 'Guide', meals: 'Meals', team: 'Team info', brief: 'Team brief' },
       stLate: 'Late:', stMissing: 'Missing:', stReady: 'Ready — nothing missing',
+      guestAns: 'Guest’s answer', gaArrival: 'arrival', gaMeals: 'meals', gaCouples: function (n) { return n + (n > 1 ? ' couples' : ' couple'); }, gaSingles: function (n) { return n + (n > 1 ? ' singles' : ' single'); },
       ckLate: 'late', ckDue: function (d) { return 'by ' + d; }, more: '… see more',
       setup: { title: 'Getting started', gmail: 'Connect your Gmail inbox', gmailSub: 'Airbnb bookings and messages arrive on their own, every 10 minutes.', stay: 'Add your first stay', staySub: 'Or let Gmail create it with the next Airbnb booking.', team: 'Add your team', teamSub: 'To send the brief and give read-only access.', push: 'Turn on alerts on this phone', pushSub: 'Enquiries, messages and bookings, live.', done: 'Done' },
       todo: { title: 'To do', none: 'Nothing urgent for the next 3 days.', msg: 'Reply to the message', phone: 'Ask for their phone', livret: 'Send the guide', meals: 'Get meal choices', team: 'Arrival time and beds for the team', brief: 'Brief the team' },
@@ -1346,6 +1348,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var comp = l.composition(c.ad, c.ch, c.inf);
     if (comp) h += '<span class="sub">' + esc(comp) + '</span>';
     var colon = U.lang === 'en' ? ':' : ' :';
+    // v12 — ce que le client a répondu depuis son livret (livret-view) : affiché tel quel, jamais réécrit.
+    var ga = c.details.guest_answers;
+    if (ga && typeof ga === 'object' && ga.at) {
+      var parts = [];
+      if (ga.arrival_time) parts.push(l.gaArrival + colon + ' ' + flat(ga.arrival_time));
+      var comp2 = [ga.couples ? l.gaCouples(ga.couples) : '', ga.singles ? l.gaSingles(ga.singles) : ''].filter(Boolean).join(' + ');
+      if (comp2) parts.push(comp2);
+      if (ga.meals) parts.push(l.gaMeals + colon + ' ' + flat(ga.meals).slice(0, 300));
+      if (parts.length) h += '<span class="sub" style="color:var(--house)"><i class="ti ti-message-2" aria-hidden="true"></i> <b>' + esc(l.guestAns + ' · ' + fmtDay(dayNum(String(ga.at).slice(0, 10)))) + colon + '</b> ' + esc(parts.join(' · ')) + '</span>';
+    }
     if (String(c.meals || '').trim()) h += '<span class="sub"><b>' + esc(l.mealsTxt) + colon + '</b> ' + esc(flat(c.meals).slice(0, 300)) + '</span>';
     var notes = [c.notes, c.remarks].filter(function (x) { return x && String(x).trim(); }).map(flat).join(' · ');
     if (notes) h += '<span class="sub"><b>' + esc(l.notes) + colon + '</b> ' + esc(notes.slice(0, 300)) +

@@ -142,5 +142,8 @@ check('v12 : ARIA hors de la barre d’onglets (3 onglets), bouton dans l’en-t
 check('v12 : Jour = à faire, à répondre, en ce moment, arrivées, départs — tuiles et dates fortes dans Séjours', /h \+= todoCard\(\);\s*\/\/ v12/.test(script) && !/eventsCard\(75, 3, false\)/.test(script) && /var h = '';\s*\/\/ v12 — les trois chiffres/.test(script));
 check('v12 : Maison — alertes et accès équipe d’abord, la fiche repliée (6 sections)', /h = pushCard\(\) \+ eqCard\(\);/.test(script) && (script.match(/, '', true\);/g) || []).length === 6 && /<details class="card fold"><summary class="h">/.test(script));
 
+// ── v12 — livret dans les deux sens : la réponse du client s'affiche telle quelle ───
+check('v12 : la réponse du client (details.guest_answers) s’affiche dans le séjour, datée, jamais réécrite', /var ga = c\.details\.guest_answers;/.test(script) && /l\.guestAns \+ ' · ' \+ fmtDay\(dayNum\(String\(ga\.at\)\.slice\(0, 10\)\)\)/.test(script) && /flat\(ga\.arrival_time\)/.test(script));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

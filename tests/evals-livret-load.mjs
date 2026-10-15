@@ -39,11 +39,12 @@ const UID = '00000000-0000-4000-8000-000000000001';
 const sessionFor = (expiresInS) => JSON.stringify({ access_token: 'jwt-test', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + expiresInS, user: { id: UID } });
 
 // view: (url) => {status, body}   rest: idem pour /rest/v1/villa_settings
-async function open(qs, { view = () => ({ status: 404, body: '{"error":"not_found"}' }), rest = () => ({ status: 200, body: '[]' }), session = null } = {}) {
+async function open(qs, { view = () => ({ status: 404, body: '{"error":"not_found"}' }), rest = () => ({ status: 200, body: '[]' }), session = null, post = null } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block' });
   const calls = [];
   await ctx.route('**/*', (route) => {
     const req = route.request(), u = req.url();
+    if (u.includes('/functions/v1/livret-view') && req.method() === 'POST') { const body = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'post', body }); const r = post ? post(body) : { status: 200, body: JSON.stringify({ ok: true, answers: { ...body.answers, couples: +body.answers.couples || null, singles: +body.answers.singles || null, at: '2026-10-15T09:00:00Z' } }) }; return route.fulfill({ status: r.status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: r.body }); }
     if (u.includes('/functions/v1/livret-view')) { calls.push({ kind: 'view', u }); const r = view(u); return route.fulfill({ status: r.status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: r.body }); }
     if (u.includes('/rest/v1/villa_settings')) { calls.push({ kind: 'rest', u, auth: req.headers().authorization }); const r = rest(u); return route.fulfill({ status: r.status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: r.body }); }
     if (u.includes('villa-facts.js')) calls.push({ kind: 'villa-facts' });
@@ -56,7 +57,7 @@ async function open(qs, { view = () => ({ status: 404, body: '{"error":"not_foun
   await page.goto(`http://127.0.0.1:${PORT}/livret.html?${qs}`);
   await page.waitForFunction(() => { const s = document.getElementById('sheet'); return s.innerHTML.length > 1000 || s.querySelector('[role=status]'); }, null, { timeout: 9000 }).catch(() => {});
   await page.waitForTimeout(150);
-  const r = await page.evaluate(() => { const s = document.getElementById('sheet'); const bar = document.querySelector('.bar'); return { len: s.innerHTML.length, msg: (s.querySelector('[role=status]') || {}).innerText || '', qr: s.querySelectorAll('svg.qr-svg').length, bar: !!(bar && bar.offsetParent !== null) }; });
+  const r = await page.evaluate(() => { const s = document.getElementById('sheet'); const bar = document.querySelector('.bar'); return { len: s.innerHTML.length, msg: (s.querySelector('[role=status]') || {}).innerText || '', qr: s.querySelectorAll('svg.qr-svg').length, bar: !!(bar && bar.offsetParent !== null), form: !!document.getElementById('arrive') }; });
   return { ...r, calls, errs, page, ctx };
 }
 const ok200 = () => ({ status: 200, body: '{"facts":' + FACTS + '}' });
@@ -66,12 +67,34 @@ let r = await open('t=' + TOK + '&guest=Ana&lang=fr', { view: ok200 });
 check('lien personnel → livret complet (QR compris), une seule demande, sans erreur', r.len > 30000 && r.qr === 2 && r.calls.filter((c) => c.kind === 'view').length === 1 && r.calls[0].u.includes('t=' + TOK) && !r.errs.length, { len: r.len, qr: r.qr, errs: r.errs });
 check('villa-facts.js jamais demandé', !r.calls.some((c) => c.kind === 'villa-facts'));
 check('client (lien personnel, pas de session) : la barre d’édition du propriétaire est cachée', r.bar === false);
+// « Votre arrivée » : le client répond, ça part sur SON séjour avec le jeton
+check('lien personnel → bloc « Votre arrivée » dans le livret (jamais à l’impression)', r.form === true && /\.bar,\.hint,\.arrive\{display:none !important\}/.test(html));
+await r.page.fill('#ar-time', 'vol AT801, à la villa vers 16h'); await r.page.fill('#ar-c', '3'); await r.page.fill('#ar-s', '2'); await r.page.fill('#ar-m', 'Dîner le 1er soir');
+await r.page.click('#ar-send'); await r.page.waitForTimeout(400);
+const sent = r.calls.find((c) => c.kind === 'post');
+check('envoi : jeton du séjour + langue + les 4 réponses, rien d’autre', sent && sent.body.t === TOK && sent.body.lang === 'fr' && sent.body.answers.arrival_time === 'vol AT801, à la villa vers 16h' && sent.body.answers.couples === '3' && sent.body.answers.singles === '2' && sent.body.answers.meals === 'Dîner le 1er soir' && Object.keys(sent.body).sort().join() === 'answers,lang,t');
+check('après envoi : « transmis à l’équipe », formulaire toujours modifiable', /transmis à l’équipe/.test(await r.page.evaluate(() => document.getElementById('ar-st').innerText)) && !(await r.page.evaluate(() => document.getElementById('ar-send').disabled)));
+await r.ctx.close();
+
+r = await open('t=' + TOK + '&lang=en', { view: () => ({ status: 200, body: '{"facts":' + FACTS + ',"answers":{"arrival_time":"around 4 pm","couples":2,"singles":1,"meals":"","at":"2026-10-14T10:00:00Z","lang":"en"}}' }) });
+check('réponses déjà données → formulaire pré-rempli, « Sent on 14 October »', (await r.page.evaluate(() => [document.getElementById('ar-time').value, document.getElementById('ar-c').value, document.getElementById('ar-s').value, document.getElementById('ar-st').innerText].join('|'))) === 'around 4 pm|2|1|Sent on 14 October');
+await r.ctx.close();
+
+r = await open('t=' + TOK + '&lang=fr', { view: ok200, post: () => ({ status: 503, body: '{}' }) });
+await r.page.fill('#ar-time', '16h'); await r.page.click('#ar-send'); await r.page.waitForTimeout(400);
+check('serveur indisponible à l’envoi → message clair, on peut réessayer', /connexion/.test(await r.page.evaluate(() => document.getElementById('ar-st').innerText)) && !(await r.page.evaluate(() => document.getElementById('ar-send').disabled)));
+await r.ctx.close();
+
+r = await open('t=' + TOK + '&lang=fr', { view: ok200 });
+await r.page.click('#ar-send'); await r.page.waitForTimeout(300);
+check('formulaire vide → rien n’est envoyé', !r.calls.some((c) => c.kind === 'post'));
 await r.ctx.close();
 
 r = await open('guest=Ana&dates=1%20JAN%20%E2%80%93%205%20JAN%2027&lang=fr', { session: sessionFor(3600), rest: () => ({ status: 200, body: '[{"house_facts":' + FACTS + '}]' }) });
 const rc = r.calls.find((c) => c.kind === 'rest');
 check('propriétaire connecté (sans jeton) → sa fiche, lue avec SA session et son id', r.len > 30000 && rc && rc.auth === 'Bearer jwt-test' && rc.u.includes('owner_id=eq.' + UID) && !r.calls.some((c) => c.kind === 'view'), { len: r.len });
 check('propriétaire connecté : la barre d’édition est là', r.bar === true);
+check('sans jeton (ancien lien, propriétaire) : pas de bloc « Votre arrivée » — personne à qui transmettre', r.form === false);
 await r.ctx.close();
 
 r = await open('t=' + TOK + '&lang=fr', { session: sessionFor(3600), view: ok200 });

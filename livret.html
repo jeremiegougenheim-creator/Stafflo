@@ -66,6 +66,18 @@ html.guest .bar{display:none}
 .lede{font-size:13.5px;line-height:1.7;color:var(--ink-soft);max-width:60ch}
 
 .infobox{background:var(--cream);border-left:3px solid var(--gold);padding:16px 20px;margin:24px 0 8px}
+/* « Votre arrivée » : le client répond depuis son lien personnel (écran seulement, jamais imprimé) */
+.arrive{background:#fff;border:1.5px solid var(--gold);border-radius:6px;padding:16px 18px;margin:22px 0 6px}
+.arrive h3{margin:0 0 4px;font-family:var(--serif);font-size:20px;font-weight:500}
+.arrive .why{font-size:12.5px;line-height:1.6;color:var(--muted);margin:0 0 12px}
+.arrive label{display:block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:10px 0 4px}
+.arrive input,.arrive textarea{width:100%;box-sizing:border-box;border:1px solid var(--rule);border-radius:4px;padding:9px 10px;font:inherit;font-size:14px;color:var(--ink);background:var(--paper)}
+.arrive textarea{min-height:72px;resize:vertical}
+.arrive .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.arrive .send{margin-top:14px;min-height:44px;padding:0 18px;border:0;border-radius:4px;background:var(--ink);color:var(--cream);font:inherit;font-weight:600;font-size:14px;cursor:pointer}
+.arrive .send:disabled{opacity:.5;cursor:default}
+.arrive .st{margin:10px 0 0;font-size:13px;font-weight:600;color:#1F6B47}.arrive .st.err{color:var(--terracotta)}
+.arrive .en{display:block;font-style:italic;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
 .infobox div{font-size:12.5px;line-height:1.85}
 .infobox .k{font-weight:700}
 
@@ -127,7 +139,7 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
 @page{size:A4;margin:16mm}
 @media print{
   body{background:#fff}
-  .bar,.hint{display:none !important}
+  .bar,.hint,.arrive{display:none !important}
   .sheet{max-width:none;margin:0;padding:0;box-shadow:none;background:#fff}
   /* Aucune regle ne redefinit strong ailleurs : on s'appuie donc sur
      font-weight:bolder par defaut du navigateur. A l'impression, certains
@@ -236,9 +248,11 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
   function fail(r) { var e = new Error('http_' + r.status); e.status = r.status; throw e; }
   function view(qs) {
     return fetch(SB_URL + '/functions/v1/livret-view?' + qs, { cache: 'no-store' }).then(function (r) {
-      return r.ok ? r.json().then(function (b) { return b && b.facts; }) : fail(r);
+      return r.ok ? r.json().then(function (b) { if (b && b.answers) window.LIVRET_CTX.answers = b.answers; return b && b.facts; }) : fail(r);
     });
   }
+  /* Contexte du séjour pour le bloc « Votre arrivée » : le jeton (s'il y en a un) et ce que le client a déjà répondu. */
+  window.LIVRET_CTX = { token: tok, answers: null, url: SB_URL + '/functions/v1/livret-view' };
   function ownerStep() {
     var s = null;
     try { s = JSON.parse(localStorage.getItem('stafflo_session') || 'null'); } catch (e) {}
@@ -369,7 +383,19 @@ const T = {
   cafes:['Cafés & bars','Cafés & bars'],
   map:['Carte','Map'],
   site:['Site','Website'],
-  bye:['Nous vous souhaitons un très agréable séjour,','We wish you a very pleasant stay,']
+  bye:['Nous vous souhaitons un très agréable séjour,','We wish you a very pleasant stay,'],
+  arrTitle:['Votre arrivée','Your arrival'],
+  arrWhy:["Trois réponses, et l'équipe prépare la maison pour vous : vos chambres selon la composition du groupe, votre premier repas, et quelqu'un pour vous accueillir à la bonne heure.",
+          "Three answers, and the team prepares the house for you: the bedrooms according to your group, your first meal, and someone to welcome you at the right time."],
+  arrTime:['Heure d’arrivée à la villa (et vol, si vous le connaissez)','Arrival time at the villa (and flight, if you know it)'],
+  arrTimePh:['Ex. : vol AT801, à la villa vers 16h','E.g.: flight AT801, at the villa around 4 pm'],
+  arrCouples:['Couples','Couples'], arrSingles:['Personnes seules','Single travellers'],
+  arrMeals:['Vos repas (jour, moment, envies)','Your meals (day, time, wishes)'],
+  arrMealsPh:['Ex. : dîner le 1er soir, tajine ; brunch le dimanche','E.g.: dinner on the first evening, tagine; brunch on Sunday'],
+  arrSend:['Envoyer à l’équipe','Send to the team'], arrSending:['Envoi…','Sending…'],
+  arrDone:['Merci, c’est transmis à l’équipe. Vous pouvez modifier et renvoyer à tout moment.','Thank you, the team has it. You can change and resend at any time.'],
+  arrSentOn:['Transmis le','Sent on'],
+  arrErr:['L’envoi n’a pas abouti. Vérifiez votre connexion et réessayez.','Sending failed. Check your connection and try again.']
 };
 
 /* Tarif negocie (champ « Tarif négocié » ou ?tarifs=400/400/500[/400]) :
@@ -535,6 +561,37 @@ function kidsBoxHtml(){
       '<a href="' + (en ? PERLE_BOOK.en : PERLE_BOOK.fr) + '" target="_blank" rel="noopener">' + m + '</a>');
 }
 
+/* « Votre arrivée » — seulement avec un lien personnel (jeton) : sans jeton, personne à qui transmettre.
+   Les réponses partent à livret-view, qui les range sur CE séjour. Jamais à l'impression. */
+function arrivalBlock(){
+  const ctx = window.LIVRET_CTX;
+  if (!ctx || !ctx.token) return '';
+  const a = ctx.answers || {};
+  const v = x => esc(x == null ? '' : x);
+  const sentLine = a.at ? '<p class="st">' + ti(T.arrSentOn) + ' ' + esc(new Date(a.at).toLocaleDateString(LANG === 'en' ? 'en-GB' : 'fr-FR', {day:'numeric', month:'long'})) + '</p>' : '';
+  return '<form class="arrive" id="arrive" autocomplete="off">' +
+    '<h3>' + ti(T.arrTitle) + '</h3><p class="why">' + t(T.arrWhy) + '</p>' +
+    '<label for="ar-time">' + t(T.arrTime) + '</label><input id="ar-time" type="text" maxlength="120" value="' + v(a.arrival_time) + '" placeholder="' + ti(T.arrTimePh) + '">' +
+    '<div class="two"><div><label for="ar-c">' + t(T.arrCouples) + '</label><input id="ar-c" type="number" inputmode="numeric" min="0" max="20" value="' + v(a.couples) + '"></div>' +
+    '<div><label for="ar-s">' + t(T.arrSingles) + '</label><input id="ar-s" type="number" inputmode="numeric" min="0" max="20" value="' + v(a.singles) + '"></div></div>' +
+    '<label for="ar-m">' + t(T.arrMeals) + '</label><textarea id="ar-m" maxlength="600" placeholder="' + ti(T.arrMealsPh) + '">' + v(a.meals) + '</textarea>' +
+    '<button type="submit" class="send" id="ar-send">' + ti(T.arrSend) + '</button>' +
+    '<div id="ar-st">' + sentLine + '</div></form>';
+}
+function sendArrival(form){
+  const ctx = window.LIVRET_CTX, btn = form.querySelector('#ar-send'), st = form.querySelector('#ar-st');
+  const g = id => form.querySelector('#' + id).value;
+  const answers = { arrival_time: g('ar-time').trim(), couples: g('ar-c').trim(), singles: g('ar-s').trim(), meals: g('ar-m').trim() };
+  if (!answers.arrival_time && !answers.couples && !answers.singles && !answers.meals) return;
+  btn.disabled = true; btn.textContent = ti(T.arrSending); st.innerHTML = '';
+  fetch(ctx.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: ctx.token, lang: LANG === 'en' ? 'en' : 'fr', answers: answers }) })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(b => { ctx.answers = b.answers || answers; st.innerHTML = '<p class="st">' + t(T.arrDone) + '</p>'; })
+    .catch(() => { st.innerHTML = '<p class="st err">' + t(T.arrErr) + '</p>'; })
+    .then(() => { btn.disabled = false; btn.textContent = ti(T.arrSend); });
+}
+document.addEventListener('submit', e => { if (e.target && e.target.id === 'arrive') { e.preventDefault(); sendArrival(e.target); } });
+
 function render(){
   const guest = document.getElementById('g').value.trim() || '—';
   const dates = document.getElementById('d').value.trim();
@@ -561,6 +618,7 @@ function render(){
 
   h += '<div class="hello">' + greeting(guest, grp) + '</div>';
   h += '<div class="lede">' + t(T.lede) + '</div>';
+  h += arrivalBlock();
 
   h += '<div class="infobox">' +
        '<div><span class="k">Wi-Fi</span> · ' + ti(T.net) + ' : ' + esc(VILLA.wifi.net) +

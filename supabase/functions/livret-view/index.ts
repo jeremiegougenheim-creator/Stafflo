@@ -11,6 +11,11 @@
 //   seulement si le livret de ce séjour a été envoyé avant LEGACY_BEFORE, séjour pas encore
 //   terminé (départ ≥ hier), nom ET dates exacts, et un seul séjour correspond. S'éteint de
 //   lui-même avec le dernier de ces séjours.
+// GET ?t= renvoie aussi { answers } : ce que CE client a lui-même répondu (voir ci-dessous).
+// POST { t, answers }  (lien personnel seulement) → le client dit son heure d'arrivée, la composition
+//   (couples / personnes seules) et ses repas. Enregistré tel quel dans details.guest_answers, et
+//   recopié dans les champs que l'équipe lit (details.arrival_time, details.beds, meals) SEULEMENT
+//   s'ils sont vides : jamais écrasé ce que le propriétaire a saisi, jamais traduit, jamais complété.
 // Rien d'autre n'est renvoyé (ni nom, ni prix, ni séjour). Limite par adresse IP.
 // verify_jwt : off (le client n'a pas de compte) — l'accès, c'est le jeton.
 
@@ -22,12 +27,12 @@ export const GRACE_DAYS = 7;
 const H = { apikey: SRK, Authorization: "Bearer " + SRK };
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
-async function db(path: string): Promise<Row[]> {
-  const r = await fetch(SB_URL + "/rest/v1/" + path, { headers: H });
+async function db(path: string, init: RequestInit = {}): Promise<Row[]> {
+  const r = await fetch(SB_URL + "/rest/v1/" + path, { ...init, headers: { ...H, ...(init.headers || {}) } });
   if (!r.ok) throw new Error("db " + r.status);
-  return await r.json();
+  return r.status === 204 ? [] : await r.json();
 }
-const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, OPTIONS", "Access-Control-Allow-Headers": "apikey, content-type" };
+const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "apikey, content-type" };
 const out = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
 // Copie de fmtStayDates (app.html / espace.html) : c'est ce texte que portent les anciens liens.
@@ -64,30 +69,84 @@ export function limited(key: string, max: number, windowMs: number, now = Date.n
   return recent.length > max;
 }
 
+// Réponses du client : texte court, chiffres bornés, rien d'autre. Un champ vide reste vide.
+const LIM = { arrival_time: 120, meals: 600, note: 300 };
+const txt = (v: unknown, max: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+const num = (v: unknown): number | null => (v === "" || v == null ? null : (Number.isInteger(+v) && +v >= 0 && +v <= 20 ? +v : null));
+export function cleanAnswers(a: unknown, lang: unknown): Row | null {
+  if (!a || typeof a !== "object") return null;
+  const o = a as Row;
+  const out: Row = { arrival_time: txt(o.arrival_time, LIM.arrival_time), couples: num(o.couples), singles: num(o.singles), meals: txt(o.meals, LIM.meals), note: txt(o.note, LIM.note) };
+  if (!out.arrival_time && out.couples == null && out.singles == null && !out.meals && !out.note) return null;
+  out.lang = lang === "en" ? "en" : "fr";
+  out.at = new Date().toISOString();
+  return out;
+}
+// « 3 couples + 2 personnes seules » — pour le champ couchages de l'équipe (lu en français par l'équipe).
+export function bedsLine(a: Row): string {
+  const p: string[] = [];
+  if (a.couples) p.push(a.couples + (a.couples > 1 ? " couples" : " couple"));
+  if (a.singles) p.push(a.singles + (a.singles > 1 ? " personnes seules" : " personne seule"));
+  return p.join(" + ");
+}
+// Ce que la réponse du client change sur le séjour : la réponse elle-même, et les champs équipe s'ils sont vides.
+export function applyAnswers(stay: Row, a: Row): Row {
+  const det = { ...(stay.details && typeof stay.details === "object" ? stay.details : {}), guest_answers: a };
+  if (!String(det.arrival_time || "").trim() && a.arrival_time) det.arrival_time = a.arrival_time;
+  const beds = bedsLine(a);
+  if (!String(det.beds || "").trim() && beds) det.beds = beds;
+  const body: Row = { details: det };
+  if (!String(stay.meals || "").trim() && a.meals) body.meals = a.meals;
+  return body;
+}
+
 async function factsOf(owner: string): Promise<Row | null> {
   const v = await db(`villa_settings?select=house_facts&owner_id=eq.${owner}&limit=1`);
   const f = v[0] && v[0].house_facts;
   return f && typeof f === "object" && f.VILLA ? f : null;
 }
 
+// Le séjour d'un jeton (lien non retiré, séjour pas terminé depuis plus de 7 jours), sinon le code d'erreur.
+async function stayOfToken(t: string, today: string): Promise<{ stay?: Row; owner?: string; err?: number }> {
+  const l = await db(`livret_links?select=owner_id,client_id&token=eq.${t}&deleted_at=is.null&limit=1`);
+  if (!l.length) return { err: 404 };
+  const s = await db(`crm_clients?select=id,departure,deleted_at,details,meals&id=eq.${encodeURIComponent(l[0].client_id)}&user_id=eq.${l[0].owner_id}&limit=1`);
+  const graceEnd = day(Date.parse(today + "T12:00:00Z") - GRACE_DAYS * 86400000);
+  if (!s.length || s[0].deleted_at || String(s[0].departure || "").slice(0, 10) < graceEnd) return { err: 410 };
+  return { stay: s[0], owner: String(l[0].owner_id) };
+}
+const answersOf = (stay: Row) => (stay.details && typeof stay.details === "object" && stay.details.guest_answers) || null;
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-  if (req.method !== "GET") return out({ error: "method_not_allowed" }, 405);
+  if (req.method !== "GET" && req.method !== "POST") return out({ error: "method_not_allowed" }, 405);
   const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "?";
   const q = new URL(req.url).searchParams;
   const today = day(Date.now());
   try {
+    if (req.method === "POST") {
+      // deno-lint-ignore no-explicit-any
+      let body: any = {};
+      try { body = await req.json(); } catch { body = {}; }
+      const t = body && body.t;
+      if (!validToken(t)) return out({ error: "not_found" }, 404);
+      if (limited("p:" + ip, 20, 60 * 60_000)) return out({ error: "rate_limited" }, 429);
+      const a = cleanAnswers(body.answers, body.lang);
+      if (!a) return out({ error: "empty" }, 400);
+      const r = await stayOfToken(t, today);
+      if (r.err || !r.stay) return out({ error: r.err === 410 ? "expired" : "not_found" }, r.err || 404);
+      if (String(r.stay.departure || "").slice(0, 10) < today) return out({ error: "expired" }, 410); // séjour terminé : plus rien à transmettre
+      await db(`crm_clients?id=eq.${encodeURIComponent(r.stay.id)}&user_id=eq.${r.owner}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(applyAnswers(r.stay, a)) });
+      return out({ ok: true, answers: a });
+    }
     const t = q.get("t");
     if (t) {
       if (!validToken(t)) return out({ error: "not_found" }, 404);
       if (limited("t:" + ip, 120, 10 * 60_000)) return out({ error: "rate_limited" }, 429);
-      const l = await db(`livret_links?select=owner_id,client_id&token=eq.${t}&deleted_at=is.null&limit=1`);
-      if (!l.length) return out({ error: "not_found" }, 404);
-      const s = await db(`crm_clients?select=departure,deleted_at&id=eq.${encodeURIComponent(l[0].client_id)}&user_id=eq.${l[0].owner_id}&limit=1`);
-      const graceEnd = day(Date.parse(today + "T12:00:00Z") - GRACE_DAYS * 86400000);
-      if (!s.length || s[0].deleted_at || String(s[0].departure || "").slice(0, 10) < graceEnd) return out({ error: "expired" }, 410);
-      const f = await factsOf(l[0].owner_id);
-      return f ? out({ facts: f }) : out({ error: "not_found" }, 404);
+      const r = await stayOfToken(t, today);
+      if (r.err || !r.stay) return out({ error: r.err === 410 ? "expired" : "not_found" }, r.err || 404);
+      const f = await factsOf(String(r.owner));
+      return f ? out({ facts: f, answers: answersOf(r.stay) }) : out({ error: "not_found" }, 404);
     }
     const guest = q.get("guest") || "", dates = q.get("dates") || "";
     if (!guest || !dates) return out({ error: "not_found" }, 404);
