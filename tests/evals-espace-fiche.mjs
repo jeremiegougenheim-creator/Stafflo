@@ -35,9 +35,9 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [] } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
-  const calls = [];
+  const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
     const req = route.request(), u = req.url(), m = req.method();
     const json = (b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' }, body: JSON.stringify(b) });
@@ -56,6 +56,18 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/email_inbox') && u.includes('source=eq.email_in')) return json(inMails);
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
     if (u.includes('/rest/v1/rpc/billing_status')) return json(bill || []);
+    if (u.includes('/rest/v1/wa_numbers')) return json(waNum);
+    if (u.startsWith('https://connect.facebook.net/')) {
+      reads.push({ kind: 'fbsdk', url: u });
+      const ev = (origin, data) => `window.dispatchEvent(new MessageEvent('message', { origin: ${JSON.stringify(origin)}, data: ${JSON.stringify(JSON.stringify(data))} }));`;
+      const fin = { type: 'WA_EMBEDDED_SIGNUP', event: 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING', data: { waba_id: '5550001', phone_number_id: '106540352242922' } };
+      return route.fulfill({ status: 200, contentType: 'text/javascript', body: `window.FB = { init: function (o) { window.__fbInit = o; }, login: function (cb, o) { window.__fbLogin = o; ${fbEvil ? ev('https://evil.example.com', fin) : ev('https://www.facebook.com', fin)} cb({ authResponse: { code: 'CODE1' } }); } }; window.fbAsyncInit && window.fbAsyncInit();` });
+    }
+    if (u.includes('/functions/v1/wa-connect')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'waconnect', body: b, auth: req.headers().authorization }); return b.waba_id ? json({ ok: true, display_phone: '+212 600-000111', on_biz_app: true }) : json({ error: 'bad_request' }, 400); }
+    if (u.includes('/rest/v1/wa_messages')) {
+      if (m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'wapatch', url: decodeURIComponent(u), body: b }); return json([{}]); }
+      reads.push({ kind: 'waget', url: decodeURIComponent(u) }); return json(waMsgs.slice().sort((a, b) => b.sent_at.localeCompare(a.sent_at)));
+    }
     if (u.includes('/rest/v1/stay_files')) {
       if (m === 'POST') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sfinsert', body: b }); const row = { id: 'f' + (files.length + 1), created_at: new Date().toISOString(), ...b }; files.push(row); return json([row], 201); }
       if (m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sfpatch', url: u, body: b }); return json([{}]); }
@@ -76,10 +88,10 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
   });
   const page = await ctx.newPage(); const errs = [];
   page.on('pageerror', (e) => errs.push(String(e)));
-  await page.addInitScript(([s, on, one]) => { if (one) { if (sessionStorage.getItem('__init')) return; sessionStorage.setItem('__init', '1'); } localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); if (on) localStorage.setItem('stafflo_email_in', 'on'); }, [SESSION, emailIn, once]);
+  await page.addInitScript(([s, on, one, wm]) => { if (one) { if (sessionStorage.getItem('__init')) return; sessionStorage.setItem('__init', '1'); } localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); if (on) localStorage.setItem('stafflo_email_in', 'on'); if (wm) localStorage.setItem('stafflo_wa_meta', JSON.stringify(wm)); }, [SESSION, emailIn, once, waMeta]);
   await page.goto(`http://127.0.0.1:${PORT}/espace.html#${tab}`);
   await page.waitForSelector(tab === 'maison' ? '[data-a="feopen"]:not([data-v])' : 'article, .card', { timeout: 8000 });
-  return { page, ctx, calls, errs };
+  return { page, ctx, calls, errs, reads };
 }
 const txt = (page) => page.evaluate(() => document.getElementById('main').innerText);
 const unfold = (page) => page.evaluate(() => { document.querySelectorAll('details.fold').forEach((d) => { d.open = true; }); }); // l'utilisateur déplie la section avant d'y écrire
@@ -619,6 +631,86 @@ await r.ctx.close();
   check('mise en route : « Ajouter votre équipe » ouvre la section Équipe de la fiche (plus de détour par l’app)', !!(await r.page.$('button.todo.setup[data-a="feopen"][data-v="team"]')) && !(await r.page.$('a.todo.setup[href="app.html?open=settings"]')));
   await r.page.click('button.todo.setup[data-a="feopen"][data-v="team"]'); await r.page.waitForTimeout(150);
   check('… et l’éditeur s’ouvre dans Maison, section Équipe ouverte', await r.page.evaluate(() => { const d = document.querySelector('details[data-fold="fe:Équipe"]'); return !!d && d.open; }) && !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
+// ── 5 duodecies. WhatsApp Business relié : conversations rangées sur le séjour, sans séjour → relier ──
+{
+  const at = (d, h, mi) => { const x = new Date(Date.now() + d * 86400000); x.setHours(h, mi, 0, 0); return x.toISOString(); };
+  const S = [
+    { id: 'k1', name: 'Felipe Villalobos', phone: '+44 7700 900123', arrival: iso(3), departure: iso(6), adults: 7, booking_status: 'confirmed', source: 'Airbnb', details: {} },
+    { id: 'k2', name: 'Sara Benali', phone: null, arrival: iso(10), departure: iso(14), adults: 2, booking_status: 'confirmed', source: 'Direct', details: {} },
+    { id: 'k3', name: 'Marc Petit', phone: '06 00 00 00 98', arrival: iso(20), departure: iso(23), adults: 2, booking_status: 'confirmed', source: 'Direct', details: {} },
+  ];
+  const W = [
+    { id: 'w1', guest_wa: '447700900123', guest_name: 'Felipe', direction: 'in', type: 'text', body: 'Hi! A minor update, in the end only 4 of us will stay at the villa, looking at the booklet this would change the price of our meals?', sent_at: at(-5, 15, 20), client_id: null },
+    { id: 'w2', guest_wa: '447700900123', guest_name: null, direction: 'out', type: 'text', body: 'Noted, see you Tuesday! We are 12 max at the villa.', sent_at: at(-5, 15, 30), client_id: null },
+    { id: 'w3', guest_wa: '447700900123', guest_name: 'Felipe', direction: 'in', type: 'image', body: null, sent_at: at(-5, 15, 38), client_id: null },
+    { id: 'w4', guest_wa: '447700900123', guest_name: 'Felipe', direction: 'in', type: 'text', body: 'Ah perfect thank you, hoping to arrive in about 1hr15', sent_at: at(-1, 14, 5), client_id: null },
+    { id: 'w5', guest_wa: '212600000099', guest_name: 'Sara', direction: 'in', type: 'text', body: 'Bonjour, nous arrivons à 2, merci pour le livret', sent_at: at(-2, 9, 0), client_id: null },
+    { id: 'w6', guest_wa: '212600000098', guest_name: 'Marc', direction: 'in', type: 'text', body: 'On arrive vers 16h', sent_at: at(-1, 10, 0), client_id: null },
+    { id: 'w7', guest_wa: '212600000077', guest_name: 'Saïd', direction: 'in', type: 'text', body: 'Les chambres sont prêtes', sent_at: at(-1, 11, 0), client_id: null },
+    { id: 'w8', guest_wa: '33600000055', guest_name: 'Vieux contact', direction: 'in', type: 'text', body: 'Hello', sent_at: at(-60, 11, 0), client_id: null },
+  ];
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' }, TEAM: [{ name: 'Saïd', role: ['gardien', ''], phone: '+212 6 00 00 00 77', brief: true }] } };
+  r = await open({ tab: 'jour', villa: V, stays: S.map((x) => ({ ...x })), waNum: [{ display_phone: '+212 775 000 000', history_status: 'done', history_progress: 100 }], waMsgs: W.map((x) => ({ ...x })) });
+  await r.page.waitForTimeout(300);
+  const wg = r.reads.find((x) => x.kind === 'waget');
+  let tj = await txt(r.page);
+  check('chargement : messages des 400 derniers jours, les plus récents, non masqués', !!wg && /deleted_at=is\.null/.test(wg.url) && /order=sent_at\.desc/.test(wg.url) && /sent_at=gte\./.test(wg.url));
+  check('Jour › « WhatsApp sans séjour » : seulement Sara (numéro sur aucun séjour) — ni Felipe ni Marc (reliés par leur numéro, même écrit 06…), ni Saïd (équipe), ni un contact de plus de 30 jours', /WhatsApp sans séjour/i.test(tj) && /Sara · \+212600000099/.test(tj) && !/Felipe · \+447700900123/.test(tj) && !/\+212600000098/.test(tj) && !/Les chambres sont prêtes/.test(tj) && !/Vieux contact/.test(tj), tj.slice(0, 300));
+  await r.page.click('[data-a="tab"][data-v="sejours"]'); await r.page.waitForTimeout(150);
+  await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.waitForTimeout(100);
+  let tk = await r.page.innerText('#st-k1');
+  check('séjour de Felipe : « WhatsApp · 4 messages », les deux derniers (photo sans texte → ‹photo›)', /WhatsApp · 4 messages · dernier/.test(tk) && /‹photo›/.test(tk) && /hoping to arrive in about 1hr15/.test(tk), tk.slice(0, 700));
+  await r.page.click('[data-a="panel"][data-id="k1"][data-v="wat"]'); await r.page.waitForTimeout(100);
+  check('« Voir la conversation » : les 4 messages, client et « Vous », lecture seule', (await r.page.$$('#st-k1 .panel .wa-log p')).length === 4 && /Vous · /.test(await r.page.innerText('#st-k1 .panel')) && /Lecture seule/.test(await r.page.innerText('#st-k1 .panel')));
+  await r.page.click('[data-a="wlfill"][data-id="k1"]'); await r.page.waitForTimeout(150);
+  tk = await r.page.innerText('#st-k1');
+  check('« Remplir depuis ces messages » : propositions citées tirées des seuls messages du client (4, pas les « 12 » de l’hôte), arrivée, pas de choix d’expéditeur', (await r.page.inputValue('#wa-ad-k1-0')) === '4' && /hoping to arrive in about 1hr15/.test(await r.page.inputValue('#wa-v-k1-1')) && !(await r.page.$('#st-k1 [data-a="waguest"]')) && /1 photo ou document non importé/.test(tk), tk.slice(0, 600));
+  await r.page.click('[data-a="waapply"][data-id="k1"]'); await r.page.waitForTimeout(300);
+  const kp = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('enregistrer : adultes 4 et arrivée sur le séjour de Felipe', !!kp && /id=eq\.k1/.test(kp.url) && kp.body.adults === 4 && /1hr15/.test(kp.body.details.arrival_time));
+  // Relier Sara à son séjour : numéro noté sur le séjour, messages rattachés ; la carte se vide.
+  await r.page.click('[data-a="tab"][data-v="jour"]'); await r.page.waitForTimeout(150);
+  await r.page.selectOption('#wl-to-212600000099', 'k2'); await r.page.click('[data-a="wllink"][data-v="212600000099"]'); await r.page.waitForTimeout(400);
+  const wp = r.calls.filter((x) => x.kind === 'wapatch').pop(), sp = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('relier : messages de Sara rattachés au séjour (client_id), numéro noté sur le séjour (il n’en avait pas), carte vidée', !!wp && /wa_messages\?id=in\.\(w5\)/.test(wp.url) && wp.body.client_id === 'k2' && !!sp && /id=eq\.k2/.test(sp.url) && sp.body.phone === '+212600000099' && !/WhatsApp sans séjour/i.test(await txt(r.page)) && !r.errs.length, { wp, sp, e: r.errs });
+  await r.ctx.close();
+  // Masquer
+  r = await open({ tab: 'jour', villa: V, stays: S.map((x) => ({ ...x })), waNum: [{ display_phone: '+212 775 000 000', history_status: 'done' }], waMsgs: W.map((x) => ({ ...x })) });
+  await r.page.waitForTimeout(300);
+  await r.page.click('[data-a="wlhide"][data-v="212600000099"]'); await r.page.waitForTimeout(300);
+  const hp = r.calls.filter((x) => x.kind === 'wapatch').pop();
+  check('masquer : suppression douce des messages de ce numéro (deleted_at), carte vidée', !!hp && Object.keys(hp.body).join() === 'deleted_at' && !/WhatsApp sans séjour/i.test(await txt(r.page)));
+  await r.ctx.close();
+}
+
+// ── 5 terdecies. Relier WhatsApp Business : bouton, SDK de Meta chargé au clic seulement, code → wa-connect ──
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null };
+  r = await open({ villa: V });
+  await r.page.waitForTimeout(200);
+  check('identifiants de l’app Meta absents : aucune ligne WhatsApp Business dans Réglages (rien à promettre)', !(await r.page.$('[data-a="waconnect"]')) && !/WhatsApp Business/.test(await r.page.innerText('#settings')));
+  await r.ctx.close();
+  r = await open({ villa: V, waMeta: { appId: '123456', configId: '654321' } });
+  await r.page.waitForTimeout(200);
+  check('identifiants présents : « Relier » dans Réglages ; le SDK de Meta n’est PAS chargé avant le clic', !!(await r.page.$('#settings [data-a="waconnect"]')) && !r.reads.some((x) => x.kind === 'fbsdk'));
+  await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(1200);
+  const wc = r.calls.filter((x) => x.kind === 'waconnect').pop();
+  const lo = await r.page.evaluate(() => ({ init: window.__fbInit, login: window.__fbLogin }));
+  check('clic : SDK chargé, FB.init (app, v25.0), FB.login (configuration, code, coexistence)', r.reads.some((x) => x.kind === 'fbsdk') && lo.init && lo.init.appId === '123456' && lo.init.version === 'v25.0' && lo.login.config_id === '654321' && lo.login.response_type === 'code' && lo.login.extras.featureType === 'whatsapp_business_app_onboarding', lo);
+  check('code et identifiants du compte (message de facebook.com) envoyés à wa-connect avec la session ; « relié » affiché', !!wc && wc.body.code === 'CODE1' && wc.body.waba_id === '5550001' && wc.body.phone_number_id === '106540352242922' && wc.auth === 'Bearer tok' && /WhatsApp Business relié : \+212 600-000111/.test(await r.page.innerText('#toastHost')) && !r.errs.length, { wc, e: r.errs });
+  await r.ctx.close();
+  r = await open({ villa: V, waMeta: { appId: '123456', configId: '654321' }, fbEvil: true });
+  await r.page.waitForTimeout(200);
+  await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(4000);
+  const we = r.calls.filter((x) => x.kind === 'waconnect').pop();
+  check('un message qui ne vient pas de facebook.com est ignoré (pas d’identifiants volés), erreur affichée', !!we && !we.body.waba_id && /Connexion impossible/.test(await r.page.innerText('#settings')));
+  await r.ctx.close();
+  r = await open({ villa: V, waNum: [{ display_phone: '+212 600-000111', history_status: 'syncing', history_progress: 55 }] });
+  await r.page.waitForTimeout(200);
+  check('relié : « Relié : +212 600-000111 · historique 55 % »', /Relié : \+212 600-000111 · historique 55 %/.test(await r.page.innerText('#settings')));
   await r.ctx.close();
 }
 
