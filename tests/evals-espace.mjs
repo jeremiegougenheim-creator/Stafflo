@@ -58,7 +58,7 @@ check('alertes : désactiver = suppression douce de l’abonnement', /push_subsc
 check('installable : manifeste et icône écran d’accueil', esp.includes('<link rel="manifest" href="espace.webmanifest">') && esp.includes('<link rel="apple-touch-icon" href="assets/icon-180.png">'));
 check('pastille de synchro : seulement les passages gmail-sync', /sync_runs\?select=finished_at,ok&source=like\.gmail_sync\*/.test(script));
 // v4 — « À faire » : une ligne par action, tous séjours confondus
-check('« À faire » en tête du Jour (après la mise en route d’un compte neuf)', /h \+= setup;\s*h \+= todoCard\(\);\s*if \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) h \+= '<div class="tiles">/.test(script));
+check('« À faire » en tête du Jour (après la mise en route d’un compte neuf)', /h \+= setup;\s*h \+= todoCard\(\);\s*\/\/ v12/.test(script));
 check('« À faire » : retards et messages d’abord', /var rank = function \(x\) \{ return x\.k === 'msg' \? 0 : x\.late \? 1 : 2; \}/.test(script));
 check('« À faire » ouvre le séjour sur le bon panneau', /a === 'goto' && \(c = c \|\| pastById\(id\)\)/.test(script) && /id="st-' \+ esc\(c\.id\)/.test(script));
 check('une arrivée du jour n’apparaît qu’une fois', /c\.a > t && c\.a - t <= 21/.test(script));
@@ -99,7 +99,7 @@ check('mise en route : Gmail (synchro serveur), premier séjour, équipe — coc
 check('mise en route : disparaît quand Gmail, séjours et équipe sont là (jamais pour un compte établi)', /if \(gmail && stay && team\) return '';/.test(script));
 check('mise en route : chaque étape mène au bon écran de l’app (?open=)', /href: 'app\.html\?open=gmail'/.test(script) && /href: 'app\.html\?open=stay'/.test(script) && /href: 'app\.html\?open=settings'/.test(script));
 check('mise en route : pas de doublon avec l’invitation aux alertes', /if \(!setup\) h \+= nudgeCard\(\);/.test(script));
-check('compte sans aucun séjour : pas de tuiles « 0 / 0 / 0 € »', /if \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) h \+= '<div class="tiles">/.test(script));
+check('compte sans aucun séjour : pas de tuiles « 0 / 0 / 0 € » (tuiles dans Séjours, v12)', /if \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) \{\s*var up = D\.stays/.test(script) && (script.match(/<div class="tiles">/g) || []).length === 1);
 const appH = fs.readFileSync(path.join(root, 'app.html'), 'utf8');
 check('app : ?open=gmail|settings|stay ouvre l’écran une fois la session prête', /\[\?&\]open=\(gmail\|settings\|stay\)\\b/.test(appH) && /what === 'gmail' && typeof showEmailConnectModal === 'function'/.test(appH));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
@@ -133,6 +133,14 @@ check('v11 : carte Départs sans recopier le texte de la fiche', !/departures, d
 check('v11 : ancien générateur de planning derrière interrupteur (données jamais vues par l’équipe)', /stafflo_planning_old/.test(script) && /if \(oldPlanning\) h \+= card\('calendar-user', l\.mPlanning/.test(script));
 check('v11 : « Ce qu’ARIA sait de la maison » se présente comme dépliable (chevron)', /<details class="dig"><summary><i class="ti ti-chevron-right"/.test(script));
 check('v11 : écran de connexion titré « Espace Stafflo »', /textContent = 'Espace Stafflo'; return; \}/.test(script));
+
+// ── v12 (15/10/2026) — allègement : moins à l'écran, grammaire v19 ─────────
+check('v12 : une ligne d’état par séjour (ce qui manque), plus de rangée de pastilles', /<p class="state (alert|wait|go)">/.test(script) && !/ck\.map\(function \(x\) \{\s*var cls = x\.done \? 't-go'/.test(script));
+check('v12 : séjour à plus de 14 jours → rien à signaler (ce n’est pas encore à faire)', /if \(missCk\.length && c\.a - t <= 14\)/.test(script));
+check('v12 : actions en grille carrée de 4 (règle v19), icône au-dessus du mot', /\.acts\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/.test(esp) && /\.act\{[^}]*flex-direction:column/.test(esp));
+check('v12 : ARIA hors de la barre d’onglets (3 onglets), bouton dans l’en-tête', /var TABS = \[\['jour', 'sun'\], \['sejours', 'calendar-event'\], \['maison', 'home'\]\]/.test(script) && /id="ariaBtn" data-a="tab" data-v="aria"/.test(esp) && /grid-template-columns:repeat\(3,1fr\)/.test(esp));
+check('v12 : Jour = à faire, à répondre, en ce moment, arrivées, départs — tuiles et dates fortes dans Séjours', /h \+= todoCard\(\);\s*\/\/ v12/.test(script) && !/eventsCard\(75, 3, false\)/.test(script) && /var h = '';\s*\/\/ v12 — les trois chiffres/.test(script));
+check('v12 : Maison — alertes et accès équipe d’abord, la fiche repliée (6 sections)', /h = pushCard\(\) \+ eqCard\(\);/.test(script) && (script.match(/, '', true\);/g) || []).length === 6 && /<details class="card fold"><summary class="h">/.test(script));
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v523 (revue UX par intervenant : Espace, livret)
-const CACHE = 'stafflo-v523';
+// Stafflo Service Worker — v524 (Espace allégé : ligne d'état, grille d'actions, ARIA hors barre)
+const CACHE = 'stafflo-v524';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
