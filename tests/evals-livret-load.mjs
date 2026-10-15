@@ -90,6 +90,34 @@ await r.page.click('#ar-send'); await r.page.waitForTimeout(300);
 check('formulaire vide → rien n’est envoyé', !r.calls.some((c) => c.kind === 'post'));
 await r.ctx.close();
 
+// ── Commande avant l'arrivée (15/10/2026) : repas chiffrés + extras, prix de la fiche ──────────
+const ordRows = (page) => page.$$eval('#ord .ord-row', (rs) => rs.map((x) => x.querySelector('b').innerText + ' | ' + x.querySelector('span').innerText.split('\n')[0]));
+const ORDER_OK = (body) => ({ status: 200, body: JSON.stringify({ ok: true, answers: null, orders: { items: body.orders.map((x) => ({ id: x.id, q: x.q })), total: 2100, cur: 'MAD', at: '2026-10-15T10:00:00Z' } }) });
+r = await open('t=' + TOK + '&pax=9&lang=fr', { view: ok200, post: ORDER_OK });
+let rows = await ordRows(r.page);
+check('pilote, groupe de 9 : carte = service et goûter au tarif 7–10 (850 / 400 MAD), jamais le petit-déjeuner inclus', rows.length === 2 && /Brunch, déjeuner ou dîner/.test(rows[0]) && /850 MAD · par service, pour tout le groupe/.test(rows[0]) && /Goûter/.test(rows[1]) && /400 MAD/.test(rows[1]) && !rows.some((x) => /Petit-déjeuner/.test(x)), rows);
+await r.page.click('[data-ord="1"][data-id="m1"]'); await r.page.click('[data-ord="1"][data-id="m1"]'); await r.page.click('[data-ord="1"][data-id="m2"]'); await r.page.click('[data-ord="1"][data-id="m2"]'); await r.page.click('[data-ord="-1"][data-id="m2"]');
+check('le client compte : 2 services + 1 goûter → total indicatif 2 100 MAD, sans recharger la page', /2\s?100 MAD/.test(await r.page.innerText('#ord-tot')) && (await r.page.innerText('#oq-m1')) === '2' && (await r.page.innerText('#oq-m2')) === '1');
+await r.page.click('#ar-send'); await r.page.waitForTimeout(400);
+let ps = r.calls.filter((c) => c.kind === 'post').pop();
+check('envoi : seulement id et quantité (jamais un prix), sans réponses vides', ps && JSON.stringify(ps.body.orders) === '[{"id":"m1","q":2},{"id":"m2","q":1}]' && !('answers' in ps.body) && ps.body.t === TOK, ps && ps.body);
+check('après envoi : « Commande transmise · total 2 100 MAD »', /Commande transmise · total 2\s?100 MAD/.test(await r.page.innerText('#ar-st')));
+await r.ctx.close();
+r = await open('t=' + TOK + '&pax=4&lang=fr', { view: ok200 });
+rows = await ordRows(r.page);
+check('pilote, groupe de 4 : tarif 1–6 (650 / 300 MAD)', /650 MAD/.test(rows[0]) && /300 MAD/.test(rows[1]), rows);
+await r.ctx.close();
+// Autre villa : extras de la fiche, devise de la villa, commande déjà envoyée relue
+const XF = JSON.stringify({ VILLA: { name: 'Riad Zina', host: 'Nadia', currency: '€' }, EXTRAS: [{ n: ['Transfert aéroport', 'Airport transfer'], price: 40, unit: ['par trajet', 'per trip'] }, { n: ['Massage', ''], price: 60, unit: ['par personne', ''], d: ['Au riad, 1 h', ''] }, { n: ['Sans prix', ''] }] });
+r = await open('t=' + TOK + '&lang=fr', { view: () => ({ status: 200, body: '{"facts":' + XF + ',"orders":{"items":[{"id":"x1","q":2}],"total":120,"cur":"€"}}' }) });
+rows = await ordRows(r.page);
+check('autre villa : extras avec prix et unité (« 40 € · par trajet »), sans prix = pas proposé', rows.length === 2 && /Transfert aéroport \| 40 € · par trajet/.test(rows[0]) && /Massage \| 60 € · par personne/.test(rows[1]), rows);
+check('commande déjà envoyée → compteurs pré-remplis et « Commande transmise · total 120 € »', (await r.page.innerText('#oq-x1')) === '2' && /Commande transmise · total 120 €/.test(await r.page.innerText('#ar-st')) && !r.errs.length);
+await r.ctx.close();
+r = await open('t=' + TOK + '&lang=fr', { view: () => ({ status: 200, body: '{"facts":' + JSON.stringify({ VILLA: { name: 'Riad Zina' } }) + '}' }) });
+check('fiche sans repas chiffré ni extra : pas de carte', !(await r.page.$('#ord')) && r.form === true);
+await r.ctx.close();
+
 r = await open('guest=Ana&dates=1%20JAN%20%E2%80%93%205%20JAN%2027&lang=fr', { session: sessionFor(3600), rest: () => ({ status: 200, body: '[{"house_facts":' + FACTS + '}]' }) });
 const rc = r.calls.find((c) => c.kind === 'rest');
 check('propriétaire connecté (sans jeton) → sa fiche, lue avec SA session et son id', r.len > 30000 && rc && rc.auth === 'Bearer jwt-test' && rc.u.includes('owner_id=eq.' + UID) && !r.calls.some((c) => c.kind === 'view'), { len: r.len });

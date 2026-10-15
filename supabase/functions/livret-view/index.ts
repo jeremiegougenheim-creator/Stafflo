@@ -16,6 +16,11 @@
 //   (couples / personnes seules) et ses repas. Enregistré tel quel dans details.guest_answers, et
 //   recopié dans les champs que l'équipe lit (details.arrival_time, details.beds, meals) SEULEMENT
 //   s'ils sont vides : jamais écrasé ce que le propriétaire a saisi, jamais traduit, jamais complété.
+// POST { t, orders: [{ id, q }] }  (lien personnel seulement, 15/10/2026) → la commande du client avant
+//   l'arrivée : repas chiffrés de la fiche (id « m<n> », prix par service selon la taille du groupe) et
+//   extras (id « x<n> », fiche EXTRAS). Les prix sont TOUJOURS recalculés ici depuis la fiche, jamais pris
+//   de la page. Enregistrée dans details.guest_orders (la dernière remplace la précédente) ; le résumé des
+//   repas va dans meals seulement s'il est vide. Rien n'est payé : le propriétaire confirme.
 // Rien d'autre n'est renvoyé (ni nom, ni prix, ni séjour). Limite par adresse IP.
 // verify_jwt : off (le client n'a pas de compte) — l'accès, c'est le jeton.
 
@@ -100,6 +105,63 @@ export function applyAnswers(stay: Row, a: Row): Row {
   return body;
 }
 
+// ── Commande (carte des extras) ─────────────────────────────────────────
+// Prix lu dans un texte de la fiche (« 850 MAD », « 1 500 MAD ») ; « Inclus » → null.
+export function priceOf(v: unknown): number | null {
+  if (typeof v === "number") return isFinite(v) && v > 0 ? v : null;
+  const m = /(\d+(?:[.,]\d{1,2})?)/.exec(String(Array.isArray(v) ? v[0] : v ?? "").replace(/\s/g, ""));
+  const n = m ? parseFloat(m[1].replace(",", ".")) : NaN;
+  return isFinite(n) && n > 0 ? n : null;
+}
+export function curOf(f: Row): string {
+  const v = f && f.VILLA && typeof f.VILLA.currency === "string" ? f.VILLA.currency.trim() : "";
+  if (v) return v.slice(0, 4);
+  for (const m of (Array.isArray(f && f.MEALS) ? f.MEALS : [])) {
+    const x = /\d\s*([A-Za-z€$£]{1,4})\b|\d\s*([€$£])/.exec(String(Array.isArray(m && m.a) ? m.a[0] : m && m.a || ""));
+    if (x) return (x[1] || x[2]).slice(0, 4);
+  }
+  return "";
+}
+const pairOf = (v: unknown): string[] => Array.isArray(v) ? [String(v[0] ?? ""), String(v[1] ?? "")] : [String(v ?? ""), ""];
+// La carte : repas chiffrés (prix du groupe selon sa taille : 1–6 → a, 7 et plus → b) puis extras.
+export function orderMenu(f: Row, pax: number): Row[] {
+  const out: Row[] = [];
+  (Array.isArray(f && f.MEALS) ? f.MEALS : []).forEach((m: Row, i: number) => {
+    const unit = priceOf(pax >= 7 ? (m.b ?? m.a) : m.a) ?? priceOf(m.a);
+    if (unit) out.push({ id: "m" + i, kind: "meal", n: pairOf(m.n), unit });
+  });
+  (Array.isArray(f && f.EXTRAS) ? f.EXTRAS : []).forEach((x: Row, i: number) => {
+    const unit = priceOf(x && x.price);
+    if (unit && x && x.n) out.push({ id: "x" + i, kind: "extra", n: pairOf(x.n), unit });
+  });
+  return out;
+}
+export function paxOf(stay: Row): number {
+  const ad = parseInt(stay && stay.adults, 10) || 0, ch = parseInt(stay && stay.children, 10) || 0;
+  return (ad + ch) || parseInt(stay && stay.guests, 10) || 0;
+}
+// Lignes envoyées par la page → commande propre. Seuls id et quantité comptent ; tout le reste vient de la fiche.
+export function cleanOrders(raw: unknown, f: Row, pax: number): Row | null {
+  if (!Array.isArray(raw) || raw.length > 40) return null;
+  const menu = orderMenu(f, pax), qty: Record<string, number> = {};
+  for (const l of raw) {
+    const id = l && typeof l.id === "string" ? l.id : "", q = Number(l && l.q);
+    if (!/^[mx]\d{1,2}$/.test(id) || !Number.isInteger(q) || q < 0 || q > 30) continue;
+    qty[id] = q;
+  }
+  const items = menu.filter((m) => qty[m.id] > 0).map((m) => ({ id: m.id, kind: m.kind, n: m.n, q: qty[m.id], unit: m.unit, sub: Math.round(m.unit * qty[m.id] * 100) / 100 }));
+  const total = Math.round(items.reduce((t, x) => t + x.sub, 0) * 100) / 100;
+  return { items, total, cur: curOf(f), at: new Date().toISOString() };
+}
+// La commande sur le séjour : details.guest_orders, et le résumé des repas dans meals s'il est vide (l'équipe le lit).
+export function applyOrders(stay: Row, body: Row, o: Row): Row {
+  const det = { ...(body.details || (stay.details && typeof stay.details === "object" ? stay.details : {})), guest_orders: o };
+  const out: Row = { ...body, details: det };
+  const meals = o.items.filter((x: Row) => x.kind === "meal").map((x: Row) => x.q + " × " + x.n[0]).join(", ");
+  if (meals && !String(stay.meals || "").trim()) out.meals = [body.meals, meals].filter(Boolean).join(" · ");
+  return out;
+}
+
 async function factsOf(owner: string): Promise<Row | null> {
   const v = await db(`villa_settings?select=house_facts&owner_id=eq.${owner}&limit=1`);
   const f = v[0] && v[0].house_facts;
@@ -110,12 +172,13 @@ async function factsOf(owner: string): Promise<Row | null> {
 async function stayOfToken(t: string, today: string): Promise<{ stay?: Row; owner?: string; err?: number }> {
   const l = await db(`livret_links?select=owner_id,client_id&token=eq.${t}&deleted_at=is.null&limit=1`);
   if (!l.length) return { err: 404 };
-  const s = await db(`crm_clients?select=id,departure,deleted_at,details,meals&id=eq.${encodeURIComponent(l[0].client_id)}&user_id=eq.${l[0].owner_id}&limit=1`);
+  const s = await db(`crm_clients?select=id,departure,deleted_at,details,meals,adults,children,guests&id=eq.${encodeURIComponent(l[0].client_id)}&user_id=eq.${l[0].owner_id}&limit=1`);
   const graceEnd = day(Date.parse(today + "T12:00:00Z") - GRACE_DAYS * 86400000);
   if (!s.length || s[0].deleted_at || String(s[0].departure || "").slice(0, 10) < graceEnd) return { err: 410 };
   return { stay: s[0], owner: String(l[0].owner_id) };
 }
 const answersOf = (stay: Row) => (stay.details && typeof stay.details === "object" && stay.details.guest_answers) || null;
+const ordersOf = (stay: Row) => (stay.details && typeof stay.details === "object" && stay.details.guest_orders) || null;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
@@ -132,12 +195,18 @@ Deno.serve(async (req: Request) => {
       if (!validToken(t)) return out({ error: "not_found" }, 404);
       if (limited("p:" + ip, 20, 60 * 60_000)) return out({ error: "rate_limited" }, 429);
       const a = cleanAnswers(body.answers, body.lang);
-      if (!a) return out({ error: "empty" }, 400);
+      const wantsOrder = Array.isArray(body.orders);
+      if (!a && !wantsOrder) return out({ error: "empty" }, 400);
       const r = await stayOfToken(t, today);
       if (r.err || !r.stay) return out({ error: r.err === 410 ? "expired" : "not_found" }, r.err || 404);
       if (String(r.stay.departure || "").slice(0, 10) < today) return out({ error: "expired" }, 410); // séjour terminé : plus rien à transmettre
-      await db(`crm_clients?id=eq.${encodeURIComponent(r.stay.id)}&user_id=eq.${r.owner}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(applyAnswers(r.stay, a)) });
-      return out({ ok: true, answers: a });
+      let patch: Row = a ? applyAnswers(r.stay, a) : {};
+      const f = wantsOrder ? await factsOf(String(r.owner)) : null;
+      const o = f ? cleanOrders(body.orders, f, paxOf(r.stay)) : null;
+      if (o) patch = applyOrders(r.stay, patch, o);
+      if (!Object.keys(patch).length) return out({ error: "empty" }, 400);
+      await db(`crm_clients?id=eq.${encodeURIComponent(r.stay.id)}&user_id=eq.${r.owner}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify(patch) });
+      return out({ ok: true, answers: a || answersOf(r.stay), orders: o || ordersOf(r.stay) });
     }
     const t = q.get("t");
     if (t) {
@@ -146,7 +215,7 @@ Deno.serve(async (req: Request) => {
       const r = await stayOfToken(t, today);
       if (r.err || !r.stay) return out({ error: r.err === 410 ? "expired" : "not_found" }, r.err || 404);
       const f = await factsOf(String(r.owner));
-      return f ? out({ facts: f, answers: answersOf(r.stay) }) : out({ error: "not_found" }, 404);
+      return f ? out({ facts: f, answers: answersOf(r.stay), orders: ordersOf(r.stay) }) : out({ error: "not_found" }, 404);
     }
     const guest = q.get("guest") || "", dates = q.get("dates") || "";
     if (!guest || !dates) return out({ error: "not_found" }, 404);

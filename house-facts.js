@@ -16,13 +16,13 @@
 (function () {
 'use strict';
 
-const KEYS = ['VILLA','PRACTICAL','ROOMS','GOOD_TO_KNOW','MEAL_NOTES','MEALS','LEISURE','RULES','BREAKFAST','GOUTER','STARTERS','MAINS','SIMPLE','DESSERTS','MEDINA','GOLF','ACTIVITIES','RESTAURANTS','CAFES','TEXT','TEAM','QR'];
+const KEYS = ['VILLA','PRACTICAL','ROOMS','GOOD_TO_KNOW','MEAL_NOTES','MEALS','LEISURE','RULES','BREAKFAST','GOUTER','STARTERS','MAINS','SIMPLE','DESSERTS','MEDINA','GOLF','ACTIVITIES','RESTAURANTS','CAFES','TEXT','TEAM','QR','EXTRAS'];
 
 function build(data) {
 if (!data || typeof data !== 'object' || !data.VILLA) return null;
 const {VILLA, PRACTICAL, ROOMS, GOOD_TO_KNOW, MEAL_NOTES, MEALS, LEISURE, RULES,
   BREAKFAST, GOUTER, STARTERS, MAINS, SIMPLE, DESSERTS, MEDINA, GOLF,
-  ACTIVITIES, RESTAURANTS, CAFES, TEXT, TEAM} = data;
+  ACTIVITIES, RESTAURANTS, CAFES, TEXT, TEAM, EXTRAS} = data;
 
 function pick(pair, i) {
   if (!Array.isArray(pair)) return String(pair == null ? '' : pair);
@@ -81,6 +81,13 @@ function digest(lang) {
   if (A(MAINS).length) li((fr ? 'Plats : ' : 'Mains: ') + A(MAINS).map(s => head(P(s))).join(', '));
   if (A(SIMPLE).length) li((fr ? 'Pour les enfants : ' : 'For children: ') + A(SIMPLE).map(s => head(P(s))).join(', '));
   if (A(DESSERTS).length) li((fr ? 'Desserts : ' : 'Desserts: ') + A(DESSERTS).map(s => head(P(s))).join(', '));
+
+  // Extras commandables depuis le livret (15/10/2026). Absents de la fiche du pilote : résumé inchangé.
+  const XS = A(EXTRAS).filter(e => e && e.n && P(e.n));
+  if (XS.length) {
+    sec(fr ? 'Extras sur demande' : 'Extras on request');
+    XS.forEach(e => li(P(e.n) + (e.price != null && e.price !== '' ? ' : ' + e.price + (V.currency ? ' ' + V.currency : '') + (has(P(e.unit)) ? ' ' + P(e.unit) : '') : '') + (has(P(e.d)) ? ' — ' + P(e.d) : '')));
+  }
 
   sec(fr ? 'Pratique' : 'Practical');
   A(PRACTICAL).forEach(p => li(P(p)));

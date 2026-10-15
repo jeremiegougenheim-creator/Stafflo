@@ -54,7 +54,7 @@ check('dates des anciens liens : identiques à fmtStayDates de l’app (730 jour
 check('jeton : 32 à 64 caractères base64url seulement', M.validToken('A'.repeat(43)) && !M.validToken('short') && !M.validToken("A'or'1'='1".padEnd(40, 'x')));
 let r = await get('t=' + 'A'.repeat(43));
 let b = await r.json();
-check('lien personnel valide → la fiche et les réponses du client, rien d’autre (ni nom, ni séjour, ni prix)', r.status === 200 && b.facts && b.facts.VILLA.name === 'Villa Test' && Object.keys(b).sort().join() === 'answers,facts' && b.answers === null);
+check('lien personnel valide → la fiche et les réponses du client, rien d’autre (ni nom, ni séjour, ni prix)', r.status === 200 && b.facts && b.facts.VILLA.name === 'Villa Test' && Object.keys(b).sort().join() === 'answers,facts,orders' && b.answers === null && b.orders === null);
 r = await get('t=' + 'Z'.repeat(43));
 check('jeton inconnu → 404', r.status === 404);
 r = await get('t=' + 'B'.repeat(43));
@@ -105,6 +105,36 @@ check('une seule écriture en base : la réponse du client (PATCH), jamais de PO
   check('réponses limitées par adresse IP (20 / heure)', lim2);
 }
 check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
+
+// 6. Commande avant l'arrivée (carte des extras) — prix recalculés depuis la fiche, jamais ceux de la page.
+{
+  const F2 = { VILLA: { name: 'Villa Test' }, MEALS: [
+    { n: ['Petit-déjeuner', 'Breakfast'], a: ['Inclus', 'Included'], b: ['Inclus', 'Included'] },
+    { n: ['Dîner', 'Dinner'], a: ['650 MAD', '650 MAD'], b: ['850 MAD', '850 MAD'] },
+    { n: ['Goûter', 'Afternoon tea'], a: ['300 MAD', '300 MAD'], b: ['400 MAD', '400 MAD'] }],
+    EXTRAS: [{ n: ['Transfert aéroport', 'Airport transfer'], price: 400, unit: ['par trajet', 'per trip'] }, { n: ['Sans prix', ''], price: '' }] };
+  DB.facts.o2 = F2;
+  DB.links.push({ token: 'C'.repeat(43), owner_id: 'o2', client_id: 's2' });
+  DB.stays.push({ id: 's2', user_id: 'o2', name: 'Big Group', arrival: iso(4), departure: iso(9), adults: 8, children: 1, details: { livretSentAt: '2026-10-15T09:00:00Z' } });
+  check('carte : repas chiffrés seulement (« Inclus » exclu), prix du groupe selon sa taille, extras avec prix', JSON.stringify(M.orderMenu(F2, 4).map((x) => x.id + ':' + x.unit)) === '["m1:650","m2:300","x0:400"]' && JSON.stringify(M.orderMenu(F2, 9).map((x) => x.id + ':' + x.unit)) === '["m1:850","m2:400","x0:400"]');
+  check('devise : celle de la villa, sinon lue dans le prix des repas ; prix « 1 500 MAD » lu 1500', M.curOf(F2) === 'MAD' && M.curOf({ VILLA: { currency: '€' } }) === '€' && M.priceOf('1 500 MAD') === 1500 && M.priceOf('Inclus') === null && M.priceOf(0) === null);
+  const n0 = PATCHES.length;
+  r = await post({ t: 'C'.repeat(43), orders: [{ id: 'm1', q: 2, unit: 1 }, { id: 'x0', q: 1, unit: 0 }, { id: 'm0', q: 3 }, { id: 'x1', q: 2 }, { id: 'zz', q: 5 }, { id: 'm2', q: 99 }] }, '4.4.4.4');
+  b = await r.json();
+  const p2 = PATCHES[PATCHES.length - 1];
+  check('commande → prix de la fiche pour un groupe de 9 (2 × 850 + 1 × 400 = 2 100 MAD), jamais le prix envoyé, lignes inconnues ou hors bornes ignorées', r.status === 200 && b.orders && b.orders.total === 2100 && b.orders.cur === 'MAD' && b.orders.items.map((x) => x.id + '×' + x.q).join() === 'm1×2,x0×1', b.orders);
+  check('commande écrite sur CE séjour : details.guest_orders, repas résumés dans meals (vide), rien d’autre', PATCHES.length === n0 + 1 && /crm_clients\?id=eq\.s2&user_id=eq\.o2/.test(p2.url) && p2.body.details.guest_orders.total === 2100 && p2.body.meals === '2 × Dîner' && Object.keys(p2.body).sort().join() === 'details,meals' && p2.body.details.livretSentAt === '2026-10-15T09:00:00Z');
+  const withMeals = M.applyOrders({ meals: 'Saisi par le propriétaire', details: {} }, {}, b.orders);
+  check('repas déjà saisis par le propriétaire : jamais écrasés (la commande reste dans guest_orders)', !('meals' in withMeals) && withMeals.details.guest_orders.total === 2100);
+  check('réponses + commande ensemble : les deux enregistrés, résumé ajouté au texte libre', (() => { const a = M.cleanAnswers({ meals: 'tajine le 1er soir' }, 'fr'); const x = M.applyOrders({ details: {} }, M.applyAnswers({ details: {} }, a), b.orders); return x.meals === 'tajine le 1er soir · 2 × Dîner' && x.details.guest_answers && x.details.guest_orders; })());
+  r = await post({ t: 'C'.repeat(43), orders: [] }, '4.4.4.5'); b = await r.json();
+  check('commande vidée par le client → total 0 enregistré (la dernière remplace la précédente)', r.status === 200 && b.orders.total === 0 && b.orders.items.length === 0);
+  DB.stays[DB.stays.length - 1].details.guest_orders = { items: [{ id: 'm1', q: 1 }], total: 850, cur: 'MAD' };
+  r = await get('t=' + 'C'.repeat(43), '4.4.4.6'); b = await r.json();
+  check('GET avec jeton renvoie la commande déjà envoyée (pour pré-remplir)', b.orders && b.orders.total === 850);
+  check('commande sur un séjour terminé → 410 ; jeton inconnu → 404', (await post({ t: 'B'.repeat(43), orders: [{ id: 'm1', q: 1 }] }, '4.4.4.7')).status === 410 && (await post({ t: 'Z'.repeat(43), orders: [{ id: 'm1', q: 1 }] }, '4.4.4.7')).status === 404);
+  check('trop de lignes (> 40) → rien', M.cleanOrders(Array.from({ length: 41 }, () => ({ id: 'm1', q: 1 })), F2, 4) === null);
+}
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

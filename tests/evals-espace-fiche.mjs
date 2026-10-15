@@ -48,6 +48,7 @@ async function open({ villa, staff = [], ai = null, stays = [], tab = 'maison' }
       return json(villa ? [villa] : []);
     }
     if (u.includes('/rest/v1/staff?')) return json(staff);
+    if (u.includes('/rest/v1/crm_clients') && m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'stay', url: u, body: b }); return json([{ ...stays[0], ...b }]); }
     if (u.includes('/rest/v1/crm_clients')) return json(stays);
     if (u.includes('/rest/v1/')) return json([]);
     return route.fulfill({ status: 204, body: '' });
@@ -114,6 +115,7 @@ const same = (k) => canon(got[k]) === canon(PILOT[k]);
 check('pilote : seul le prix modifié change ; QR, TEXT, PRACTICAL, ROOMS, TEAM, alentours identiques au caractère près', !!got && got.MEALS[1].a[0] === '700 MAD' && got.MEALS[1].a[1] === '700 MAD' && got.MEALS[0].a[0] === PILOT.MEALS[0].a[0] &&
   ['QR', 'TEXT', 'PRACTICAL', 'ROOMS', 'TEAM', 'RULES', 'GOOD_TO_KNOW', 'MEAL_NOTES', 'LEISURE', 'BREAKFAST', 'GOUTER', 'STARTERS', 'MAINS', 'SIMPLE', 'DESSERTS', 'MEDINA', 'GOLF', 'ACTIVITIES', 'RESTAURANTS', 'VILLA'].every(same),
   got && ['QR', 'TEXT', 'PRACTICAL', 'ROOMS', 'TEAM', 'VILLA', 'MEDINA', 'ACTIVITIES'].filter((k) => !same(k)));
+check('pilote : pas d’extras ajoutés en silence, pas de devise inventée', !!got && !('EXTRAS' in got) && !('currency' in got.VILLA));
 check('pilote : CAFES = [nom, site facultatif], jamais transformés en paire fr/en (le livret y lit un lien)', !!got && canon(got.CAFES) === canon(PILOT.CAFES));
 await r.ctx.close();
 
@@ -166,6 +168,37 @@ check('pilote : tous les boutons (repas, arrivée, passeports, brief, décompte)
 await r.page.click('[data-a="panel"][data-v="meals"][data-id="s1"]'); await r.page.waitForTimeout(100);
 const mm = await r.page.inputValue('#tx-s1');
 check('pilote : message repas inchangé (service, goûter, logistique, boissons)', /par service pour tout le groupe/.test(mm) && /Goûter/.test(mm) && /logistique/.test(mm) && /Courses au prix réel/.test(mm), mm.slice(0, 300));
+await r.ctx.close();
+
+// ── 6. Commande du client (livret) : visible, à confirmer, chiffre « extras commandés » ────
+const ORD = { items: [{ id: 'm1', kind: 'meal', n: ['Dîner', 'Dinner'], q: 2, unit: 850, sub: 1700 }, { id: 'x0', kind: 'extra', n: ['Transfert aéroport', 'Airport transfer'], q: 1, unit: 400, sub: 400 }], total: 2100, cur: 'MAD', at: new Date(Date.now() - 3600e3).toISOString() };
+r = await open({ tab: 'jour', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT },
+  stays: [{ id: 's1', name: 'Ana Ruiz', arrival: iso(12), departure: iso(15), adults: 8, booking_status: 'confirmed', source: 'airbnb', nat: 'France', phone: '+33600000000', details: { guest_orders: ORD } }] });
+await r.page.waitForTimeout(200);
+check('Jour › À faire : « Confirmer la commande du client » en tête, même à 12 jours de l’arrivée', /Confirmer la commande du client/.test(await txt(r.page)) && !r.errs.length, r.errs);
+await r.page.click('[data-a="goto"][data-v="order"]'); await r.page.waitForTimeout(150);
+let tx6 = await txt(r.page);
+check('Séjours : chiffre « Extras commandés par vos clients · 1 séjour — 2 100 MAD » et ligne de commande sur le séjour', /Extras commandés par vos clients · 1 séjour\s*2\s?100 MAD/.test(tx6) && /Commande du client · [^:]+: 2 × Dîner · 1 × Transfert aéroport — 2\s?100 MAD/.test(tx6), tx6.slice(0, 600));
+await r.page.click('[data-a="ordok"][data-id="s1"]'); await r.page.waitForTimeout(250);
+const okc = r.calls.filter((c) => c.kind === 'stay').pop();
+check('« Commande confirmée au client » → details.orderConfirmedAt, la commande reste, rien d’autre', !!okc && Object.keys(okc.body).join() === 'details' && !!okc.body.details.orderConfirmedAt && okc.body.details.guest_orders.total === 2100);
+await r.ctx.close();
+r = await open({ tab: 'jour', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT },
+  stays: [{ id: 's1', name: 'Ana Ruiz', arrival: iso(12), departure: iso(15), adults: 8, booking_status: 'confirmed', source: 'airbnb', nat: 'France', details: { guest_orders: ORD, orderConfirmedAt: new Date().toISOString() } }] });
+await r.page.waitForTimeout(200);
+check('commande confirmée : plus dans « À faire » ; une nouvelle commande du client la remet', !/Confirmer la commande du client/.test(await txt(r.page)));
+await r.ctx.close();
+
+// ── 7. Extras à commander : saisis dans l'éditeur, prix numérique, devise de la villa ──
+r = await open({ villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' } } } });
+await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
+await r.page.fill('#fe-VILLA\\.currency', '€');
+await r.page.click('[data-a="feadd"][data-v="EXTRAS"]'); await r.page.waitForSelector('[data-fe="EXTRAS.0.n.0"]');
+await r.page.fill('[data-fe="EXTRAS.0.n.0"]', 'Transfert aéroport'); await r.page.fill('#fe-EXTRAS\\.0\\.price', '40'); await r.page.fill('[data-fe="EXTRAS.0.unit.0"]', 'par trajet');
+await r.page.click('[data-a="feadd"][data-v="EXTRAS"]'); // rangée laissée vide : ignorée
+await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
+const s7 = r.calls.filter((c) => c.kind === 'PATCH').pop(), h7 = s7 && s7.body.house_facts;
+check('extras : enregistrés avec prix numérique et unité, rangée vide ignorée, devise sur la villa', !!h7 && h7.VILLA.currency === '€' && h7.EXTRAS.length === 1 && h7.EXTRAS[0].price === 40 && h7.EXTRAS[0].n[0] === 'Transfert aéroport' && h7.EXTRAS[0].unit[0] === 'par trajet' && !r.errs.length, h7 && h7.EXTRAS);
 await r.ctx.close();
 
 await browser.close(); server.close();

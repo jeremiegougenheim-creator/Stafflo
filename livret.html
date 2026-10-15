@@ -78,6 +78,14 @@ html.guest .bar{display:none}
 .arrive .send:disabled{opacity:.5;cursor:default}
 .arrive .st{margin:10px 0 0;font-size:13px;font-weight:600;color:#1F6B47}.arrive .st.err{color:var(--terracotta)}
 .arrive .en{display:block;font-style:italic;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
+/* Commande avant l'arrivée (15/10/2026) */
+.arrive .ord{margin-top:18px;padding-top:14px;border-top:1px solid var(--rule)}
+.arrive .ord-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--rule)}
+.arrive .ord-n{display:flex;flex-direction:column;gap:2px;font-size:14px;min-width:0}.arrive .ord-n span{font-size:12.5px;color:var(--muted);line-height:1.45}
+.arrive .step{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.arrive .step button{width:38px;height:38px;border-radius:50%;border:1px solid var(--rule);background:var(--paper);font:inherit;font-size:18px;line-height:1;cursor:pointer;color:var(--ink)}
+.arrive .step output{min-width:24px;text-align:center;font-weight:600;font-size:15px}
+.arrive .ord-tot{display:flex;justify-content:space-between;gap:12px;margin-top:12px;font-size:15px}.arrive .ord-tot b{white-space:nowrap}
 .infobox div{font-size:12.5px;line-height:1.85}
 .infobox .k{font-weight:700}
 
@@ -248,7 +256,7 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
   function fail(r) { var e = new Error('http_' + r.status); e.status = r.status; throw e; }
   function view(qs) {
     return fetch(SB_URL + '/functions/v1/livret-view?' + qs, { cache: 'no-store' }).then(function (r) {
-      return r.ok ? r.json().then(function (b) { if (b && b.answers) window.LIVRET_CTX.answers = b.answers; return b && b.facts; }) : fail(r);
+      return r.ok ? r.json().then(function (b) { if (b && b.answers) window.LIVRET_CTX.answers = b.answers; if (b && b.orders) window.LIVRET_CTX.orders = b.orders; return b && b.facts; }) : fail(r);
     });
   }
   /* Contexte du séjour pour le bloc « Votre arrivée » : le jeton (s'il y en a un) et ce que le client a déjà répondu. */
@@ -416,7 +424,12 @@ const T = {
   arrSend:['Envoyer à l’équipe','Send to the team'], arrSending:['Envoi…','Sending…'],
   arrDone:['Merci, c’est transmis à l’équipe. Vous pouvez modifier et renvoyer à tout moment.','Thank you, the team has it. You can change and resend at any time.'],
   arrSentOn:['Transmis le','Sent on'],
-  arrErr:['L’envoi n’a pas abouti. Vérifiez votre connexion et réessayez.','Sending failed. Check your connection and try again.']
+  arrErr:['L’envoi n’a pas abouti. Vérifiez votre connexion et réessayez.','Sending failed. Check your connection and try again.'],
+  ordTitle:['Commander pour votre séjour','Order for your stay'],
+  ordWhy:['Choisissez ce qui vous ferait plaisir : l’équipe s’organise et votre hôte vous confirme. Rien n’est payé ici.','Choose what you would like: the team gets ready and your host confirms. Nothing is paid here.'],
+  ordPerGroup:['par service, pour tout le groupe','per service, for the whole group'],
+  ordTotal:['Total indicatif','Indicative total'],
+  ordSent:['Commande transmise · total','Order sent · total']
 };
 
 /* Tarif negocie (champ « Tarif négocié » ou ?tarifs=400/400/500[/400]) :
@@ -595,6 +608,7 @@ function kidsBoxHtml(){
 
 /* « Votre arrivée » — seulement avec un lien personnel (jeton) : sans jeton, personne à qui transmettre.
    Les réponses partent à livret-view, qui les range sur CE séjour. Jamais à l'impression. */
+function orderSentLine(o){ return o && o.total > 0 ? '<p class="st">' + ti(T.ordSent) + ' ' + esc((Math.round(o.total * 100) / 100).toLocaleString(LANG === 'en' ? 'en-GB' : 'fr-FR') + (o.cur ? ' ' + o.cur : '')) + '</p>' : ''; }
 function arrivalBlock(){
   const ctx = window.LIVRET_CTX;
   if (!ctx || !ctx.token) return '';
@@ -607,18 +621,59 @@ function arrivalBlock(){
     '<div class="two"><div><label for="ar-c">' + t(T.arrCouples) + '</label><input id="ar-c" type="number" inputmode="numeric" min="0" max="20" value="' + v(a.couples) + '"></div>' +
     '<div><label for="ar-s">' + t(T.arrSingles) + '</label><input id="ar-s" type="number" inputmode="numeric" min="0" max="20" value="' + v(a.singles) + '"></div></div>' +
     '<label for="ar-m">' + t(T.arrMeals) + '</label><textarea id="ar-m" maxlength="600" placeholder="' + ti(T.arrMealsPh) + '">' + v(a.meals) + '</textarea>' +
+    orderBlock() +
     '<button type="submit" class="send" id="ar-send">' + ti(T.arrSend) + '</button>' +
-    '<div id="ar-st">' + sentLine + '</div></form>';
+    '<div id="ar-st">' + sentLine + orderSentLine(ctx.orders) + '</div></form>';
 }
+/* ── Commande avant l'arrivée (15/10/2026) : repas chiffrés de la fiche + extras (fiche EXTRAS).
+   Prix de la fiche ; le serveur (livret-view) les recalcule et ne garde que l'id et la quantité.
+   Rien n'est payé ici : le propriétaire confirme. */
+const priceOf = v => { if (typeof v === 'number') return v > 0 ? v : null; const m = /(\d+(?:[.,]\d{1,2})?)/.exec(String(Array.isArray(v) ? v[0] : v == null ? '' : v).replace(/\s/g, '')); const n = m ? parseFloat(m[1].replace(',', '.')) : NaN; return isFinite(n) && n > 0 ? n : null; };
+const CUR = (() => { const v = String(VILLA.currency || '').trim(); if (v) return v; for (const m of MEALS) { const x = /\d\s*([A-Za-z€$£]{1,4})\b|\d\s*([€$£])/.exec(String(Array.isArray(m.a) ? m.a[0] : m.a || '')); if (x) return x[1] || x[2]; } return ''; })();
+const money = v => (Math.round(v * 100) / 100).toLocaleString(LANG === 'en' ? 'en-GB' : 'fr-FR') + (CUR ? ' ' + CUR : '');
+const orderPax = () => parseInt(document.getElementById('p').value, 10) || 0;
+function orderMenu(){
+  const pax = orderPax(), out = [];
+  MEALS.forEach((m, i) => { const unit = priceOf(pax >= 7 ? (m.b != null ? m.b : m.a) : m.a) || priceOf(m.a); if (unit) out.push({id:'m' + i, kind:'meal', n:m.n, unit}); });
+  (window.VILLA_FACTS.EXTRAS || []).forEach((x, i) => { const unit = priceOf(x && x.price); if (unit && x.n) out.push({id:'x' + i, kind:'extra', n:x.n, unit, per:x.unit, d:x.d}); });
+  return out;
+}
+const ORDER = {};
+(((window.LIVRET_CTX || {}).orders || {}).items || []).forEach(x => { if (x && x.id) ORDER[x.id] = +x.q || 0; });
+const orderTotal = () => orderMenu().reduce((t, m) => t + m.unit * (ORDER[m.id] || 0), 0);
+function orderBlock(){
+  const menu = orderMenu();
+  if (!menu.length) return '';
+  const meals = menu.some(m => m.kind === 'meal');
+  let h = '<div class="ord" id="ord"><h3>' + ti(T.ordTitle) + '</h3><p class="why">' + t(T.ordWhy) + (meals && MEAL_NOTES[0] ? '<br>' + t(MEAL_NOTES[0]) : '') + '</p>';
+  menu.forEach(m => {
+    const per = m.kind === 'meal' ? ti(T.ordPerGroup) : (m.per ? ti(m.per) : '');
+    h += '<div class="ord-row"><div class="ord-n"><b>' + ti(m.n) + '</b><span>' + esc(money(m.unit)) + (per ? ' · ' + per : '') + (m.d ? '<br>' + ti(m.d) : '') + '</span></div>' +
+      '<div class="step"><button type="button" data-ord="-1" data-id="' + m.id + '" aria-label="−">−</button><output id="oq-' + m.id + '">' + (ORDER[m.id] || 0) + '</output>' +
+      '<button type="button" data-ord="1" data-id="' + m.id + '" aria-label="+">+</button></div></div>';
+  });
+  return h + '<div class="ord-tot"><span>' + ti(T.ordTotal) + '</span><b id="ord-tot">' + esc(money(orderTotal())) + '</b></div></div>';
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-ord]'); if (!b) return;
+  const id = b.getAttribute('data-id'); ORDER[id] = Math.max(0, Math.min(30, (ORDER[id] || 0) + (+b.getAttribute('data-ord'))));
+  const o = document.getElementById('oq-' + id); if (o) o.textContent = ORDER[id];
+  const tt = document.getElementById('ord-tot'); if (tt) tt.textContent = money(orderTotal());
+});
 function sendArrival(form){
   const ctx = window.LIVRET_CTX, btn = form.querySelector('#ar-send'), st = form.querySelector('#ar-st');
   const g = id => form.querySelector('#' + id).value;
   const answers = { arrival_time: g('ar-time').trim(), couples: g('ar-c').trim(), singles: g('ar-s').trim(), meals: g('ar-m').trim() };
-  if (!answers.arrival_time && !answers.couples && !answers.singles && !answers.meals) return;
+  const hasMenu = orderMenu().length, lines = Object.keys(ORDER).filter(k => ORDER[k] > 0).map(k => ({ id: k, q: ORDER[k] }));
+  const hadOrder = !!(ctx.orders && ctx.orders.items && ctx.orders.items.length);
+  if (!answers.arrival_time && !answers.couples && !answers.singles && !answers.meals && !lines.length && !hadOrder) return;
+  const payload = { t: ctx.token, lang: LANG === 'en' ? 'en' : 'fr' };
+  if (answers.arrival_time || answers.couples || answers.singles || answers.meals) payload.answers = answers;
+  if (hasMenu && (lines.length || hadOrder)) payload.orders = lines;
   btn.disabled = true; btn.textContent = ti(T.arrSending); st.innerHTML = '';
-  fetch(ctx.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: ctx.token, lang: LANG === 'en' ? 'en' : 'fr', answers: answers }) })
+  fetch(ctx.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
-    .then(b => { ctx.answers = b.answers || answers; st.innerHTML = '<p class="st">' + t(T.arrDone) + '</p>'; })
+    .then(b => { ctx.answers = b.answers || answers; if (b.orders) ctx.orders = b.orders; st.innerHTML = '<p class="st">' + t(T.arrDone) + '</p>' + orderSentLine(b.orders); })
     .catch(() => { st.innerHTML = '<p class="st err">' + t(T.arrErr) + '</p>'; })
     .then(() => { btn.disabled = false; btn.textContent = ti(T.arrSend); });
 }
