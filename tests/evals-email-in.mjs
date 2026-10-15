@@ -37,11 +37,11 @@ const js = esbuild.transformSync(fs.readFileSync(path.join(root, 'supabase/funct
 const M = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
 const h = globalThis.__h;
 const send = (body, key = KEY) => h(new Request('https://x/email-in', { method: 'POST', headers: { 'content-type': 'application/json', ...(key ? { 'x-inbound-key': key } : {}) }, body: JSON.stringify(body) }));
-const AIR = { to: 'in-7f3k9q2m1a2b@stafflo.app', from: 'automated@airbnb.com', from_name: 'Airbnb', subject: 'Réservation confirmée - Ana Ruiz arrive le 20 nov.', text: '', html: '<p>Nouvelle réservation confirmée !</p><p>Code de confirmation<br>HMABC12345</p><script>x()</script>', message_id: '<abc@airbnb.com>', date: 'Thu, 15 Oct 2026 10:00:00 +0000', fwd: 'owner@gmail.com in-7f3k9q2m1a2b@stafflo.app' };
+const AIR = { to: 'in-7f3k9q2m1a2b@stafflo.app', from: 'automated@airbnb.com', from_name: 'Airbnb', subject: 'Réservation confirmée - Ana Ruiz arrive le 20 nov.', text: '', html: '<p>Nouvelle réservation confirmée !</p><p>Code de confirmation<br>HMTEST0451</p><script>x()</script>', message_id: '<abc@airbnb.com>', date: 'Thu, 15 Oct 2026 10:00:00 +0000', fwd: 'owner@example.com in-7f3k9q2m1a2b@stafflo.app' };
 
 // 1. Adresse et expéditeurs
 check('adresse : seulement in-<jeton>@stafflo.app (aussi « Nom <adresse> »), jeton en minuscules', M.tokenOf('in-7f3k9q2m1a2b@stafflo.app') === '7f3k9q2m1a2b' && M.tokenOf('Stafflo <IN-7F3K9Q2M1A2B@stafflo.app>') === '7f3k9q2m1a2b' && M.tokenOf('hello@stafflo.app') === '' && M.tokenOf('in-7f3k9q2m1a2b@evil.com') === '' && M.tokenOf('in-short@stafflo.app') === '');
-check('expéditeurs gardés : Airbnb (tous domaines airbnb.*) et la confirmation de transfert Gmail ; jamais « airbnb.com.evil.io »', M.isAirbnb('automated@airbnb.com') && M.isAirbnb('express@airbnb.fr') && M.isAirbnb('x@email.airbnb.com') && !M.isAirbnb('x@airbnb.com.evil.io') && !M.isAirbnb('x@airbnb.com.ev.io') && !M.isAirbnb('x@notairbnb.com') && !M.isAirbnb('airbnb@gmail.com') && M.isGmailConfirm('forwarding-noreply@google.com') && !M.isGmailConfirm('x@google.com'));
+check('expéditeurs gardés : Airbnb (tous domaines airbnb.*) et la confirmation de transfert Gmail ; jamais « airbnb.com.evil.io »', M.isAirbnb('automated@airbnb.com') && M.isAirbnb('express@airbnb.fr') && M.isAirbnb('x@email.airbnb.com') && !M.isAirbnb('x@airbnb.com.evil.io') && !M.isAirbnb('x@airbnb.com.ev.io') && !M.isAirbnb('x@notairbnb.com') && !M.isAirbnb('airbnb@mail-example.com') && M.isGmailConfirm('forwarding-noreply@google.com') && !M.isGmailConfirm('x@google.com'));
 check('HTML → texte lisible (balises, scripts et entités retirés, lignes gardées)', M.textOf('', '<p>Code de confirmation<br>HM1&nbsp;&amp; co</p><script>evil()</script>') === 'Code de confirmation\nHM1 & co');
 
 // 2. Fonction
@@ -49,7 +49,7 @@ check('sans clé ou mauvaise clé → 401, rien d’écrit', (await send(AIR, ''
 check('adresse inconnue → 404 (le Worker refuse le message)', (await send({ ...AIR, to: 'in-zzzzzzzzzz99@stafflo.app' })).status === 404 && (await send({ ...AIR, to: 'hello@stafflo.app' })).status === 404);
 let r = await send(AIR);
 const row = INBOX[0];
-check('email Airbnb → email_inbox du compte du jeton, source « email_in », texte lisible, en attente du parseur', r.status === 200 && row && row.owner_id === 'o1' && row.user_id === 'o1' && row.villa_key === 'villa_o1' && row.source === 'email_in' && row.from_email === 'automated@airbnb.com' && /HMABC12345/.test(row.body) && !/script|evil|<p>/.test(row.body) && !row.extracted.airbnb && row.received_at === '2026-10-15T10:00:00.000Z', row);
+check('email Airbnb → email_inbox du compte du jeton, source « email_in », texte lisible, en attente du parseur', r.status === 200 && row && row.owner_id === 'o1' && row.user_id === 'o1' && row.villa_key === 'villa_o1' && row.source === 'email_in' && row.from_email === 'automated@airbnb.com' && /HMTEST0451/.test(row.body) && !/script|evil|<p>/.test(row.body) && !row.extracted.airbnb && row.received_at === '2026-10-15T10:00:00.000Z', row);
 await send(AIR);
 check('même message reçu deux fois → une seule ligne (identifiant tiré du Message-ID)', INBOX.length === 1 && /^in:[0-9a-f]{32}$/.test(row.gmail_id));
 r = await send({ ...AIR, from: 'promo@shop.com', message_id: '<p@shop>' });
@@ -67,14 +67,14 @@ const pmDir = [MODS, '/tmp/'].map((d) => path.join(d, 'node_modules/postal-mime'
 if (pmDir) {
   const bundle = await esbuild.build({ entryPoints: [path.join(root, 'workers/email-in/src/index.js')], bundle: true, format: 'esm', write: false, nodePaths: [path.dirname(pmDir)], platform: 'neutral', mainFields: ['module', 'main'] });
   const W = (await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))).default;
-  const raw = 'From: Airbnb <automated@airbnb.com>\r\nTo: owner@gmail.com\r\nSubject: =?UTF-8?Q?R=C3=A9servation_confirm=C3=A9e?=\r\nMessage-ID: <m1@airbnb.com>\r\nDate: Thu, 15 Oct 2026 10:00:00 +0000\r\nX-Forwarded-For: owner@gmail.com in-7f3k9q2m1a2b@stafflo.app\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nCode de confirmation HMXYZ98765\r\n';
-  const mk = (to) => ({ to, from: 'bounce@gmail.com', rawSize: raw.length, raw: new Response(raw).body, headers: new Headers({ 'x-forwarded-for': 'owner@gmail.com' }), rejected: null, setReject(m) { this.rejected = m; } });
+  const raw = 'From: Airbnb <automated@airbnb.com>\r\nTo: owner@example.com\r\nSubject: =?UTF-8?Q?R=C3=A9servation_confirm=C3=A9e?=\r\nMessage-ID: <m1@airbnb.com>\r\nDate: Thu, 15 Oct 2026 10:00:00 +0000\r\nX-Forwarded-For: owner@example.com in-7f3k9q2m1a2b@stafflo.app\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nCode de confirmation HMTEST0452\r\n';
+  const mk = (to) => ({ to, from: 'bounce@example.net', rawSize: raw.length, raw: new Response(raw).body, headers: new Headers({ 'x-forwarded-for': 'owner@example.com' }), rejected: null, setReject(m) { this.rejected = m; } });
   const posts = []; const prevFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => { posts.push({ url, init, body: JSON.parse(init.body) }); return new Response('{}', { status: /zzzz/.test(init.body) ? 404 : 200 }); };
   const env = { EMAIL_IN_URL: 'https://sb.test/functions/v1/email-in', INBOUND_KEY: KEY };
   const m1 = mk('In-7f3k9q2m1a2b@stafflo.app'); await W.email(m1, env);
   const p = posts[0];
-  check('Worker : message transmis (en-tête x-inbound-key), sujet décodé, texte, Message-ID, expéditeur d’origine', !m1.rejected && p && p.init.headers['x-inbound-key'] === KEY && p.body.to === 'in-7f3k9q2m1a2b@stafflo.app' && p.body.from === 'automated@airbnb.com' && p.body.subject === 'Réservation confirmée' && /HMXYZ98765/.test(p.body.text) && p.body.message_id === '<m1@airbnb.com>', p && p.body);
+  check('Worker : message transmis (en-tête x-inbound-key), sujet décodé, texte, Message-ID, expéditeur d’origine', !m1.rejected && p && p.init.headers['x-inbound-key'] === KEY && p.body.to === 'in-7f3k9q2m1a2b@stafflo.app' && p.body.from === 'automated@airbnb.com' && p.body.subject === 'Réservation confirmée' && /HMTEST0452/.test(p.body.text) && p.body.message_id === '<m1@airbnb.com>', p && p.body);
   const m2 = mk('hello@stafflo.app'); await W.email(m2, env);
   check('Worker : autre adresse du domaine → refusée sans appel', m2.rejected === 'Unknown address' && posts.length === 1);
   const m3 = mk('in-zzzzzzzzzz99@stafflo.app'); await W.email(m3, env);
