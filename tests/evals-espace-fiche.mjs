@@ -34,7 +34,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], tab = 'maison' } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, tab = 'maison' } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width: 390, height: 844 } });
   const calls = [];
   await ctx.route('**/*', (route) => {
@@ -49,6 +49,8 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], tab 
     }
     if (u.includes('/rest/v1/staff?')) return json(staff);
     if (u.includes('/rest/v1/livret_links')) return json(links);
+    if (u.includes('/rest/v1/guest_registrations')) return json(regs);
+    if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
     if (u.includes('/rest/v1/crm_clients') && m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'stay', url: u, body: b }); return json([{ ...stays[0], ...b }]); }
     if (u.includes('/rest/v1/crm_clients')) return json(stays);
     if (u.includes('/rest/v1/')) return json([]);
@@ -192,6 +194,58 @@ await r.page.click('[data-a="panel"][data-v="livret"][data-id="s1"]'); await r.p
 const lv2 = await r.page.inputValue('#tx-s1');
 check('Msg livret (fiche partielle, EN, rien de chiffré) : pas de « book ahead », pas de français', /^Hello Ana,/.test(lv2) && /Under “Your arrival”/.test(lv2) && !/book ahead/.test(lv2) && !/Bonjour|réservez/.test(lv2) && !r.errs.length, { lv2, errs: r.errs });
 await r.ctx.close();
+
+// ── 5 ter. Fiches voyageurs : nombre sur le séjour, contenu lu à la demande, impression, CSV, déclaré ──
+{
+  const PR = JSON.parse(JSON.stringify(PILOT)); PR.VILLA.guest_registration = true;
+  const TRV = [{ last: 'Ruiz', first: 'Ana', birth_date: '1990-04-02', birth_place: 'Sevilla', nationality: 'Espagnole', doc_type: 'passport', doc_no: 'PAE123456', profession: 'Architecte', address: 'Madrid, Espagne' }, { last: 'Ruiz', first: 'Leo', birth_date: '2015-03-02', nationality: 'Espagnole', doc_type: 'passport', doc_no: 'PAE654321' }];
+  const REGS = [{ client_id: 's1', travellers: 2, submitted_at: new Date(Date.now() - 86400e3).toISOString(), purge_after: iso(370) }];
+  r = await open({ tab: 'jour', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PR }, links: [{ client_id: 's1', token: 'T'.repeat(43) }], regs: REGS, regFn: () => ({ reg: { travellers: TRV, at: REGS[0].submitted_at, purge_after: REGS[0].purge_after } }),
+    stays: [{ id: 's1', name: 'Ana Ruiz', arrival: iso(0), departure: iso(4), adults: 2, booking_status: 'confirmed', source: 'airbnb', nat: 'Spain', phone: '+34600000000', details: {} }] });
+  await r.page.waitForTimeout(250);
+  check('jour d’arrivée, fiches reçues, pas déclarées → « Déclarer les voyageurs » dans À faire', /Déclarer les voyageurs/.test(await txt(r.page)) && !r.errs.length, r.errs);
+  check('rien n’est déchiffré tant que le propriétaire n’ouvre pas les fiches', !r.calls.some((x) => x.kind === 'regfn'));
+  await r.page.click('[data-a="goto"][data-v="reg"]'); await r.page.waitForTimeout(400);
+  let t5 = await txt(r.page);
+  check('séjour : « Fiches voyageurs : 2 reçues le … » ; À faire ouvre les fiches, lues avec SA session', /Fiches voyageurs : 2 reçues le/.test(t5) && r.calls.some((x) => x.kind === 'regfn' && x.body.action === 'get' && x.body.client_id === 's1' && /^Bearer /.test(x.auth || '')), t5.slice(0, 500));
+  check('panneau : une ligne par voyageur (NOM Prénom — naissance · nationalité · pièce), date d’effacement', /1\. RUIZ Ana — 02\/04\/1990 · Sevilla · Espagnole · Passeport PAE123456 · Architecte · Madrid, Espagne/.test(t5) && /2\. RUIZ Leo — 02\/03\/2015/.test(t5) && /Effacées automatiquement le/.test(t5), t5.slice(0, 900));
+  const [dl] = await Promise.all([r.page.waitForEvent('download'), r.page.click('[data-a="regcsv"][data-id="s1"]')]);
+  const csv = fs.readFileSync(await dl.path(), 'utf8');
+  check('CSV : en-tête, une ligne par voyageur, séparateur « ; », dates du séjour', dl.suggestedFilename() === 'fiches-voyageurs-ana-ruiz-' + iso(0) + '.csv' && csv.split('\r\n').length === 3 && /^﻿nom;prenom;date_naissance/.test(csv) && csv.includes('Ruiz;Ana;1990-04-02;Sevilla;Espagnole;passport;PAE123456;Architecte;Madrid, Espagne;' + iso(0) + ';' + iso(4)), csv.slice(0, 300));
+  const [pop] = await Promise.all([r.ctx.waitForEvent('page'), r.page.click('[data-a="regprint"][data-id="s1"]')]);
+  await pop.waitForLoadState(); const ph = await pop.content();
+  check('impression : une fiche individuelle par voyageur, villa, exploitant, ligne de signature', (ph.match(/<h1>Fiche individuelle<\/h1>/g) || []).length === 2 && /Villa Dar J/.test(ph) && /Signature du voyageur/.test(ph) && /Jérémie/.test(ph) && /PAE654321/.test(ph));
+  await pop.close();
+  await r.page.click('[data-a="regdecl"][data-id="s1"]'); await r.page.waitForTimeout(250);
+  const dc = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('« Marquer déclarées » → details.regDeclaredAt seulement (aucune donnée de voyageur écrite sur le séjour)', !!dc && !!dc.body.details.regDeclaredAt && !JSON.stringify(dc.body).includes('PAE123456'));
+  await r.ctx.close();
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PR }, links: [{ client_id: 's1', token: 'T'.repeat(43) }],
+    stays: [{ id: 's1', name: 'Ana Ruiz', arrival: iso(6), departure: iso(9), adults: 2, booking_status: 'confirmed', source: 'airbnb', nat: 'France', details: {} }] });
+  await r.page.waitForTimeout(250);
+  { const tg = await r.page.$('[data-a="toggle"][data-id="s1"]'); if (tg) { await tg.click(); await r.page.waitForTimeout(100); } }
+  const t6 = await txt(r.page);
+  check('pas encore reçues : « Fiches voyageurs : pas encore reçues », pas de bouton Fiches, pas dans À faire avant l’arrivée', /Fiches voyageurs : pas encore reçues/.test(t6) && !(await r.page.$('[data-a="panel"][data-v="reg"]')), t6.slice(0, 400));
+  await r.page.click('[data-a="panel"][data-v="passports"][data-id="s1"]'); await r.page.waitForSelector('#tx-s1');
+  const pm = await r.page.inputValue('#tx-s1');
+  check('Msg passeports → le livret (« Fiches voyageurs ») avec le lien personnel, plus de photos par WhatsApp', /remplir une fiche par personne dans votre livret/.test(pm) && /t=T{43}/.test(pm) && !/photo/.test(pm), pm);
+  await r.ctx.close();
+  const NOREG = JSON.parse(JSON.stringify(PILOT)); delete NOREG.VILLA.guest_registration;
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: NOREG }, links: [{ client_id: 's1', token: 'T'.repeat(43) }],
+    stays: [{ id: 's1', name: 'Ana Ruiz', arrival: iso(6), departure: iso(9), adults: 2, booking_status: 'confirmed', source: 'airbnb', nat: 'France', details: {} }] });
+  await r.page.waitForTimeout(250);
+  { const tg = await r.page.$('[data-a="toggle"][data-id="s1"]'); if (tg) { await tg.click(); await r.page.waitForTimeout(100); } }
+  await r.page.click('[data-a="panel"][data-v="passports"][data-id="s1"]'); await r.page.waitForSelector('#tx-s1');
+  check('villa qui ne demande pas les fiches : pas de ligne, message passeports inchangé (règle de la fiche)', !/Fiches voyageurs/.test(await txt(r.page)) && /photo du passeport/.test(await r.page.inputValue('#tx-s1')));
+  await r.ctx.close();
+  // Éditeur : la case « Demander les fiches voyageurs » se coche et s'enregistre sur la fiche (VILLA), décochée = absente.
+  r = await open({ villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' } } } });
+  await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
+  await r.page.check('[data-fe="VILLA.guest_registration"]'); await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
+  const sv = r.calls.filter((x) => x.kind === 'PATCH').pop();
+  check('éditeur : « Demander les fiches voyageurs » → VILLA.guest_registration = true', sv && sv.body.house_facts.VILLA.guest_registration === true, sv && sv.body.house_facts.VILLA);
+  await r.ctx.close();
+}
 
 // ── 6. Commande du client (livret) : visible, à confirmer, chiffre « extras commandés » ────
 const ORD = { items: [{ id: 'm1', kind: 'meal', n: ['Dîner', 'Dinner'], q: 2, unit: 850, sub: 1700 }, { id: 'x0', kind: 'extra', n: ['Transfert aéroport', 'Airport transfer'], q: 1, unit: 400, sub: 400 }], total: 2100, cur: 'MAD', at: new Date(Date.now() - 3600e3).toISOString() };

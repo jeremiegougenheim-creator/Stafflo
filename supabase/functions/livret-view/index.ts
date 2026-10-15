@@ -23,6 +23,12 @@
 //   repas va dans meals seulement s'il est vide. Rien n'est payé : le propriétaire confirme.
 //   Une commande nouvelle ou modifiée (total > 0) laisse une ligne dans guest_notices : push-notify
 //   en fait une alerte « Claire a commandé · 2 500 MAD » sur le téléphone du propriétaire.
+// POST { t, travellers: [...] }  (lien personnel, villa dont la fiche a VILLA.guest_registration = true) →
+//   les fiches voyageurs pour la déclaration aux autorités (ex. Maroc, loi 80-14 art. 36-38 : pièce d'identité
+//   et fiche individuelle à l'arrivée, déclaration électronique, fiches gardées un an). Chiffrées ici
+//   (AES-256-GCM, clé dans Vault, jamais dans la page), rangées dans guest_registrations (la dernière
+//   remplace la précédente), JAMAIS renvoyées au lien : un lien transféré ne montre pas les passeports.
+//   Le propriétaire les lit par la fonction guest-registrations. Effacées un an après le départ.
 // Rien d'autre n'est renvoyé (ni nom, ni prix, ni séjour). Limite par adresse IP.
 // verify_jwt : off (le client n'a pas de compte) — l'accès, c'est le jeton.
 
@@ -181,6 +187,54 @@ export function orderNotice(owner: string, stay: Row, o: Row): Row {
     payload: { guest: shortName(stay.name), total: o.total, cur: o.cur, items: o.items.map((x: Row) => ({ n: x.n, q: x.q })) } };
 }
 
+// ── Fiches voyageurs ─────────────────────────────────────────────────────────
+export const REG_FIELDS: Record<string, number> = { last: 60, first: 60, birth_date: 10, birth_place: 80, nationality: 60, doc_type: 12, doc_no: 30, profession: 60, address: 160 };
+export const regOn = (f: Row | null) => !!(f && f.VILLA && f.VILLA.guest_registration === true);
+// Une fiche par voyageur : champs connus seulement, texte court, date AAAA-MM-JJ, fiche sans nom ignorée.
+export function cleanTravellers(raw: unknown): Row[] | null {
+  if (!Array.isArray(raw) || raw.length > 30) return null;
+  const res: Row[] = [];
+  for (const t of raw) {
+    if (!t || typeof t !== "object") continue;
+    const o: Row = {};
+    for (const k of Object.keys(REG_FIELDS)) o[k] = txt((t as Row)[k], REG_FIELDS[k]);
+    if (o.birth_date && !/^\d{4}-\d{2}-\d{2}$/.test(o.birth_date)) o.birth_date = "";
+    if (!["passport", "id_card", "other"].includes(o.doc_type)) o.doc_type = "";
+    if (!o.last && !o.first) continue;
+    res.push(o);
+  }
+  return res.length ? res : null;
+}
+export const plusDays = (iso: string, n: number) => day(Date.parse(String(iso || "").slice(0, 10) + "T12:00:00Z") + n * 86400000);
+const toB64 = (u: Uint8Array) => { let s = ""; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s); };
+const fromB64 = (s: string) => Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0));
+/** Chiffre avec la clé (32 octets base64) : « v1: » + base64(iv 12 octets + texte chiffré AES-GCM). */
+export async function sealWith(keyB64: string, obj: unknown): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", fromB64(keyB64), "AES-GCM", false, ["encrypt"]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(obj))));
+  const all = new Uint8Array(12 + ct.length); all.set(iv); all.set(ct, 12);
+  return "v1:" + toB64(all);
+}
+async function regKey(): Promise<string> {
+  const k = await db("rpc/guest_reg_key", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }) as unknown;
+  if (typeof k !== "string" || !k) throw new Error("guest_reg_key");
+  return k;
+}
+async function saveReg(owner: string, stay: Row, travellers: Row[]): Promise<Row> {
+  const at = new Date().toISOString();
+  const row = { enc: await sealWith(await regKey(), { v: 1, travellers }), travellers: travellers.length, submitted_at: at, purge_after: plusDays(stay.departure, 365), purged_at: null };
+  const cur = await db(`guest_registrations?select=id&owner_id=eq.${owner}&client_id=eq.${encodeURIComponent(stay.id)}&deleted_at=is.null&limit=1`);
+  const W = { "Content-Type": "application/json", Prefer: "return=minimal" };
+  if (cur.length) await db(`guest_registrations?id=eq.${cur[0].id}`, { method: "PATCH", headers: W, body: JSON.stringify(row) });
+  else await db(`guest_registrations`, { method: "POST", headers: W, body: JSON.stringify({ owner_id: owner, client_id: String(stay.id), ...row }) });
+  return { count: travellers.length, at };
+}
+async function regOf(owner: string, stayId: string): Promise<Row | null> {
+  const r = await db(`guest_registrations?select=travellers,submitted_at&owner_id=eq.${owner}&client_id=eq.${encodeURIComponent(stayId)}&deleted_at=is.null&purged_at=is.null&limit=1`);
+  return r.length ? { count: r[0].travellers, at: r[0].submitted_at } : null;
+}
+
 async function factsOf(owner: string): Promise<Row | null> {
   const v = await db(`villa_settings?select=house_facts&owner_id=eq.${owner}&limit=1`);
   const f = v[0] && v[0].house_facts;
@@ -214,22 +268,24 @@ Deno.serve(async (req: Request) => {
       if (!validToken(t)) return out({ error: "not_found" }, 404);
       if (limited("p:" + ip, 20, 60 * 60_000)) return out({ error: "rate_limited" }, 429);
       const a = cleanAnswers(body.answers, body.lang);
-      const wantsOrder = Array.isArray(body.orders);
-      if (!a && !wantsOrder) return out({ error: "empty" }, 400);
+      const wantsOrder = Array.isArray(body.orders), wantsReg = Array.isArray(body.travellers);
+      if (!a && !wantsOrder && !wantsReg) return out({ error: "empty" }, 400);
       const r = await stayOfToken(t, today);
       if (r.err || !r.stay) return out({ error: r.err === 410 ? "expired" : "not_found" }, r.err || 404);
       if (String(r.stay.departure || "").slice(0, 10) < today) return out({ error: "expired" }, 410); // séjour terminé : plus rien à transmettre
       let patch: Row = a ? applyAnswers(r.stay, a) : {};
-      const f = wantsOrder ? await factsOf(String(r.owner)) : null;
-      const o = f ? cleanOrders(body.orders, f, paxOf(r.stay)) : null;
+      const f = wantsOrder || wantsReg ? await factsOf(String(r.owner)) : null;
+      const o = f && wantsOrder ? cleanOrders(body.orders, f, paxOf(r.stay)) : null;
       if (o) patch = applyOrders(r.stay, patch, o);
-      if (!Object.keys(patch).length) return out({ error: "empty" }, 400);
-      await db(`crm_clients?id=eq.${encodeURIComponent(r.stay.id)}&user_id=eq.${r.owner}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(patch) });
+      const tr = wantsReg && regOn(f) ? cleanTravellers(body.travellers) : null;
+      if (!Object.keys(patch).length && !tr) return out({ error: "empty" }, 400);
+      if (Object.keys(patch).length) await db(`crm_clients?id=eq.${encodeURIComponent(r.stay.id)}&user_id=eq.${r.owner}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(patch) });
       // Alerte au propriétaire : seulement une commande nouvelle ou modifiée, jamais pour un simple renvoi.
       if (o && o.total > 0 && !sameOrder(ordersOf(r.stay), o)) {
         await db(`guest_notices`, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(orderNotice(String(r.owner), r.stay, o)) }).catch((e) => console.error("[livret-view] notice", String(e).slice(0, 120)));
       }
-      return out({ ok: true, answers: a || answersOf(r.stay), orders: o || ordersOf(r.stay) });
+      const reg = tr ? await saveReg(String(r.owner), r.stay, tr) : null;
+      return out({ ok: true, answers: a || answersOf(r.stay), orders: o || ordersOf(r.stay), ...(reg ? { reg } : {}) });
     }
     const t = q.get("t");
     if (t) {
@@ -238,7 +294,8 @@ Deno.serve(async (req: Request) => {
       const r = await stayOfToken(t, today);
       if (r.err || !r.stay) return out({ error: r.err === 410 ? "expired" : "not_found" }, r.err || 404);
       const f = await factsOf(String(r.owner));
-      return f ? out({ facts: f, answers: answersOf(r.stay), orders: ordersOf(r.stay) }) : out({ error: "not_found" }, 404);
+      if (!f) return out({ error: "not_found" }, 404);
+      return out({ facts: f, answers: answersOf(r.stay), orders: ordersOf(r.stay), ...(regOn(f) ? { reg: await regOf(String(r.owner), String(r.stay.id)).catch(() => null) } : {}) }); // une panne ici ne bloque jamais le livret
     }
     const guest = q.get("guest") || "", dates = q.get("dates") || "";
     if (!guest || !dates) return out({ error: "not_found" }, 404);

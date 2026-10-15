@@ -23,12 +23,25 @@ const DB = {
   ],
   facts: { o1: FACTS },
 };
-const CALLS = [], PATCHES = [], NOTICES = [], ERRS = [];
+const CALLS = [], PATCHES = [], NOTICES = [], ERRS = [], REGS = [], REG_WRITES = [];
+const KEY = Buffer.alloc(32, 7).toString('base64');
 const _err = console.error; console.error = (...a) => { ERRS.push(a.join(' ')); };
 globalThis.Deno = { env: { get: (k) => ({ SUPABASE_URL: 'https://sb.test', SUPABASE_SERVICE_ROLE_KEY: 'SRK' })[k] }, serve: (h) => { globalThis.__h = h; } };
 globalThis.fetch = async (url, init) => {
   url = decodeURIComponent(String(url)); CALLS.push(url);
   const ok = (b) => new Response(JSON.stringify(b), { status: 200 });
+  if (url.includes('/rest/v1/rpc/guest_reg_key')) return ok(KEY);
+  if (url.includes('/rest/v1/guest_registrations')) {
+    const ct = Object.entries((init && init.headers) || {}).find(([k]) => k.toLowerCase() === 'content-type');
+    if (init && (init.method === 'POST' || init.method === 'PATCH')) {
+      if (!ct || !/application\/json/.test(ct[1])) return new Response('{"code":"PGRST102"}', { status: 400 });
+      const body = JSON.parse(init.body); REG_WRITES.push({ method: init.method, url, raw: init.body });
+      if (init.method === 'POST') { REGS.push({ id: 'r' + REGS.length, deleted_at: null, ...body }); return new Response(null, { status: 201 }); }
+      const id = url.match(/id=eq\.([^&]+)/)[1]; Object.assign(REGS.find((x) => x.id === id), body); return new Response(null, { status: 204 });
+    }
+    const o = url.match(/owner_id=eq\.([^&]+)/)[1], cl = url.match(/client_id=eq\.([^&]+)/)[1];
+    return ok(REGS.filter((x) => x.owner_id === o && x.client_id === cl && !x.deleted_at && (!/purged_at=is\.null/.test(url) || !x.purged_at)));
+  }
   if (init && init.method === 'PATCH') { const ct = Object.entries(init.headers || {}).find(([k]) => k.toLowerCase() === 'content-type'); if (!ct || !/application\/json/.test(ct[1])) return new Response('{"code":"PGRST102"}', { status: 400 }); PATCHES.push({ url, body: JSON.parse(init.body) }); return new Response(null, { status: 204 }); }
   if (init && init.method === 'POST' && url.includes('/rest/v1/guest_notices')) { NOTICES.push(JSON.parse(init.body)); return new Response(null, { status: 201 }); }
   if (url.includes('/rest/v1/livret_links')) { const t = url.match(/token=eq\.([^&]+)/)[1]; return ok(DB.links.filter((l) => l.token === t)); }
@@ -81,7 +94,7 @@ let lim = false; for (let k = 0; k < 25; k++) { const x = await get('guest=X&dat
 check('ancien lien : essais limités par adresse IP (20 / heure)', lim);
 
 // 4. Garde-fous statiques
-check('écritures en base : la réponse du client (un PATCH du séjour) et l’alerte de commande (un POST dans guest_notices), jamais de DELETE', (src.match(/method:\s*"PATCH"/g) || []).length === 1 && (src.match(/method:\s*"POST"/g) || []).length === 1 && /db\(`guest_notices`, \{ method: "POST"/.test(src) && !/method:\s*"DELETE"/.test(src));
+check('écritures en base : le séjour (PATCH), l’alerte de commande (guest_notices), les fiches voyageurs (guest_registrations, POST ou PATCH) et la lecture de la clé — jamais de DELETE', (src.match(/method:\s*"PATCH"/g) || []).length === 2 && (src.match(/method:\s*"POST"/g) || []).length === 3 && /db\(`guest_notices`, \{ method: "POST"/.test(src) && /db\(`guest_registrations`, \{ method: "POST"/.test(src) && /db\(`guest_registrations\?id=eq\.\$\{cur\[0\]\.id\}`, \{ method: "PATCH"/.test(src) && /db\("rpc\/guest_reg_key", \{ method: "POST"/.test(src) && !/method:\s*"DELETE"/.test(src));
 
 // 5. Le client répond (POST) : heure d'arrivée, composition, repas — dans les deux sens.
 {
@@ -152,6 +165,33 @@ check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
     check('alerte écrite sans erreur (réponse 201 vide de PostgREST lue proprement)', !ERRS.some((e) => /notice/.test(e)), ERRS);
     check('le nom complet du client ne part jamais : prénom + initiale', M.shortName('Claire Vasseur') === 'Claire V.' && M.shortName('Seán') === 'Seán');
   }
+}
+
+// 7. Fiches voyageurs : seulement si la villa les demande, chiffrées, jamais renvoyées au lien.
+{
+  const unseal = async (s) => { const all = Buffer.from(s.slice(3), 'base64'); const key = await crypto.subtle.importKey('raw', Buffer.from(KEY, 'base64'), 'AES-GCM', false, ['decrypt']); return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: all.subarray(0, 12) }, key, all.subarray(12)))); };
+  const T1 = { last: 'Ruiz', first: 'Ana', birth_date: '1990-04-02', birth_place: 'Sevilla', nationality: 'Espagnole', doc_type: 'passport', doc_no: 'PAE123456', profession: 'Architecte', address: 'Calle Mayor 1, Madrid, Espagne', secret: 'x' };
+  const T2 = { last: 'Ruiz', first: 'Leo', birth_date: '02/03/2015', doc_type: 'visa', doc_no: 'X9' };
+  r = await post({ t: 'A'.repeat(43), travellers: [T1] }, '5.5.5.1');
+  check('villa qui ne demande pas les fiches → 400, rien d’écrit', r.status === 400 && REG_WRITES.length === 0);
+  DB.facts.o2.VILLA.guest_registration = true;
+  r = await post({ t: 'C'.repeat(43), travellers: [T1, T2, { last: '', first: '  ' }] }, '5.5.5.2'); b = await r.json();
+  const w = REG_WRITES[REG_WRITES.length - 1];
+  check('fiches → 200, { count, at } seulement : aucune donnée de voyageur renvoyée', r.status === 200 && b.reg && b.reg.count === 2 && !JSON.stringify(b).includes('PAE123456') && !JSON.stringify(b).includes('Sevilla'), b);
+  check('écrites chiffrées (« v1: … ») : ni numéro de passeport ni nom en clair dans la ligne', w && w.method === 'POST' && /^v1:/.test(REGS[0].enc) && !w.raw.includes('PAE123456') && !w.raw.includes('Ruiz') && REGS[0].owner_id === 'o2' && REGS[0].client_id === 's2' && REGS[0].travellers === 2, w && w.raw.slice(0, 200));
+  const dec = await unseal(REGS[0].enc);
+  check('déchiffrées avec la clé : champs connus seulement, date invalide vidée, pièce inconnue vidée, fiche vide ignorée', dec.travellers.length === 2 && dec.travellers[0].doc_no === 'PAE123456' && !('secret' in dec.travellers[0]) && dec.travellers[1].birth_date === '' && dec.travellers[1].doc_type === '', dec);
+  check('effacement prévu un an après le départ', REGS[0].purge_after === M.plusDays(DB.stays.find((s) => s.id === 's2').departure, 365) && REGS[0].purge_after > iso(370));
+  r = await post({ t: 'C'.repeat(43), travellers: [T1] }, '5.5.5.3');
+  check('renvoi → la même ligne est remplacée (PATCH), pas une deuxième', REGS.length === 1 && REG_WRITES[REG_WRITES.length - 1].method === 'PATCH' && REGS[0].travellers === 1);
+  r = await get('t=' + 'C'.repeat(43), '5.5.5.4'); b = await r.json();
+  check('GET avec jeton : seulement « fiches reçues · nombre · date », jamais les fiches', b.reg && b.reg.count === 1 && !!b.reg.at && !JSON.stringify(b).includes('PAE123456'), b.reg);
+  REGS[0].purged_at = new Date().toISOString(); REGS[0].enc = null;
+  r = await get('t=' + 'C'.repeat(43), '5.5.5.5'); b = await r.json();
+  check('fiches effacées → plus rien d’annoncé', b.reg === null);
+  check('trop de voyageurs (> 30) → rien ; champs bornés', M.cleanTravellers(Array.from({ length: 31 }, () => T1)) === null && M.cleanTravellers([{ last: 'x'.repeat(200), first: 'y' }])[0].last.length === 60);
+  r = await post({ t: 'B'.repeat(43), travellers: [T1] }, '5.5.5.6');
+  check('séjour terminé → 410, aucune fiche écrite', r.status === 410 && REGS.length === 1);
 }
 
 console.log(`\n${pass}/${pass + fail} PASS`);

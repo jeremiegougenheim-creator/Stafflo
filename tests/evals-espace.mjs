@@ -112,7 +112,7 @@ check('manifeste : démarre sur l’Espace, plein écran, icônes PNG', man.star
 // Ce que la vue équipe affiche en « ? » (heure d'arrivée, couchages) devient une vérification du propriétaire,
 // avec sa ligne « À faire » qui ouvre Modifier.
 check('v11 : « Infos équipe » = heure d’arrivée ET couchages, due J-2', /mk\('team', !!\(String\(c\.details\.arrival_time \|\| ''\)\.trim\(\) && String\(c\.details\.beds \|\| ''\)\.trim\(\)\), c\.a - 2\)/.test(script));
-check('v11 : « À faire » → Infos équipe ouvre le panneau Modifier', /depart: 'depart', team: 'edit' \}\[v\]/.test(script) && /team: 'Heure d’arrivée et couchages pour l’équipe'/.test(script) && /team: 'Arrival time and beds for the team'/.test(script) && /team: 'clock'/.test(script));
+check('v11 : « À faire » → Infos équipe ouvre le panneau Modifier', /depart: 'depart', team: 'edit'[^}]*\}\[v\]/.test(script) && /team: 'Heure d’arrivée et couchages pour l’équipe'/.test(script) && /team: 'Arrival time and beds for the team'/.test(script) && /team: 'clock'/.test(script));
 // Citation d'un message : sans les adresses web qu'Airbnb glisse dans le texte.
 {
   const i = script.indexOf('  function cleanQuote('), j = script.indexOf('\n', i);

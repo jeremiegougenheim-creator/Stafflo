@@ -86,6 +86,11 @@ html.guest .bar{display:none}
 .arrive .step button{width:38px;height:38px;border-radius:50%;border:1px solid var(--rule);background:var(--paper);font:inherit;font-size:18px;line-height:1;cursor:pointer;color:var(--ink)}
 .arrive .step output{min-width:24px;text-align:center;font-weight:600;font-size:15px}
 .arrive .ord-tot{display:flex;justify-content:space-between;gap:12px;margin-top:12px;font-size:15px}.arrive .ord-tot b{white-space:nowrap}
+.arrive select{width:100%;box-sizing:border-box;border:1px solid var(--rule);border-radius:4px;padding:9px 10px;font:inherit;font-size:14px;color:var(--ink);background:var(--paper)}
+/* Fiches voyageurs (déclaration aux autorités) — écran seulement, jamais imprimé */
+.arrive .reg-p{border-top:1px solid var(--rule);padding:8px 0}
+.arrive .reg-p summary{cursor:pointer;font-weight:600;font-size:14px;padding:6px 0;min-height:32px}
+.arrive .add{margin-top:10px;min-height:40px;padding:0 14px;border:1px solid var(--rule);border-radius:4px;background:var(--paper);font:inherit;font-size:13.5px;cursor:pointer;color:var(--ink)}
 .infobox div{font-size:12.5px;line-height:1.85}
 .infobox .k{font-weight:700}
 
@@ -256,7 +261,7 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
   function fail(r) { var e = new Error('http_' + r.status); e.status = r.status; throw e; }
   function view(qs) {
     return fetch(SB_URL + '/functions/v1/livret-view?' + qs, { cache: 'no-store' }).then(function (r) {
-      return r.ok ? r.json().then(function (b) { if (b && b.answers) window.LIVRET_CTX.answers = b.answers; if (b && b.orders) window.LIVRET_CTX.orders = b.orders; return b && b.facts; }) : fail(r);
+      return r.ok ? r.json().then(function (b) { if (b && b.answers) window.LIVRET_CTX.answers = b.answers; if (b && b.orders) window.LIVRET_CTX.orders = b.orders; if (b && b.reg) window.LIVRET_CTX.reg = b.reg; return b && b.facts; }) : fail(r);
     });
   }
   /* Contexte du séjour pour le bloc « Votre arrivée » : le jeton (s'il y en a un) et ce que le client a déjà répondu. */
@@ -426,6 +431,16 @@ const T = {
   arrSentOn:['Transmis le','Sent on'],
   arrErr:['L’envoi n’a pas abouti. Vérifiez votre connexion et réessayez.','Sending failed. Check your connection and try again.'],
   ordTitle:['Commander pour votre séjour','Order for your stay'],
+  regTitle:['Fiches voyageurs','Guest registration'],
+  regWhy:['La loi impose de déclarer chaque voyageur aux autorités à son arrivée. Remplissez une fiche par personne avant de venir : rien à faire sur place. Vos informations sont chiffrées, vues seulement par votre hôte pour cette déclaration, et effacées un an après votre départ.','The law requires every guest to be registered with the authorities on arrival. Fill in one form per person before you come: nothing to do on site. Your details are encrypted, seen only by your host for this registration, and deleted one year after your stay.'],
+  regWho:['Voyageur','Guest'], regLast:['Nom','Surname'], regFirst:['Prénom(s)','First name(s)'],
+  regBirth:['Date de naissance','Date of birth'], regBirthPlace:['Lieu de naissance','Place of birth'], regNat:['Nationalité','Nationality'],
+  regDocType:['Pièce d’identité','ID document'], regPassport:['Passeport','Passport'], regIdCard:['Carte d’identité','ID card'], regOther:['Autre','Other'],
+  regDocNo:['Numéro de la pièce','Document number'], regJob:['Profession','Occupation'], regAddr:['Adresse habituelle (ville, pays)','Home address (city, country)'],
+  regAdd:['Ajouter un voyageur','Add a guest'], regSend:['Envoyer les fiches','Send the forms'],
+  regDone:['Merci, vos fiches sont transmises à votre hôte.','Thank you, your host has your forms.'],
+  regSentOn:['Fiches transmises le','Forms sent on'], regPeople:['voyageurs','guests'], regPerson:['voyageur','guest'],
+  regRedo:['Pour corriger, remplissez et renvoyez toutes les fiches : elles remplacent les précédentes.','To correct them, fill in and resend all forms: they replace the previous ones.'],
   ordWhy:['Choisissez ce qui vous ferait plaisir : l’équipe s’organise et votre hôte vous confirme. Rien n’est payé ici.','Choose what you would like: the team gets ready and your host confirms. Nothing is paid here.'],
   ordPerGroup:['par service, pour tout le groupe','per service, for the whole group'],
   ordTotal:['Total indicatif','Indicative total'],
@@ -679,6 +694,53 @@ function sendArrival(form){
 }
 document.addEventListener('submit', e => { if (e.target && e.target.id === 'arrive') { e.preventDefault(); sendArrival(e.target); } });
 
+/* ── Fiches voyageurs (15/10/2026) — lien personnel + villa qui les demande (VILLA.guest_registration).
+   Envoyées à livret-view, chiffrées côté serveur, JAMAIS renvoyées à la page (un lien transféré ne montre
+   pas les passeports). L'état vit ici (REG), pas dans le DOM : un nouveau rendu ne perd rien. */
+const REG = [];
+const REG_F = [['last','regLast'], ['first','regFirst'], ['birth_date','regBirth','date'], ['birth_place','regBirthPlace'], ['nationality','regNat'], ['doc_type','regDocType','select'], ['doc_no','regDocNo'], ['profession','regJob'], ['address','regAddr']];
+const regOn = () => { const c = window.LIVRET_CTX; return !!(c && c.token && VILLA.guest_registration === true); };
+const regDay = at => new Date(at).toLocaleDateString(LANG === 'en' ? 'en-GB' : 'fr-FR', {day:'numeric', month:'long'});
+function regSentLine(r){ return r && r.count ? '<p class="st">' + ti(T.regSentOn) + ' ' + esc(regDay(r.at)) + ' · ' + r.count + ' ' + ti(r.count > 1 ? T.regPeople : T.regPerson) + '</p><p class="why" style="margin:6px 0 0">' + t(T.regRedo) + '</p>' : ''; }
+function regCard(i){
+  const o = REG[i] || {}, v = x => esc(x == null ? '' : x), nm = [o.first, o.last].filter(Boolean).join(' ');
+  let h = '<details class="reg-p"' + (i === 0 || nm ? ' open' : '') + '><summary>' + ti(T.regWho) + ' ' + (i + 1) + (nm ? ' — ' + esc(nm) : '') + '</summary>';
+  REG_F.forEach(([k, lab, type]) => {
+    const id = 'rg-' + i + '-' + k;
+    h += '<label for="' + id + '">' + t(T[lab]) + '</label>';
+    if (type === 'select') h += '<select id="' + id + '" data-reg="' + i + '.' + k + '"><option value=""></option>' + [['passport', T.regPassport], ['id_card', T.regIdCard], ['other', T.regOther]].map(([val, l]) => '<option value="' + val + '"' + (o[k] === val ? ' selected' : '') + '>' + ti(l) + '</option>').join('') + '</select>';
+    else h += '<input id="' + id + '" data-reg="' + i + '.' + k + '" type="' + (type || 'text') + '" maxlength="' + (k === 'address' ? 160 : 80) + '" value="' + v(o[k]) + '"' + (k === 'doc_no' ? ' autocapitalize="characters"' : '') + '>';
+  });
+  return h + '</details>';
+}
+function regBlock(){
+  if (!regOn()) return '';
+  if (!REG.length) { const n = Math.max(1, Math.min(30, orderPax() || 1)); for (let i = 0; i < n; i++) REG.push({}); }
+  return '<form class="arrive reg" id="reg" autocomplete="off"><h3>' + ti(T.regTitle) + '</h3><p class="why">' + t(T.regWhy) + '</p>' +
+    REG.map((_, i) => regCard(i)).join('') +
+    '<button type="button" class="add" data-a="regadd">+ ' + ti(T.regAdd) + '</button><br>' +
+    '<button type="submit" class="send" id="rg-send">' + ti(T.regSend) + '</button><div id="rg-st">' + regSentLine((window.LIVRET_CTX || {}).reg) + '</div></form>';
+}
+const regKeep = e => { const k = e.target && e.target.getAttribute && e.target.getAttribute('data-reg'); if (!k) return; const [i, f] = k.split('.'); (REG[+i] = REG[+i] || {})[f] = e.target.value; };
+document.addEventListener('input', regKeep); document.addEventListener('change', regKeep);
+document.addEventListener('click', e => {
+  if (!(e.target.closest && e.target.closest('[data-a="regadd"]')) || REG.length >= 30) return;
+  REG.push({}); const f = document.getElementById('reg'); if (f) f.outerHTML = regBlock();
+  const d = document.querySelectorAll('#reg .reg-p'); if (d.length) { d[d.length - 1].open = true; const x = d[d.length - 1].querySelector('input'); if (x) x.focus(); }
+});
+function sendReg(form){
+  const ctx = window.LIVRET_CTX, btn = form.querySelector('#rg-send'), st = form.querySelector('#rg-st');
+  const list = REG.filter(o => String(o.last || '').trim() || String(o.first || '').trim());
+  if (!list.length) return;
+  btn.disabled = true; btn.textContent = ti(T.arrSending); st.innerHTML = '';
+  fetch(ctx.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: ctx.token, lang: LANG === 'en' ? 'en' : 'fr', travellers: list }) })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(b => { ctx.reg = b.reg || null; st.innerHTML = '<p class="st">' + t(T.regDone) + '</p>' + regSentLine(b.reg); })
+    .catch(() => { st.innerHTML = '<p class="st err">' + t(T.arrErr) + '</p>'; })
+    .then(() => { btn.disabled = false; btn.textContent = ti(T.regSend); });
+}
+document.addEventListener('submit', e => { if (e.target && e.target.id === 'reg') { e.preventDefault(); sendReg(e.target); } });
+
 function render(){
   const guest = document.getElementById('g').value.trim() || '—';
   const dates = document.getElementById('d').value.trim();
@@ -706,6 +768,7 @@ function render(){
   h += '<div class="hello">' + greeting(guest, grp) + '</div>';
   h += '<div class="lede">' + t(T.lede) + '</div>';
   h += arrivalBlock();
+  h += regBlock();
 
   const wifi = VILLA.wifi && VILLA.wifi.net ? VILLA.wifi : null, said = String(VILLA.said || '').trim(), hostPhone = String(VILLA.hostPhone || '').trim();
   h += '<div class="infobox">' +

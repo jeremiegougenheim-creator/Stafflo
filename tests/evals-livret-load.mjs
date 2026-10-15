@@ -118,6 +118,33 @@ r = await open('t=' + TOK + '&lang=fr', { view: () => ({ status: 200, body: '{"f
 check('fiche sans repas chiffré ni extra : pas de carte', !(await r.page.$('#ord')) && r.form === true);
 await r.ctx.close();
 
+// ── Fiches voyageurs (15/10/2026) : seulement si la villa les demande, jamais renvoyées à la page ──
+{
+  const RF = JSON.parse(FACTS); RF.VILLA.guest_registration = true; const RFJ = JSON.stringify(RF);
+  const REG_OK = (body) => ({ status: 200, body: JSON.stringify({ ok: true, answers: null, orders: null, reg: { count: body.travellers.length, at: '2026-10-15T11:00:00Z' } }) });
+  r = await open('t=' + TOK + '&pax=3&lang=fr', { view: () => ({ status: 200, body: '{"facts":' + RFJ + '}' }), post: REG_OK });
+  check('villa qui demande les fiches + lien personnel → bloc « Fiches voyageurs », une fiche par personne (3), jamais à l’impression', (await r.page.$$('#reg .reg-p')).length === 3 && (await r.page.getAttribute('#reg', 'class')).split(' ').includes('arrive') && !r.errs.length, r.errs);
+  await r.page.fill('#rg-0-last', 'Ruiz'); await r.page.fill('#rg-0-first', 'Ana'); await r.page.fill('#rg-0-birth_date', '1990-04-02');
+  await r.page.fill('#rg-0-nationality', 'Espagnole'); await r.page.selectOption('#rg-0-doc_type', 'passport'); await r.page.fill('#rg-0-doc_no', 'PAE123456');
+  await r.page.click('[data-a="regadd"]'); await r.page.waitForTimeout(100);
+  check('« Ajouter un voyageur » : une fiche de plus, rien de perdu dans les autres', (await r.page.$$('#reg .reg-p')).length === 4 && (await r.page.inputValue('#rg-0-doc_no')) === 'PAE123456' && (await r.page.inputValue('#rg-0-doc_type')) === 'passport');
+  await r.page.click('#rg-send'); await r.page.waitForTimeout(400);
+  const pr = r.calls.filter((x) => x.kind === 'post').pop();
+  check('envoi : le jeton et les fiches remplies seulement (les vides restent ici), rien d’autre', pr && pr.body.t === TOK && pr.body.travellers.length === 1 && pr.body.travellers[0].doc_no === 'PAE123456' && pr.body.travellers[0].doc_type === 'passport' && pr.body.travellers[0].birth_date === '1990-04-02' && !('answers' in pr.body) && !('orders' in pr.body), pr && pr.body);
+  check('après envoi : « Fiches transmises le 15 octobre · 1 voyageur »', /Fiches transmises le 15 octobre · 1 voyageur/.test(await r.page.innerText('#rg-st')));
+  await r.ctx.close();
+  r = await open('t=' + TOK + '&pax=10&lang=en', { view: () => ({ status: 200, body: '{"facts":' + RFJ + ',"reg":{"count":10,"at":"2026-10-14T08:00:00Z"}}' }) });
+  check('fiches déjà envoyées : « Forms sent on 14 October · 10 guests », fiches vides (jamais renvoyées), comment corriger', /Forms sent on 14 October · 10 guests/.test(await r.page.innerText('#rg-st')) && /resend all forms/.test(await r.page.innerText('#rg-st')) && (await r.page.inputValue('#rg-0-last')) === '');
+  await r.ctx.close();
+  const NF = JSON.parse(FACTS); delete NF.VILLA.guest_registration;
+  r = await open('t=' + TOK + '&pax=3&lang=fr', { view: () => ({ status: 200, body: '{"facts":' + JSON.stringify(NF) + '}' }) });
+  check('villa qui ne les demande pas → pas de bloc', !(await r.page.$('#reg')) && r.len > 30000);
+  await r.ctx.close();
+  r = await open('guest=Ana&dates=1%20JAN%20%E2%80%93%205%20JAN%2027&lang=fr', { session: sessionFor(3600), rest: () => ({ status: 200, body: '[{"house_facts":' + RFJ + '}]' }) });
+  check('sans lien personnel (propriétaire) → pas de bloc, même si la villa les demande', !(await r.page.$('#reg')) && r.len > 30000);
+  await r.ctx.close();
+}
+
 r = await open('guest=Ana&dates=1%20JAN%20%E2%80%93%205%20JAN%2027&lang=fr', { session: sessionFor(3600), rest: () => ({ status: 200, body: '[{"house_facts":' + FACTS + '}]' }) });
 const rc = r.calls.find((c) => c.kind === 'rest');
 check('propriétaire connecté (sans jeton) → sa fiche, lue avec SA session et son id', r.len > 30000 && rc && rc.auth === 'Bearer jwt-test' && rc.u.includes('owner_id=eq.' + UID) && !r.calls.some((c) => c.kind === 'view'), { len: r.len });
@@ -169,11 +196,11 @@ check('fiche incomplète → message, jamais un livret à moitié vide', msgOnly
 await r.ctx.close();
 
 // ── Toute villa (15/10/2026) : le livret ne nomme plus le pilote ──────────────────────
-// 1. Fiche complète (pilote) : rendu identique au caractère près (empreintes du 15/10/2026, hors
+// 1. Fiche complète (pilote) : rendu identique au caractère près (empreintes du 15/10/2026 — règle « Passeports » → fiches voyageurs —, hors
 //    bloc « Votre arrivée » et signature Stafflo). Si le livret est modifié VOLONTAIREMENT, recalculer.
 const crypto = await import('node:crypto');
-const sheetHash = async (page) => crypto.createHash('sha256').update(await page.evaluate(() => { const s = document.getElementById('sheet').cloneNode(true); s.querySelectorAll('#arrive, .foot-stafflo').forEach((e) => e.remove()); return s.innerHTML; })).digest('hex').slice(0, 16);
-for (const [qs, h] of [['guest=Felipe%20Villalobos&dates=13%20OCT%20%E2%80%93%2016%20OCT%2026&pax=7&groupe=famille&lang=bi', '723c0835fdcab1fa'], ['guest=Hugo&dates=20%20DEC%20%E2%80%93%2027%20DEC%2026&pax=10&groupe=amis&lang=fr&tarifs=400/400/500', '02270c66b3eb6dd2'], ['guest=Se%C3%A1n&dates=23%20OCT%20%E2%80%93%2026%20OCT%2026&pax=6&lang=en&tarifs=500/500/600/350', 'fb54de2d5c14395b']]) {
+const sheetHash = async (page) => crypto.createHash('sha256').update(await page.evaluate(() => { const s = document.getElementById('sheet').cloneNode(true); s.querySelectorAll('#arrive, #reg, .foot-stafflo').forEach((e) => e.remove()); return s.innerHTML; })).digest('hex').slice(0, 16);
+for (const [qs, h] of [['guest=Felipe%20Villalobos&dates=13%20OCT%20%E2%80%93%2016%20OCT%2026&pax=7&groupe=famille&lang=bi', '7862274952945c90'], ['guest=Hugo&dates=20%20DEC%20%E2%80%93%2027%20DEC%2026&pax=10&groupe=amis&lang=fr&tarifs=400/400/500', '817829d31b1f18d7'], ['guest=Se%C3%A1n&dates=23%20OCT%20%E2%80%93%2026%20OCT%2026&pax=6&lang=en&tarifs=500/500/600/350', 'dc2363e1e96214a4']]) {
   r = await open('t=' + TOK + '&' + qs, { view: ok200 });
   const got = await sheetHash(r.page);
   check('fiche complète : rendu inchangé (' + qs.slice(6, 20) + '…)', got === h && !r.errs.length, got);
