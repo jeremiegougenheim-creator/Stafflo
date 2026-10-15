@@ -59,7 +59,7 @@ check('installable : manifeste et icône écran d’accueil', esp.includes('<lin
 check('pastille de synchro : seulement les passages gmail-sync', /sync_runs\?select=finished_at,ok&source=like\.gmail_sync\*/.test(script));
 // v4 — « À faire » : une ligne par action, tous séjours confondus
 check('« À faire » en tête du Jour (après la mise en route d’un compte neuf), puis les retours de l’équipe', /h \+= setup;\s*h \+= todoCard\(\);\s*h \+= teamCard\(\);/.test(script));
-check('« À faire » : retards et messages d’abord', /var rank = function \(x\) \{ return x\.k === 'msg' \? 0 : x\.late \? 1 : 2; \}/.test(script));
+check('« À faire » : messages et commandes à confirmer d’abord, puis les retards', /var rank = function \(x\) \{ return x\.k === 'msg' \|\| x\.k === 'order' \? 0 : x\.late \? 1 : 2; \}/.test(script));
 check('« À faire » ouvre le séjour sur le bon panneau', /a === 'goto' && \(c = c \|\| pastById\(id\)\)/.test(script) && /id="st-' \+ esc\(c\.id\)/.test(script));
 check('une arrivée du jour n’apparaît qu’une fois', /c\.a > t && c\.a - t <= 21/.test(script));
 // v5 — départ, avis, décompte complet, planning équipe
@@ -92,7 +92,7 @@ check('multi-villa : aucun nom de villa écrit en dur', !/Villa Dar J|Dar J ·/.
 check('multi-villa : fiche maison du compte, lue en base (house_facts), drapeau house_facts_ref', /var built = D\.villa && D\.villa\.house_facts_ref === 'villa-facts\.js' && HF \? HF\.build\(D\.villa\.house_facts\) : null;/.test(script) && /HAS_FACTS = !!built;/.test(script) && /F = built \|\| EMPTY_F;/.test(script) && /house_facts_ref,house_facts&/.test(script));
 check('multi-villa : en-tête = villa et ville du compte', /kk\.textContent = D\.loaded && D\.user \? \(villaName\(\)/.test(script));
 check('multi-villa : sans fiche, ARIA reçoit les bases et « à confirmer »', /HAS_FACTS \? F\.digest\(fr \? 'fr' : 'en'\) : basicsForAI\(fr\)/.test(script) && /jamais inventée/.test(script));
-check('multi-villa : livret, décompte et messages d’avant arrivée seulement avec une fiche maison', /HAS_FACTS && LINKS && LINKS\.get\(c\.id\) \? '<a class="act" href="' \+ esc\(livretUrl\(c\)\)/.test(script) && /HAS_FACTS && F\.MEALS\.length \? '<button type="button" class="act" data-a="panel" data-id="' \+ esc\(c\.id\) \+ '" data-v="bill"/.test(script) && /if \(!HAS_FACTS\) return viewMaisonBasics\(\);/.test(script));
+check('multi-villa : livret, décompte et messages d’avant arrivée seulement avec une fiche maison', /HAS_FACTS && LINKS && LINKS\.get\(c\.id\) \? '<a class="act" href="' \+ esc\(livretUrl\(c\)\)/.test(script) && /HAS_FACTS && mealsOn\(\) \? '<button type="button" class="act" data-a="panel" data-id="' \+ esc\(c\.id\) \+ '" data-v="bill"/.test(script) && /if \(!HAS_FACTS\) return viewMaisonBasics\(\);/.test(script));
 check('multi-villa : « Envoyer à » la personne de l’équipe, pas un prénom écrit en dur', /sendTo: function \(n\)/.test(script) && !/sendSaid:/.test(script));
 // v10 — compte neuf : « Mise en route » cochée d'après les vraies données, disparaît une fois le compte prêt
 check('mise en route : Gmail (synchro serveur), premier séjour, équipe — cochés d’après les données', /var gmail = !!D\.sync, stay = \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) > 0, team = teamList\(\)\.length > 0;/.test(script));
