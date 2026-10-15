@@ -5,14 +5,14 @@
 
 ## Contexte du repo
 
-- **App** : single-file `app.html` (~44 000 lignes, 48 blocs `<script>`), hébergé sur GitHub Pages (stafflo.app). **Gelé** : corrections seulement, les nouveaux écrans vont dans l'Espace (§14)
+- **App** : single-file `app.html` (~44 000 lignes, 48 blocs `<script>`), hébergé sur GitHub Pages (stafflo.app), bientôt Cloudflare Workers (`wrangler.jsonc`, `scripts/build-site.sh`). **Gelé** : corrections seulement ; l'écran principal est l'Espace (`espace.html`, §2 et §14)
   - URL live : <https://jeremiegougenheim-creator.github.io/Stafflo/>
   - Repo path : `app.html` à la racine
 - **Landing** : `index.html` (FR) + `en.html` (EN) dans le même repo
 - **Backend** : Supabase project `rcjhgilpmojohmrqzokx` — Auth, Postgres + RLS multi-tenant, Edge Functions Deno, Realtime
 - **Proxy AI** : edge function Supabase `ai-proxy` — **Mistral EU (Paris) uniquement**. L'ancien Worker Cloudflare et la cascade Groq/DeepSeek/Gemini/OpenAI ne sont plus utilisés.
 - **Appel IA direct depuis le navigateur** (`callProviderAPI`) : coupé ; réactivable seulement par `localStorage.stafflo_direct_ai = 'on'` (garde-fou : `tests/evals-app-securite.mjs`)
-- **Voix (v1)** : Web Speech API pour l'input, ElevenLabs pour le TTS (prévu)
+- **Voix** : dictée Whisper existante (`transcribe`, Voxtral, Mistral UE). Pas de TTS, pas de voix comme chemin principal (§2).
 - **Icons** : Tabler Icons via webfont, centralisés via `iconFor()`
 - **Typographie** : Cormorant Garamond (titres, voix ARIA) + Inter (UI)
 - **Palette** : cream `#FAF6EE`, dark green `#0F2318`, mid green `#1D4D3A`, gold `#C9963A`, gold soft `#E5C77A`
@@ -31,62 +31,36 @@ La version live (`app.html` sur GitHub Pages) **diverge souvent** de la version 
 4. `git status` doit être clean
 5. Confirmer la branche : `feature/*` pour tout sauf hotfix critique
 
-## 2. Pattern strangler fig pour le pivot ARIA-first v1
+## 2. Strangler fig — le produit, c'est la base + le serveur + des interfaces fines (décision du 15/10/2026)
 
-Le pivot ARIA-first est exécuté en **strangler fig**, PAS en rewrite. Non-négociable.
+Le pivot « ARIA-first v1 » (orbe, brief comme accueil, bouton vocal, cards qui se matérialisent) est **abandonné**. Les chiffres : en mai, 80 % des questions posées à ARIA venaient de boutons, pas du propriétaire ; en août, l'extraction réussissait à 54 %, le brief à 68 %. Un assistant qui a raison deux fois sur trois n'est pas une porte d'entrée. ARIA reste, **en coulisses** : lire (extraction serveur, regex d'abord), rédiger sur demande (réponse, brief, avis, à un geste sur un séjour ou un message), le point du matin. Jamais un onglet, jamais un orbe, jamais la voix comme chemin principal.
 
-La nouvelle UI ARIA-first est construite **comme de nouveaux composants qui COEXISTENT avec le dashboard existant**, derrière un feature flag. Le code existant n'est ni modifié ni supprimé pendant la phase de build. Une fois la nouvelle UI prouvée stable en production (Villa DarJ + soft launch), l'ancien code est retiré progressivement.
+Ce que Stafflo est : **la base** (seule vérité), **le serveur** (automatisations : synchro Airbnb, alertes, liens), et **une interface fine par intervenant** :
+
+| Intervenant | Interface | Règle |
+|---|---|---|
+| Propriétaire | `espace.html` (Jour / Séjours / Maison, ARIA dans l'en-tête) | écran principal ; moins à l'écran, pas plus |
+| Propriétaire | `app.html` | **gelé** = réglages, prix, facturation, création d'un séjour direct — jusqu'à leur arrivée dans l'Espace, puis extinction |
+| Équipe | `equipe.html` (lien personnel, FR/AR) | jamais de prix, de téléphone, de notes |
+| Client | `livret.html` (lien personnel par séjour) | lecture + « Votre arrivée » (répond vers la base) |
+
+Méthode inchangée, non négociable : **strangler fig**. On construit à côté, derrière interrupteur ; on ne supprime rien ; un écran d'app.html n'est retiré qu'après 14 jours sans retour, dans une session de nettoyage dédiée.
 
 ### Règles que Claude Code DOIT suivre
 
 1. **Ne jamais supprimer de code existant.** Wrap dans un conditionnel, ne pas retirer.
-2. **Ne jamais modifier les composants existants.** Créer de nouveaux composants à côté.
-3. **Toujours gater le nouveau code ARIA-first** derrière le feature flag `ARIA_FIRST_V1`.
-4. **Lire le flag depuis `localStorage`** pour le toggler sans redéployer :
-   `const ARIA_FIRST_V1 = localStorage.getItem('stafflo_aria_first_v1') === '1';`
-   Activation alternative : `?aria_first=1` dans l'URL.
-5. **Default à FALSE** jusqu'à ce que v1 soit feature-complete et testée. Le owner l'active manuellement sur son device.
-6. **Les deux UI doivent fonctionner en parallèle.** Si ARIA-first plante, l'utilisateur toggle off et retombe sur le dashboard.
-7. **Aucun cleanup de dead code pendant la phase de build.** Ça arrive plus tard, dans une session dédiée, UNIQUEMENT après que la nouvelle UI soit prouvée en production pendant au moins 14 jours.
-
-### Pattern concret pour chaque nouveau composant ARIA-first
-
-Au render :
-```javascript
-function renderTodayTab() {
-  if (ARIA_FIRST_V1) {
-    return renderAriaFirstTodayV1();  // nouveau composant
-  }
-  return renderClassicDashboard();    // existant, intact
-}
-```
-
-Ou en HTML, par visibilité :
-```html
-<div id="dashboard-classic">
-  <!-- 6 cards existantes, inchangées -->
-</div>
-<div id="aria-first-hero" style="display: none">
-  <!-- nouveau orb + brief + cards contextuelles -->
-</div>
-```
-JS toggle le `display` selon le flag à l'init de l'app.
+2. **Ne rien ajouter à app.html** sauf correction. Un nouvel écran va dans l'Espace.
+3. **Un commit = une tâche**, tous les garde-fous avant chaque push (§15).
+4. **Aucun cleanup pendant le build.** Une session dédiée, après 14 jours sans retour.
+5. **Les deux UI doivent fonctionner en parallèle** : si l'Espace manque, app.html reste.
 
 ### Quand Claude Code est tenté de « cleaner »
 
-Si Claude Code propose de supprimer du vieux code dashboard, de refactoriser des fonctions partagées, ou de simplifier le data flow pendant la phase de build : **refuser poliment et demander que le changement soit scopé dans une session de cleanup post-v1 dédiée**.
+Refuser poliment et demander que le changement soit scopé dans une session de cleanup dédiée. Tout « cleanup » pendant le build risque de régresser des features existantes (Inbox, Gmail OAuth, pricing, multi-villa).
 
-Raison : tout « cleanup » pendant le build risque de régresser des features existantes (Inbox, Gmail OAuth, pricing logic, multi-villa) dont les utilisateurs du soft launch dépendent. Le but du strangler fig est précisément de ne jamais casser ce qui marche.
+### Ancien plan ARIA-first (pour mémoire, ne plus construire)
 
-### Critères de sortie (quand retirer l'ancien code)
-
-L'ancien dashboard ne peut être retiré que si TOUS ces critères sont vrais :
-- `ARIA_FIRST_V1` activé sur tous les comptes de production depuis au moins 14 jours
-- Zéro rollback déclenché pendant cette période
-- DAU actif ≥ 80% du DAU pré-flag (pas de churn causé par la nouvelle UI)
-- Voice input testé sur iOS Safari, Android Chrome, Safari desktop, Chrome desktop
-
-Si un critère échoue, le flag reste et l'ancien code reste.
+`ARIA_FIRST_V1` (localStorage `stafflo_aria_first_v1`, `?aria_first=1`) est ON depuis v87 dans app.html : le hero `.v3-hero` en dépend. On ne le retire pas (règle 1), on n'y ajoute rien. Composants prévus et non livrés : orbe animé, cards matérialisées, voix hold-to-talk — **ne pas les livrer**. La dictée Whisper existante (`transcribe`, Voxtral) reste.
 
 ## 3. Pattern d'édition safe sur app.html (13k+ lignes)
 
@@ -136,42 +110,34 @@ Si un critère échoue, le flag reste et l'ancien code reste.
 - Dark green : `#0F2318`
 - Mid green : `#1D4D3A`
 - Gold : `#C9963A`
-- Fonts : Cormorant Garamond + Inter (site), DM Sans/Inter + Cormorant Garamond (app et Espace)
+- Fonts : Cormorant Garamond + Inter partout (règle v19 ; DM Sans/Fraunces = résidus d'app.html, à ne pas propager)
 
-## 8. Roadmap pivot ARIA-first v1 (composants à livrer)
+## 8. Ce qu'il reste à construire, dans l'ordre (15/10/2026)
 
-Le dashboard actuel (tab Today, 6 cards fixes) est **strangulé** par un nouvel écran ARIA orb-centered. Construction ALONGSIDE, pas en remplacement.
+Chaque étape : une fonction serveur ou un écran fin, une éval, un commit. Détail et verdict : doc projet `REVUE-UX-UI-2026-10-15` et `ARCHI-CIBLE-2026-10-12`.
 
-Composants à livrer, tous gated par `ARIA_FIRST_V1` :
+1. **Déployer `livret-view` v2** (POST « Votre arrivée »), puis la page `livret.html` qui l'utilise (branche `fiche-maison`, commit `225b52f`). Dans cet ordre.
+2. **Équipe → base** : « Chambres prêtes » et « Signaler un problème » sur `equipe.html` (staff-view POST), visibles dans l'Espace › Jour et en alerte.
+3. **Créer un séjour direct depuis l'Espace** (la seule tâche du quotidien encore dans app.html).
+4. **Réglages dans l'Espace** (Gmail, iCal, alertes, villa) → app.html = prix + facturation seulement.
+5. **Passeports** (photo côté client, chiffrés, effacés à J+30) — à cadrer avec la politique de confidentialité.
+6. Extinction d'app.html écran par écran, derrière interrupteur, 14 jours sans retour avant tout retrait.
 
-1. **`AriaHero`** : ARIA orb (animé, breathing), ligne de greeting, status indicator.
-2. **`AriaBrief`** : brief auto-généré qui lit calendrier + Gmail + état villa, synthétise un brief 1-paragraphe et propose UNE action primaire (ex. « envoyer le brief WhatsApp staff »).
-3. **`AriaCards`** : cards qui se matérialisent contextuellement quand ARIA répond ; la card brief est la première.
-4. **`AriaVoiceButton`** (Web Speech API) — **LE COMPOSANT LE PLUS RISQUÉ, conversation review obligatoire avant** :
-   - Pattern hold-to-talk, PAS toggle (évite les activations accidentelles)
-   - Gate de support browser : détecter `webkitSpeechRecognition`, fallback vers text input only si absent
-   - iOS Safari quirk : nécessite user gesture + secure context (https) — déjà satisfait sur GitHub Pages
-   - Pendant l'enregistrement : afficher une animation waveform, status "ARIA écoute…"
-   - Après l'enregistrement : transcrire, afficher le transcript, envoyer à l'orchestrateur ARIA
-   - Langue : `fr-FR` par défaut, toggle `en-US` dans les settings
-5. **Dashboard classique, Inbox, To-do, Settings restent inchangés.** Seul le rendering du tab Today est conditionnel sur le flag.
+## 9. Hors périmètre
 
-## 9. v1 explicitly out of scope
+- **TTS, orbe, voix comme chemin principal, « streaming cards »** — abandonnés (§2).
+- **Multi-langues au-delà de FR/EN** (arabe : vue équipe seulement). Glossaire FR/EN archivé dans `_archive/strings.tsv`.
+- **Réécriture complète, framework, app native** — refusés (décisions du propriétaire).
+- **Tout cleanup d'app.html** — après 14 jours sans retour, session dédiée.
 
-- **TTS** (ARIA qui répond vocalement) — v1.5
-- **Monitoring proactif / agent** — v2
-- **Streaming card materialization** — v1.5
-- **Mode silencieux, multi-langues au-delà de FR/EN** — plus tard
-  - Glossaire FR/EN existant (1125 lignes, issu des passes `fix(i18n)`) archivé dans `_archive/strings.tsv` — à réutiliser comme base de traduction quand ce chantier démarre, plutôt que de repartir de zéro
-- **Tout cleanup du code dashboard existant** — uniquement après que v1 soit prouvée en prod ≥14 jours
+## 10. Critères de réussite
 
-## 10. Success criteria v1
-
-- Avec flag activé : user ouvre l'app → voit ARIA orb + brief + 1 action primaire (3 secondes, zéro clic)
-- Avec flag activé : user peut tenir le voice button, parler, voir le transcript, recevoir une réponse ARIA avec une card
-- Avec flag désactivé : dashboard classique fonctionne exactement comme avant, zéro régression
-- Pas de régression sur Inbox, Settings, To-do staff, pricing logic, indépendamment de l'état du flag
-- L'app passe toujours le check de validation JS après chaque changement significatif
+- « Qui arrive, que reste-t-il à faire » se lit en moins de 5 secondes, sur téléphone, dans l'Espace.
+- Un séjour = nom, dates, une ligne d'état ; jamais une rangée de pastilles.
+- Le client et l'équipe répondent sans passer par le propriétaire (heure d'arrivée, composition, repas, chambres prêtes).
+- Aucun email Airbnb non relié depuis plus de 30 minutes. Aucun appel IA hors UE.
+- ARIA ne cite jamais un fait absent de la fiche maison ou de la base (évals à chaque commit).
+- app.html ne grossit plus ; chaque écran remplacé passe derrière interrupteur.
 
 ## 11. Conventions techniques
 
@@ -197,7 +163,7 @@ Composants à livrer, tous gated par `ARIA_FIRST_V1` :
   - **Copie de référence** (hors du site : dossier `_`, absent du build) : `_private/house-facts-pilot.json`. Modifier la fiche = modifier ce JSON, puis le recopier en base (`node scripts/house-facts-sql.mjs` → SQL, exécuté par Claude). Recalculer alors les empreintes du résumé dans `evals-house-facts`.
   - **app.html** : `pullVillaSettings()` → `staffloHouseFactsHydrate(row.house_facts)` ; copie locale `stafflo_house_facts` rattachée à l'id du compte (démarrage), effacée à la déconnexion ; **jamais dans cfg** (elle repartirait avec `pushVillaSettings`).
   - **espace.html** : lit `house_facts` avec la ligne `villa_settings` du compte.
-  - **livret.html** : reçoit la fiche de `livret-view` (lien personnel `?t=`), ou de la base pour le propriétaire connecté, ou (anciens liens envoyés avant le 14/10/2026, nom + dates exacts, séjour pas terminé) de `livret-view` sans jeton. Sinon un message clair FR/EN. Le script du livret est inchangé (`#livret-main`, lancé une fois la fiche reçue) ; rendu prouvé identique le 13/10/2026.
+  - **livret.html** : reçoit la fiche de `livret-view` (lien personnel `?t=`), ou de la base pour le propriétaire connecté, ou (anciens liens envoyés avant le 14/10/2026, nom + dates exacts, séjour pas terminé) de `livret-view` sans jeton. Sinon un message clair FR/EN. Le script du livret est inchangé (`#livret-main`, lancé une fois la fiche reçue) ; rendu prouvé identique le 13/10/2026. La barre d'édition (nom, dates, tarif, PDF) n'apparaît qu'au propriétaire connecté ou avec `?edit=1`. **« Votre arrivée »** (lien personnel seulement, jamais imprimé) : le client envoie heure d'arrivée, couples / personnes seules, repas → `livret-view` POST → `details.guest_answers` tel quel, et `details.arrival_time`, `details.beds`, `meals` remplis seulement s'ils sont vides (jamais écrasés, jamais traduits). L'Espace affiche « Réponse du client · date » ; la vue équipe lit les mêmes champs.
 - **Lien personnel du livret** : table `livret_links` (un lien actif par séjour, index unique partiel, suppression douce, RLS propriétaire + `billing_gate`) ; `rpc livret_token(client_id)` obtient OU crée le jeton (atomique : le même lien sur l'app et l'Espace) ; edge function `livret-view` (`verify_jwt` off, l'accès c'est le jeton) renvoie `{facts}` tant que le séjour n'est pas terminé depuis plus de 7 jours (sinon 410). Aucun lien sans jeton n'est envoyé à un client (message de bienvenue, bouton Espace). Garde-fous : `evals-livret-view`, `evals-livret-load`, `evals-livret-links`, `evals-house-facts`.
 - **Ne jamais recopier un fait en dur dans app.html** (prompt, modèle de message, libellé). C'est ce qui avait figé « Faiza », « 300 MAD par personne » et « la Palmeraie » dans les réponses d'ARIA pendant des mois.
 - Côté app : `villaFactsActive()` (Villa Dar J seulement, hors démo, coupe-circuit `localStorage.stafflo_facts_ai = 'off'`), `villaFactsForAI(lang)`, `villaStaffNames()`, `villaTeamLine(lang)`.
