@@ -97,9 +97,9 @@ check('multi-villa : « Envoyer à » la personne de l’équipe, pas un prénom
 // v10 — compte neuf : « Mise en route » cochée d'après les vraies données, disparaît une fois le compte prêt
 check('mise en route : Gmail (synchro serveur), premier séjour, équipe — cochés d’après les données', /var gmail = !!D\.sync, stay = \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) > 0, team = teamList\(\)\.length > 0;/.test(script));
 check('mise en route : disparaît quand Gmail, séjours et équipe sont là (jamais pour un compte établi)', /if \(gmail && stay && team\) return '';/.test(script));
-check('mise en route : chaque étape mène au bon écran de l’app (?open=)', /href: 'app\.html\?open=gmail'/.test(script) && /href: 'app\.html\?open=stay'/.test(script) && /href: 'app\.html\?open=settings'/.test(script));
+check('mise en route : chaque étape mène au bon écran (Gmail et réglages dans l’app, premier séjour ici, dans l’Espace)', /href: 'app\.html\?open=gmail'/.test(script) && /k: 'stay', done: stay, icon: 'calendar-plus', act: 'nsopen'/.test(script) && /href: 'app\.html\?open=settings'/.test(script));
 check('mise en route : pas de doublon avec l’invitation aux alertes', /if \(!setup\) h \+= nudgeCard\(\);/.test(script));
-check('compte sans aucun séjour : pas de tuiles « 0 / 0 / 0 € » (tuiles dans Séjours, v12)', /if \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) \{\s*var up = D\.stays/.test(script) && (script.match(/<div class="tiles">/g) || []).length === 1);
+check('compte sans aucun séjour : pas de tuiles « 0 / 0 / 0 € » (tuiles dans Séjours, v12)', /if \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) \{\s*var up = D\.stays/.test(script) && (script.match(/<div class="tiles span">/g) || []).length === 1);
 const appH = fs.readFileSync(path.join(root, 'app.html'), 'utf8');
 check('app : ?open=gmail|settings|stay ouvre l’écran une fois la session prête', /\[\?&\]open=\(gmail\|settings\|stay\)\\b/.test(appH) && /what === 'gmail' && typeof showEmailConnectModal === 'function'/.test(appH));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
@@ -132,7 +132,7 @@ check('v11 : pastille Jour = lignes urgentes de « À faire » + messages sans s
 check('v11 : carte Départs sans recopier le texte de la fiche', !/departures, deps\.map[\s\S]{0,400}Arrivée et départ/.test(script));
 check('v11 : ancien générateur de planning derrière interrupteur (données jamais vues par l’équipe)', /stafflo_planning_old/.test(script) && /if \(oldPlanning\) h \+= card\('calendar-user', l\.mPlanning/.test(script));
 check('v11 : « Ce qu’ARIA sait de la maison » se présente comme dépliable (chevron)', /<details class="dig"><summary><i class="ti ti-chevron-right"/.test(script));
-check('v11 : écran de connexion titré « Espace Stafflo »', /textContent = 'Espace Stafflo'; return; \}/.test(script));
+check('une seule app (15/10) : l’écran de connexion et l’onglet s’appellent « Stafflo »', /textContent = 'Stafflo'; return; \}/.test(script) && /<title>Stafflo<\/title>/.test(esp));
 
 // ── v12 (15/10/2026) — allègement : moins à l'écran, grammaire v19 ─────────
 check('v12 : une ligne d’état par séjour (ce qui manque), plus de rangée de pastilles', /<p class="state (alert|wait|go)">/.test(script) && !/ck\.map\(function \(x\) \{\s*var cls = x\.done \? 't-go'/.test(script));
@@ -157,5 +157,6 @@ check('v13 : une fiche neuve est vide — aucune valeur par défaut d’une autr
 check('v13 : les clés que l’éditeur ne montre pas (QR…) sont conservées', /clés inconnues de l'éditeur \(QR…\) conservées/.test(script));
 check('v13 : l’écran n’est pas redessiné pendant la saisie (le clavier reste ouvert) ; pas de rechargement périodique pendant l’édition', /fePut\(fp, e\.target\.value\);/.test(script) && /!U\.busy && !FE\.on\) load\(\)/.test(script));
 
+for (const f of ['espace.html', 'livret.html', 'equipe.html']) { const s = fs.readFileSync(path.join(root, f), 'utf8'); check(f + ' : chaque <style> est refermé (sinon tout le script devient du texte)', (s.match(/<style[\s>]/g) || []).length === (s.match(/<\/style>/g) || []).length); }
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

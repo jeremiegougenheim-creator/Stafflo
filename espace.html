@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0F2318">
-<title>Espace Stafflo</title>
+<title>Stafflo</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="manifest" href="espace.webmanifest">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
@@ -169,6 +169,39 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
 .seg button{flex:1;min-height:42px;border:0;background:transparent;font-size:13px;font-weight:600;color:var(--gm);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--gd);color:#F4EFE3}
 @media (max-width:360px){.grid2{grid-template-columns:1fr}}
+/* Calendrier du mois (15/10/2026) : les vrais séjours, aucun prix inventé */
+.cal-h{display:flex;align-items:center;gap:8px}.cal-h b{flex:1;font-family:var(--serif);font-size:20px;font-weight:500;text-transform:capitalize}
+.cal-h button{min-height:38px;min-width:38px;border:1.5px solid var(--line);border-radius:999px;background:#fff;color:var(--gm);cursor:pointer;display:grid;place-items:center;font-size:18px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.cal .dw{font-size:11px;font-weight:600;color:var(--muted);text-align:center;padding:2px 0}
+.cal .d{min-height:52px;border-radius:8px;background:#fff;border:1px solid var(--line2);padding:4px 5px;display:flex;flex-direction:column;gap:1px;font-size:11px;line-height:1.2;overflow:hidden;text-align:left;font-family:inherit;color:inherit}
+.cal .d .n{font-weight:600;color:var(--muted)}.cal .d .g{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal .d.x{background:transparent;border:0}
+.cal .d.in{background:var(--go-bg);border-color:transparent;color:var(--go);cursor:pointer}
+.cal .d.arr{background:var(--gd);color:#F4EFE3;cursor:pointer}.cal .d.arr .n{color:#E5C77A}
+.cal .d.dep{background:var(--alert-bg);color:var(--alert);cursor:pointer}
+.cal .d.today{outline:2px solid var(--gold);outline-offset:-2px}
+.cal .d.past{opacity:.55}
+.cal-k{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}.cal-k i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* Ordinateur (≥ 1024 px) : une vraie app — menu à gauche, deux colonnes, plus de cadre de téléphone */
+@media (min-width:1024px){
+  body{background:var(--paper)}
+  #app{max-width:1280px;margin:0 auto;min-height:100vh;border-radius:0;box-shadow:none;overflow:visible;display:grid;grid-template-columns:232px minmax(0,1fr);grid-template-rows:auto 1fr;grid-template-areas:"head head" "nav main";background:var(--paper)}
+  header.top{grid-area:head;padding:20px 32px 18px;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"k row" "h row";align-items:center;column-gap:24px}
+  header.top .k{grid-area:k}header.top h1{grid-area:h;font-size:34px}header.top .row{grid-area:row;justify-content:flex-end}
+  nav.tabs{grid-area:nav;position:sticky;top:0;align-self:start;display:flex;flex-direction:column;gap:4px;padding:22px 14px;border-top:0;background:transparent;max-width:none;margin:0}
+  nav.tabs button{flex-direction:row;justify-content:flex-start;gap:12px;padding:0 16px;min-height:46px;font-size:14.5px;position:relative;width:100%}
+  nav.tabs button:hover{background:rgba(255,253,248,.7)}
+  nav.tabs button[aria-current="page"]{background:var(--card);box-shadow:var(--shadow);color:var(--gd)}
+  nav.tabs .badge{position:static;margin-left:auto}
+  main{grid-area:main;padding:22px 32px 48px 10px}
+  main .stack{display:block;columns:2 420px;column-gap:20px}
+  main .stack > *{break-inside:avoid;margin:0 0 20px}
+  main .stack > .span{column-span:all}
+  main .stack.one{columns:auto;max-width:860px}
+  main .stack > .span > .btn.full{width:auto;float:right}main .stack > .span:has(> .btn.full){overflow:hidden;margin-bottom:12px}
+  .toast{bottom:28px}
+}
 </style>
 </head>
 <body>
@@ -260,6 +293,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief équipe', phone: 'Téléphone', reg: 'Fiches voyageurs' },
       copy: 'Copier', copied: 'Copié', openWa: 'Ouvrir WhatsApp', close: 'Fermer',
       markLivret: 'Marquer le livret envoyé', seeLivret: 'Voir le livret',
+      cal: { title: 'Calendrier', prev: 'Mois précédent', next: 'Mois suivant', arr: 'arrivée', dep: 'départ', occ: 'séjour', today: 'aujourd’hui', free: function (n) { return n ? n + (n > 1 ? ' nuits libres' : ' nuit libre') + ' à venir ce mois-ci' : 'Plus aucune nuit libre ce mois-ci'; }, wd: ['L', 'M', 'M', 'J', 'V', 'S', 'D'] },
+      ns: { btn: 'Nouveau séjour', title: 'Nouveau séjour', name: 'Nom du client', arr: 'Arrivée', dep: 'Départ', adults: 'Adultes', children: 'Enfants', source: 'Réservé via', net: 'Ce que vous recevez (net)', paid: 'Payé par le client (si différent)', cur: 'Devise', phone: 'Téléphone (WhatsApp)', notes: 'Notes', save: 'Créer le séjour', cancel: 'Annuler', errName: 'Le nom du client est requis.', errDates: 'Dates invalides : le départ doit suivre l’arrivée.', errOverlap: function (n) { return 'Ces dates chevauchent le séjour de ' + n + '.'; }, done: 'Séjour créé', direct: 'Direct', other: 'Autre' },
       ein: { title: 'Emails Airbnb sans Gmail', intro: 'Faites suivre vos emails Airbnb à votre adresse Stafflo : réservations, messages et versements arrivent dans l’Espace comme avec Gmail relié — Outlook, iCloud ou toute autre boîte.', gmailOn: 'Votre boîte Gmail est déjà reliée : cette adresse est une autre façon de faire, rien d’obligatoire.', get: 'Obtenir mon adresse', s1: 'Dans Gmail : Paramètres › Voir tous les paramètres › Transfert et POP/IMAP › « Ajouter une adresse de transfert », collez cette adresse.', s2: 'Google envoie un code de confirmation à cette adresse : il s’affiche ici.', code: 'Code de confirmation Gmail', confirm: 'Ou ouvrir le lien de confirmation', wait: 'Pas encore de code — revenez dans une minute.', refresh: 'Actualiser', s3: 'Puis un filtre : De « airbnb.com » → « Transférer à » cette adresse.', other: 'Outlook, iCloud… : une règle « transférer les emails venant d’airbnb.com » vers cette adresse.', got: function (n) { return n ? n + (n > 1 ? ' emails Airbnb reçus' : ' email Airbnb reçu') + ' par cette adresse ces 7 derniers jours' : 'Aucun email Airbnb reçu par cette adresse pour l’instant'; } },
       rg: { line: 'Fiches voyageurs', got: function (n, d) { return n + (n > 1 ? ' reçues le ' : ' reçue le ') + d; }, none: 'pas encore reçues', decl: 'déclarées le ', print: 'Imprimer les fiches', csv: 'Télécharger (CSV)', mark: 'Marquer déclarées aux autorités', loading: 'Ouverture des fiches…', err: 'Lecture impossible — réessayez', purge: 'Effacées automatiquement le ',
         fiche: 'Fiche individuelle', last: 'Nom', first: 'Prénom(s)', born: 'Date et lieu de naissance', nat: 'Nationalité', doc: 'Pièce d’identité', job: 'Profession', addr: 'Adresse habituelle', arr: 'Arrivée', dep: 'Départ prévu', place: 'Hébergement', host: 'Exploitant', sign: 'Signature du voyageur', docs: { passport: 'Passeport', id_card: 'Carte d’identité', other: 'Autre pièce' } }, unmarkLivret: 'Livret pas encore envoyé',
@@ -369,6 +404,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'Team brief', phone: 'Phone', reg: 'Guest forms' },
       copy: 'Copy', copied: 'Copied', openWa: 'Open WhatsApp', close: 'Close',
       markLivret: 'Mark guide as sent', seeLivret: 'Open the guide',
+      cal: { title: 'Calendar', prev: 'Previous month', next: 'Next month', arr: 'arrival', dep: 'departure', occ: 'stay', today: 'today', free: function (n) { return n ? n + ' free night' + (n > 1 ? 's' : '') + ' left this month' : 'No free night left this month'; }, wd: ['M', 'T', 'W', 'T', 'F', 'S', 'S'] },
+      ns: { btn: 'New stay', title: 'New stay', name: 'Guest name', arr: 'Arrival', dep: 'Departure', adults: 'Adults', children: 'Children', source: 'Booked via', net: 'What you receive (net)', paid: 'Paid by the guest (if different)', cur: 'Currency', phone: 'Phone (WhatsApp)', notes: 'Notes', save: 'Create the stay', cancel: 'Cancel', errName: 'The guest name is required.', errDates: 'Invalid dates: departure must be after arrival.', errOverlap: function (n) { return 'These dates overlap ' + n + '’s stay.'; }, done: 'Stay created', direct: 'Direct', other: 'Other' },
       ein: { title: 'Airbnb emails without Gmail', intro: 'Forward your Airbnb emails to your Stafflo address: bookings, messages and payouts arrive in the Espace just as with Gmail connected — Outlook, iCloud or any other inbox.', gmailOn: 'Your Gmail inbox is already connected: this address is another way to do it, nothing required.', get: 'Get my address', s1: 'In Gmail: Settings › See all settings › Forwarding and POP/IMAP › “Add a forwarding address”, paste this address.', s2: 'Google sends a confirmation code to this address: it shows up here.', code: 'Gmail confirmation code', confirm: 'Or open the confirmation link', wait: 'No code yet — check again in a minute.', refresh: 'Refresh', s3: 'Then a filter: From “airbnb.com” → “Forward it to” this address.', other: 'Outlook, iCloud…: a rule “forward emails from airbnb.com” to this address.', got: function (n) { return n ? n + ' Airbnb email' + (n > 1 ? 's' : '') + ' received at this address in the last 7 days' : 'No Airbnb email received at this address yet'; } },
       rg: { line: 'Guest forms', got: function (n, d) { return n + ' received on ' + d; }, none: 'not received yet', decl: 'registered on ', print: 'Print the forms', csv: 'Download (CSV)', mark: 'Mark as registered with the authorities', loading: 'Opening the forms…', err: 'Could not read — try again', purge: 'Deleted automatically on ',
         fiche: 'Individual form', last: 'Surname', first: 'First name(s)', born: 'Date and place of birth', nat: 'Nationality', doc: 'ID document', job: 'Occupation', addr: 'Home address', arr: 'Arrival', dep: 'Planned departure', place: 'Accommodation', host: 'Operator', sign: 'Guest signature', docs: { passport: 'Passport', id_card: 'ID card', other: 'Other document' } }, unmarkLivret: 'Guide not sent yet',
@@ -1491,7 +1528,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (gmail && stay && team) return '';
     var steps = [
       { k: 'gmail', done: gmail, icon: 'brand-gmail', href: 'app.html?open=gmail' },
-      { k: 'stay', done: stay, icon: 'calendar-plus', href: 'app.html?open=stay' },
+      { k: 'stay', done: stay, icon: 'calendar-plus', act: 'nsopen' },
       { k: 'team', done: team, icon: 'user-plus', href: 'app.html?open=settings' }
     ];
     if (PUSH.state !== 'unsupported') steps.push({ k: 'push', done: PUSH.state === 'on', icon: 'bell', tab: 'maison' });
@@ -1500,6 +1537,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       var inner = '<i class="ti ti-' + (x.done ? 'check' : x.icon) + '" aria-hidden="true"></i><span class="tx"><b>' + esc(s[x.k]) + '</b><span class="sub">' + esc(s[x.k + 'Sub']) + '</span></span>' +
         (x.done ? '<span class="pill t-go">' + esc(s.done) + '</span>' : '<i class="ti ti-chevron-right" aria-hidden="true"></i>');
       if (x.done) return '<div class="todo setup done">' + inner + '</div>';
+      if (x.act) return '<button type="button" class="todo setup" data-a="' + x.act + '">' + inner + '</button>';
       return x.tab ? '<button type="button" class="todo setup" data-a="tab" data-v="' + x.tab + '">' + inner + '</button>' : '<a class="todo setup" href="' + x.href + '">' + inner + '</a>';
     }).join('');
     return card('rocket', s.title, body, n + '/' + steps.length);
@@ -1666,6 +1704,73 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       '<a class="btn ghost" href="https://www.airbnb.com/hosting/reviews" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.rvOpen) + '</a></div></div>';
     return h;
   }
+  /* Calendrier du mois : nuits occupées, arrivées, départs — depuis les séjours de la base. Aucun prix. */
+  function calCard() {
+    var l = L(), k = l.cal, t = todayNum(), off = U.calM || 0;
+    var now = new Date(), y = now.getFullYear(), m = now.getMonth() + off;
+    var first = Date.UTC(y, m, 1) / 86400000, last = Date.UTC(y, m + 1, 1) / 86400000;
+    var all = D.stays.concat(D.past || []);
+    var lead = (new Date(first * 86400000).getUTCDay() + 6) % 7, free = 0;
+    var title = new Date(first * 86400000).toLocaleDateString(U.lang === 'en' ? 'en-GB' : 'fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    var h = '<div class="cal-h"><button type="button" data-a="calm" data-v="-1" aria-label="' + esc(k.prev) + '"><i class="ti ti-chevron-left" aria-hidden="true"></i></button><b>' + esc(title) + '</b>' +
+      '<button type="button" data-a="calm" data-v="1" aria-label="' + esc(k.next) + '"><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div><div class="cal" role="grid">';
+    k.wd.forEach(function (w) { h += '<span class="dw">' + w + '</span>'; });
+    for (var i = 0; i < lead; i++) h += '<span class="d x"></span>';
+    for (var d = first; d < last; d++) {
+      var arr = all.filter(function (c) { return c.a === d; })[0], inn = all.filter(function (c) { return c.a < d && d < c.d; })[0], dep = all.filter(function (c) { return c.d === d; })[0];
+      var s = arr || inn || dep, cls = arr ? 'arr' : inn ? 'in' : dep ? 'dep' : '';
+      if (!arr && !inn && d >= t) free++;
+      var who = s ? String(s.name || '').split(/\s+/)[0] : '';
+      var tip = s ? s.name + ' · ' + (arr ? k.arr : inn ? k.occ : k.dep) : '';
+      h += (s ? '<button type="button" data-a="calstay" data-id="' + esc(s.id) + '" title="' + esc(tip) + '"' : '<span') + ' class="d ' + cls + (d === t ? ' today' : '') + (d < t ? ' past' : '') + '">' +
+        '<span class="n">' + new Date(d * 86400000).getUTCDate() + '</span>' + (arr || (inn && d === first) ? '<span class="g">' + esc(who) + '</span>' : '') + (s ? '</button>' : '</span>');
+    }
+    h += '</div><div class="cal-k"><span><i style="background:var(--gd)"></i>' + esc(k.arr) + '</span><span><i style="background:var(--go-bg);border:1px solid var(--go)"></i>' + esc(k.occ) + '</span><span><i style="background:var(--alert-bg);border:1px solid var(--alert)"></i>' + esc(k.dep) + '</span>' +
+      (off >= 0 ? '<span style="margin-left:auto;font-weight:600;color:var(--gm)">' + esc(k.free(free)) + '</span>' : '') + '</div>';
+    return '<section class="card span"><div class="h"><span class="i"><i class="ti ti-calendar-month" aria-hidden="true"></i></span><h2>' + esc(k.title) + '</h2></div><div class="b">' + h + '</div></section>';
+  }
+  /* Nouveau séjour (réservation directe, ou séjour Airbnb pas encore arrivé par email). Le montant net
+     (ce que reçoit le propriétaire) va dans price, comme pour les séjours de la synchro ; le prix payé
+     par le client, s'il diffère, est gardé à part (details.financial.guestTotal) — jamais confondus. */
+  function newStayPanel() {
+    var l = L(), k = l.ns, v = U.ns || {};
+    var f = function (id, lbl, type, val, attrs) { return '<label class="fl"><span>' + esc(lbl) + '</span><input class="t" id="ns-' + id + '" type="' + type + '" value="' + esc(val == null ? '' : val) + '"' + (attrs || '') + '></label>'; };
+    var cur = '€'; // les montants des séjours sont en euros partout (versements Airbnb, tuiles, app) ; la devise de la fiche sert aux repas et extras
+    return '<section class="card span" id="ns-card"><div class="h"><span class="i"><i class="ti ti-calendar-plus" aria-hidden="true"></i></span><h2>' + esc(k.title) + '</h2></div><div class="b">' +
+      f('name', k.name, 'text', v.name, ' maxlength="120" autocomplete="off"') +
+      '<div class="grid2">' + f('arr', k.arr, 'date', v.arr) + f('dep', k.dep, 'date', v.dep) + '</div>' +
+      '<div class="grid2">' + f('adults', k.adults, 'number', v.adults, ' min="0" max="40" inputmode="numeric"') + f('children', k.children, 'number', v.children, ' min="0" max="40" inputmode="numeric"') + '</div>' +
+      '<label class="fl"><span>' + esc(k.source) + '</span><select class="t" id="ns-source">' + [['Direct', k.direct], ['Airbnb', 'Airbnb'], ['Booking', 'Booking.com'], ['Autre', k.other]].map(function (o) { return '<option value="' + o[0] + '"' + ((v.source || 'Direct') === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label>' +
+      '<div class="grid2">' + f('net', k.net + ' (' + cur + ')', 'number', v.net, ' min="0" step="any" inputmode="decimal"') + f('paid', k.paid + ' (' + cur + ')', 'number', v.paid, ' min="0" step="any" inputmode="decimal"') + '</div>' +
+      f('phone', k.phone, 'tel', v.phone, ' placeholder="+33…"') +
+      '<label class="fl"><span>' + esc(k.notes) + '</span><textarea class="t" style="min-height:80px" id="ns-notes" maxlength="2000">' + esc(v.notes || '') + '</textarea></label>' +
+      (v.err ? '<span class="err">' + esc(v.err) + '</span>' : '') +
+      '<div class="row2"><button type="button" class="btn green" data-a="nssave"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' + esc(k.save) + '</button>' +
+      '<button type="button" class="btn ghost" data-a="nscancel">' + esc(k.cancel) + '</button></div></div></section>';
+  }
+  function nsRead() {
+    var g = function (k) { var el = document.getElementById('ns-' + k); return el ? String(el.value || '').trim() : ''; };
+    return { name: g('name'), arr: g('arr'), dep: g('dep'), adults: g('adults'), children: g('children'), source: g('source') || 'Direct', net: g('net'), paid: g('paid'), phone: g('phone'), notes: g('notes') };
+  }
+  function saveNewStay() {
+    var l = L(), k = l.ns, v = nsRead(); U.ns = v;
+    var iso = /^\d{4}-\d{2}-\d{2}$/, a = dayNum(v.arr), d = dayNum(v.dep);
+    if (!v.name) { v.err = k.errName; return render(); }
+    if (!iso.test(v.arr) || !iso.test(v.dep) || !(d > a)) { v.err = k.errDates; return render(); }
+    var clash = D.stays.concat(D.past || []).filter(function (c) { return c.a < d && a < c.d; })[0];
+    if (clash) { v.err = k.errOverlap(clash.name); return render(); }
+    var int = function (x) { var n = parseInt(x, 10); return isFinite(n) && n >= 0 ? n : null; }, num = function (x) { var n = parseFloat(String(x).replace(',', '.')); return isFinite(n) && n >= 0 ? n : null; };
+    var ad = int(v.adults), ch = int(v.children), net = num(v.net), paid = num(v.paid);
+    var details = { origin: 'espace' };
+    if (net != null || paid != null) details.financial = { net: net, guestTotal: paid != null ? paid : net, source: 'espace' };
+    var body = { id: String(Date.now()), name: v.name, arrival: v.arr, departure: v.dep, adults: ad, children: ch, guests: (ad || 0) + (ch || 0) || null,
+      source: v.source, price: net != null ? net : 0, commission: 0, comm_mode: 'percent', phone: v.phone || null, notes: v.notes || null, booking_status: 'confirmed', details: details };
+    U.busy = true; render();
+    api('crm_clients', { method: 'POST', headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' }, body: JSON.stringify(body) })
+      .then(function () { U.ns = null; U.newStay = false; toast(k.done); U.open[body.id] = true; return load(); })
+      .catch(function () { v.err = l.saveErr; toast(l.saveErr, true); })
+      .finally(function () { U.busy = false; render(); var el = document.getElementById('st-' + body.id); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' }); });
+  }
   function viewSejours() {
     var l = L(), t = todayNum();
     if (!D.loaded) return '<div class="card"><div class="b"><span class="sub">' + esc(l.loading) + '</span></div></div>';
@@ -1677,14 +1782,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       var m0 = new Date(), mStart = Date.UTC(m0.getFullYear(), m0.getMonth(), 1) / 86400000, mEnd = Date.UTC(m0.getFullYear(), m0.getMonth() + 1, 1) / 86400000;
       var nightsMonth = D.stays.concat(D.past || []).reduce(function (s, c) { return s + Math.max(0, Math.min(c.d, mEnd) - Math.max(c.a, mStart)); }, 0);
       var net = up.reduce(function (s, c) { return s + (c.is_comp ? 0 : (+c.price || 0)); }, 0);
-      h += '<div class="tiles"><div class="tile"><span class="l">' + esc(l.tUpcoming) + '</span><span class="v">' + up.length + '</span></div>' +
+      h += '<div class="tiles span"><div class="tile"><span class="l">' + esc(l.tUpcoming) + '</span><span class="v">' + up.length + '</span></div>' +
         '<div class="tile"><span class="l">' + esc(l.tNights) + '</span><span class="v">' + nightsMonth + '</span></div>' +
         '<div class="tile"><span class="l">' + esc(l.tNet) + '</span><span class="v" style="font-size:21px">' + esc(euro(net)) + '</span></div></div>';
       // Le chiffre qui se vend : ce que les clients ont commandé depuis leur livret (par devise).
       var ords = D.stays.concat(D.past || []).filter(orderOf), byCur = {};
       ords.forEach(function (c) { var o = orderOf(c); byCur[o.cur || ''] = (byCur[o.cur || ''] || 0) + (+o.total || 0); });
-      if (ords.length) h += '<section class="card"><div class="b"><div class="line" style="border:0"><span><i class="ti ti-shopping-bag" aria-hidden="true"></i> ' + esc(l.ordKpi + ' · ' + l.ordStays(ords.length)) + '</span><b>' + esc(Object.keys(byCur).map(function (k) { return money(byCur[k], k); }).join(' + ')) + '</b></div></div></section>';
+      if (ords.length) h += '<section class="card span"><div class="b"><div class="line" style="border:0"><span><i class="ti ti-shopping-bag" aria-hidden="true"></i> ' + esc(l.ordKpi + ' · ' + l.ordStays(ords.length)) + '</span><b>' + esc(Object.keys(byCur).map(function (k) { return money(byCur[k], k); }).join(' + ')) + '</b></div></div></section>';
     }
+    h += U.newStay ? newStayPanel() : '<div class="span"><button type="button" class="btn gold full" data-a="nsopen"><i class="ti ti-calendar-plus" aria-hidden="true"></i>' + esc(l.ns.btn) + '</button></div>';
+    h += calCard();
     h += card('calendar-event', l.upcomingAll, list.length ? list.map(function (c) { return stayCard(c, c.a <= t ? 'in' : 'next'); }).join('') : '<p class="empty">' + esc(l.noNext) + '</p>', list.length ? String(list.length) : '');
     h += eventsCard(366, 0, true);
     // Partis récemment : y compris le départ d'hier (encore dans D.stays).
@@ -2031,8 +2138,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (!F) { main.innerHTML = '<div class="card"><div class="b"><span class="err">house_facts</span></div></div>'; return; }
     var draft = document.getElementById('ariaIn'); if (draft) A.draft = draft.value;
     var loggedOut = D.loaded && !D.user && !D.error;
-    if (loggedOut) { main.innerHTML = viewLogin(); document.getElementById('tabs').innerHTML = ''; document.getElementById('title').textContent = 'Espace Stafflo'; return; }
-    main.innerHTML = '<div class="stack">' + (U.tab === 'jour' ? viewJour() : U.tab === 'sejours' ? viewSejours() : U.tab === 'aria' ? viewAria() : viewMaison()) + '</div>';
+    if (loggedOut) { main.innerHTML = viewLogin(); document.getElementById('tabs').innerHTML = ''; document.getElementById('title').textContent = 'Stafflo'; return; }
+    main.innerHTML = '<div class="stack' + (U.tab === 'aria' || (U.tab === 'maison' && FE.on) ? ' one' : '') + '">' + (U.tab === 'jour' ? viewJour() : U.tab === 'sejours' ? viewSejours() : U.tab === 'aria' ? viewAria() : viewMaison()) + '</div>';
     // Pastille = les lignes urgentes de « À faire » (message, en retard, aujourd'hui) + les messages sans séjour.
     var late = (D.loaded && D.user ? todoItems().filter(function (x) { return x.k === 'msg' || x.late || x.due <= t; }).length : 0) +
       D.msgs.filter(function (m) { return !m.client_id || !byId(m.client_id); }).length;
@@ -2073,6 +2180,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'rv') { var cr = byId(id) || pastById(id); if (cr) { RV[cr.id] = RV[cr.id] === v ? '' : v; if (v === 'host' && !(DR['rv-' + cr.id] && DR['rv-' + cr.id].text)) reviewDraft(cr); render(); } }
     else if (a === 'rvdone') { var cd = byId(id) || pastById(id); if (cd && !cd.details.reviewDoneAt) { RV[cd.id] = ''; setDetail(cd, 'reviewDoneAt', new Date().toISOString()); } }
     else if (a === 'panel' && c) { U.panel[c.id] = U.panel[c.id] === v ? '' : v; render(); }
+    else if (a === 'nsopen') { U.newStay = true; U.ns = U.ns || {}; U.tab = 'sejours'; try { history.replaceState(null, '', '#sejours'); } catch (er) {} render(); var nf = document.getElementById('ns-name'); if (nf) { nf.focus(); if (nf.scrollIntoView) nf.scrollIntoView({ block: 'center' }); } }
+    else if (a === 'nscancel') { U.newStay = false; U.ns = null; render(); }
+    else if (a === 'nssave') saveNewStay();
+    else if (a === 'calm') { U.calM = (U.calM || 0) + (+v || 0); render(); }
+    else if (a === 'calstay') { var cs = byId(id); if (cs) { U.open[cs.id] = true; render(); var ce = document.getElementById('st-' + cs.id); if (ce && ce.scrollIntoView) ce.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else { var pe = document.getElementById('pa-' + id); if (pe && pe.scrollIntoView) pe.scrollIntoView({ behavior: 'smooth', block: 'center' }); } }
     else if (a === 'inget') inGet();
     else if (a === 'incopy' && INS.addr) copyText(INS.addr);
     else if (a === 'inrefresh') { INS.loaded = false; inLoad(); }

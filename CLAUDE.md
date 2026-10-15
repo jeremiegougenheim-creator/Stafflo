@@ -118,7 +118,7 @@ Chaque étape : une fonction serveur ou un écran fin, une éval, un commit. Dé
 
 1. ~~Livret → base~~ (« Votre arrivée », fait et en ligne le 15/10).
 2. ~~Équipe → base~~ (« Chambres prêtes », « Signaler un problème », fait et en ligne le 15/10) : table `staff_reports` (écrite par `staff-view` `action: report` après vérification du lien, 30/h/lien ; lue par le propriétaire, RLS ; `seen_at` = « Vu ») ; Espace › Jour carte « De l'équipe », « Chambres prêtes · qui · quand » sur le séjour ; `push-notify` `run` : une alerte par retour (`notified_at`), prénom + initiale du client seulement. Garde-fous : `evals-staff`, `evals-equipe-load` (Chromium), `evals-push`, `evals-espace`.
-3. **Créer un séjour direct depuis l'Espace** (la seule tâche du quotidien encore dans app.html).
+3. ~~Créer un séjour direct depuis l'Espace~~ (fait le 15/10 : Séjours › « Nouveau séjour » ; montant net dans `price` en €, payé par le client à part dans `details.financial.guestTotal`, chevauchement refusé ; aussi le calendrier du mois et la mise en page ordinateur — menu à gauche, deux colonnes ≥ 1024 px).
 4. **Réglages dans l'Espace** (Gmail, iCal, alertes, villa) → app.html = prix + facturation seulement.
 5. **Passeports** (photo côté client, chiffrés, effacés à J+30) — à cadrer avec la politique de confidentialité.
 6. Extinction d'app.html écran par écran, derrière interrupteur, 14 jours sans retour avant tout retrait.

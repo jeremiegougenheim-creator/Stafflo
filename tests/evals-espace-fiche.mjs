@@ -34,8 +34,8 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison' } = {}) {
-  const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width: 390, height: 844 } });
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390 } = {}) {
+  const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [];
   await ctx.route('**/*', (route) => {
     const req = route.request(), u = req.url(), m = req.method();
@@ -54,6 +54,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/rpc/inbound_address')) { calls.push({ kind: 'inaddr' }); return json('in-abcdefghij12@stafflo.app'); }
     if (u.includes('/rest/v1/email_inbox') && u.includes('source=eq.email_in')) return json(inMails);
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
+    if (u.includes('/rest/v1/crm_clients') && m === 'POST') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'insert', body: b, prefer: req.headers().prefer }); stays.push({ ...b }); return json([b], 201); }
     if (u.includes('/rest/v1/crm_clients') && m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'stay', url: u, body: b }); return json([{ ...stays[0], ...b }]); }
     if (u.includes('/rest/v1/crm_clients')) return json(stays);
     if (u.includes('/rest/v1/')) return json([]);
@@ -271,6 +272,46 @@ await r.ctx.close();
   await r.page.waitForTimeout(300);
   const t8 = await txt(r.page);
   check('adresse existante + confirmation Gmail reçue → code affiché, lien de confirmation, 2 emails Airbnb comptés', /in-abcdefghij12@stafflo\.app/.test(t8) && /Code de confirmation Gmail : 123456789/.test(t8) && /2 emails Airbnb reçus/.test(t8) && !!(await r.page.$('a[href^="https://mail-settings.google.com/mail/vf-"]')) && !r.errs.length, t8.slice(0, 700));
+  await r.ctx.close();
+}
+
+// ── 5 quinquies. Une vraie app : calendrier du mois, nouveau séjour, mise en page ordinateur ──
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia', currency: 'MAD' } } };
+  const d0 = new Date(), ym = (k) => { const x = new Date(Date.UTC(d0.getFullYear(), d0.getMonth(), k)); return x.toISOString().slice(0, 10); };
+  const S = [{ id: 'c1', name: 'Ana Ruiz', arrival: ym(10), departure: ym(13), adults: 2, booking_status: 'confirmed', source: 'Airbnb', details: {} }];
+  r = await open({ tab: 'sejours', villa: V, stays: S.slice() });
+  await r.page.waitForTimeout(250);
+  const cells = await r.page.$$eval('.cal .d:not(.x)', (cs) => cs.map((x) => x.className.replace(/\s+/g, ' ').trim() + '|' + x.innerText.replace(/\n/g, ' ')));
+  check('calendrier : le mois réel, arrivée (nom), nuits du séjour, départ — et pas un seul prix', cells.length === new Date(d0.getFullYear(), d0.getMonth() + 1, 0).getDate() && /^d arr[^|]*\|10 Ana$/.test(cells[9]) && /^d in/.test(cells[10]) && /^d in/.test(cells[11]) && /^d dep/.test(cells[12]) && !/€|MAD/.test(cells.join(' ')) && !r.errs.length, cells.slice(8, 14));
+  check('calendrier : nuits libres à venir comptées depuis les séjours', /nuits? libres? à venir ce mois-ci|Plus aucune nuit libre/.test(await txt(r.page)));
+  await r.page.click('[data-a="calm"][data-v="1"]'); await r.page.waitForTimeout(100);
+  check('calendrier : mois suivant', new RegExp(new Date(d0.getFullYear(), d0.getMonth() + 1, 1).toLocaleDateString('fr-FR', { month: 'long' }), 'i').test(await r.page.innerText('.cal-h b')));
+  await r.page.click('[data-a="calm"][data-v="-1"]');
+  await r.page.click('[data-a="nsopen"]'); await r.page.waitForSelector('#ns-name');
+  check('nouveau séjour : montants en euros (comme les versements et les tuiles), jamais dans la devise des repas', /Ce que vous recevez \(net\) \(€\)/.test(await txt(r.page)));
+  await r.page.click('[data-a="nssave"]'); await r.page.waitForTimeout(100);
+  check('nouveau séjour : nom requis, rien n’est envoyé', /Le nom du client est requis/.test(await txt(r.page)) && !r.calls.some((x) => x.kind === 'insert'));
+  await r.page.fill('#ns-name', 'Léa Martin'); await r.page.fill('#ns-arr', ym(12)); await r.page.fill('#ns-dep', ym(15));
+  await r.page.click('[data-a="nssave"]'); await r.page.waitForTimeout(100);
+  check('nouveau séjour : dates qui chevauchent un séjour → refusé, avec le nom du séjour', /chevauchent le séjour de Ana Ruiz/.test(await txt(r.page)) && !r.calls.some((x) => x.kind === 'insert'));
+  await r.page.fill('#ns-arr', ym(20)); await r.page.fill('#ns-dep', ym(23)); await r.page.fill('#ns-adults', '4'); await r.page.fill('#ns-children', '1');
+  await r.page.fill('#ns-net', '3000'); await r.page.fill('#ns-paid', '3200'); await r.page.selectOption('#ns-source', 'Direct'); await r.page.fill('#ns-phone', '+33600000000');
+  await r.page.click('[data-a="nssave"]'); await r.page.waitForTimeout(500);
+  const ins = r.calls.filter((x) => x.kind === 'insert').pop();
+  check('nouveau séjour : enregistré — net dans price, payé par le client à part (details.financial), jamais confondus', ins && ins.body.name === 'Léa Martin' && ins.body.arrival === ym(20) && ins.body.price === 3000 && ins.body.commission === 0 && ins.body.details.financial.guestTotal === 3200 && ins.body.details.financial.net === 3000 && ins.body.guests === 5 && ins.body.adults === 4 && ins.body.source === 'Direct' && ins.body.booking_status === 'confirmed' && /return=representation/.test(ins.prefer || ''), ins);
+  check('nouveau séjour : apparaît dans la liste et le calendrier, formulaire refermé', /Léa Martin/.test(await txt(r.page)) && !(await r.page.$('#ns-name')) && !!(await r.page.$('.cal .d.arr[data-id="' + ins.body.id + '"]')) && !r.errs.length, r.errs);
+  await r.ctx.close();
+  // Ordinateur : menu à gauche, deux colonnes, plus de cadre de téléphone ; téléphone : menu en bas.
+  r = await open({ tab: 'jour', villa: V, stays: S.slice(), width: 1366 });
+  await r.page.waitForTimeout(250);
+  const desk = await r.page.evaluate(() => { const app = document.getElementById('app').getBoundingClientRect(), nav = getComputedStyle(document.getElementById('tabs')), st = getComputedStyle(document.querySelector('main .stack')); return { w: app.width, dir: nav.flexDirection, pos: nav.position, cols: st.columnCount, cw: st.columnWidth }; });
+  check('ordinateur (1366 px) : largeur pleine, menu vertical à gauche, contenu en deux colonnes', desk.w >= 1200 && desk.dir === 'column' && desk.pos === 'sticky' && (desk.cols === '2' || desk.cw === '420px'), desk);
+  await r.ctx.close();
+  r = await open({ tab: 'jour', villa: V, stays: S.slice(), width: 390 });
+  await r.page.waitForTimeout(200);
+  const mob = await r.page.evaluate(() => ({ pos: getComputedStyle(document.getElementById('tabs')).position, cols: getComputedStyle(document.querySelector('main .stack')).columnCount }));
+  check('téléphone (390 px) : menu en bas, une colonne', mob.pos === 'fixed' && (mob.cols === 'auto' || mob.cols === '1'), mob);
   await r.ctx.close();
 }
 
