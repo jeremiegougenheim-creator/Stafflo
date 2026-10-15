@@ -115,7 +115,7 @@ const same = (k) => canon(got[k]) === canon(PILOT[k]);
 check('pilote : seul le prix modifié change ; QR, TEXT, PRACTICAL, ROOMS, TEAM, alentours identiques au caractère près', !!got && got.MEALS[1].a[0] === '700 MAD' && got.MEALS[1].a[1] === '700 MAD' && got.MEALS[0].a[0] === PILOT.MEALS[0].a[0] &&
   ['QR', 'TEXT', 'PRACTICAL', 'ROOMS', 'TEAM', 'RULES', 'GOOD_TO_KNOW', 'MEAL_NOTES', 'LEISURE', 'BREAKFAST', 'GOUTER', 'STARTERS', 'MAINS', 'SIMPLE', 'DESSERTS', 'MEDINA', 'GOLF', 'ACTIVITIES', 'RESTAURANTS', 'VILLA'].every(same),
   got && ['QR', 'TEXT', 'PRACTICAL', 'ROOMS', 'TEAM', 'VILLA', 'MEDINA', 'ACTIVITIES'].filter((k) => !same(k)));
-check('pilote : pas d’extras ajoutés en silence, pas de devise inventée', !!got && !('EXTRAS' in got) && !('currency' in got.VILLA));
+check('pilote : extras et devise renvoyés tels quels (rien ajouté, rien perdu)', !!got && canon(got.EXTRAS) === canon(PILOT.EXTRAS) && got.VILLA.currency === PILOT.VILLA.currency);
 check('pilote : CAFES = [nom, site facultatif], jamais transformés en paire fr/en (le livret y lit un lien)', !!got && canon(got.CAFES) === canon(PILOT.CAFES));
 await r.ctx.close();
 

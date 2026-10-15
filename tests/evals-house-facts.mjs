@@ -35,11 +35,12 @@ check('build : toutes les clés de la fiche + QR + digest', !!F && HF.KEYS.every
 check('build : sans données → null (jamais une fiche d’une autre villa)', HF.build(null) === null && HF.build({}) === null);
 check('QR WhatsApp du livret : dans les données, plus dans la page', !!(F.QR && /^<svg/.test(F.QR.staff) && /^<svg/.test(F.QR.host)));
 
-// 3. Résumé ARIA : identique, au caractère près, à celui de l'ancien villa-facts.js (empreintes du 13/10/2026).
+// 3. Résumé ARIA : empreintes du 15/10/2026 (fiche du pilote + extras transfert 300/600 MAD, devise MAD).
+//    Avant les extras, le résumé était identique au caractère près à l'ancien villa-facts.js (13/10/2026).
 //    Si la fiche a été modifiée VOLONTAIREMENT, recalculer les empreintes.
 const h = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
-check('résumé ARIA (fr) inchangé', h(F.digest('fr')) === '2a607cca53abc6da', h(F.digest('fr')));
-check('résumé ARIA (en) inchangé', h(F.digest('en')) === '7e1c81e0b9c59549', h(F.digest('en')));
+check('résumé ARIA (fr) inchangé', h(F.digest('fr')) === '93ab77378367b2cb', h(F.digest('fr')));
+check('résumé ARIA (en) inchangé', h(F.digest('en')) === '2d539d92f8cccd20', h(F.digest('en')));
 check('équipe actuelle seulement (jamais l’ancienne cuisinière)', !/Faiza/.test(F.digest('fr')) && !/Faiza/.test(JSON.stringify(data.TEAM)));
 
 // 4. Le JSON de référence n'est jamais publié.
