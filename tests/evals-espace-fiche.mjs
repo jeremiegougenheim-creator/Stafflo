@@ -35,7 +35,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [] } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [];
   await ctx.route('**/*', (route) => {
@@ -56,6 +56,14 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/email_inbox') && u.includes('source=eq.email_in')) return json(inMails);
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
     if (u.includes('/rest/v1/rpc/billing_status')) return json(bill || []);
+    if (u.includes('/rest/v1/stay_files')) {
+      if (m === 'POST') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sfinsert', body: b }); const row = { id: 'f' + (files.length + 1), created_at: new Date().toISOString(), ...b }; files.push(row); return json([row], 201); }
+      if (m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sfpatch', url: u, body: b }); return json([{}]); }
+      calls.push({ kind: 'sfget', url: u }); return json(files.filter((f) => !f.deleted_at));
+    }
+    if (u.includes('/storage/v1/object/sign/stay-files') && m === 'GET') return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
+    if (u.includes('/storage/v1/object/sign/stay-files')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sign', body: b, auth: req.headers().authorization }); return json(b.paths.map((p) => ({ path: p, signedURL: '/object/sign/stay-files/' + p + '?token=t', error: null }))); }
+    if (u.includes('/storage/v1/object/stay-files/')) { calls.push({ kind: 'upload', url: u, type: req.headers()['content-type'], auth: req.headers().authorization, size: (req.postDataBuffer() || Buffer.alloc(0)).length }); return json({ Key: 'k' }); }
     if (u.includes('/rest/v1/sync_runs')) return json(sync);
     if (u.includes('/functions/v1/polar-')) { calls.push({ kind: 'polar', url: u, auth: req.headers().authorization }); return json({ url: 'https://checkout.example.com/s/1' }); }
     if (u.startsWith('https://checkout.example.com/')) { calls.push({ kind: 'nav', url: u }); return route.fulfill({ status: 200, contentType: 'text/html', body: '<title>checkout</title>' }); }
@@ -563,6 +571,28 @@ await r.ctx.close();
   await r.page.click('[data-a="wareset"][data-id="w1"]');
   await r.page.fill('#wa-paste-w1', 'Hi! We are now 3 adults and 1 baby, see you soon'); await r.page.click('[data-a="waread"][data-id="w1"]'); await r.page.waitForTimeout(100);
   check('un message copié sans date : lu tel quel (3 adultes, 1 enfant)', (await r.page.inputValue('#wa-ad-w1-0')) === '3' && (await r.page.inputValue('#wa-ch-w1-0')) === '1' && !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
+// ── 5 decies. Décompte : tickets et factures (photos, PDF), privés, suppression douce ──
+{
+  const PNG1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  const F0 = [{ id: 'f0', path: UID + '/b1/0000.pdf', name: 'facture-marche.pdf', mime: 'application/pdf', size: 1200, created_at: new Date().toISOString() }];
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT }, files: F0.slice(),
+    stays: [{ id: 'b1', name: 'Ana Ruiz', arrival: iso(-2), departure: iso(1), adults: 6, booking_status: 'confirmed', source: 'Airbnb', details: {} }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="b1"]'); await r.page.click('[data-a="panel"][data-id="b1"][data-v="bill"]'); await r.page.waitForTimeout(300);
+  const get = r.calls.find((x) => x.kind === 'sfget'), sg = r.calls.find((x) => x.kind === 'sign');
+  check('décompte : « Tickets et factures » liste les pièces du séjour (non retirées), ouvertes par lien signé d’une heure (jamais public)', !!get && /client_id=eq\.b1/.test(get.url) && /deleted_at=is\.null/.test(get.url) && !!sg && sg.body.expiresIn === 3600 && sg.auth === 'Bearer tok' &&
+    !!(await r.page.$('#st-b1 .bf-it a[href^="https://rcjhgilpmojohmrqzokx.supabase.co/storage/v1/object/sign/stay-files/' + UID + '/b1/0000.pdf?token="]')) && /facture-marche\.pdf/.test(await r.page.innerText('#st-b1 .bf-grid')));
+  await r.page.setInputFiles('#st-b1 input[data-file="bill"]', [{ name: 'ticket.png', mimeType: 'image/png', buffer: PNG1 }, { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('x') }]);
+  await r.page.waitForTimeout(800);
+  const up = r.calls.filter((x) => x.kind === 'upload'), ins = r.calls.filter((x) => x.kind === 'sfinsert');
+  check('ajout : une photo envoyée dans le dossier du compte et du séjour, ligne stay_files ; un .txt refusé avec un message', up.length === 1 && new RegExp('/storage/v1/object/stay-files/' + UID + '/b1/[^/]+\\.(png|jpg)$').test(up[0].url) && up[0].auth === 'Bearer tok' && /^image\//.test(up[0].type) &&
+    ins.length === 1 && ins[0].body.client_id === 'b1' && ins[0].body.path.startsWith(UID + '/b1/') && ins[0].body.size === up[0].size && /Photos \(JPEG, PNG, HEIC\) ou PDF seulement/.test(await r.page.innerText('#st-b1')) && (await r.page.$$('#st-b1 .bf-it')).length === 2, { up, ins });
+  await r.page.click('#st-b1 [data-a="bfdel"][data-v="f0"]'); await r.page.waitForTimeout(300);
+  const del = r.calls.filter((x) => x.kind === 'sfpatch').pop();
+  check('retirer : suppression douce (deleted_at), jamais de DELETE ; la pièce disparaît', !!del && /stay_files\?id=eq\.f0/.test(del.url) && Object.keys(del.body).join() === 'deleted_at' && (await r.page.$$('#st-b1 .bf-it')).length === 1 && !r.errs.length, r.errs);
   await r.ctx.close();
 }
 
