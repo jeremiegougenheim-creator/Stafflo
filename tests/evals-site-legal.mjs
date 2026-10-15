@@ -34,6 +34,14 @@ for (const f of ['index.html', 'en.html', 'ar.html', 'th.html', 'zh.html']) {
   check(`${f} : pied de page → confidentialité, conditions, mentions légales`, /href="privacy\.html\?lang=(fr|en)"/.test(h) && /href="terms\.html\?lang=(fr|en)"/.test(h) && /href="terms\.html\?lang=(fr|en)#(mentions-legales|legal-notice)"/.test(h));
   check(`${f} : équipe de démonstration fictive (jamais l'équipe réelle du pilote)`, !/\bSaid\b|Saïd|Faiza|Bouchra/.test(h));
 }
+// ── Page de vente FR/EN (15/10/2026) : rien de promis qui n'existe pas ─────────────────
+for (const f of ['index.html', 'en.html']) {
+  const h = read(f);
+  check(`${f} : plus de promesses sans produit (marché « en temps réel », « 14 000 € », Pricing Guard, ARIA qui « dispatche »)`, !/temps réel|real time|real-time|14 000|14,000|Pricing Guard|dispatche|dispatches/i.test(h));
+  check(`${f} : la maquette du livret est étiquetée exemple fictif`, /class="mk-ex">(Exemple illustratif|Illustrative example)/.test(h));
+  check(`${f} : boutons WhatsApp cachés tant qu'aucun numéro n'est posé (un seul endroit)`, /\.js-wa\[hidden\]\{display:none !important\}/.test(h) && (h.match(/var WA = '[^']*';/g) || []).length === 1 && (h.match(/class="btn [^"]*js-wa"[^>]*hidden>/g) || []).length === 3);
+  check(`${f} : pas de commission sur les commandes des clients, prix annoncé = celui de la stratégie (79 € / 490 € / 790 €)`, /(Pas de commission|No commission)/.test(h) && /79 €|€79/.test(h) && /490 €|€490/.test(h) && /790 €|€790/.test(h));
+}
 check('accueil : un navigateur en chinois arrive sur zh.html (plus sur en.html)', /zh:'zh\.html'/.test(read('index.html')));
 
 // ── Inscription : avis légal sur chaque formulaire ───────────────────────
