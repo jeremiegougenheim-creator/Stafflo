@@ -34,7 +34,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390 } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [];
   await ctx.route('**/*', (route) => {
@@ -54,6 +54,11 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/rpc/inbound_address')) { calls.push({ kind: 'inaddr' }); return json('in-abcdefghij12@stafflo.app'); }
     if (u.includes('/rest/v1/email_inbox') && u.includes('source=eq.email_in')) return json(inMails);
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
+    if (u.includes('/rest/v1/rpc/billing_status')) return json(bill || []);
+    if (u.includes('/rest/v1/sync_runs')) return json(sync);
+    if (u.includes('/functions/v1/polar-')) { calls.push({ kind: 'polar', url: u, auth: req.headers().authorization }); return json({ url: 'https://checkout.example.com/s/1' }); }
+    if (u.startsWith('https://checkout.example.com/')) { calls.push({ kind: 'nav', url: u }); return route.fulfill({ status: 200, contentType: 'text/html', body: '<title>checkout</title>' }); }
+    if (u.includes('/auth/v1/logout')) { calls.push({ kind: 'logout', auth: req.headers().authorization }); return route.fulfill({ status: 204, body: '' }); }
     if (u.includes('/rest/v1/crm_clients') && m === 'POST') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'insert', body: b, prefer: req.headers().prefer }); stays.push({ ...b }); return json([b], 201); }
     if (u.includes('/rest/v1/crm_clients') && m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'stay', url: u, body: b }); const id = decodeURIComponent((u.match(/id=eq\.([^&]+)/) || [])[1] || ''); const row = stays.find((x) => String(x.id) === id) || stays[0]; if (row) Object.assign(row, b); return json([{ ...row }]); }
     if (u.includes('/rest/v1/crm_clients')) return json(stays);
@@ -62,7 +67,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
   });
   const page = await ctx.newPage(); const errs = [];
   page.on('pageerror', (e) => errs.push(String(e)));
-  await page.addInitScript(([s, on]) => { localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); if (on) localStorage.setItem('stafflo_email_in', 'on'); }, [SESSION, emailIn]);
+  await page.addInitScript(([s, on, one]) => { if (one) { if (sessionStorage.getItem('__init')) return; sessionStorage.setItem('__init', '1'); } localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); if (on) localStorage.setItem('stafflo_email_in', 'on'); }, [SESSION, emailIn, once]);
   await page.goto(`http://127.0.0.1:${PORT}/espace.html#${tab}`);
   await page.waitForSelector(tab === 'maison' ? '[data-a="feopen"]' : 'article, .card', { timeout: 8000 });
   return { page, ctx, calls, errs };
@@ -418,6 +423,65 @@ await r.ctx.close();
   const pe = r.calls.filter((x) => x.kind === 'stay').pop();
   check('séjour terminé : montant corrigé (price, commission 0), sur le bon séjour', !!pe && /id=eq\.h3/.test(pe.url) && pe.body.price === 2400 && pe.body.commission === 0, pe);
   check('0 erreur', !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
+// ── 5 octies. Réglages dans Maison : la villa, les emails, l'abonnement, le compte ─────
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'nadia', city: 'Marrakech, Maroc', country: 'Maroc', bedrooms: 4, max_guests: 8, house_facts_ref: null, house_facts: null, gmail: 'riad@example.com' };
+  const fin = new Date(Date.now() - 8 * 60000).toISOString();
+  r = await open({ villa: V, sync: [{ finished_at: fin, ok: true }], bill: { entitled: true, status: 'trialing', trial_ends_at: iso(12) + 'T10:00:00Z' } });
+  await r.page.waitForTimeout(200);
+  let ts = await r.page.innerText('#settings');
+  check('Maison › Réglages : la villa (nom, ville, chambres, capacité), Gmail relié + dernière synchro, iCal, abonnement, compte', /Riad Zina · Marrakech · 4 chambres · 8 pers\./.test(ts) && /Gmail relié : riad@example\.com · synchronisé il y a 8 min/.test(ts) && /Calendriers \(iCal\)/.test(ts) && /Essai : 12 jours restants/.test(ts) && /x@y\.z/.test(ts) && /Se déconnecter/.test(ts) && !r.errs.length, ts);
+  check('Gmail : « Reconnecter » ouvre la connexion dans l’app complète (lien profond, pas d’aiguillage vers l’Espace)', !!(await r.page.$('#settings a[href="app.html?open=gmail"]')) && !!(await r.page.$('#settings a[href="app.html?open=settings"]')));
+  await r.page.click('[data-a="vsedit"]'); await r.page.waitForSelector('#vs-villa_name');
+  check('modifier la villa : champs pré-remplis depuis la base', (await r.page.inputValue('#vs-villa_name')) === 'Riad Zina' && (await r.page.inputValue('#vs-city')) === 'Marrakech, Maroc' && (await r.page.inputValue('#vs-bedrooms')) === '4');
+  await r.page.fill('#vs-bedrooms', '4.5'); await r.page.click('[data-a="vssave"]'); await r.page.waitForTimeout(100);
+  check('chambres non entières → refusé, rien envoyé', /un nombre entier/.test(await r.page.innerText('#settings')) && !r.calls.some((x) => x.kind === 'PATCH'));
+  await r.page.fill('#vs-bedrooms', '5'); await r.page.fill('#vs-villa_name', ''); await r.page.click('[data-a="vssave"]'); await r.page.waitForTimeout(100);
+  check('nom vidé → refusé, rien envoyé', /nom de la villa est requis/.test(await r.page.innerText('#settings')) && !r.calls.some((x) => x.kind === 'PATCH'));
+  await r.page.fill('#vs-villa_name', 'Riad Zina'); await r.page.fill('#vs-city', 'Essaouira, Maroc');
+  await r.page.click('[data-a="vssave"]'); await r.page.waitForTimeout(400);
+  const vp = r.calls.filter((x) => x.kind === 'PATCH').pop();
+  check('enregistrer : PATCH sur SA ligne (owner_id), seulement ce qui a changé (ville, chambres)', !!vp && /villa_settings\?owner_id=eq\.1111/.test(vp.url) && Object.keys(vp.body).sort().join() === 'bedrooms,city' && vp.body.city === 'Essaouira, Maroc' && vp.body.bedrooms === 5, vp && vp.body);
+  ts = await r.page.innerText('#settings');
+  check('après enregistrement : la ligne de la villa montre les nouvelles valeurs, formulaire refermé', /Riad Zina · Essaouira · 5 chambres · 8 pers\./.test(ts) && !(await r.page.$('#vs-villa_name')));
+  await r.page.click('[data-a="billcheckout"]'); await r.page.waitForTimeout(600);
+  const pol = r.calls.filter((x) => x.kind === 'polar').pop();
+  check('« S’abonner » : polar-checkout avec la session du propriétaire, puis la page de paiement', !!pol && /polar-checkout$/.test(pol.url) && pol.auth === 'Bearer tok' && /checkout\.example\.com/.test(r.page.url()), { pol, url: r.page.url() });
+  await r.ctx.close();
+  // Gmail pas relié, synchro ancienne, abonnement actif, accès offert
+  r = await open({ villa: { ...V, gmail: null }, bill: { entitled: true, status: 'comp' } });
+  await r.page.waitForTimeout(200);
+  ts = await r.page.innerText('#settings');
+  check('Gmail pas relié → « Relier Gmail » ; accès offert → aucun bouton de paiement', /Gmail pas relié/.test(ts) && /Relier Gmail/.test(ts) && /Accès offert/.test(ts) && !(await r.page.$('[data-a="billcheckout"]')) && !(await r.page.$('[data-a="billportal"]')));
+  await r.ctx.close();
+  r = await open({ villa: V, sync: [{ finished_at: new Date(Date.now() - 3 * 3600e3).toISOString(), ok: true }], bill: [] });
+  await r.page.waitForTimeout(200);
+  ts = await r.page.innerText('#settings');
+  check('synchro Gmail ancienne (3 h) → signalée ; état de l’abonnement illisible → rien affiché (jamais un statut inventé)', /pas de synchronisation récente/.test(ts) && !/Abonnement/.test(ts));
+  await r.ctx.close();
+  // Échec d'enregistrement (aucune ligne touchée) : message, et ce qui a été tapé reste dans le formulaire.
+  r = await open({ villa: null });
+  await r.page.waitForTimeout(200);
+  await r.page.click('[data-a="vsedit"]'); await r.page.waitForSelector('#vs-villa_name');
+  await r.page.fill('#vs-villa_name', 'Villa Neuve'); await r.page.fill('#vs-city', 'Agadir'); await r.page.click('[data-a="vssave"]'); await r.page.waitForTimeout(400);
+  check('échec d’enregistrement : message, saisie gardée (rien de perdu)', /Enregistrement impossible/.test(await r.page.innerText('#settings')) && (await r.page.inputValue('#vs-villa_name')) === 'Villa Neuve' && (await r.page.inputValue('#vs-city')) === 'Agadir');
+  await r.ctx.close();
+  // Fiche en place (pilote) : les Réglages sont aussi là.
+  r = await open({ villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT } });
+  await r.page.waitForTimeout(200);
+  check('fiche en place : Réglages en bas de Maison aussi', !!(await r.page.$('#settings [data-a="vsedit"]')) && !!(await r.page.$('#settings [data-a="signout"]')));
+  await r.ctx.close();
+  // Déconnexion : jeton révoqué, données locales effacées, écran de connexion.
+  r = await open({ villa: V, once: true });
+  await r.page.waitForTimeout(200);
+  await r.page.evaluate(() => { localStorage.setItem('stafflo_cfg', '{"villa":"x"}'); localStorage.setItem('stafflo_house_facts', '{}'); });
+  await r.page.click('[data-a="signout"]'); await r.page.waitForTimeout(3500);
+  const left = await r.page.evaluate(() => ['stafflo_session', 'stafflo_cfg', 'stafflo_house_facts'].filter((k) => localStorage.getItem(k) != null));
+  const lo = r.calls.filter((x) => x.kind === 'logout').pop();
+  check('se déconnecter : jeton révoqué (auth/v1/logout), session et données locales effacées, écran de connexion', !!lo && lo.auth === 'Bearer tok' && !left.length && !!(await r.page.$('#loginForm')), { lo, left });
   await r.ctx.close();
 }
 

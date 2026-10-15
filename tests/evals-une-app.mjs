@@ -65,6 +65,29 @@ check('« Ouvrir l’app complète » (?app=1) : reste sur app.html, même aprè
 r = await visit('', { off: true });
 check('interrupteur stafflo_espace_home = off : app.html redevient l’accueil', !onEspace(r.url), r.url);
 
+// L'Espace modifie l'identité de la villa en base (Maison › Réglages) : l'app complète la relit au
+// démarrage, même quand son cfg local est « plus récent » — sinon son prochain enregistrement l'écraserait.
+{
+  const ctx = await browser.newContext({ serviceWorkers: 'block' });
+  await ctx.route('**/*', (route) => {
+    const u = route.request().url();
+    if (u.startsWith('http://127.0.0.1')) return route.continue();
+    if (u.includes('/rest/v1/villa_settings') && route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify([{ onboarded: true, onboarded_at: '2026-01-01T00:00:00Z', villa_name: 'Riad Neuf', owner_name: 'Nadia', city: 'Essaouira, Maroc', country: 'Maroc', bedrooms: 5, max_guests: null, house_facts_ref: null, house_facts: null }]) });
+    return route.fulfill({ status: 204, body: '' });
+  });
+  await ctx.addInitScript(([s]) => {
+    if (sessionStorage.getItem('__init')) return; sessionStorage.setItem('__init', '1');
+    localStorage.setItem('stafflo_session', s);
+    localStorage.setItem('stafflo_cfg', JSON.stringify({ onboarded: true, onboardedAt: new Date().toISOString(), villa: 'Ancien nom', owner: 'Nadia', city: 'Paris', bedrooms: 3, maxGuests: 6 }));
+  }, [SESSION]);
+  const page = await ctx.newPage();
+  await page.goto(`http://127.0.0.1:${PORT}/app.html?app=1`, { waitUntil: 'domcontentloaded' });
+  let cfg = null;
+  for (let i = 0; i < 20 && !(cfg && cfg.villa === 'Riad Neuf'); i++) { await page.waitForTimeout(250); cfg = await page.evaluate(() => JSON.parse(localStorage.getItem('stafflo_cfg') || 'null')).catch(() => null); }
+  check('app complète : nom, ville, chambres relus depuis la base au démarrage (changés dans l’Espace) ; un champ vide en base ne vide pas le local', !!cfg && cfg.villa === 'Riad Neuf' && cfg.city === 'Essaouira, Maroc' && cfg.bedrooms === 5 && cfg.maxGuests === 6 && cfg.onboarded === true, cfg);
+  await ctx.close();
+}
+
 const esp = fs.readFileSync(path.join(root, 'espace.html'), 'utf8');
 check('Espace : aucun lien nu vers app.html (il renverrait à l’Espace) — « app complète » = app.html?app=1', !/href="app\.html"/.test(esp) && /href="app\.html\?app=1"/.test(esp));
 

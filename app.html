@@ -25681,6 +25681,18 @@ async function pullVillaSettings() {
 
     // Only hydrate if remote has been onboarded (otherwise defaults from trigger may be wrong)
     if (!row.onboarded) return;
+    /* 15/10/2026 — l'Espace (Maison › Réglages) modifie aussi l'identité de la villa, directement en
+       base. Pour ces six champs la base fait foi : relus à chaque démarrage (valeurs non vides), avant la
+       sortie « local plus récent » ci-dessous — sinon le prochain pushVillaSettings renverrait l'ancienne
+       valeur locale par-dessus le changement fait dans l'Espace. */
+    try {
+      var _idChanged = false;
+      [['villa_name','villa'],['owner_name','owner'],['city','city'],['country','country'],['bedrooms','bedrooms'],['max_guests','maxGuests']].forEach(function(p){
+        var _v = row[p[0]];
+        if (_v != null && _v !== '' && cfg[p[1]] !== _v) { cfg[p[1]] = _v; _idChanged = true; }
+      });
+      if (_idChanged) setCfg(cfg);
+    } catch(e) { console.warn('villa identity hydrate:', e); }
     // Local has been onboarded too → don't overwrite (local is current source of truth in session)
     if (cfg.onboarded && cfg.onboardedAt && row.onboarded_at &&
         new Date(cfg.onboardedAt) >= new Date(row.onboarded_at)) return;
