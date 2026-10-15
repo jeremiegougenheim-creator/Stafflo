@@ -185,8 +185,8 @@ await r.page.waitForTimeout(250);
 await r.page.click('[data-a="panel"][data-v="livret"][data-id="s1"]'); await r.page.waitForSelector('#tx-s1');
 const lv = await r.page.inputValue('#tx-s1');
 const see = await r.page.$eval('a.btn[href*="livret.html"]', (a) => a.getAttribute('href')).catch(() => '');
-check('Msg livret (pilote, FR) : lien absolu avec le jeton, « Votre arrivée », à commander : repas + transfert, rien à payer, signé Jérémie',
-  new RegExp('http://127\\.0\\.0\\.1:' + PORT + '/livret\\.html\\?[^\\s]*t=' + TK).test(lv) && /Dans « Votre arrivée »/.test(lv) && /réservez à l’avance : repas, transfert aéroport ↔ villa\. Rien à payer en ligne/.test(lv) && /Jérémie$/.test(lv) && /^Bonjour Thibaut,/.test(lv) && !r.errs.length, { lv, errs: r.errs });
+check('Msg livret (pilote, FR) : lien absolu avec le jeton, « Votre arrivée », à commander : repas + transfert, rien à payer, fiches voyageurs (villa qui les demande), signé Jérémie',
+  new RegExp('http://127\\.0\\.0\\.1:' + PORT + '/livret\\.html\\?[^\\s]*t=' + TK).test(lv) && /Dans « Votre arrivée »/.test(lv) && /réservez à l’avance : repas, transfert aéroport ↔ villa\. Rien à payer en ligne/.test(lv) && /Jérémie$/.test(lv) && /^Bonjour Thibaut,/.test(lv) && /Merci aussi de remplir les « Fiches voyageurs », une par personne/.test(lv) && !r.errs.length, { lv, errs: r.errs });
 check('Msg livret : « Voir le livret » ouvre le même lien, WhatsApp proposé', /t=T{43}/.test(see) && !!(await r.page.$('[data-a="sendwa"][data-id="s1"]')), see);
 await r.ctx.close();
 r = await open({ tab: 'sejours', villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: ZINA }, links: [{ client_id: 's1', token: TK }],
@@ -195,7 +195,7 @@ await r.page.waitForTimeout(250);
 { const t = await r.page.$('[data-a="toggle"][data-id="s1"]'); if (t) { await t.click(); await r.page.waitForTimeout(100); } }
 await r.page.click('[data-a="panel"][data-v="livret"][data-id="s1"]'); await r.page.waitForSelector('#tx-s1');
 const lv2 = await r.page.inputValue('#tx-s1');
-check('Msg livret (fiche partielle, EN, rien de chiffré) : pas de « book ahead », pas de français', /^Hello Ana,/.test(lv2) && /Under “Your arrival”/.test(lv2) && !/book ahead/.test(lv2) && !/Bonjour|réservez/.test(lv2) && !r.errs.length, { lv2, errs: r.errs });
+check('Msg livret (fiche partielle, EN, rien de chiffré, pas de fiches) : pas de « book ahead », ni de « Guest registration », pas de français', /^Hello Ana,/.test(lv2) && /Under “Your arrival”/.test(lv2) && !/book ahead|Guest registration/.test(lv2) && !/Bonjour|réservez/.test(lv2) && !r.errs.length, { lv2, errs: r.errs });
 await r.ctx.close();
 
 // ── 5 ter. Fiches voyageurs : nombre sur le séjour, contenu lu à la demande, impression, CSV, déclaré ──
@@ -221,6 +221,7 @@ await r.ctx.close();
   await pop.close();
   await r.page.click('[data-a="regdecl"][data-id="s1"]'); await r.page.waitForTimeout(250);
   const dc = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('fiches reçues → plus de bouton « Passeports » (rien à redemander)', !(await r.page.$('[data-a="panel"][data-v="passports"][data-id="s1"]')));
   check('« Marquer déclarées » → details.regDeclaredAt seulement (aucune donnée de voyageur écrite sur le séjour)', !!dc && !!dc.body.details.regDeclaredAt && !JSON.stringify(dc.body).includes('PAE123456'));
   await r.ctx.close();
   r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PR }, links: [{ client_id: 's1', token: 'T'.repeat(43) }],

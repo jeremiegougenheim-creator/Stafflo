@@ -251,7 +251,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       todo: { title: 'À faire', none: 'Rien d’urgent pour les 3 prochains jours.', msg: 'Répondre au message', phone: 'Demander son téléphone', livret: 'Envoyer le livret', meals: 'Obtenir les choix de repas', team: 'Heure d’arrivée et couchages pour l’équipe', brief: 'Briefer l’équipe', reg: 'Déclarer les voyageurs' },
       arrivesToday: 'arrive aujourd’hui',
       todo2: { depart: 'Envoyer le message de départ', review: 'Laisser l’avis Airbnb', order: 'Confirmer la commande du client' },
-      ordLine: 'Commande du client', ordConfirm: 'Commande confirmée au client', ordConfirmed: 'Confirmée le ', ordKpi: 'Extras commandés par vos clients', ordStays: function (n) { return n + (n > 1 ? ' séjours' : ' séjour'); },
+      ordLine: 'Commande du client', ordConfirm: 'Marquer la commande confirmée au client', ordConfirmed: 'Confirmée le ', ordKpi: 'Extras commandés par vos clients', ordStays: function (n) { return n + (n > 1 ? ' séjours' : ' séjour'); },
       actDepart: 'Msg départ', departDone: 'Message de départ envoyé', departDoneOn: 'Message de départ envoyé le ',
       rvAsk: 'Demander un avis', rvHost: 'Avis hôte (ARIA)', rvDone: 'Avis laissé', rvDoneOn: 'Avis laissé le ', rvOpen: 'Ouvrir les avis Airbnb', rvThread: 'Ouvrir le fil Airbnb',
       rvUntil: function (d) { return 'avis possible jusqu’au ' + d; },
@@ -360,7 +360,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       todo: { title: 'To do', none: 'Nothing urgent for the next 3 days.', msg: 'Reply to the message', phone: 'Ask for their phone', livret: 'Send the guide', meals: 'Get meal choices', team: 'Arrival time and beds for the team', brief: 'Brief the team', reg: 'Register the guests' },
       arrivesToday: 'arrives today',
       todo2: { depart: 'Send the departure message', review: 'Leave the Airbnb review', order: 'Confirm the guest’s order' },
-      ordLine: 'Guest’s order', ordConfirm: 'Order confirmed to the guest', ordConfirmed: 'Confirmed on ', ordKpi: 'Extras ordered by your guests', ordStays: function (n) { return n + (n > 1 ? ' stays' : ' stay'); },
+      ordLine: 'Guest’s order', ordConfirm: 'Mark the order as confirmed to the guest', ordConfirmed: 'Confirmed on ', ordKpi: 'Extras ordered by your guests', ordStays: function (n) { return n + (n > 1 ? ' stays' : ' stay'); },
       actDepart: 'Departure msg', departDone: 'Departure message sent', departDoneOn: 'Departure message sent on ',
       rvAsk: 'Ask for a review', rvHost: 'Host review (ARIA)', rvDone: 'Review left', rvDoneOn: 'Review left on ', rvOpen: 'Open Airbnb reviews', rvThread: 'Open the Airbnb thread',
       rvUntil: function (d) { return 'review possible until ' + d; },
@@ -1100,9 +1100,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var dates = fmtDay(c.a, g) + ' → ' + fmtDay(c.d, g);
     if (fr) return 'Bonjour ' + firstName(c) + ',\n\nVoici le livret de votre séjour à ' + atVilla(true) + ' (' + dates + ') : la maison, l’équipe, les repas, les adresses.\n\n' + livretAbs(c) + '\n\n' +
       'Dans « Votre arrivée », dites-nous votre heure d’arrivée et la composition du groupe' + (can.length ? ', et réservez à l’avance : ' + can.join(', ') + '. Rien à payer en ligne, nous confirmons avec vous.' : '.') +
+      (regOnF() && !regOf(c) ? '\n\nMerci aussi de remplir les « Fiches voyageurs », une par personne : nous sommes tenus de déclarer chaque voyageur à son arrivée.' : '') +
       '\n\nÀ très vite,\n' + owner();
     return 'Hello ' + firstName(c) + ',\n\nHere is the guide for your stay at ' + atVilla(false) + ' (' + dates + '): the house, the team, meals and places nearby.\n\n' + livretAbs(c) + '\n\n' +
       'Under “Your arrival”, tell us your arrival time and who is coming' + (can.length ? ', and book ahead: ' + can.join(', ') + '. Nothing to pay online, we confirm with you.' : '.') +
+      (regOnF() && !regOf(c) ? '\n\nPlease also fill in the “Guest registration” forms, one per person: we are required to register every guest on arrival.' : '') +
       '\n\nSee you soon,\n' + owner();
   }
   function msgArrival(c) {
@@ -1581,7 +1583,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     h += '<div class="acts">' +
       (HAS_FACTS && LINKS && LINKS.get(c.id) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="livret" aria-pressed="' + (pn === 'livret') + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</button>' : '') +
       (wa ? '<a class="act" href="https://wa.me/' + wa + '" target="_blank" rel="noopener" title="WhatsApp"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
-      (c.a < todayNum() || !HAS_FACTS ? ['brief'] : (['meals', 'arrival', 'passports', 'brief'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'passports' ? !!passRule() || (regOnF() && !!(LINKS && LINKS.get(c.id))) : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
+      (c.a < todayNum() || !HAS_FACTS ? ['brief'] : (['meals', 'arrival', 'passports', 'brief'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'passports' ? !regOf(c) && (!!passRule() || (regOnF() && !!(LINKS && LINKS.get(c.id)))) : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
         return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', brief: 'clipboard-list' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
       }).join('') +
       (regOnF() && regOf(c) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="reg" aria-pressed="' + (pn === 'reg') + '"><i class="ti ti-id" aria-hidden="true"></i>' + esc(l.act.reg) + '</button>' : '') +
