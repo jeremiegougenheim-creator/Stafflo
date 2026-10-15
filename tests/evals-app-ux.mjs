@@ -67,5 +67,20 @@ check('clients (téléphone) : barres sous les chiffres, plus de bande qui défi
 check('prix (téléphone) : signaux en grille 2×2 et modes à la ligne (plus de défilement caché)', /@media \(max-width: 519px\) \{\s*\.v4-signals \{ display:grid; grid-template-columns:repeat\(2, minmax\(0, 1fr\)\); overflow:visible; \}/.test(app) && /\.v4-hero-modes \{ flex-wrap:wrap; overflow:visible; \}/.test(app));
 check('prix : libellé « Vols » traduit', /id="v4SigFlightsLbl" data-fr="Vols" data-en="Flights"/.test(app));
 
+// 15/10/2026 — modifier un séjour n'efface plus ce que le serveur a écrit (réponses, commande, versements…)
+{
+  const i = app.indexOf('async function pushToSupabase(client)'), j = app.indexOf('\n}\n', i);
+  const fn = app.slice(i, j + 2);
+  const calls = []; const ctx = { getCfg: () => ({}), SB_URL: 'https://sb.test', SB_ANON: 'anon', sbHdrs: () => ({}), setSyncDot: () => {}, console, fetch: async (u, o) => { calls.push(JSON.parse(o.body)); return { ok: true }; } };
+  const run = new Function(...Object.keys(ctx), fn + '\nreturn pushToSupabase;')(...Object.values(ctx));
+  await run({ id: '1', name: 'Ana', arrival: '2026-11-01', departure: '2026-11-04', guests: 2, price: 100, commission: 0, source: 'Direct', notes: '', bookingStatus: 'confirmed' });
+  await run({ id: '2', name: 'Bo', details: { guest_orders: { total: 1 } }, messages: null, adults: 2, email: 'x@example.com', staffBriefedAt: null });
+  check('pushToSupabase : un champ inconnu (formulaire) n’est pas envoyé — details, messages, adultes, brief, email restent en base', !('details' in calls[0]) && !('messages' in calls[0]) && !('adults' in calls[0]) && !('staff_briefed_at' in calls[0]) && !('email' in calls[0]) && calls[0].name === 'Ana', calls[0]);
+  check('pushToSupabase : un champ connu est envoyé tel quel (même null)', calls[1].details.guest_orders.total === 1 && calls[1].messages === null && calls[1].adults === 2 && calls[1].staff_briefed_at === null && calls[1].email === 'x@example.com', calls[1]);
+}
+check('safePushToSupabase (création depuis un email) : même règle, un champ inconnu n’écrase pas la base', /details: client\.details \|\| \{\}\n      \};\n      \/\/ 15\/10\/2026 — même règle que pushToSupabase[^\n]*\n      \[\['email','email'\][^\n]*\n        \.forEach\(function \(k\) \{ if \(client\[k\[1\]\] === undefined\) delete payload\[k\[0\]\]; \}\);/.test(app));
+check('formulaire de séjour : le statut (demande, devis…) n’est plus forcé à « confirmé » à la modification', /bookingStatus: document\.getElementById\('fBookingStatus'\)\?\.value \|\| _prev\.bookingStatus \|\| 'confirmed'/.test(app));
+check('charges du mois : une charge retirée (deleted_at) n’apparaît plus nulle part', (app.match(/maison_charges\?deleted_at=is\.null/g) || []).length === 3 && !/maison_charges\?(period_month|select|category)=/.test(app));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

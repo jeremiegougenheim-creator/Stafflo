@@ -10950,6 +10950,11 @@ async function pushToSupabase(client) {
     is_comp: !!client.is_comp,
     details: client.details || {}
   };
+  // 15/10/2026 — un champ que l'appelant ne connaît pas (undefined, ex. le formulaire de séjour) n'est pas
+  // envoyé : l'upsert ne touche alors pas la colonne. Avant, details: {} effaçait réponses, commande,
+  // versements… du séjour. (La base garde aussi les clés serveur : trigger crm_details_guard.)
+  [['email','email'],['adults','adults'],['children','children'],['infants','infants'],['staff_briefed_at','staffBriefedAt'],['messages','messages'],['details','details']]
+    .forEach(function (k) { if (client[k[1]] === undefined) delete payload[k[0]]; });
   setSyncDot('busy');
   try {
     var r = await fetch(url + '/rest/v1/crm_clients?on_conflict=id', {
@@ -14287,7 +14292,7 @@ function saveClient() {
     source: document.getElementById('fSource').value,
     phone: document.getElementById('fPhone').value.trim(),
     notes: document.getElementById('fNotes').value.trim(),
-    bookingStatus: document.getElementById('fBookingStatus')?.value || 'confirmed',
+    bookingStatus: document.getElementById('fBookingStatus')?.value || _prev.bookingStatus || 'confirmed',
     payStatus: (_prev.payStatus || ''),
     createdAt: id ? (clients.find(c=>c.id===id)?.createdAt || new Date().toISOString()) : new Date().toISOString()
   };
@@ -21217,7 +21222,7 @@ async function fetchMaisonCharges(periodMonth) {
   if (_chargesCache && (nowMs - _chargesCacheTs) < 120000) return _chargesCache;
   try {
     var r = await fetch(
-      SB_URL + '/rest/v1/maison_charges?select=id,label,payee,amount,currency,period_month,status,paid_at'
+      SB_URL + '/rest/v1/maison_charges?deleted_at=is.null&select=id,label,payee,amount,currency,period_month,status,paid_at'
         + '&period_month=eq.' + encodeURIComponent(periodMonth)
         + '&order=label.asc',
       { headers: authHeaders() }
@@ -30666,6 +30671,9 @@ window.addEventListener('DOMContentLoaded', function() {
         messages: client.messages || null,
         details: client.details || {}
       };
+      // 15/10/2026 — même règle que pushToSupabase : un champ inconnu (undefined) n'écrase pas la base.
+      [['email','email'],['adults','adults'],['children','children'],['infants','infants'],['staff_briefed_at','staffBriefedAt'],['messages','messages'],['details','details']]
+        .forEach(function (k) { if (client[k[1]] === undefined) delete payload[k[0]]; });
       // Token JWT prioritaire si user authentifié (RLS)
       var auth = key;
       try {
@@ -43517,7 +43525,7 @@ async function loadMaisonCharges() {
               ? _stafflo_session.access_token : null;
     if (!token || !cfg.sbUrl || !cfg.sbKey) return null;
     var period = new Date().toISOString().slice(0,7) + '-01';   // 1er du mois courant, ex '2026-07-01'
-    var url = cfg.sbUrl + '/rest/v1/maison_charges?period_month=eq.' + period
+    var url = cfg.sbUrl + '/rest/v1/maison_charges?deleted_at=is.null&period_month=eq.' + period
             + '&select=id,label,category,payee,amount,currency,status&order=category';
     var r = await fetch(url, { headers: { apikey: cfg.sbKey, Authorization: 'Bearer ' + token } });
     if (!r.ok) return null;
@@ -44318,7 +44326,7 @@ window.auditTones = auditTones;
     try {
       var cfg = (typeof getCfg === 'function') ? getCfg() : {};
       if (!cfg.sbUrl || !cfg.sbKey || !saidId) return [];
-      var r = await fetch(cfg.sbUrl + '/rest/v1/maison_charges?category=eq.autre&staff_id=eq.' + encodeURIComponent(saidId)
+      var r = await fetch(cfg.sbUrl + '/rest/v1/maison_charges?deleted_at=is.null&category=eq.autre&staff_id=eq.' + encodeURIComponent(saidId)
         + '&period_month=eq.' + firstOfMonth() + '&select=*&order=created_at.desc', { headers: sbHdrs(cfg.sbKey) });
       if (!r.ok) return [];
       return await r.json();
