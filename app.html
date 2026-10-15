@@ -62,6 +62,26 @@
   }
 }catch(e){}})();
 </script>
+<script>
+/* 15/10/2026 — UNE SEULE APP : l'Espace (espace.html) est l'écran d'accueil. Un compte connecté et déjà
+   configuré qui ouvre app.html arrive sur l'Espace. Restent ici : la connexion et l'inscription, la mise en
+   route (compte pas encore configuré), les liens profonds (?open=…, ?signup, ?onboarding, retours OAuth,
+   paiement…) et ?app=1 (« Ouvrir l'app complète » depuis l'Espace : cet onglet reste sur app.html).
+   Interrupteur : localStorage.stafflo_espace_home = 'off' rend app.html à nouveau page d'accueil. */
+(function(){try{
+  var q = location.search.replace(/^\?/, '').split('&').filter(Boolean);
+  var onlyLang = q.every(function (p) { return /^lang=(fr|en)$/.test(p); });
+  if (!onlyLang || location.hash) { try { sessionStorage.setItem('stafflo_app_tab', '1'); } catch (e) {} return; }
+  if (localStorage.getItem('stafflo_espace_home') === 'off') return;
+  try { if (sessionStorage.getItem('stafflo_app_tab') === '1') return; } catch (e) {}
+  var s = JSON.parse(localStorage.getItem('stafflo_session') || 'null');
+  var cfg = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
+  if (!s || !s.access_token || !cfg || cfg.onboarded !== true) return;
+  var lang = (/lang=(fr|en)/.exec(location.search) || [])[1];
+  if (lang) localStorage.setItem('stafflo_espace_lang', lang);
+  location.replace('espace.html');
+}catch(e){}})();
+</script>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, interactive-widget=resizes-content">
 <meta name="theme-color" content="#0F2318">
