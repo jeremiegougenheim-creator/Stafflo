@@ -59,7 +59,7 @@ check('signature ES256 valide', okSig);
 const idx = fs.readFileSync(path.join(root, 'supabase/functions/push-notify/index.ts'), 'utf8');
 const seg = idx.slice(idx.indexOf('// ── Textes des alertes'), idx.indexOf('async function subsOf'));
 const segJs = esbuild.transformSync(seg.replace(/^export /gm, ''), { loader: 'ts' }).code;
-const MOD = await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert, buildBrief, tzFor, localDay, BRIEF_HOUR };').toString('base64'));
+const MOD = await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert, buildBrief, buildTeamAlert, shortName, tzFor, localDay, BRIEF_HOUR };').toString('base64'));
 const A = MOD.buildAlert, B0 = MOD.buildBrief;
 // Compte pilote : fiche maison (livret, repas, message de départ comptés).
 const PILOT = { name: 'Villa Dar J', facts: true };
@@ -128,6 +128,20 @@ check('multi-propriétaire : aucun compte ni email de villa en dur', !/[0-9a-f]{
 check('multi-propriétaire : chaque alerte part chez le propriétaire de l’email', /select=id,owner_id,from_email/.test(idx) && /subsBy\.set\(owner, await subsOf\(owner\)\)/.test(idx));
 check('multi-propriétaire : point du matin par compte, à 8 h dans SON fuseau', /tzFor\(v\.country, v\.city\)/.test(idx) && /here\.hour !== BRIEF_HOUR/.test(idx) && /facts: v\.house_facts_ref === "villa-facts\.js"/.test(idx));
 check('brief : protégé par la clé de synchro, aperçu possible (dry)', /action === "brief"[\s\S]{0,200}gmail_sync_key_ok/.test(idx) && /body\.dry/.test(idx));
+
+// ── Retours de l'équipe (staff_reports → une alerte, jamais deux fois) ────
+{
+  const T = MOD.buildTeamAlert;
+  const rr = T({ id: 'r1', kind: 'rooms_ready' }, 'Saïd', 'Thibaut V.', 'fr');
+  check('équipe : « Saïd : chambres prêtes · pour Thibaut V. »', rr && rr.title === 'Saïd : chambres prêtes' && rr.body === 'pour Thibaut V.' && rr.tag === 'team-r1');
+  check('équipe : en anglais', T({ id: 'r1', kind: 'rooms_ready' }, 'Saïd', 'Thibaut V.', 'en').title === 'Saïd: rooms ready');
+  const is = T({ id: 'r2', kind: 'issue', text: '  Fuite   salle de bain ' }, 'Bouchra', '', 'fr');
+  check('équipe : « Bouchra signale un problème » + le texte, replié', is && is.title === 'Bouchra signale un problème' && is.body === 'Fuite salle de bain');
+  check('équipe : problème sans texte → rien ; genre inconnu → rien ; sans nom → « L’équipe »', T({ id: 'r3', kind: 'issue', text: ' ' }, 'X', '', 'fr') === null && T({ id: 'r4', kind: 'price' }, 'X', '', 'fr') === null && T({ id: 'r5', kind: 'rooms_ready' }, '', '', 'fr').title === "L'équipe : chambres prêtes");
+  check('équipe : le nom complet du client ne part jamais (prénom + initiale)', MOD.shortName('Thibaut Vauclare') === 'Thibaut V.' && MOD.shortName('Seán') === 'Seán' && MOD.shortName('') === '');
+  check('fonction : retours lus avec notified_at vide, puis marqués — jamais deux fois', /staff_reports\?select=id,owner_id,link_id,client_id,kind,text,created_at&notified_at=is\.null&deleted_at=is\.null/.test(idx) && /staff_reports\?id=eq\.\$\{r\.id\}`, \{ method: "PATCH"[^\n]*notified_at: new Date/.test(idx));
+  check('fonction : l’alerte part sur les appareils du propriétaire du lien, avec le prénom + initiale du client', /const guest = stay \? shortName\(stay\.name\) : "";/.test(idx) && /buildTeamAlert\(r, link\?\.name \|\| "", guest, lang\)/.test(idx));
+}
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

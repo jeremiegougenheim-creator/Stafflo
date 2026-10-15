@@ -69,6 +69,17 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
 .foot{margin:22px 4px 0;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:stretch}
 .btn{min-height:48px;border-radius:14px;border:1px solid var(--line);background:var(--card);font:600 16px/1 inherit;font-family:inherit;color:var(--gm);display:flex;gap:8px;align-items:center;justify-content:center;cursor:pointer}
 .btn:disabled{opacity:.55}
+/* Retours vers le propriétaire : « chambres prêtes » par séjour, « signaler un problème » en bas */
+.ready{margin:10px 0 0;padding-top:10px;border-top:1px solid var(--line)}
+.btn.ready-btn{width:100%;background:var(--gd);color:#F4EFE3;border-color:var(--gd)}
+.ready .done{display:flex;gap:8px;align-items:center;font-weight:700;color:var(--go);font-size:15.5px}
+.ready .done i{font-size:20px}
+.issue{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px 16px;margin:14px 0 10px}
+.issue h3{margin:0 0 6px;font-size:16px}
+.issue p{margin:0 0 10px;font-size:13.5px;color:var(--muted)}
+.issue textarea{width:100%;box-sizing:border-box;min-height:84px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:15.5px;background:var(--paper);color:var(--ink);resize:vertical}
+.issue .btn{margin-top:8px;width:100%}
+.issue .st{margin:8px 0 0;font-weight:700;font-size:14px;color:var(--go)}.issue .st.err{color:var(--alert)}
 .sk{height:120px;border-radius:18px;background:linear-gradient(90deg,#EFE8D8,#F7F2E7,#EFE8D8);background-size:200% 100%;animation:sk 1.2s linear infinite;margin:0 0 10px}
 @keyframes sk{to{background-position:-200% 0}}
 @media (prefers-reduced-motion:reduce){.sk{animation:none}}
@@ -96,6 +107,8 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       updated: 'Mis à jour à ', refresh: 'Actualiser', personal: 'Ce lien est personnel : ne le transférez pas.', loading: 'Chargement…',
       invalid: 'Ce lien n’est plus valide. Demandez un nouveau lien au propriétaire de la villa.', noLink: 'Ouvrez le lien reçu sur WhatsApp.', unknown: '?', arrow: '→',
       offline: 'Hors connexion — informations du ', server: 'Service momentanément indisponible — informations du ', langBtn: 'العربية',
+      roomsReady: 'Chambres prêtes', roomsDone: 'Chambres prêtes · ', issueTitle: 'Signaler un problème', issueHelp: 'Une panne, une casse, quelque chose qui manque : le propriétaire est prévenu tout de suite.',
+      issuePh: 'Ex. : fuite dans la salle de bain de la suite', send: 'Envoyer', sending: 'Envoi…', sent: 'Envoyé, merci.', sendErr: 'Pas envoyé — vérifiez la connexion et réessayez.',
       nights: function (n) { return n + (n > 1 ? ' nuits' : ' nuit'); },
       inDays: function (n) { return n === 1 ? 'Demain' : 'Dans ' + n + ' jours'; },
       dayOf: function (x, y) { return 'Sur place · jour ' + x + ' sur ' + y; }
@@ -109,6 +122,8 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       updated: 'آخر تحديث ', refresh: 'تحديث', personal: 'هذا الرابط خاص بك، لا تشاركه مع أحد.', loading: 'جارٍ التحميل…',
       invalid: 'هذا الرابط لم يعد صالحا. اطلب رابطا جديدا من صاحب الفيلا.', noLink: 'افتح الرابط الذي وصلك على واتساب.', unknown: '؟', arrow: '←',
       offline: 'لا يوجد اتصال — آخر معلومات بتاريخ ', server: 'الخدمة غير متاحة مؤقتا — آخر معلومات بتاريخ ', langBtn: 'Français',
+      roomsReady: 'الغرف جاهزة', roomsDone: 'الغرف جاهزة · ', issueTitle: 'الإبلاغ عن مشكلة', issueHelp: 'عطل، كسر، شيء ناقص: يصل الخبر إلى صاحب الفيلا فورا.',
+      issuePh: 'مثال: تسرب ماء في حمام الجناح', send: 'إرسال', sending: 'جارٍ الإرسال…', sent: 'تم الإرسال، شكرا.', sendErr: 'لم يتم الإرسال — تحقق من الاتصال وحاول مرة أخرى.',
       nights: function (n) { return n === 1 ? 'ليلة واحدة' : n === 2 ? 'ليلتان' : n <= 10 ? n + ' ليالٍ' : n + ' ليلة'; },
       inDays: function (n) { return n === 1 ? 'غدا' : n === 2 ? 'بعد يومين' : n <= 10 ? 'بعد ' + n + ' أيام' : 'بعد ' + n + ' يوما'; },
       dayOf: function (x, y) { return 'في الفيلا · اليوم ' + x + ' من ' + y; }
@@ -163,6 +178,24 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       .then(function () { S.busy = false; render(); });
   }
 
+  /* Retour vers le propriétaire (staff_reports) : « chambres prêtes » pour un séjour, ou un problème. */
+  function report(kind, clientId, text) {
+    if (!S.k) return Promise.reject(new Error('no_link'));
+    return fetch(FN, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + ANON },
+      body: JSON.stringify({ k: S.k, action: 'report', kind: kind, client_id: clientId || null, text: text || null }) })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('http_' + r.status)); })
+      .then(function (d) {
+        if (!d || !d.report) throw new Error('bad');
+        S.data = S.data || {}; S.data.reports = [d.report].concat(S.data.reports || []);
+        store.set(C_KEY, JSON.stringify(S.data));
+        return d.report;
+      });
+  }
+  function readyReport(stayId) {
+    return ((S.data && S.data.reports) || []).filter(function (r) { return r.kind === 'rooms_ready' && String(r.client_id) === String(stayId); })[0] || null;
+  }
+  function fmtClock(isoTs) { var d = new Date(isoTs); return isNaN(d) ? '' : d.toLocaleTimeString(S.lang === 'ar' ? 'ar-MA' : 'fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+
   function stayCard(s, t, tone, chips) {
     var l = L(), a = dayNum(s.a), d = dayNum(s.d), h = '';
     h += '<article class="card ' + tone + '">';
@@ -184,6 +217,13 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
     if (a >= t) h += row('bed', l.beds, s.beds);
     if (d > t) h += row('tools-kitchen-2', l.meals, s.meals, l.mealsNone);
     if (String(s.note || '').trim()) h += row('note', l.note, s.note);
+    // « Chambres prêtes » : pour une arrivée du jour ou à venir ; une fois envoyé, l'heure reste affichée.
+    if (a >= t && s.id) {
+      var rr = readyReport(s.id);
+      h += '<div class="ready">' + (rr
+        ? '<span class="done"><i class="ti ti-circle-check" aria-hidden="true"></i>' + esc(l.roomsDone + fmtClock(rr.created_at)) + '</span>'
+        : '<button type="button" class="btn ready-btn" data-a="ready" data-id="' + esc(s.id) + '"' + (S.busy ? ' disabled' : '') + '><i class="ti ti-bed" aria-hidden="true"></i>' + esc(l.roomsReady) + '</button>') + '</div>';
+    }
     return h + '</article>';
   }
 
@@ -224,6 +264,9 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       if (s.same_day) chips.push(['alert', l.sameDay]);
       return stayCard(s, t, 'wait', chips);
     }).join('') : '<p class="empty">' + esc(l.noNext) + '</p>';
+    h += '<form class="issue" id="issue"><h3>' + esc(l.issueTitle) + '</h3><p>' + esc(l.issueHelp) + '</p>' +
+      '<textarea id="issueTxt" maxlength="300" placeholder="' + esc(l.issuePh) + '" dir="auto"></textarea>' +
+      '<button type="submit" class="btn"><i class="ti ti-alert-triangle" aria-hidden="true"></i>' + esc(l.send) + '</button><div id="issueSt"></div></form>';
     h += '<div class="foot"><button type="button" class="btn" data-a="refresh"' + (S.busy ? ' disabled' : '') + '><i class="ti ti-refresh" aria-hidden="true"></i>' + esc(S.busy ? l.loading : l.refresh) + '</button>' +
       '<span>' + esc(l.updated + fmtTime(S.data.at)) + '</span><span>' + esc(l.personal) + '</span></div>';
     app.innerHTML = h;
@@ -232,7 +275,27 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-a="refresh"]');
     if (b) { load(); return; }
+    var rb = e.target.closest('[data-a="ready"]');
+    if (rb) {
+      rb.disabled = true;
+      report('rooms_ready', rb.getAttribute('data-id')).then(function () { render(); }, function () { rb.disabled = false; alertBand(L().sendErr); });
+      return;
+    }
     if (e.target.closest('#langBtn')) { S.lang = S.lang === 'ar' ? 'fr' : 'ar'; store.set(L_KEY, S.lang); render(); }
+  });
+  function alertBand(msg) {
+    var app = document.getElementById('app'), b = document.createElement('div');
+    b.className = 'band err'; b.setAttribute('role', 'alert'); b.textContent = msg;
+    app.insertBefore(b, app.firstChild); setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 4000);
+  }
+  document.addEventListener('submit', function (e) {
+    if (!e.target || e.target.id !== 'issue') return;
+    e.preventDefault();
+    var l = L(), ta = document.getElementById('issueTxt'), st = document.getElementById('issueSt'), btn = e.target.querySelector('button[type="submit"]');
+    var text = (ta.value || '').trim(); if (!text) { ta.focus(); return; }
+    btn.disabled = true; btn.textContent = l.sending; st.innerHTML = '';
+    report('issue', null, text).then(function () { ta.value = ''; st.innerHTML = '<p class="st">' + esc(l.sent) + '</p>'; }, function () { st.innerHTML = '<p class="st err">' + esc(l.sendErr) + '</p>'; })
+      .then(function () { btn.disabled = false; btn.innerHTML = '<i class="ti ti-alert-triangle" aria-hidden="true"></i>' + esc(l.send); });
   });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && Date.now() - S.lastTry > 5 * 60000) load(); });
   window.addEventListener('hashchange', function () { S.k = readToken(); load(); });

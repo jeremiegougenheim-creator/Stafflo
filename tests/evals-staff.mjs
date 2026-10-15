@@ -56,7 +56,7 @@ check('séjour terminé hier exclu, départ du jour inclus', !names.includes('Pa
 check('au-delà de 30 jours exclu', !names.includes('Trop L.'), names);
 check('dates incohérentes exclues', !names.includes('Dates F.'), names);
 check('ordre par arrivée', names.join('|') === 'Part A.|Tomas H.|Arnaud D.|Rotation J.|Seán', names.join('|'));
-const KEYS = ['name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'beds', 'meals', 'note', 'same_day'];
+const KEYS = ['id', 'name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'beds', 'meals', 'note', 'same_day'];
 check('champs exactement ceux prévus (aucun prix, note, téléphone, email, code)', V.every((s) => Object.keys(s).join(',') === KEYS.join(',')), Object.keys(V[0]).join(','));
 const flat = JSON.stringify(V);
 for (const bad of ['1298', 'TARIFS', '+44', 'f@x.com', 'Royaume', 'HMX', 'privé', 'Herrera'])
@@ -75,6 +75,15 @@ const long = M.staffView([{ name: 'X Y', arrival: T, departure: '2026-10-14', bo
 check('textes plafonnés (600)', long.meals.length === 600 && long.note.length === 600);
 check('date du jour invalide → rien', M.staffView(ROWS, 'hier').length === 0);
 
+// ── Retours de l'équipe (staff_reports) ────────────────────────────────────
+const VIS = ['s1', 's2'];
+check('retour « chambres prêtes » : séjour visible obligatoire', JSON.stringify(M.cleanReport({ kind: 'rooms_ready', client_id: 's1' }, VIS)) === JSON.stringify({ kind: 'rooms_ready', client_id: 's1', text: null }) && M.cleanReport({ kind: 'rooms_ready' }, VIS) === null && M.cleanReport({ kind: 'rooms_ready', client_id: 'autre' }, VIS) === null);
+check('retour « problème » : texte obligatoire, ≤ 300, espaces repliés, séjour facultatif', M.cleanReport({ kind: 'issue', text: '  fuite   salle de bain ' }, VIS).text === 'fuite salle de bain' && M.cleanReport({ kind: 'issue', text: 'x'.repeat(900), client_id: 's2' }, VIS).text.length === 300 && M.cleanReport({ kind: 'issue', text: '   ' }, VIS) === null);
+check('genre inconnu refusé (rien d’autre n’est modifiable depuis ce lien)', M.cleanReport({ kind: 'price', text: '1' }, VIS) === null && M.cleanReport({ kind: 'delete', client_id: 's1' }, VIS) === null);
+check('30 retours par heure et par lien, pas plus', (() => { let lim = false; for (let i = 0; i < 35; i++) if (M.limited('r:L1', 30, 3600000)) lim = true; return lim && !M.limited('r:L2', 30, 3600000); })());
+check('fonction : le retour part dans staff_reports avec le propriétaire et le lien, rien d’autre n’est écrit', /staff_reports`, \{ method: "POST"/.test(fnSrc) && /owner_id: link\.owner_id, link_id: link\.id, client_id: rep\.client_id, kind: rep\.kind, text: rep\.text/.test(fnSrc) && (fnSrc.match(/method: "POST"/g) || []).length === 1);
+check('fonction : les retours récents du lien reviennent avec les séjours (chambres prêtes reste coché)', /staff_reports\?select=id,kind,client_id,text,created_at&link_id=eq\.\$\{link\.id\}&deleted_at=is\.null/.test(fnSrc) && /stays, reports, at:/.test(fnSrc));
+
 // ── Fonction : requêtes ──────────────────────────────────────────────────
 const sel = (fnSrc.match(/crm_clients\?select=([^&`]+)/) || [])[1] || '';
 check('colonnes lues : jamais prix, notes, téléphone, email, nationalité', sel && !/price|notes|remarks|phone|email|nat\b|payout/.test(sel), sel);
@@ -82,7 +91,7 @@ check('lien retiré = plus d’accès (deleted_at)', /staff_links\?select=[^`]*t
 check('jeton jamais stocké : seule l’empreinte est cherchée', !/token_hash=eq\.\$\{body\.k\}/.test(fnSrc) && /sha256hex\(body\.k\)/.test(fnSrc));
 check('séjours du propriétaire du lien seulement', /user_id=eq\.\$\{link\.owner_id\}&deleted_at=is\.null/.test(fnSrc));
 check('réponse jamais en cache', /"Cache-Control": "no-store"/.test(fnSrc));
-check('aucune écriture sauf last_seen_at', (fnSrc.match(/method: "(PATCH|POST|DELETE|PUT)"/g) || []).length === 1 && /last_seen_at: new Date/.test(fnSrc));
+check('deux écritures seulement : last_seen_at (PATCH) et le retour de l’équipe (POST staff_reports) — jamais de DELETE', (fnSrc.match(/method: "PATCH"/g) || []).length === 1 && (fnSrc.match(/method: "POST"/g) || []).length === 1 && !/method: "(DELETE|PUT)"/.test(fnSrc) && /last_seen_at: new Date/.test(fnSrc));
 check('même exclusion des demandes que l’Espace', (() => {
   const esp = fs.readFileSync(path.join(root, 'espace.html'), 'utf8');
   const a = (fnSrc.match(/FIRM_OUT = \[([^\]]+)\]/) || [])[1], b = (esp.match(/FIRM_OUT = \[([^\]]+)\]/) || [])[1];

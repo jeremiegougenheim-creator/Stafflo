@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v524 (Espace allégé : ligne d'état, grille d'actions, ARIA hors barre)
-const CACHE = 'stafflo-v524';
+// Stafflo Service Worker — v525 (équipe → base : chambres prêtes, problème signalé)
+const CACHE = 'stafflo-v525';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

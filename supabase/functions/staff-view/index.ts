@@ -2,9 +2,14 @@
 // groupes, heure d'arrivée, couchages, repas et consigne, pour Saïd, Bouchra ou
 // la cuisinière. Sans compte : chaque personne a un lien personnel.
 //
-// POST { k } → { name, lang, today, stays }
+// POST { k } → { name, lang, today, stays, reports }
 //   k = jeton du lien (jamais stocké : seule son empreinte sha-256 est en base,
 //       table staff_links). Un lien retiré (deleted_at) ne répond plus.
+// POST { k, action: "report", kind, client_id?, text? } → { ok, report }
+//   L'équipe renvoie quelque chose (table staff_reports) : « chambres prêtes » pour un
+//   séjour (kind rooms_ready, client_id d'un séjour visible), ou un problème (kind issue,
+//   texte ≤ 300). Le propriétaire le voit dans l'Espace et reçoit une alerte. 30 par heure
+//   et par lien. Rien d'autre n'est modifiable depuis ce lien.
 //
 // Données minimales, en lecture seule : prénom + initiale, dates, nombre de
 // personnes, et trois champs écrits POUR l'équipe dans l'Espace
@@ -32,7 +37,7 @@ function cors(req: Request): Record<string, string> {
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
 export type StaffStay = {
-  name: string; a: string; d: string; nights: number;
+  id: string; name: string; a: string; d: string; nights: number;
   adults: number | null; children: number | null; infants: number | null; pax: number | null;
   arrival_time: string; beds: string; meals: string; note: string; same_day: boolean;
 };
@@ -58,6 +63,25 @@ const day = (iso: unknown): number | null => {
 };
 const iso = (n: number) => new Date(n * 86400000).toISOString().slice(0, 10);
 const txt = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+const REPORT_KINDS = ["rooms_ready", "issue"];
+/** Un retour de l'équipe, nettoyé : genre connu, séjour parmi ceux qu'elle voit, texte court. null si rien à garder. */
+export function cleanReport(body: Row, visibleIds: string[]): { kind: string; client_id: string | null; text: string | null } | null {
+  const kind = String(body.kind || "");
+  if (!REPORT_KINDS.includes(kind)) return null;
+  const cid = body.client_id == null || body.client_id === "" ? null : String(body.client_id);
+  if (cid && !visibleIds.includes(cid)) return null;
+  const text = txt(body.text, 300).replace(/\s+/g, " ") || null;
+  if (kind === "rooms_ready" && !cid) return null;
+  if (kind === "issue" && !text) return null;
+  return { kind, client_id: cid, text };
+}
+const hits = new Map<string, number[]>();
+export function limited(key: string, max: number, windowMs: number, now = Date.now()): boolean {
+  if (hits.size > 5000) hits.clear();
+  const recent = (hits.get(key) || []).filter((t) => now - t < windowMs);
+  recent.push(now); hits.set(key, recent);
+  return recent.length > max;
+}
 const int = (v: unknown): number | null => (v == null || v === "" || !isFinite(+v) || +v < 0 ? null : Math.round(+v));
 
 export function staffView(rows: Row[], todayIso: string): StaffStay[] {
@@ -75,7 +99,7 @@ export function staffView(rows: Row[], todayIso: string): StaffStay[] {
       const adults = int(c.adults), children = int(c.children), infants = int(c.infants);
       const pax = adults != null || children != null ? (adults || 0) + (children || 0) : int(c.guests);
       return {
-        name: shortName(c.name), a: iso(a), d: iso(d), nights: d - a,
+        id: String(c.id || ""), name: shortName(c.name), a: iso(a), d: iso(d), nights: d - a,
         adults, children, infants, pax: pax || null,
         arrival_time: txt(det.arrival_time, 120), beds: txt(det.beds, 300),
         meals: txt(c.meals, 600), note: txt(det.staff_note, 600),
@@ -106,12 +130,24 @@ Deno.serve(async (req: Request) => {
     if (!link) return out({ error: "invalid_link" }, 404);
     const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Casablanca" }).format(new Date());
     const t = day(todayIso) as number;
-    const rows = await db(`crm_clients?select=name,arrival,departure,guests,adults,children,infants,booking_status,meals,details` +
+    const rows = await db(`crm_clients?select=id,name,arrival,departure,guests,adults,children,infants,booking_status,meals,details` +
       `&user_id=eq.${link.owner_id}&deleted_at=is.null&departure=gte.${iso(t - 1)}&arrival=lte.${iso(t + WINDOW_DAYS)}&order=arrival.asc&limit=200`) || [];
+    const stays = staffView(rows, todayIso);
+    if (body.action === "report") {
+      if (limited("r:" + link.id, 30, 60 * 60000)) return out({ error: "rate_limited" }, 429);
+      const rep = cleanReport(body, stays.map((s) => s.id));
+      if (!rep) return out({ error: "invalid_report" }, 400);
+      const ins = await db(`staff_reports`, { method: "POST", headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ owner_id: link.owner_id, link_id: link.id, client_id: rep.client_id, kind: rep.kind, text: rep.text }) });
+      const row = Array.isArray(ins) ? ins[0] : ins;
+      return out({ ok: true, report: { id: row?.id, kind: rep.kind, client_id: rep.client_id, text: rep.text, created_at: row?.created_at } });
+    }
     if (!link.last_seen_at || Date.now() - Date.parse(link.last_seen_at) > 30 * 60000) {
       await db(`staff_links?id=eq.${link.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ last_seen_at: new Date().toISOString() }) }).catch(() => {});
     }
-    return out({ name: link.name, lang: link.lang, today: todayIso, stays: staffView(rows, todayIso), at: new Date().toISOString() });
+    // Les retours récents de CE lien (7 jours) : « chambres prêtes » déjà envoyé reste coché.
+    const reports = await db(`staff_reports?select=id,kind,client_id,text,created_at&link_id=eq.${link.id}&deleted_at=is.null&created_at=gte.${new Date(Date.now() - 7 * 86400000).toISOString()}&order=created_at.desc&limit=50`).catch(() => []) || [];
+    return out({ name: link.name, lang: link.lang, today: todayIso, stays, reports, at: new Date().toISOString() });
   } catch (_e) {
     return out({ error: "unavailable" }, 503);
   }

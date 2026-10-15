@@ -86,6 +86,12 @@ function group(p: Row, lang: "fr" | "en"): string {
   return parts.join(", ");
 }
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+/** « Thibaut Vauclare » → « Thibaut V. » (le nom complet d'un client ne part pas dans une notification). */
+export function shortName(n: unknown): string {
+  const p = String(n || "").trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return "";
+  return p.length > 1 ? p[0] + " " + p[p.length - 1].charAt(0).toUpperCase() + "." : p[0];
+}
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
 
@@ -126,6 +132,15 @@ export function buildAlert(p: Row, lang: "fr" | "en"): { title: string; body: st
     default:
       return null;
   }
+}
+
+// ── Retour de l'équipe (staff_reports) : « Saïd : chambres prêtes pour Thibaut V. », « Saïd signale : … » ──
+export function buildTeamAlert(r: Row, who: string, guest: string, lang: "fr" | "en"): { title: string; body: string; tag: string } | null {
+  if (!r || !r.kind) return null;
+  const fr = lang === "fr", name = who || (fr ? "L'équipe" : "The team"), tag = "team-" + (r.id || r.kind);
+  if (r.kind === "rooms_ready") return { tag, title: fr ? `${name} : chambres prêtes` : `${name}: rooms ready`, body: guest ? (fr ? "pour " : "for ") + guest : "" };
+  if (r.kind === "issue") { const t = String(r.text || "").replace(/\s+/g, " ").trim(); if (!t) return null; return { tag, title: fr ? `${name} signale un problème` : `${name} reports a problem`, body: clip(t, 180) + (guest ? (fr ? " · " : " · ") + guest : "") }; }
+  return null;
 }
 
 // ── Point du matin (cron :30 chaque heure → 8 h 30 heure de la villa) ────
@@ -244,7 +259,21 @@ Deno.serve(async (req: Request) => {
         if (make("fr") && subs.length) { stats.alerts++; const d = await deliver(subs, make); stats.sent += d.sent; stats.failed += d.failed; }
         await db(`email_inbox?id=eq.${r.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ notified_at: new Date().toISOString() }) });
       }
-      return out({ ok: true, stats });
+      // Retours de l'équipe (chambres prêtes, problème) : une alerte par ligne, au propriétaire du lien, jamais deux fois.
+      const reps: Row[] = await db(`staff_reports?select=id,owner_id,link_id,client_id,kind,text,created_at&notified_at=is.null&deleted_at=is.null&created_at=gte.${since}&order=created_at.asc&limit=50`).catch(() => []) || [];
+      const teamStats = { pending: reps.length, alerts: 0, sent: 0, failed: 0 };
+      for (const r of reps) {
+        const owner = String(r.owner_id || "");
+        if (owner && !subsBy.has(owner)) { subsBy.set(owner, await subsOf(owner)); }
+        const subs = owner ? subsBy.get(owner)! : [];
+        const link = (await db(`staff_links?select=name&id=eq.${r.link_id}&limit=1`).catch(() => []) || [])[0];
+        const stay = r.client_id ? (await db(`crm_clients?select=name&id=eq.${encodeURIComponent(r.client_id)}&user_id=eq.${owner}&limit=1`).catch(() => []) || [])[0] : null;
+        const guest = stay ? shortName(stay.name) : "";
+        const make = (lang: "fr" | "en") => buildTeamAlert(r, link?.name || "", guest, lang);
+        if (make("fr") && subs.length) { teamStats.alerts++; const d = await deliver(subs, make); teamStats.sent += d.sent; teamStats.failed += d.failed; }
+        await db(`staff_reports?id=eq.${r.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ notified_at: new Date().toISOString() }) });
+      }
+      return out({ ok: true, stats, team: teamStats });
     }
     if (body.action === "brief") {
       const key = req.headers.get("x-sync-key") || "";

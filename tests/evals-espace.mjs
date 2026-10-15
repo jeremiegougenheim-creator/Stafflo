@@ -58,7 +58,7 @@ check('alertes : désactiver = suppression douce de l’abonnement', /push_subsc
 check('installable : manifeste et icône écran d’accueil', esp.includes('<link rel="manifest" href="espace.webmanifest">') && esp.includes('<link rel="apple-touch-icon" href="assets/icon-180.png">'));
 check('pastille de synchro : seulement les passages gmail-sync', /sync_runs\?select=finished_at,ok&source=like\.gmail_sync\*/.test(script));
 // v4 — « À faire » : une ligne par action, tous séjours confondus
-check('« À faire » en tête du Jour (après la mise en route d’un compte neuf)', /h \+= setup;\s*h \+= todoCard\(\);\s*\/\/ v12/.test(script));
+check('« À faire » en tête du Jour (après la mise en route d’un compte neuf), puis les retours de l’équipe', /h \+= setup;\s*h \+= todoCard\(\);\s*h \+= teamCard\(\);/.test(script));
 check('« À faire » : retards et messages d’abord', /var rank = function \(x\) \{ return x\.k === 'msg' \? 0 : x\.late \? 1 : 2; \}/.test(script));
 check('« À faire » ouvre le séjour sur le bon panneau', /a === 'goto' && \(c = c \|\| pastById\(id\)\)/.test(script) && /id="st-' \+ esc\(c\.id\)/.test(script));
 check('une arrivée du jour n’apparaît qu’une fois', /c\.a > t && c\.a - t <= 21/.test(script));
@@ -139,11 +139,15 @@ check('v12 : une ligne d’état par séjour (ce qui manque), plus de rangée de
 check('v12 : séjour à plus de 14 jours → rien à signaler (ce n’est pas encore à faire)', /if \(missCk\.length && c\.a - t <= 14\)/.test(script));
 check('v12 : actions en grille carrée de 4 (règle v19), icône au-dessus du mot', /\.acts\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/.test(esp) && /\.act\{[^}]*flex-direction:column/.test(esp));
 check('v12 : ARIA hors de la barre d’onglets (3 onglets), bouton dans l’en-tête', /var TABS = \[\['jour', 'sun'\], \['sejours', 'calendar-event'\], \['maison', 'home'\]\]/.test(script) && /id="ariaBtn" data-a="tab" data-v="aria"/.test(esp) && /grid-template-columns:repeat\(3,1fr\)/.test(esp));
-check('v12 : Jour = à faire, à répondre, en ce moment, arrivées, départs — tuiles et dates fortes dans Séjours', /h \+= todoCard\(\);\s*\/\/ v12/.test(script) && !/eventsCard\(75, 3, false\)/.test(script) && /var h = '';\s*\/\/ v12 — les trois chiffres/.test(script));
+check('v12 : Jour = à faire, à répondre, en ce moment, arrivées, départs — tuiles et dates fortes dans Séjours', /h \+= teamCard\(\);[^\n]*\n\s*\/\/ v12/.test(script) && !/eventsCard\(75, 3, false\)/.test(script) && /var h = '';\s*\/\/ v12 — les trois chiffres/.test(script));
 check('v12 : Maison — alertes et accès équipe d’abord, la fiche repliée (6 sections)', /h = pushCard\(\) \+ eqCard\(\);/.test(script) && (script.match(/, '', true\);/g) || []).length === 6 && /<details class="card fold"><summary class="h">/.test(script));
 
 // ── v12 — livret dans les deux sens : la réponse du client s'affiche telle quelle ───
 check('v12 : la réponse du client (details.guest_answers) s’affiche dans le séjour, datée, jamais réécrite', /var ga = c\.details\.guest_answers;/.test(script) && /l\.guestAns \+ ' · ' \+ fmtDay\(dayNum\(String\(ga\.at\)\.slice\(0, 10\)\)\)/.test(script) && /flat\(ga\.arrival_time\)/.test(script));
+
+// ── v13 — équipe → base : retours de l'équipe (staff_reports) ─────────────
+check('v13 : retours de l’équipe lus avec les données (7 jours, RLS), carte « De l’équipe » = non vus, « Vu » = seen_at', /staff_reports\?select=id,link_id,client_id,kind,text,created_at,seen_at&deleted_at=is\.null/.test(script) && /filter\(function \(r\) \{ return !r\.seen_at; \}\)/.test(script) && /staff_reports\?id=eq\.' \+ encodeURIComponent\(r\.id\), \{ method: 'PATCH'[^\n]*seen_at: new Date/.test(script));
+check('v13 : « Chambres prêtes · qui · quand » sur le séjour, jamais inventé (seulement si un retour existe)', /var rr = readyReport\(c\);\s*if \(rr\) h \+= '<p class="state go">/.test(script));
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

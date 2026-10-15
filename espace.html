@@ -263,6 +263,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       loadErr: 'Impossible de charger les séjours.', retry: 'Réessayer',
       notes: 'Notes', mealsTxt: 'Repas', none: '—',
       inbox: 'À répondre', inboxNone: 'Aucun message client en attente.',
+      team: 'De l’équipe', teamRooms: 'chambres prêtes', teamIssue: 'signale', teamSeen: 'Vu', teamFor: 'pour', roomsReadyAt: 'Chambres prêtes · ',
       mtype: { message: 'Message', inquiry: 'Demande', request: 'Demande de réservation' },
       replyAirbnb: 'Répondre sur Airbnb', draft: 'Brouillon ARIA', drafting: 'ARIA rédige…', done: 'Traité',
       ago: function (h) { return h < 1 ? 'à l’instant' : h < 24 ? 'il y a ' + Math.round(h) + ' h' : 'il y a ' + Math.round(h / 24) + ' j'; },
@@ -348,6 +349,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       loadErr: 'Could not load the stays.', retry: 'Retry',
       notes: 'Notes', mealsTxt: 'Meals', none: '—',
       inbox: 'To answer', inboxNone: 'No guest message waiting.',
+      team: 'From the team', teamRooms: 'rooms ready', teamIssue: 'reports', teamSeen: 'Seen', teamFor: 'for', roomsReadyAt: 'Rooms ready · ',
       mtype: { message: 'Message', inquiry: 'Enquiry', request: 'Booking request' },
       replyAirbnb: 'Reply on Airbnb', draft: 'ARIA draft', drafting: 'ARIA is writing…', done: 'Done',
       ago: function (h) { return h < 1 ? 'just now' : h < 24 ? Math.round(h) + ' h ago' : Math.round(h / 24) + ' d ago'; },
@@ -382,7 +384,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
 
   /* ── État ─────────────────────────────────────────────────────────── */
   var U = { tab: 'jour', lang: 'fr', open: {}, panel: {}, toast: '', toastErr: false, busy: false, loginErr: '' };
-  var D = { stays: [], past: [], msgs: [], events: [], links: [], sync: null, loaded: false, online: navigator.onLine !== false, error: false, user: null };
+  var D = { stays: [], past: [], msgs: [], events: [], links: [], reports: [], sync: null, loaded: false, online: navigator.onLine !== false, error: false, user: null };
   var DR = {}; /* brouillons ARIA par message : { busy, text } */
   var RV = {}; /* panneau avis ouvert par séjour : 'ask' | 'host' */
   var A = { msgs: [], busy: false, draft: '' };
@@ -623,8 +625,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       api('staff_links?select=id,name,lang,created_at,last_seen_at&deleted_at=is.null&order=created_at.desc').catch(function () { return []; }),
       api('villa_settings?select=villa_name,city,country,owner_name,bedrooms,max_guests,house_facts_ref,house_facts&order=created_at.asc&limit=1').catch(function () { return []; }),
       api('staff?select=name,role,wa&active=eq.true&order=name.asc').catch(function () { return []; }),
-      LINKS ? LINKS.load() : null
+      LINKS ? LINKS.load() : null,
+      // Retours de l'équipe (chambres prêtes, problème) des 7 derniers jours — lus par le propriétaire (RLS).
+      api('staff_reports?select=id,link_id,client_id,kind,text,created_at,seen_at&deleted_at=is.null&created_at=gte.' + new Date(Date.now() - 7 * 86400000).toISOString() + '&order=created_at.desc&limit=50').catch(function () { return []; })
     ]).then(function (res) {
+      D.reports = res[8] || [];
       D.villa = (res[5] || [])[0] || null;
       D.staff = res[6] || [];
       var built = D.villa && D.villa.house_facts_ref === 'villa-facts.js' && HF ? HF.build(D.villa.house_facts) : null;
@@ -684,6 +689,24 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       method: 'PATCH', headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ archived_at: new Date().toISOString() })
     }).then(function () { D.msgs = D.msgs.filter(function (x) { return x !== m; }); toast(L().saved); })
       .catch(function () { toast(L().saveErr, true); }).finally(function () { U.busy = false; render(); });
+  }
+  function seenReport(r) {
+    U.busy = true; render();
+    return api('staff_reports?id=eq.' + encodeURIComponent(r.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' }, body: JSON.stringify({ seen_at: new Date().toISOString() }) })
+      .then(function () { r.seen_at = new Date().toISOString(); }).catch(function () { toast(L().saveErr, true); }).finally(function () { U.busy = false; render(); });
+  }
+  function linkName(id) { var k = (D.links || []).filter(function (x) { return x.id === id; })[0]; return k ? k.name : ''; }
+  function readyReport(c) { return (D.reports || []).filter(function (r) { return r.kind === 'rooms_ready' && String(r.client_id) === String(c.id); })[0] || null; }
+  /* Carte « De l'équipe » : les retours non vus, les plus récents d'abord. Un geste : « Vu ». */
+  function teamCard() {
+    var l = L(), list = (D.reports || []).filter(function (r) { return !r.seen_at; });
+    if (!list.length) return '';
+    return card('users-group', l.team, list.map(function (r) {
+      var c = r.client_id ? (byId(r.client_id) || pastById(r.client_id)) : null, who = linkName(r.link_id) || '?';
+      var what = r.kind === 'rooms_ready' ? l.teamRooms + (c ? ' ' + l.teamFor + ' ' + firstName(c) : '') : l.teamIssue + (c ? ' (' + firstName(c) + ')' : '') + (r.text ? ' : ' + r.text : '');
+      return '<div class="line" style="align-items:center"><span><b>' + esc(who) + '</b> · ' + esc(what) + '<br><span class="sub">' + esc(l.ago((Date.now() - new Date(r.created_at).getTime()) / 3600000)) + '</span></span>' +
+        '<button type="button" class="btn ghost" data-a="seen" data-v="' + esc(r.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' + esc(l.teamSeen) + '</button></div>';
+    }).join(''), String(list.length));
   }
   function draftFor(m) {
     if (DR[m.id] && DR[m.id].busy) return;
@@ -1335,6 +1358,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (missCk.length && c.a - t <= 14) { var due = Math.min.apply(null, missCk.map(function (x) { return x.due; })); // au-delà de 14 jours : rien à faire encore, rien à signaler
       h += '<p class="state wait"><i class="ti ti-clock" aria-hidden="true"></i><span>' + esc(l.stMissing + ' ' + missCk.map(function (x) { return low(x.k); }).join(', ') + ' · ' + (due === t ? l.inDays(0) : l.ckDue(fmtDay(due)))) + '</span></p>'; }
     if (ck.length && !cm.length && !lateCk.length && !missCk.length) h += '<p class="state go"><i class="ti ti-check" aria-hidden="true"></i><span>' + esc(l.stReady) + '</span></p>';
+    var rr = readyReport(c);
+    if (rr) h += '<p class="state go"><i class="ti ti-bed" aria-hidden="true"></i><span>' + esc(l.roomsReadyAt + (linkName(rr.link_id) ? linkName(rr.link_id) + ' · ' : '') + new Date(rr.created_at).toLocaleString(U.lang === 'en' ? 'en-GB' : 'fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</span></p>';
     if (open) h += stayDetail(c);
     return h + '</article>';
   }
@@ -1419,6 +1444,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var setup = setupCard(); // v10 : vide dès que le compte est prêt
     h += setup;
     h += todoCard();
+    h += teamCard(); // retours de l'équipe non vus (chambres prêtes, problème)
     // v12 — les tuiles (à venir, nuits, net) sont dans Séjours
     if (!setup) h += nudgeCard(); // la carte « Mise en route » propose déjà les alertes
     var free = D.msgs.filter(function (m) { return !m.client_id || !byId(m.client_id); });
@@ -1604,6 +1630,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'copydraft') { var dt = document.getElementById('dr-' + v); if (dt) copyText(dt.value); }
     else if (a === 'sendsaid' && c) { var tx3 = document.getElementById('tx-' + c.id); window.open('https://wa.me/' + saidWa() + '?text=' + encodeURIComponent(tx3 ? tx3.value : msgBrief(c)), '_blank', 'noopener'); }
     else if (a === 'reload') { D.loaded = false; render(); load(); }
+    else if (a === 'seen') { var rp = (D.reports || []).filter(function (x) { return x.id === v; })[0]; if (rp) seenReport(rp); }
     else if (a === 'chip') { var i = +v, ch = L().chips[i]; if (i === 3) { A.draft = ch + '\n\n'; render(); var ta = document.getElementById('ariaIn'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } } else ask(ch); }
     else if (a === 'ask') { var inp = document.getElementById('ariaIn'); ask(inp ? inp.value : ''); }
     else if (a === 'copymsg') { var m = A.msgs[+v]; if (m) copyText(m.t); }
