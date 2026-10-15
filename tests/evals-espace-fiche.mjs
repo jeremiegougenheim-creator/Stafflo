@@ -373,6 +373,54 @@ await r.ctx.close();
   await r.ctx.close();
 }
 
+// ── 5 septies. Retrouver un client : recherche sur tous les séjours, historique ─────────
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null };
+  const S = [
+    { id: 'h1', name: 'Ana Ruiz', arrival: iso(5), departure: iso(9), adults: 2, booking_status: 'confirmed', source: 'Airbnb', price: 2000, details: {} },
+    { id: 'h2', name: 'Anä  RUIZ', arrival: iso(-200), departure: iso(-196), adults: 2, booking_status: 'confirmed', source: 'Airbnb', price: 1800, details: { reservation_code: 'HMTEST0002', payouts: [{ amount_eur: 1800, expected_by: iso(-195) }] } },
+    { id: 'h3', name: 'Bob Stone', arrival: iso(-100), departure: iso(-97), adults: 4, booking_status: 'confirmed', source: 'Direct', phone: '+33 6 11 22 33 44', price: 2500, details: {} },
+    { id: 'h4', name: 'Robert S.', arrival: iso(30), departure: iso(33), adults: 4, booking_status: 'confirmed', source: 'Direct', phone: '+33611223344', price: 2600, details: {} },
+    { id: 'h5', name: 'Capucine', arrival: iso(-60), departure: iso(-57), booking_status: 'confirmed', source: 'Airbnb', details: {} },
+    { id: 'h6', name: 'Capucine', arrival: iso(60), departure: iso(63), booking_status: 'confirmed', source: 'Airbnb', details: {} },
+    { id: 'h7', name: 'Ana Lead', arrival: iso(70), departure: iso(73), booking_status: 'inquiry', source: 'Airbnb', details: {} },
+  ];
+  r = await open({ tab: 'sejours', villa: V, stays: S });
+  await r.page.waitForTimeout(250);
+  await r.page.click('#q-stays'); await r.page.keyboard.type('ana ruíz', { delay: 10 }); await r.page.waitForTimeout(150);
+  const res = await r.page.$$eval('#q-res article', (as) => as.map((a) => a.id));
+  const vis = await r.page.evaluate(() => ({ cal: !!document.querySelector('.cal') && getComputedStyle(document.querySelector('.cal').closest('.stack > *')).display, focus: document.activeElement && document.activeElement.id }));
+  check('recherche « ana ruíz » : les deux séjours d’Ana (accents, casse, espaces ignorés), le plus récent d’abord ; ni Bob ni une simple demande', res.join() === 'st-h1,st-h2', res);
+  check('pendant la frappe : le reste de la page est masqué, le champ garde le clavier (pas de redessin complet)', vis.cal === 'none' && vis.focus === 'q-stays', vis);
+  await r.page.fill('#q-stays', ''); await r.page.keyboard.type('611 22', { delay: 10 }); await r.page.waitForTimeout(100);
+  check('recherche par téléphone (chiffres) : Bob et Robert (même numéro écrit autrement)', (await r.page.$$eval('#q-res article', (as) => as.map((a) => a.id).sort().join())) === 'st-h3,st-h4');
+  await r.page.fill('#q-stays', 'hmtest0002'); await r.page.waitForTimeout(100);
+  check('recherche par code de réservation', (await r.page.$$eval('#q-res article', (as) => as.map((a) => a.id).join())) === 'st-h2');
+  await r.page.fill('#q-stays', 'zzz'); await r.page.waitForTimeout(100);
+  check('rien trouvé : message clair', /Aucun séjour ne correspond/.test(await r.page.innerText('#q-res')));
+  await r.page.fill('#q-stays', ''); await r.page.waitForTimeout(100);
+  check('recherche vidée : la page Séjours revient (calendrier visible)', await r.page.evaluate(() => getComputedStyle(document.querySelector('.cal').closest('.stack > *')).display !== 'none') && (await r.page.innerText('#q-res')) === '');
+  // Historique : sur le séjour à venir, l'autre séjour du même client ; jamais par prénom seul.
+  await r.page.click('[data-a="toggle"][data-id="h1"]'); await r.page.waitForTimeout(100);
+  let th = await r.page.innerText('#st-h1');
+  check('historique : « Un autre séjour » sur le séjour d’Ana (nom complet identique) ; montant du séjour dans le détail', /Un autre séjour\s*:/.test(th) && /Net reçu :\s*2\s?000 €/.test(th), th.slice(0, 300));
+  await r.page.click('[data-a="toggle"][data-id="h4"]'); await r.page.waitForTimeout(100);
+  check('historique : même téléphone, nom différent → reconnu', /Un autre séjour\s*:/.test(await r.page.innerText('#st-h4')));
+  await r.page.click('[data-a="toggle"][data-id="h6"]'); await r.page.waitForTimeout(100);
+  check('prénom seul (« Capucine ») : jamais rapproché d’un autre séjour', !/autre séjour/i.test(await r.page.innerText('#st-h6')));
+  // Un séjour ancien, ouvert depuis la recherche : versement visible, rien à envoyer, modifiable.
+  await r.page.fill('#q-stays', 'bob'); await r.page.waitForTimeout(100);
+  await r.page.click('#q-res [data-a="toggle"][data-id="h3"]'); await r.page.waitForTimeout(150);
+  const tp = await r.page.innerText('#q-res');
+  check('séjour terminé ouvert depuis la recherche : dates, autre séjour du client, aucun message à envoyer (brief, départ)', /Un autre séjour/.test(tp) && !(await r.page.$('#q-res [data-v="brief"]')) && !(await r.page.$('#q-res [data-v="depart"]')) && !!(await r.page.$('#q-res [data-v="edit"]')), tp.slice(0, 300));
+  await r.page.click('#q-res [data-a="panel"][data-id="h3"][data-v="edit"]'); await r.page.waitForSelector('#q-res #ed-net-h3');
+  await r.page.fill('#q-res #ed-net-h3', '2400'); await r.page.click('#q-res [data-a="editsave"][data-id="h3"]'); await r.page.waitForTimeout(300);
+  const pe = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('séjour terminé : montant corrigé (price, commission 0), sur le bon séjour', !!pe && /id=eq\.h3/.test(pe.url) && pe.body.price === 2400 && pe.body.commission === 0, pe);
+  check('0 erreur', !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
 // ── 6. Commande du client (livret) : visible, à confirmer, chiffre « extras commandés » ────
 const ORD = { items: [{ id: 'm1', kind: 'meal', n: ['Dîner', 'Dinner'], q: 2, unit: 850, sub: 1700 }, { id: 'x0', kind: 'extra', n: ['Transfert aéroport', 'Airport transfer'], q: 1, unit: 400, sub: 400 }], total: 2100, cur: 'MAD', at: new Date(Date.now() - 3600e3).toISOString() };
 r = await open({ tab: 'jour', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT },

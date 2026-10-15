@@ -155,7 +155,7 @@ check('v13 : la sauvegarde pose house_facts + house_facts_ref sur la ligne du co
 check('v13 : un anglais vide reste vide (jamais traduit en silence) ; la traduction est explicite, par ai-proxy write_en', /return \[S\(a\[0\]\), S\(a\[1\]\)\];/.test(script) && /task: 'write_en', system: sys/.test(script) && /if \(!it \|\| S\(feGet\(it\.path\)\)\) return;/.test(script));
 check('v13 : une fiche neuve est vide — aucune valeur par défaut d’une autre villa', /function feBlank\(\) \{ return \{ VILLA: \{ name: '', host: ''/.test(script));
 check('v13 : les clés que l’éditeur ne montre pas (QR…) sont conservées', /clés inconnues de l'éditeur \(QR…\) conservées/.test(script));
-check('v13 : l’écran n’est pas redessiné pendant la saisie (le clavier reste ouvert) ; pas de rechargement périodique pendant l’édition', /fePut\(fp, e\.target\.value\);/.test(script) && /!U\.busy && !FE\.on\) load\(\)/.test(script));
+check('v13 : l’écran n’est pas redessiné pendant la saisie (le clavier reste ouvert) ; pas de rechargement périodique pendant l’édition', /fePut\(fp, e\.target\.value\);/.test(script) && /!U\.busy && !FE\.on && !typing\(\)\) load\(\)/.test(script) && /U\.newStay \|\| Object\.keys\(U\.panel\)\.some\(function \(k\) \{ return U\.panel\[k\] === 'edit'; \}\)/.test(script));
 
 for (const f of ['espace.html', 'livret.html', 'equipe.html']) { const s = fs.readFileSync(path.join(root, f), 'utf8'); check(f + ' : chaque <style> est refermé (sinon tout le script devient du texte)', (s.match(/<style[\s>]/g) || []).length === (s.match(/<\/style>/g) || []).length); }
 console.log(`\n${pass}/${pass + fail} PASS`);

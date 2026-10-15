@@ -106,6 +106,8 @@ textarea.t,input.t,select.t{width:100%;border:1.5px solid var(--line);border-rad
 select.t{min-height:44px;-webkit-appearance:none;appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%238E6414' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 12px center;padding-right:32px;color:var(--ink)}
 textarea.t{min-height:150px;resize:vertical}
 input.t{min-height:44px}
+.qbox{position:relative}.qbox>.ti{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px;pointer-events:none}.qbox input.t{padding-left:42px;font-size:16px}
+.stack.q-on>:not(.qbox):not(#q-res){display:none}
 .row2{display:flex;gap:8px;flex-wrap:wrap}
 .row2 > *{flex:1 1 auto}
 .line{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;font-size:14px;padding:7px 0;border-bottom:1px solid var(--line2)}
@@ -335,6 +337,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       pushUnsupported: 'Ce navigateur ne gère pas les alertes. Utilisez Safari (iPhone, depuis l’écran d’accueil) ou Chrome.',
       pushOn: 'Alertes activées — un test arrive', pushOff: 'Alertes désactivées sur cet appareil', pushErr: 'Activation impossible — réessayez', pushTestSent: 'Test envoyé',
       nudge: 'Soyez prévenu des demandes Airbnb (24 h pour répondre) sans ouvrir l’app.', nudgeHow: 'Voir comment', later: 'Plus tard',
+      cl: { ph: 'Rechercher un client : nom, téléphone, code', aria: 'Rechercher un client', found: function (n) { return n > 1 ? n + ' séjours trouvés' : '1 séjour trouvé'; }, none: 'Aucun séjour ne correspond.', other: function (n) { return n > 1 ? n + ' autres séjours' : 'Un autre séjour'; } },
       ed: { net: 'Net reçu', paid: 'Payé par le client', comm: function (p, net) { return 'L’app complète déduit encore ' + p + ' % de ce montant (soit ' + net + ' net). Si ce montant est déjà votre net :'; }, netOk: 'c’est mon net (commission 0)', comp: 'Séjour offert : non compté dans vos revenus.', errAmt: 'Montant invalide.' },
       editTitle: 'Modifier le séjour', fAdults: 'Adultes', fChildren: 'Enfants', fInfants: 'Bébés', fPhone: 'Téléphone (WhatsApp)', fMeals: 'Repas commandés', fNotes: 'Notes', save: 'Enregistrer',
       mealsPh: 'Ex. : mar. dîner tajine poulet · mer. brunch · jeu. dîner couscous', notesPh: 'Anniversaire, allergies, préférences… (privé : l’équipe ne le voit pas)',
@@ -447,6 +450,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       pushUnsupported: 'This browser does not support alerts. Use Safari (iPhone, from the Home Screen) or Chrome.',
       pushOn: 'Alerts on — a test is on its way', pushOff: 'Alerts off on this device', pushErr: 'Could not turn alerts on — try again', pushTestSent: 'Test sent',
       nudge: 'Be told about Airbnb enquiries (24 h to reply) without opening the app.', nudgeHow: 'Show me how', later: 'Later',
+      cl: { ph: 'Search a guest: name, phone, code', aria: 'Search a guest', found: function (n) { return n > 1 ? n + ' stays found' : '1 stay found'; }, none: 'No stay matches.', other: function (n) { return n > 1 ? n + ' other stays' : 'One other stay'; } },
       ed: { net: 'Net received', paid: 'Paid by the guest', comm: function (p, net) { return 'The full app still deducts ' + p + '% from this amount (' + net + ' net). If this amount is already your net:'; }, netOk: 'it is my net (no commission)', comp: 'Complimentary stay: not counted in your revenue.', errAmt: 'Invalid amount.' },
       editTitle: 'Edit the stay', fAdults: 'Adults', fChildren: 'Children', fInfants: 'Infants', fPhone: 'Phone (WhatsApp)', fMeals: 'Meals ordered', fNotes: 'Notes', save: 'Save',
       mealsPh: 'E.g.: Tue dinner chicken tagine · Wed brunch · Thu dinner couscous', notesPh: 'Birthday, allergies, preferences… (private: the team does not see it)',
@@ -757,6 +761,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         var a = dayNum(c.arrival), d = dayNum(c.departure);
         return a != null && d != null && d > a && d < t - 1 && d >= t - 45;
       }).map(decorate).sort(function (x, y) { return y.d - x.d; });
+      // Tous les séjours fermes, du plus récent au plus ancien : recherche et historique d'un client.
+      // Mêmes objets que D.stays / D.past (decorate les modifie en place) : une modification se voit partout.
+      D.all = (rows || []).filter(function (c) {
+        if (FIRM_OUT.indexOf(String(c.booking_status || '').toLowerCase()) > -1) return false;
+        var a = dayNum(c.arrival), d = dayNum(c.departure);
+        return a != null && d != null && d > a;
+      }).map(decorate).sort(function (x, y) { return y.a - x.a; });
       D.loaded = true; D.online = true;
       var s = readSession(); D.user = s && s.user;
       // Lien personnel du livret prêt pour chaque séjour affiché, avant le rendu.
@@ -1100,7 +1111,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       if (ar !== String(c.arrival || '') || de !== String(c.departure || '')) {
         var a = dayNum(ar), d = dayNum(de);
         if (!iso.test(ar) || !iso.test(de) || !(d > a)) { toast(k.errDates, true); return; }
-        var clash = D.stays.concat(D.past || []).filter(function (x) { return String(x.id) !== String(c.id) && x.a < d && a < x.d; })[0];
+        var clash = (D.all || D.stays.concat(D.past || [])).filter(function (x) { return String(x.id) !== String(c.id) && x.a < d && a < x.d; })[0];
         if (clash) { toast(k.errOverlap(clash.name), true); return; }
         body.arrival = ar; body.departure = de;
       }
@@ -1622,7 +1633,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var t = todayNum(), l = L(), ck = checks(c), open = !!U.open[c.id];
     var when = mode === 'in' ? (c.d === t ? l.leavesToday + ' · ' + l.nights(c.n) : (c.a === t ? l.arrivesToday + ' · ' + l.nights(c.n) : l.night(Math.min(c.n, t - c.a + 1), c.n)) + ' · ' + l.leaves(fmtDay(c.d))) : fmtDay(c.a) + ' → ' + fmtDay(c.d) + ' · ' + l.nights(c.n);
     if (c.a < t) ck = []; // séjour commencé : plus de « téléphone / livret / repas / brief en retard »
-    var right = mode === 'in' ? '' : '<span class="pill ' + (c.a - t <= 2 ? 't-alert' : 'gold') + '">' + esc(l.inDays(c.a - t)) + '</span>';
+    var right = mode === 'in' || mode === 'past' ? '' : '<span class="pill ' + (c.a - t <= 2 ? 't-alert' : 'gold') + '">' + esc(l.inDays(c.a - t)) + '</span>';
     var h = '<article class="stay ' + tone(c) + '" id="st-' + esc(c.id) + '"><button type="button" class="top" data-a="toggle" data-id="' + esc(c.id) + '" aria-expanded="' + open + '">' +
       '<span><span class="nm">' + esc(c.name) + '</span><br><span class="dt">' + esc(when) + '</span></span>' +
       '<span class="right">' + right + '<span class="sub">' + esc(c.pax ? l.pax(c.pax) : '?') + (c.source ? ' · ' + esc(c.source) : '') + '</span></span></button>';
@@ -1649,6 +1660,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var l = L(), pn = U.panel[c.id] || '', h = '';
     var comp = l.composition(c.ad, c.ch, c.inf);
     if (comp) h += '<span class="sub">' + esc(comp) + '</span>';
+    // Montant du séjour (propriétaire seulement : la vue équipe ne lit jamais ces champs).
+    var fn = finOf(c), gt = fn && fn.guestTotal != null && isFinite(+fn.guestTotal) ? +fn.guestTotal : null;
+    if (c.is_comp) h += '<span class="sub">' + esc(l.ed.comp) + '</span>';
+    else if (+c.price > 0) h += '<span class="sub"><b>' + esc(l.ed.net + (U.lang === 'en' ? ':' : ' :')) + '</b> ' + esc(euro(+c.price) + (gt && Math.round(gt) !== Math.round(+c.price) ? ' · ' + l.ed.paid.toLowerCase() + ' ' + euro(gt) : '')) + '</span>';
     var colon = U.lang === 'en' ? ':' : ' :';
     // v12 — ce que le client a répondu depuis son livret (livret-view) : affiché tel quel, jamais réécrit.
     var ga = c.details.guest_answers;
@@ -1671,6 +1686,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       h += '<span class="sub"' + (rgm ? ' style="color:var(--house)"' : '') + '><i class="ti ti-id" aria-hidden="true"></i> <b>' + esc(rgl.line + colon) + '</b> ' +
         esc(rgm ? rgl.got(rgm.travellers, fmtDay(dayNum(String(rgm.submitted_at).slice(0, 10)))) + (c.details.regDeclaredAt ? ' · ' + rgl.decl + fmtDay(dayNum(String(c.details.regDeclaredAt).slice(0, 10))) : '') : rgl.none) + '</span>';
     }
+    var hist = otherStays(c);
+    if (hist.length) h += '<span class="sub"><i class="ti ti-history" aria-hidden="true"></i> <b>' + esc(l.cl.other(hist.length) + colon) + '</b> ' +
+      esc(hist.slice(0, 4).map(function (x) { return fmtDay(x.a) + ' → ' + fmtDay(x.d); }).join(' · ') + (hist.length > 4 ? ' …' : '')) + '</span>';
     if (String(c.meals || '').trim()) h += '<span class="sub"><b>' + esc(l.mealsTxt) + colon + '</b> ' + esc(flat(c.meals).slice(0, 300)) + '</span>';
     var notes = [c.notes, c.remarks].filter(function (x) { return x && String(x).trim(); }).map(flat).join(' · ');
     if (notes) h += '<span class="sub"><b>' + esc(l.notes) + colon + '</b> ' + esc(notes.slice(0, 300)) +
@@ -1685,12 +1703,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     h += '<div class="acts">' +
       (HAS_FACTS && LINKS && LINKS.get(c.id) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="livret" aria-pressed="' + (pn === 'livret') + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</button>' : '') +
       (wa ? '<a class="act" href="https://wa.me/' + wa + '" target="_blank" rel="noopener" title="WhatsApp"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
-      (c.a < todayNum() || !HAS_FACTS ? ['brief'] : (['meals', 'arrival', 'passports', 'brief'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'passports' ? !regOf(c) && (!!passRule() || (regOnF() && !!(LINKS && LINKS.get(c.id)))) : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
+      (c.d < todayNum() - 1 ? [] : c.a < todayNum() || !HAS_FACTS ? ['brief'] : (['meals', 'arrival', 'passports', 'brief'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'passports' ? !regOf(c) && (!!passRule() || (regOnF() && !!(LINKS && LINKS.get(c.id)))) : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
         return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', brief: 'clipboard-list' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
       }).join('') +
       (regOnF() && regOf(c) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="reg" aria-pressed="' + (pn === 'reg') + '"><i class="ti ti-id" aria-hidden="true"></i>' + esc(l.act.reg) + '</button>' : '') +
       (wa ? '' : '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="phone" aria-pressed="' + (pn === 'phone') + '"><i class="ti ti-phone" aria-hidden="true"></i>' + esc(l.act.phone) + '</button>') +
-      (HAS_FACTS && c.d - todayNum() <= 2 ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="depart" aria-pressed="' + (pn === 'depart') + '"><i class="ti ti-door-exit" aria-hidden="true"></i>' + esc(l.actDepart) + '</button>' : '') +
+      (HAS_FACTS && c.d - todayNum() <= 2 && c.d >= todayNum() - 1 ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="depart" aria-pressed="' + (pn === 'depart') + '"><i class="ti ti-door-exit" aria-hidden="true"></i>' + esc(l.actDepart) + '</button>' : '') +
       '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="edit" aria-pressed="' + (pn === 'edit') + '"><i class="ti ti-pencil" aria-hidden="true"></i>' + esc(l.act2.edit) + '</button>' +
       (HAS_FACTS && mealsOn() ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="bill" aria-pressed="' + (pn === 'bill') + '"><i class="ti ti-receipt" aria-hidden="true"></i>' + esc(l.act2.bill) + '</button>' : '') +
       '</div>';
@@ -1793,6 +1811,37 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       (off >= 0 ? '<span style="margin-left:auto;font-weight:600;color:var(--gm)">' + esc(k.free(free)) + '</span>' : '') + '</div>';
     return '<section class="card span"><div class="h"><span class="i"><i class="ti ti-calendar-month" aria-hidden="true"></i></span><h2>' + esc(k.title) + '</h2></div><div class="b">' + h + '</div></section>';
   }
+  /* ── Clients : recherche et historique ───────────────────────────────
+        Recherche sur tous les séjours (nom, téléphone, code de réservation), accents et casse ignorés.
+        « Le même client » = nom complet identique (deux mots au moins) ou même téléphone (8 chiffres
+        au moins) — jamais un rapprochement approché. */
+  var fold = function (x) { return String(x == null ? '' : x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); };
+  function sameGuest(x, c) {
+    if (!x || !c || String(x.id) === String(c.id)) return false;
+    var n = fold(c.name), p = waDigits(c.phone);
+    return (n.indexOf(' ') > 0 && fold(x.name) === n) || (p.length >= 8 && waDigits(x.phone) === p);
+  }
+  function otherStays(c) { return (D.all || []).filter(function (x) { return sameGuest(x, c); }); }
+  var qOn = function () { return fold(U.q).length >= 2; };
+  function qMatch(c, q) {
+    var dg = q.replace(/\D/g, ''), fin = c.details.financial || {};
+    return fold(c.name).indexOf(q) > -1 || (dg.length >= 4 && dg.length >= q.replace(/[\s+().-]/g, '').length && waDigits(c.phone).indexOf(dg) > -1) ||
+      (q.length >= 6 && (fold(c.details.reservation_code).indexOf(q) > -1 || fold(fin.bookingRef).indexOf(q) > -1));
+  }
+  function qResults() {
+    if (!qOn()) return '';
+    var l = L(), q = fold(U.q), t = todayNum();
+    var res = (D.all || []).filter(function (c) { return qMatch(c, q); });
+    if (!res.length) return '<section class="card"><div class="b"><p class="empty">' + esc(l.cl.none) + '</p></div></section>';
+    return card('search', l.cl.found(res.length), res.slice(0, 30).map(function (c) { return stayCard(c, c.d < t - 1 ? 'past' : c.a <= t ? 'in' : 'next'); }).join(''), res.length > 30 ? '30 / ' + res.length : '');
+  }
+  /* Frappe dans la recherche : seuls les résultats sont redessinés (le clavier reste ouvert) ; le reste
+     de la page est masqué, pas retiré. */
+  function qInput(v) {
+    U.q = v;
+    var st = document.querySelector('#main .stack'); if (st) st.classList.toggle('q-on', qOn());
+    var box = document.getElementById('q-res'); if (box) box.innerHTML = qResults();
+  }
   /* Nouveau séjour (réservation directe, ou séjour Airbnb pas encore arrivé par email). Le montant net
      (ce que reçoit le propriétaire) va dans price, comme pour les séjours de la synchro ; le prix payé
      par le client, s'il diffère, est gardé à part (details.financial.guestTotal) — jamais confondus. */
@@ -1821,7 +1870,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var iso = /^\d{4}-\d{2}-\d{2}$/, a = dayNum(v.arr), d = dayNum(v.dep);
     if (!v.name) { v.err = k.errName; return render(); }
     if (!iso.test(v.arr) || !iso.test(v.dep) || !(d > a)) { v.err = k.errDates; return render(); }
-    var clash = D.stays.concat(D.past || []).filter(function (c) { return c.a < d && a < c.d; })[0];
+    var clash = (D.all || D.stays.concat(D.past || [])).filter(function (c) { return c.a < d && a < c.d; })[0];
     if (clash) { v.err = k.errOverlap(clash.name); return render(); }
     var int = function (x) { var n = parseInt(x, 10); return isFinite(n) && n >= 0 ? n : null; }, num = function (x) { var n = parseFloat(String(x).replace(',', '.')); return isFinite(n) && n >= 0 ? n : null; };
     var ad = int(v.adults), ch = int(v.children), net = num(v.net), paid = num(v.paid);
@@ -1855,6 +1904,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       if (ords.length) h += '<section class="card span"><div class="b"><div class="line" style="border:0"><span><i class="ti ti-shopping-bag" aria-hidden="true"></i> ' + esc(l.ordKpi + ' · ' + l.ordStays(ords.length)) + '</span><b>' + esc(Object.keys(byCur).map(function (k) { return money(byCur[k], k); }).join(' + ')) + '</b></div></div></section>';
     }
     h += U.newStay ? newStayPanel() : '<div class="span"><button type="button" class="btn gold full" data-a="nsopen"><i class="ti ti-calendar-plus" aria-hidden="true"></i>' + esc(l.ns.btn) + '</button></div>';
+    if ((D.all || []).length) h += '<div class="span qbox"><i class="ti ti-search" aria-hidden="true"></i><input class="t" type="search" id="q-stays" enterkeyhint="search" autocomplete="off" value="' + esc(U.q || '') + '" placeholder="' + esc(l.cl.ph) + '" aria-label="' + esc(l.cl.aria) + '"></div>' +
+      '<div class="span" id="q-res" aria-live="polite">' + qResults() + '</div>';
     h += calCard();
     h += card('calendar-event', l.upcomingAll, list.length ? list.map(function (c) { return stayCard(c, c.a <= t ? 'in' : 'next'); }).join('') : '<p class="empty">' + esc(l.noNext) + '</p>', list.length ? String(list.length) : '');
     h += eventsCard(366, 0, true);
@@ -2204,6 +2255,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var loggedOut = D.loaded && !D.user && !D.error;
     if (loggedOut) { main.innerHTML = viewLogin(); document.getElementById('tabs').innerHTML = ''; document.getElementById('title').textContent = 'Stafflo'; return; }
     main.innerHTML = '<div class="stack' + (U.tab === 'aria' || (U.tab === 'maison' && FE.on) ? ' one' : '') + '">' + (U.tab === 'jour' ? viewJour() : U.tab === 'sejours' ? viewSejours() : U.tab === 'aria' ? viewAria() : viewMaison()) + '</div>';
+    if (U.tab === 'sejours' && qOn()) { var qs = main.querySelector('.stack'); if (qs) qs.classList.add('q-on'); }
     // Pastille = les lignes urgentes de « À faire » (message, en retard, aujourd'hui) + les messages sans séjour.
     var late = (D.loaded && D.user ? todoItems().filter(function (x) { return x.k === 'msg' || x.late || x.due <= t; }).length : 0) +
       D.msgs.filter(function (m) { return !m.client_id || !byId(m.client_id); }).length;
@@ -2216,6 +2268,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
 
   /* ── Événements ───────────────────────────────────────────────────── */
   var byId = function (id) { return D.stays.filter(function (c) { return String(c.id) === String(id); })[0]; };
+  var allById = function (id) { return (D.all || []).filter(function (c) { return String(c.id) === String(id); })[0]; };
   var pastById = function (id) { return (D.past || []).filter(function (c) { return String(c.id) === String(id); })[0]; };
   function copyText(txt) {
     var done = function () { toast(L().copied); };
@@ -2225,7 +2278,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function fallbackCopy(txt) { var ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove(); }
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-a]'); if (!el) return;
-    var a = el.getAttribute('data-a'), v = el.getAttribute('data-v'), id = el.getAttribute('data-id'), c = id ? byId(id) : null;
+    var a = el.getAttribute('data-a'), v = el.getAttribute('data-v'), id = el.getAttribute('data-id'), c = id ? (byId(id) || allById(id)) : null; // séjour ancien : ouvert depuis la recherche
     if (a === 'tab') { U.tab = v; try { history.replaceState(null, '', '#' + v); } catch (er) {} render(); window.scrollTo(0, 0); }
     else if (a === 'lang') { U.lang = v; try { localStorage.setItem(LANG_KEY, v); } catch (er) {} render(); }
     else if (a === 'toggle' && c) { U.open[c.id] = !U.open[c.id]; render(); }
@@ -2305,6 +2358,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (fp && FE.on && e.target.type === 'checkbox') fePut(fp, !!e.target.checked);
   });
   document.addEventListener('input', function (e) {
+    if (e.target && e.target.id === 'q-stays') { qInput(e.target.value); return; }
     // fiche maison : chaque frappe met à jour la copie en édition, sans redessiner (le clavier reste ouvert)
     var fp = e.target && e.target.getAttribute && e.target.getAttribute('data-fe');
     if (fp && FE.on && e.target.type !== 'checkbox') {
@@ -2339,7 +2393,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   pushState().then(render);
   /* Clic sur une alerte alors que l'Espace est déjà ouvert : recharger les données. */
   if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.type === 'stafflo-reload' && D.user && !FE.on) load(); });
-  setInterval(function () { if (document.visibilityState === 'visible' && D.user && !U.busy && !FE.on) load(); }, 5 * 60000);
+  // Rafraîchissement toutes les 5 min — jamais pendant une saisie (recherche, nouveau séjour, modification) : rien de tapé n'est perdu.
+  var typing = function () { var ae = document.activeElement; return !!(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && document.getElementById('main').contains(ae)) || U.newStay || Object.keys(U.panel).some(function (k) { return U.panel[k] === 'edit'; }); };
+  setInterval(function () { if (document.visibilityState === 'visible' && D.user && !U.busy && !FE.on && !typing()) load(); }, 5 * 60000);
 })();
 </script>
 </body>
