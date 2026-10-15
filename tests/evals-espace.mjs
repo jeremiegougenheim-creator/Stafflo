@@ -8,6 +8,7 @@
 // 3. L'Espace charge la fiche maison, et ARIA reçoit la fiche + les séjours.
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -106,6 +107,32 @@ check('sw.js ne met pas espace.html en cache', sw.includes("url.includes('espace
 check('sw.js affiche les alertes et ouvre l’Espace au clic', /addEventListener\('push'/.test(sw) && /addEventListener\('notificationclick'/.test(sw) && /espace\.html/.test(sw));
 const man = JSON.parse(fs.readFileSync(path.join(root, 'espace.webmanifest'), 'utf8'));
 check('manifeste : démarre sur l’Espace, plein écran, icônes PNG', man.start_url === '/espace.html' && man.display === 'standalone' && man.icons.every((i) => fs.existsSync(path.join(root, i.src))));
+
+// ── v11 (15/10/2026) — revue UX par intervenant ───────────────────────────
+// Ce que la vue équipe affiche en « ? » (heure d'arrivée, couchages) devient une vérification du propriétaire,
+// avec sa ligne « À faire » qui ouvre Modifier.
+check('v11 : « Infos équipe » = heure d’arrivée ET couchages, due J-2', /mk\('team', !!\(String\(c\.details\.arrival_time \|\| ''\)\.trim\(\) && String\(c\.details\.beds \|\| ''\)\.trim\(\)\), c\.a - 2\)/.test(script));
+check('v11 : « À faire » → Infos équipe ouvre le panneau Modifier', /depart: 'depart', team: 'edit' \}\[v\]/.test(script) && /team: 'Heure d’arrivée et couchages pour l’équipe'/.test(script) && /team: 'Arrival time and beds for the team'/.test(script) && /team: 'clock'/.test(script));
+// Citation d'un message : sans les adresses web qu'Airbnb glisse dans le texte.
+{
+  const i = script.indexOf('  function cleanQuote('), j = script.indexOf('\n', i);
+  const ctx = {}; vm.createContext(ctx); vm.runInContext(script.slice(i, j) + '\nthis.f = cleanQuote;', ctx);
+  check('v11 : citation sans URL (« Review enquiry [https://…] » → « Review enquiry »)', ctx.f('Thank you! Review enquiry [https://www.airbnb.co.uk/hosting/thread/26944?thread_type=home_booking&c=.pi80.x] ') === 'Thank you! Review enquiry' && ctx.f('see https://a.b/c now') === 'see now' && ctx.f('') === '' && ctx.f(null) === '');
+  check('v11 : la citation affichée et le brouillon ARIA utilisent le texte nettoyé', /text: cleanQuote\(p\.guest_message\)/.test(script));
+}
+// Dates hors de l'année en cours : avec l'année.
+{
+  const i = script.indexOf('  function fmtDay('), j = script.indexOf('\n  }\n', i);
+  const ctx = { U: { lang: 'fr' }, Date }; vm.createContext(ctx); vm.runInContext(script.slice(i, j + 5) + '\nthis.f = fmtDay;', ctx);
+  const y = new Date().getFullYear(), d = (yy) => Date.UTC(yy, 5, 10) / 86400000;
+  check('v11 : « 10 juin » dans l’année en cours, « 10 juin 2027 » l’année suivante', !/\d{4}/.test(ctx.f(d(y))) && new RegExp(String(y + 1)).test(ctx.f(d(y + 1))));
+}
+check('v11 : notes longues — la suite se déplie, rien n’est coupé net', /notes\.length > 300 \? '<details class="more"><summary>' \+ esc\(l\.more\) \+ '<\/summary>' \+ esc\(notes\.slice\(300\)\)/.test(script));
+check('v11 : pastille Jour = lignes urgentes de « À faire » + messages sans séjour', /todoItems\(\)\.filter\(function \(x\) \{ return x\.k === 'msg' \|\| x\.late \|\| x\.due <= t; \}\)\.length/.test(script));
+check('v11 : carte Départs sans recopier le texte de la fiche', !/departures, deps\.map[\s\S]{0,400}Arrivée et départ/.test(script));
+check('v11 : ancien générateur de planning derrière interrupteur (données jamais vues par l’équipe)', /stafflo_planning_old/.test(script) && /if \(oldPlanning\) h \+= card\('calendar-user', l\.mPlanning/.test(script));
+check('v11 : « Ce qu’ARIA sait de la maison » se présente comme dépliable (chevron)', /<details class="dig"><summary><i class="ti ti-chevron-right"/.test(script));
+check('v11 : écran de connexion titré « Espace Stafflo »', /textContent = 'Espace Stafflo'; return; \}/.test(script));
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v522 (fiche maison en base, livret par lien personnel)
-const CACHE = 'stafflo-v522';
+// Stafflo Service Worker — v523 (revue UX par intervenant : Espace, livret)
+const CACHE = 'stafflo-v523';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
