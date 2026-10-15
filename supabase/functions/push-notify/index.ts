@@ -11,6 +11,8 @@
 //                              jamais la base et cette fonction).
 //   { action: "test" }       + JWT utilisateur   → alerte d'essai sur les appareils de
 //                              l'utilisateur.
+//                              Aussi : retours de l'équipe (staff_reports) et commandes
+//                              des clients depuis leur livret (guest_notices).
 //   { action: "brief" }      + en-tête x-sync-key → cron du matin : une notification
 //                              « aujourd'hui » (arrivées, départs, à faire, messages,
 //                              avis), seulement s'il y a quelque chose. { dry: true } = aperçu.
@@ -143,6 +145,16 @@ export function buildTeamAlert(r: Row, who: string, guest: string, lang: "fr" | 
   return null;
 }
 
+// ── Commande d'un client depuis son livret (guest_notices) : « Claire V. a commandé · 2 500 MAD » ──
+export function buildOrderAlert(n: Row, lang: "fr" | "en"): { title: string; body: string; tag: string } | null {
+  const p = n && n.payload; if (!p || !(+p.total > 0)) return null;
+  const fr = lang === "fr", who = String(p.guest || "").trim() || (fr ? "Un client" : "A guest");
+  const amount = (+p.total).toLocaleString(fr ? "fr-FR" : "en-GB", { maximumFractionDigits: 2 }) + (p.cur ? " " + p.cur : "");
+  const items = (Array.isArray(p.items) ? p.items : []).map((x: Row) => x.q + " × " + String(Array.isArray(x.n) ? (fr ? x.n[0] : x.n[1] || x.n[0]) : x.n || "").trim()).filter(Boolean).join(" · ");
+  return { tag: "order-" + (n.client_id || n.id), title: fr ? `${who} a commandé · ${amount}` : `${who} ordered · ${amount}`,
+    body: clip(items, 160) + (fr ? " — à confirmer dans votre Espace" : " — confirm in your Espace") };
+}
+
 // ── Point du matin (cron :30 chaque heure → 8 h 30 heure de la villa) ────
 // Même logique que l'Espace : vérifications avant arrivée (téléphone et livret
 // J-3, repas J-2, brief J-1), message de départ, avis Airbnb (14 jours), messages
@@ -273,7 +285,18 @@ Deno.serve(async (req: Request) => {
         if (make("fr") && subs.length) { teamStats.alerts++; const d = await deliver(subs, make); teamStats.sent += d.sent; teamStats.failed += d.failed; }
         await db(`staff_reports?id=eq.${r.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ notified_at: new Date().toISOString() }) });
       }
-      return out({ ok: true, stats, team: teamStats });
+      // Commandes des clients (livret) : une alerte par commande nouvelle ou modifiée, au propriétaire, jamais deux fois.
+      const notes: Row[] = await db(`guest_notices?select=id,owner_id,client_id,kind,payload,created_at&notified_at=is.null&deleted_at=is.null&created_at=gte.${since}&order=created_at.asc&limit=50`).catch(() => []) || [];
+      const guestStats = { pending: notes.length, alerts: 0, sent: 0, failed: 0 };
+      for (const n of notes) {
+        const owner = String(n.owner_id || "");
+        if (owner && !subsBy.has(owner)) { subsBy.set(owner, await subsOf(owner)); }
+        const subs = owner ? subsBy.get(owner)! : [];
+        const make = (lang: "fr" | "en") => buildOrderAlert(n, lang);
+        if (make("fr") && subs.length) { guestStats.alerts++; const d = await deliver(subs, make); guestStats.sent += d.sent; guestStats.failed += d.failed; }
+        await db(`guest_notices?id=eq.${n.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ notified_at: new Date().toISOString() }) });
+      }
+      return out({ ok: true, stats, team: teamStats, guests: guestStats });
     }
     if (body.action === "brief") {
       const key = req.headers.get("x-sync-key") || "";

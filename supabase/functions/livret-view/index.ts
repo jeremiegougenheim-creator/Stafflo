@@ -21,6 +21,8 @@
 //   extras (id « x<n> », fiche EXTRAS). Les prix sont TOUJOURS recalculés ici depuis la fiche, jamais pris
 //   de la page. Enregistrée dans details.guest_orders (la dernière remplace la précédente) ; le résumé des
 //   repas va dans meals seulement s'il est vide. Rien n'est payé : le propriétaire confirme.
+//   Une commande nouvelle ou modifiée (total > 0) laisse une ligne dans guest_notices : push-notify
+//   en fait une alerte « Claire a commandé · 2 500 MAD » sur le téléphone du propriétaire.
 // Rien d'autre n'est renvoyé (ni nom, ni prix, ni séjour). Limite par adresse IP.
 // verify_jwt : off (le client n'a pas de compte) — l'accès, c'est le jeton.
 
@@ -35,7 +37,8 @@ type Row = Record<string, any>;
 async function db(path: string, init: RequestInit = {}): Promise<Row[]> {
   const r = await fetch(SB_URL + "/rest/v1/" + path, { ...init, headers: { ...H, ...(init.headers || {}) } });
   if (!r.ok) throw new Error("db " + r.status);
-  return r.status === 204 ? [] : await r.json();
+  const txt = await r.text(); // 201/204 avec Prefer: return=minimal → corps vide
+  return txt ? JSON.parse(txt) : [];
 }
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "apikey, content-type" };
 const out = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -162,6 +165,22 @@ export function applyOrders(stay: Row, body: Row, o: Row): Row {
   return out;
 }
 
+// Même commande qu'avant (mêmes lignes, mêmes quantités) : pas de nouvelle alerte.
+export function sameOrder(a: Row | null, b: Row | null): boolean {
+  const k = (o: Row | null) => o && Array.isArray(o.items) ? o.items.map((x: Row) => x.id + "×" + x.q).sort().join(",") : "";
+  return k(a) === k(b);
+}
+/** « Thibaut Vauclare » → « Thibaut V. » : le nom complet d'un client ne part pas dans une notification. */
+export function shortName(n: unknown): string {
+  const p = String(n || "").trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return "";
+  return p.length > 1 ? p[0] + " " + p[p.length - 1].charAt(0).toUpperCase() + "." : p[0];
+}
+export function orderNotice(owner: string, stay: Row, o: Row): Row {
+  return { owner_id: owner, client_id: String(stay.id), kind: "order",
+    payload: { guest: shortName(stay.name), total: o.total, cur: o.cur, items: o.items.map((x: Row) => ({ n: x.n, q: x.q })) } };
+}
+
 async function factsOf(owner: string): Promise<Row | null> {
   const v = await db(`villa_settings?select=house_facts&owner_id=eq.${owner}&limit=1`);
   const f = v[0] && v[0].house_facts;
@@ -172,7 +191,7 @@ async function factsOf(owner: string): Promise<Row | null> {
 async function stayOfToken(t: string, today: string): Promise<{ stay?: Row; owner?: string; err?: number }> {
   const l = await db(`livret_links?select=owner_id,client_id&token=eq.${t}&deleted_at=is.null&limit=1`);
   if (!l.length) return { err: 404 };
-  const s = await db(`crm_clients?select=id,departure,deleted_at,details,meals,adults,children,guests&id=eq.${encodeURIComponent(l[0].client_id)}&user_id=eq.${l[0].owner_id}&limit=1`);
+  const s = await db(`crm_clients?select=id,name,departure,deleted_at,details,meals,adults,children,guests&id=eq.${encodeURIComponent(l[0].client_id)}&user_id=eq.${l[0].owner_id}&limit=1`);
   const graceEnd = day(Date.parse(today + "T12:00:00Z") - GRACE_DAYS * 86400000);
   if (!s.length || s[0].deleted_at || String(s[0].departure || "").slice(0, 10) < graceEnd) return { err: 410 };
   return { stay: s[0], owner: String(l[0].owner_id) };
@@ -206,6 +225,10 @@ Deno.serve(async (req: Request) => {
       if (o) patch = applyOrders(r.stay, patch, o);
       if (!Object.keys(patch).length) return out({ error: "empty" }, 400);
       await db(`crm_clients?id=eq.${encodeURIComponent(r.stay.id)}&user_id=eq.${r.owner}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(patch) });
+      // Alerte au propriétaire : seulement une commande nouvelle ou modifiée, jamais pour un simple renvoi.
+      if (o && o.total > 0 && !sameOrder(ordersOf(r.stay), o)) {
+        await db(`guest_notices`, { method: "POST", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(orderNotice(String(r.owner), r.stay, o)) }).catch((e) => console.error("[livret-view] notice", String(e).slice(0, 120)));
+      }
       return out({ ok: true, answers: a || answersOf(r.stay), orders: o || ordersOf(r.stay) });
     }
     const t = q.get("t");

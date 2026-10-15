@@ -23,12 +23,14 @@ const DB = {
   ],
   facts: { o1: FACTS },
 };
-const CALLS = [], PATCHES = [];
+const CALLS = [], PATCHES = [], NOTICES = [], ERRS = [];
+const _err = console.error; console.error = (...a) => { ERRS.push(a.join(' ')); };
 globalThis.Deno = { env: { get: (k) => ({ SUPABASE_URL: 'https://sb.test', SUPABASE_SERVICE_ROLE_KEY: 'SRK' })[k] }, serve: (h) => { globalThis.__h = h; } };
 globalThis.fetch = async (url, init) => {
   url = decodeURIComponent(String(url)); CALLS.push(url);
   const ok = (b) => new Response(JSON.stringify(b), { status: 200 });
   if (init && init.method === 'PATCH') { const ct = Object.entries(init.headers || {}).find(([k]) => k.toLowerCase() === 'content-type'); if (!ct || !/application\/json/.test(ct[1])) return new Response('{"code":"PGRST102"}', { status: 400 }); PATCHES.push({ url, body: JSON.parse(init.body) }); return new Response(null, { status: 204 }); }
+  if (init && init.method === 'POST' && url.includes('/rest/v1/guest_notices')) { NOTICES.push(JSON.parse(init.body)); return new Response(null, { status: 201 }); }
   if (url.includes('/rest/v1/livret_links')) { const t = url.match(/token=eq\.([^&]+)/)[1]; return ok(DB.links.filter((l) => l.token === t)); }
   if (url.includes('/rest/v1/crm_clients') && url.includes('id=eq.')) { const id = url.match(/[?&]id=eq\.([^&]+)/)[1]; return ok(DB.stays.filter((s) => s.id === id)); }
   if (url.includes('/rest/v1/crm_clients') && url.includes('name=eq.')) { const n = url.match(/name=eq\.([^&]+)/)[1]; return ok(DB.stays.filter((s) => s.name === n)); }
@@ -79,7 +81,7 @@ let lim = false; for (let k = 0; k < 25; k++) { const x = await get('guest=X&dat
 check('ancien lien : essais limités par adresse IP (20 / heure)', lim);
 
 // 4. Garde-fous statiques
-check('une seule écriture en base : la réponse du client (PATCH), jamais de POST ni de DELETE', (src.match(/method:\s*"PATCH"/g) || []).length === 1 && !/method:\s*"(POST|DELETE)"/.test(src));
+check('écritures en base : la réponse du client (un PATCH du séjour) et l’alerte de commande (un POST dans guest_notices), jamais de DELETE', (src.match(/method:\s*"PATCH"/g) || []).length === 1 && (src.match(/method:\s*"POST"/g) || []).length === 1 && /db\(`guest_notices`, \{ method: "POST"/.test(src) && !/method:\s*"DELETE"/.test(src));
 
 // 5. Le client répond (POST) : heure d'arrivée, composition, repas — dans les deux sens.
 {
@@ -134,6 +136,22 @@ check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
   check('GET avec jeton renvoie la commande déjà envoyée (pour pré-remplir)', b.orders && b.orders.total === 850);
   check('commande sur un séjour terminé → 410 ; jeton inconnu → 404', (await post({ t: 'B'.repeat(43), orders: [{ id: 'm1', q: 1 }] }, '4.4.4.7')).status === 410 && (await post({ t: 'Z'.repeat(43), orders: [{ id: 'm1', q: 1 }] }, '4.4.4.7')).status === 404);
   check('trop de lignes (> 40) → rien', M.cleanOrders(Array.from({ length: 41 }, () => ({ id: 'm1', q: 1 })), F2, 4) === null);
+  {
+    const s2 = DB.stays[DB.stays.length - 1]; s2.name = 'Big Group'; s2.details = {};
+    const n0 = NOTICES.length;
+    await post({ t: 'C'.repeat(43), orders: [{ id: 'm1', q: 2 }] }, '4.4.5.1');
+    const nt = NOTICES[NOTICES.length - 1];
+    check('commande nouvelle → une alerte (guest_notices) : propriétaire, séjour, prénom + initiale, total, lignes sans prix unitaire', NOTICES.length === n0 + 1 && nt.owner_id === 'o2' && nt.client_id === 's2' && nt.kind === 'order' && nt.payload.guest === 'Big G.' && nt.payload.total === 1700 && nt.payload.cur === 'MAD' && JSON.stringify(nt.payload.items) === '[{"n":["Dîner","Dinner"],"q":2}]', nt);
+    s2.details = { guest_orders: { items: [{ id: 'm1', q: 2 }], total: 1700 } };
+    await post({ t: 'C'.repeat(43), orders: [{ id: 'm1', q: 2 }], answers: { arrival_time: '17h' } }, '4.4.5.2');
+    check('même commande renvoyée (ex. pour ajouter l’heure d’arrivée) → pas de deuxième alerte', NOTICES.length === n0 + 1);
+    await post({ t: 'C'.repeat(43), orders: [{ id: 'm1', q: 3 }] }, '4.4.5.3');
+    check('commande modifiée → nouvelle alerte', NOTICES.length === n0 + 2 && NOTICES[NOTICES.length - 1].payload.total === 2550);
+    await post({ t: 'C'.repeat(43), orders: [] }, '4.4.5.4');
+    check('commande vidée → pas d’alerte', NOTICES.length === n0 + 2);
+    check('alerte écrite sans erreur (réponse 201 vide de PostgREST lue proprement)', !ERRS.some((e) => /notice/.test(e)), ERRS);
+    check('le nom complet du client ne part jamais : prénom + initiale', M.shortName('Claire Vasseur') === 'Claire V.' && M.shortName('Seán') === 'Seán');
+  }
 }
 
 console.log(`\n${pass}/${pass + fail} PASS`);

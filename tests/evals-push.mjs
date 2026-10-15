@@ -59,7 +59,7 @@ check('signature ES256 valide', okSig);
 const idx = fs.readFileSync(path.join(root, 'supabase/functions/push-notify/index.ts'), 'utf8');
 const seg = idx.slice(idx.indexOf('// ── Textes des alertes'), idx.indexOf('async function subsOf'));
 const segJs = esbuild.transformSync(seg.replace(/^export /gm, ''), { loader: 'ts' }).code;
-const MOD = await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert, buildBrief, buildTeamAlert, shortName, tzFor, localDay, BRIEF_HOUR };').toString('base64'));
+const MOD = await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert, buildBrief, buildTeamAlert, buildOrderAlert, shortName, tzFor, localDay, BRIEF_HOUR };').toString('base64'));
 const A = MOD.buildAlert, B0 = MOD.buildBrief;
 // Compte pilote : fiche maison (livret, repas, message de départ comptés).
 const PILOT = { name: 'Villa Dar J', facts: true };
@@ -141,6 +141,17 @@ check('brief : protégé par la clé de synchro, aperçu possible (dry)', /actio
   check('équipe : le nom complet du client ne part jamais (prénom + initiale)', MOD.shortName('Thibaut Vauclare') === 'Thibaut V.' && MOD.shortName('Seán') === 'Seán' && MOD.shortName('') === '');
   check('fonction : retours lus avec notified_at vide, puis marqués — jamais deux fois', /staff_reports\?select=id,owner_id,link_id,client_id,kind,text,created_at&notified_at=is\.null&deleted_at=is\.null/.test(idx) && /staff_reports\?id=eq\.\$\{r\.id\}`, \{ method: "PATCH"[^\n]*notified_at: new Date/.test(idx));
   check('fonction : l’alerte part sur les appareils du propriétaire du lien, avec le prénom + initiale du client', /const guest = stay \? shortName\(stay\.name\) : "";/.test(idx) && /buildTeamAlert\(r, link\?\.name \|\| "", guest, lang\)/.test(idx));
+}
+
+// ── Commandes des clients (guest_notices → une alerte, jamais deux fois) ────
+{
+  const O = MOD.buildOrderAlert;
+  const n = { id: 'n1', client_id: 's1', payload: { guest: 'Claire V.', total: 2500, cur: 'MAD', items: [{ n: ['Dîner', 'Dinner'], q: 2 }, { n: ['Transfert aéroport', 'Airport transfer'], q: 1 }] } };
+  const fr = O(n, 'fr'), en = O(n, 'en');
+  check('commande : « Claire V. a commandé · 2 500 MAD » + les lignes, à confirmer', fr && /^Claire V\. a commandé · 2\s500 MAD$/.test(fr.title) && fr.body === '2 × Dîner · 1 × Transfert aéroport — à confirmer dans votre Espace' && fr.tag === 'order-s1', fr);
+  check('commande : en anglais (« ordered », noms anglais)', en && /^Claire V\. ordered · 2,500 MAD$/.test(en.title) && /^2 × Dinner · 1 × Airport transfer/.test(en.body), en);
+  check('commande : total nul ou absent → rien ; sans nom → « Un client »', O({ payload: { total: 0 } }, 'fr') === null && O({}, 'fr') === null && /^Un client a commandé/.test(O({ payload: { total: 300, cur: 'MAD', items: [] } }, 'fr').title));
+  check('fonction : commandes lues avec notified_at vide, puis marquées — jamais deux fois', /guest_notices\?select=id,owner_id,client_id,kind,payload,created_at&notified_at=is\.null&deleted_at=is\.null/.test(idx) && /guest_notices\?id=eq\.\$\{n\.id\}`, \{ method: "PATCH"[^\n]*notified_at: new Date/.test(idx));
 }
 
 console.log(`\n${pass}/${pass + fail} PASS`);
