@@ -1,0 +1,136 @@
+// Fiche maison modifiable dans l'Espace (espace.html › Maison), dans Chromium, réseau simulé.
+//   node tests/evals-espace-fiche.mjs
+//
+// Ce que ça protège :
+//   1. un compte neuf remplit sa fiche ici (plus « demandez-le à Claude ») et la sauvegarde
+//      pose house_facts + house_facts_ref = 'villa-facts.js' sur SA ligne villa_settings ;
+//   2. un anglais vide reste vide en base (jamais traduit en silence) ; la traduction est un
+//      geste explicite, par ai-proxy, et ne remplit que les champs vides ;
+//   3. la fiche du pilote survit à une modification : les clés que l'éditeur ne montre pas
+//      (QR) sont renvoyées telles quelles, rien d'autre ne change ;
+//   4. aucune valeur d'une autre villa dans une fiche neuve (pas de défaut recopié).
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const { chromium } = require('playwright');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+let pass = 0, fail = 0;
+const check = (name, ok, detail) => { if (ok) { pass++; console.log('PASS', name); } else { fail++; console.log('FAIL', name, detail === undefined ? '' : JSON.stringify(detail).slice(0, 400)); } };
+
+const server = http.createServer((req, res) => {
+  const p = path.join(root, decodeURIComponent(req.url.split('?')[0]));
+  if (!p.startsWith(root) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { 'Content-Type': p.endsWith('.js') ? 'text/javascript; charset=utf-8' : p.endsWith('.css') ? 'text/css' : p.endsWith('.json') ? 'application/json' : 'text/html; charset=utf-8' });
+  fs.createReadStream(p).pipe(res);
+});
+await new Promise((r) => server.listen(0, r));
+const PORT = server.address().port;
+const browser = await chromium.launch();
+const UID = '11111111-2222-4333-8444-555555555555';
+const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
+const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
+
+async function open({ villa, staff = [], ai = null } = {}) {
+  const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width: 390, height: 844 } });
+  const calls = [];
+  await ctx.route('**/*', (route) => {
+    const req = route.request(), u = req.url(), m = req.method();
+    const json = (b, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' }, body: JSON.stringify(b) });
+    if (u.startsWith('http://127.0.0.1')) return route.continue();
+    if (m === 'OPTIONS') return json({}, 204);
+    if (u.includes('/functions/v1/ai-proxy')) { calls.push({ kind: 'ai', body: JSON.parse(req.postData() || '{}') }); return json(ai ? ai(JSON.parse(req.postData() || '{}')) : { text: '' }); }
+    if (u.includes('/rest/v1/villa_settings')) {
+      if (m === 'PATCH' || m === 'POST') { calls.push({ kind: m, url: u, body: JSON.parse(req.postData() || '{}') }); return json(villa ? [{ id: 'vs1' }] : []); }
+      return json(villa ? [villa] : []);
+    }
+    if (u.includes('/rest/v1/staff?')) return json(staff);
+    if (u.includes('/rest/v1/')) return json([]);
+    return route.fulfill({ status: 204, body: '' });
+  });
+  const page = await ctx.newPage(); const errs = [];
+  page.on('pageerror', (e) => errs.push(String(e)));
+  await page.addInitScript((s) => { localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); }, SESSION);
+  await page.goto(`http://127.0.0.1:${PORT}/espace.html#maison`);
+  await page.waitForSelector('[data-a="feopen"]', { timeout: 8000 });
+  return { page, ctx, calls, errs };
+}
+const txt = (page) => page.evaluate(() => document.getElementById('main').innerText);
+const unfold = (page) => page.evaluate(() => { document.querySelectorAll('details.fold').forEach((d) => { d.open = true; }); }); // l'utilisateur déplie la section avant d'y écrire
+
+// ── 1. Compte neuf : fiche vide, remplie ici, sauvegardée sur sa ligne ────────────────
+let r = await open({ villa: { villa_name: 'Riad Zina', city: 'Marrakech', owner_name: 'nadia', house_facts_ref: null, house_facts: null }, staff: [{ name: 'Omar', role: 'gardien', wa: '+212600000000' }] });
+check('compte neuf : 0 erreur, bouton « Remplir la fiche maison », plus de « demandez-le à Claude »', !r.errs.length && /Remplir la fiche maison/.test(await txt(r.page)) && !/demandez-le à Claude/.test(await txt(r.page)), r.errs);
+await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name');
+let t = await txt(r.page);
+check('éditeur ouvert : nom et hôte pré-remplis depuis le compte, équipe depuis la table staff (prénom seulement), rien du pilote', (await r.page.inputValue('#fe-VILLA\\.name')) === 'Riad Zina' && (await r.page.inputValue('#fe-VILLA\\.host')) === 'Nadia' && (await r.page.inputValue('#fe-TEAM\\.0\\.name')) === 'Omar' && !/Dar J|Saïd|Douar|650/.test(t));
+check('rien n’est envoyé à l’ouverture', !r.calls.length);
+// Ajouter une ligne « Pratique » et une règle, en français seulement
+await unfold(r.page);
+await r.page.click('[data-a="feadd"][data-v="PRACTICAL"]'); await r.page.waitForSelector('[data-fe="PRACTICAL.0.0"]');
+await r.page.fill('[data-fe="PRACTICAL.0.0"]', 'Arrivée et départ : chambres prêtes à partir de 15h, départ avant 11h.');
+await r.page.click('[data-a="feadd"][data-v="RULES"]'); await r.page.fill('[data-fe="RULES.0.0"]', 'Non-fumeur à l’intérieur.');
+await r.page.fill('#fe-VILLA\\.address', 'Derb Sidi Bouloukat, Marrakech');
+await r.page.fill('#fe-VILLA\\.pin\\.lat', '31.62'); await r.page.fill('#fe-VILLA\\.pin\\.lng', '-7.98');
+await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
+const save = r.calls.filter((c) => c.kind === 'PATCH')[0];
+check('enregistrement : PATCH villa_settings sur la ligne du compte (owner_id), house_facts + drapeau « fiche en place »', !!save && /villa_settings\?owner_id=eq\.1111/.test(save.url) && save.body.house_facts_ref === 'villa-facts.js' && save.body.house_facts && save.body.house_facts.VILLA.name === 'Riad Zina');
+const hf = save && save.body.house_facts;
+check('anglais vide → reste vide en base (jamais traduit en silence) ; GPS typé ; équipe gardée', !!hf && hf.PRACTICAL.length === 1 && hf.PRACTICAL[0][0].startsWith('Arrivée et départ') && hf.PRACTICAL[0][1] === '' && hf.RULES[0][1] === '' && hf.VILLA.pin.lat === 31.62 && hf.VILLA.pin.lng === -7.98 && hf.TEAM[0].name === 'Omar' && hf.TEAM[0].phone === '+212600000000');
+check('sections non remplies = listes vides, pas de valeur inventée', !!hf && hf.MEALS.length === 0 && hf.ROOMS.length === 0 && Object.keys(hf.TEXT).length === 0 && !hf.VILLA.wifi && !hf.VILLA.extraGuest && !hf.QR);
+check('après enregistrement : retour à la fiche, « Fiche enregistrée »', /Fiche enregistrée/.test(await r.page.evaluate(() => document.getElementById('toastHost').innerText)) && !(await r.page.$('[data-a="fesave"]')));
+await r.ctx.close();
+
+// ── 2. Nom manquant : rien n'est envoyé ───────────────────────────────────────────────
+r = await open({ villa: { villa_name: '', owner_name: '', house_facts: null } });
+await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name');
+await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(200);
+check('sans nom de villa : message, aucun envoi', !r.calls.length && /Indiquez le nom de la villa/.test(await r.page.evaluate(() => document.getElementById('toastHost').innerText)));
+// Compte sans ligne villa_settings : la sauvegarde crée la ligne (clé neutre), jamais une clé dérivée du nom
+await r.page.fill('#fe-VILLA\\.name', 'Villa Test');
+await r.ctx.close();
+r = await open({ villa: null });
+await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name');
+await r.page.fill('#fe-VILLA\\.name', 'Villa Test'); await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
+const ins = r.calls.filter((c) => c.kind === 'POST')[0];
+check('sans ligne villa_settings : PATCH vide puis création avec owner_id et villa_key = villa_<id>', !!r.calls.filter((c) => c.kind === 'PATCH').length && !!ins && ins.body.owner_id === UID && ins.body.villa_key === 'villa_' + UID && ins.body.house_facts_ref === 'villa-facts.js');
+await r.ctx.close();
+
+// ── 3. Pilote : une modification ne touche que ce qui a changé, QR conservé ───────────
+r = await open({ villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT } });
+check('fiche en place : bouton « Modifier la fiche maison »', /Modifier la fiche maison/.test(await txt(r.page)));
+await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
+check('éditeur : la fiche du pilote est chargée (repas, équipe, chambres)', (await r.page.inputValue('#fe-MEALS\\.1\\.a')) === PILOT.MEALS[1].a[0] && (await r.page.$$('[data-fe^="TEAM."][data-fe$=".name"]')).length === PILOT.TEAM.length && (await r.page.$$('[data-fe^="ROOMS."][data-fe$=".t.0"]')).length === PILOT.ROOMS.length);
+await r.page.fill('#fe-MEALS\\.1\\.a', '700 MAD');
+await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
+const s2 = r.calls.filter((c) => c.kind === 'PATCH')[0], got = s2 && s2.body.house_facts;
+// Comparaison insensible à l'ordre des clés (jsonb n'en a pas).
+const canon = (v) => Array.isArray(v) ? '[' + v.map(canon).join(',') + ']' : v && typeof v === 'object' ? '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}' : JSON.stringify(v);
+const same = (k) => canon(got[k]) === canon(PILOT[k]);
+check('pilote : seul le prix modifié change ; QR, TEXT, PRACTICAL, ROOMS, TEAM, alentours identiques au caractère près', !!got && got.MEALS[1].a[0] === '700 MAD' && got.MEALS[1].a[1] === '700 MAD' && got.MEALS[0].a[0] === PILOT.MEALS[0].a[0] &&
+  ['QR', 'TEXT', 'PRACTICAL', 'ROOMS', 'TEAM', 'RULES', 'GOOD_TO_KNOW', 'MEAL_NOTES', 'LEISURE', 'BREAKFAST', 'GOUTER', 'STARTERS', 'MAINS', 'SIMPLE', 'DESSERTS', 'MEDINA', 'GOLF', 'ACTIVITIES', 'RESTAURANTS', 'VILLA'].every(same),
+  got && ['QR', 'TEXT', 'PRACTICAL', 'ROOMS', 'TEAM', 'VILLA', 'MEDINA', 'ACTIVITIES'].filter((k) => !same(k)));
+check('pilote : CAFES (paires à un seul élément) complétées sans perte', !!got && got.CAFES.length === PILOT.CAFES.length && got.CAFES.every((p, i) => p[0] === PILOT.CAFES[i][0]));
+await r.ctx.close();
+
+// ── 4. Traduction explicite : ne remplit que les champs anglais vides, via ai-proxy ────
+r = await open({ villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' }, RULES: [['Non-fumeur.', ''], ['Pas de fête.', 'No parties.']], TEXT: { kidsBox: ['Avec des enfants : parc à 5 min.', ''] } } },
+  ai: (b) => ({ text: b.user.split('\n').map((l) => l.replace(/^(\d+) \|\|\| .*/, '$1 ||| EN:' + l.split(' ||| ')[1])).join('\n') }) });
+await r.page.click('[data-a="feopen"]'); await r.page.waitForSelector('[data-fe="RULES.0.1"]', { state: 'attached' }); await unfold(r.page);
+await r.page.click('[data-a="fetr"]'); await r.page.waitForTimeout(500);
+const aiCall = r.calls.filter((c) => c.kind === 'ai')[0];
+check('traduction : un appel ai-proxy write_en, texte numéroté, seulement les champs vides', !!aiCall && aiCall.body.task === 'write_en' && /1 \|\|\| Non-fumeur\./.test(aiCall.body.user) && /2 \|\|\| Avec des enfants/.test(aiCall.body.user) && !/Pas de fête/.test(aiCall.body.user));
+check('traduction : champs vides remplis, champ déjà traduit intact, rien d’enregistré avant relecture', (await r.page.inputValue('[data-fe="RULES.0.1"]')) === 'EN:Non-fumeur.' && (await r.page.inputValue('[data-fe="RULES.1.1"]')) === 'No parties.' && (await r.page.inputValue('[data-fe="TEXT.kidsBox.1"]')) === 'EN:Avec des enfants : parc à 5 min.' && !r.calls.filter((c) => c.kind === 'PATCH').length);
+await r.page.click('[data-a="fecancel"]'); await r.page.waitForTimeout(100);
+await r.page.click('.langsw [data-v="en"]'); await r.page.waitForTimeout(100); await unfold(r.page);
+check('fiche affichée en anglais : le français est repris quand l’anglais manque, jamais un blanc', /Non-fumeur\./.test(await txt(r.page)) && /No parties\./.test(await txt(r.page)));
+await r.page.click('.langsw [data-v="fr"]'); await r.page.waitForTimeout(100);
+check('annuler : retour à la fiche sans envoi', !(await r.page.$('[data-a="fesave"]')) && !r.calls.filter((c) => c.kind === 'PATCH').length);
+await r.ctx.close();
+
+await browser.close(); server.close();
+console.log(`\n${pass}/${pass + fail} PASS`);
+process.exit(fail ? 1 : 0);

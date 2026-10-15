@@ -149,5 +149,13 @@ check('v12 : la réponse du client (details.guest_answers) s’affiche dans le s
 check('v13 : retours de l’équipe lus avec les données (7 jours, RLS), carte « De l’équipe » = non vus, « Vu » = seen_at', /staff_reports\?select=id,link_id,client_id,kind,text,created_at,seen_at&deleted_at=is\.null/.test(script) && /filter\(function \(r\) \{ return !r\.seen_at; \}\)/.test(script) && /staff_reports\?id=eq\.' \+ encodeURIComponent\(r\.id\), \{ method: 'PATCH'[^\n]*seen_at: new Date/.test(script));
 check('v13 : « Chambres prêtes · qui · quand » sur le séjour, jamais inventé (seulement si un retour existe)', /var rr = readyReport\(c\);\s*if \(rr\) h \+= '<p class="state go">/.test(script));
 
+// ── v13 — fiche maison modifiable dans l'Espace (tout compte) — comportement : evals-espace-fiche.mjs (Chromium)
+check('v13 : fiche maison modifiable ici — plus « demandez-le à Claude »', !/demandez-le à Claude/.test(script) && /data-a="feopen"/.test(script) && /function feView\(\)/.test(script));
+check('v13 : la sauvegarde pose house_facts + house_facts_ref sur la ligne du compte (owner_id), jamais une clé dérivée du nom', /villa_settings\?owner_id=eq\.' \+ encodeURIComponent\(uid\)/.test(script) && /house_facts: d, house_facts_ref: 'villa-facts\.js'/.test(script) && /villa_key: 'villa_' \+ uid/.test(script));
+check('v13 : un anglais vide reste vide (jamais traduit en silence) ; la traduction est explicite, par ai-proxy write_en', /return \[S\(a\[0\]\), S\(a\[1\]\)\];/.test(script) && /task: 'write_en', system: sys/.test(script) && /if \(!it \|\| S\(feGet\(it\.path\)\)\) return;/.test(script));
+check('v13 : une fiche neuve est vide — aucune valeur par défaut d’une autre villa', /function feBlank\(\) \{ return \{ VILLA: \{ name: '', host: ''/.test(script));
+check('v13 : les clés que l’éditeur ne montre pas (QR…) sont conservées', /clés inconnues de l'éditeur \(QR…\) conservées/.test(script));
+check('v13 : l’écran n’est pas redessiné pendant la saisie (le clavier reste ouvert) ; pas de rechargement périodique pendant l’édition', /fePut\(fp, e\.target\.value\);/.test(script) && /!U\.busy && !FE\.on\) load\(\)/.test(script));
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

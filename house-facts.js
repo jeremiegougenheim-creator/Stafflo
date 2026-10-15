@@ -26,7 +26,7 @@ const {VILLA, PRACTICAL, ROOMS, GOOD_TO_KNOW, MEAL_NOTES, MEALS, LEISURE, RULES,
 
 function pick(pair, i) {
   if (!Array.isArray(pair)) return String(pair == null ? '' : pair);
-  return String(pair[i] != null ? pair[i] : pair[0]);
+  return String(pair[i] != null && pair[i] !== '' ? pair[i] : pair[0]); // anglais vide → français
 }
 const flat = s => String(s).replace(/\s*\n\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
 const head = s => String(s).split(' — ')[0].trim();
