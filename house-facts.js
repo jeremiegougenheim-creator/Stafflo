@@ -31,6 +31,13 @@ function pick(pair, i) {
 const flat = s => String(s).replace(/\s*\n\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
 const head = s => String(s).split(' — ')[0].trim();
 
+/* Le résumé tolère une fiche partielle (15/10/2026 : la fiche se remplit dans l'Espace,
+   section par section) : une section absente ou vide n'écrit rien. Sur une fiche complète,
+   le texte est identique au caractère près à l'ancien villa-facts.js (empreintes dans
+   tests/evals-house-facts.mjs). */
+const A = v => Array.isArray(v) ? v : [];
+const O = v => v && typeof v === 'object' ? v : {};
+const has = s => String(s == null ? '' : s).trim() !== '';
 function digest(lang) {
   const i = lang === 'en' ? 1 : 0;
   const fr = i === 0;
@@ -38,65 +45,66 @@ function digest(lang) {
   const out = [];
   const sec = t => out.push('', '## ' + t);
   const li = t => out.push('- ' + t);
+  const V = O(VILLA), T = O(TEXT), pin = O(V.pin), wifi = O(V.wifi), x = O(V.extraGuest);
+  const NAME = String(V.name || '').trim().toUpperCase();
 
   out.push(fr
-    ? '=== FICHE MAISON — VILLA DAR J (faits officiels et à jour) ==='
-    : '=== HOUSE FACTS — VILLA DAR J (official and up to date) ===');
+    ? '=== FICHE MAISON' + (NAME ? ' — ' + NAME : '') + ' (faits officiels et à jour) ==='
+    : '=== HOUSE FACTS' + (NAME ? ' — ' + NAME : '') + ' (official and up to date) ===');
   out.push(fr
     ? 'Ces faits priment sur tout autre texte (mémoire, anciens modèles, historique de conversation). Cite uniquement ce qui est écrit ici ; une information absente se dit « à confirmer » — jamais inventée. Sers-t\'en pour rédiger, jamais comme donnée client à extraire. Prix des repas en MAD, par service et pour tout le groupe (jamais par personne).'
     : 'These facts override any other text (memory, old templates, conversation history). Only state what is written here; anything missing is "to be confirmed" — never invented. Use them to write, never as guest data to extract. Meal prices are in MAD, per service, for the whole group (never per person).');
 
   sec(fr ? 'Maison' : 'House');
-  li((fr ? 'Maison de famille de ' : 'Family home of ') + VILLA.host + (fr ? ', propriétaire et hôte (souvent à l\'étranger).' : ', owner and host (often abroad).'));
-  li((fr ? 'Adresse : ' : 'Address: ') + VILLA.address + ' — GPS ' + VILLA.pin.lat + ',' + VILLA.pin.lng);
-  li(P(TEXT.roomsIntro));
-  ROOMS.forEach(r => li(P(r.t) + (r.tag ? ' (' + P(r.tag) + ')' : '') + ' : ' + P(r.bed) + ' · ' + P(r.bath)));
-  const x = VILLA.extraGuest;
-  li(fr
+  if (has(V.host)) li((fr ? 'Maison de famille de ' : 'Family home of ') + V.host + (fr ? ', propriétaire et hôte (souvent à l\'étranger).' : ', owner and host (often abroad).'));
+  if (has(V.address) || pin.lat != null) li((fr ? 'Adresse : ' : 'Address: ') + (V.address || '') + (pin.lat != null && pin.lng != null ? ' — GPS ' + pin.lat + ',' + pin.lng : ''));
+  if (has(P(T.roomsIntro))) li(P(T.roomsIntro));
+  A(ROOMS).forEach(r => li(P(r.t) + (r.tag ? ' (' + P(r.tag) + ')' : '') + ' : ' + P(r.bed) + ' · ' + P(r.bath)));
+  if (x.fee != null && x.from != null) li(fr
     ? 'Supplément voyageurs (réglage Airbnb) : ' + x.fee + ' € par nuit et par personne à partir du ' + x.from + 'e voyageur, ' + x.max + ' personnes au maximum.'
     : 'Extra guest fee (Airbnb setting): €' + x.fee + ' per night per person from guest no. ' + x.from + ', ' + x.max + ' people maximum.');
 
   sec(fr ? 'Équipe' : 'Team');
-  TEAM.forEach(m => li((m.name ? m.name + ' : ' : '') + pick(m.role, i) + (m.phone ? ' (' + m.phone + ')' : '')));
-  li((fr ? 'Hôte : ' : 'Host: ') + VILLA.host + ' ' + VILLA.hostPhone);
+  A(TEAM).forEach(m => li((m.name ? m.name + ' : ' : '') + pick(m.role, i) + (m.phone ? ' (' + m.phone + ')' : '')));
+  if (has(V.host)) li((fr ? 'Hôte : ' : 'Host: ') + V.host + (has(V.hostPhone) ? ' ' + V.hostPhone : ''));
 
   sec(fr ? 'Repas' : 'Meals');
-  MEALS.forEach(m => {
+  A(MEALS).forEach(m => {
     const same = pick(m.a, i) === pick(m.b, i);
     li(P(m.n) + ' : ' + (same ? P(m.a) : P(m.a) + (fr ? ' (1–6 pers.) / ' : ' (1–6 guests) / ') + P(m.b) + (fr ? ' (7–10 pers.)' : ' (7–10 guests)')) + ' — ' + P(m.h));
   });
-  MEAL_NOTES.forEach(n => li(P(n)));
-  li(P(TEXT.orderRule));
-  li(P(TEXT.menuIntro));
-  li(P(TEXT.earlyBrk));
-  li((fr ? 'Petit-déjeuner : ' : 'Breakfast: ') + BREAKFAST.map(b => P(b)).join(', '));
-  li((fr ? 'Goûter : ' : 'Afternoon tea: ') + GOUTER.map(g => P(g)).join(', '));
-  li((fr ? 'Entrées : ' : 'Starters: ') + STARTERS.map(s => head(P(s))).join(', '));
-  li((fr ? 'Plats : ' : 'Mains: ') + MAINS.map(s => head(P(s))).join(', '));
-  li((fr ? 'Pour les enfants : ' : 'For children: ') + SIMPLE.map(s => head(P(s))).join(', '));
-  li((fr ? 'Desserts : ' : 'Desserts: ') + DESSERTS.map(s => head(P(s))).join(', '));
+  A(MEAL_NOTES).forEach(n => li(P(n)));
+  ['orderRule', 'menuIntro', 'earlyBrk'].forEach(k => { if (has(P(T[k]))) li(P(T[k])); });
+  if (A(BREAKFAST).length) li((fr ? 'Petit-déjeuner : ' : 'Breakfast: ') + A(BREAKFAST).map(b => P(b)).join(', '));
+  if (A(GOUTER).length) li((fr ? 'Goûter : ' : 'Afternoon tea: ') + A(GOUTER).map(g => P(g)).join(', '));
+  if (A(STARTERS).length) li((fr ? 'Entrées : ' : 'Starters: ') + A(STARTERS).map(s => head(P(s))).join(', '));
+  if (A(MAINS).length) li((fr ? 'Plats : ' : 'Mains: ') + A(MAINS).map(s => head(P(s))).join(', '));
+  if (A(SIMPLE).length) li((fr ? 'Pour les enfants : ' : 'For children: ') + A(SIMPLE).map(s => head(P(s))).join(', '));
+  if (A(DESSERTS).length) li((fr ? 'Desserts : ' : 'Desserts: ') + A(DESSERTS).map(s => head(P(s))).join(', '));
 
   sec(fr ? 'Pratique' : 'Practical');
-  PRACTICAL.forEach(p => li(P(p)));
-  GOOD_TO_KNOW.forEach(g => li(P(g)));
-  li('Wi-Fi : ' + VILLA.wifi.net + ' / ' + VILLA.wifi.pass);
+  A(PRACTICAL).forEach(p => li(P(p)));
+  A(GOOD_TO_KNOW).forEach(g => li(P(g)));
+  if (has(wifi.net)) li('Wi-Fi : ' + wifi.net + ' / ' + (wifi.pass || ''));
 
   sec(fr ? 'Règles de la maison' : 'House rules');
-  RULES.forEach(r => li(P(r)));
+  A(RULES).forEach(r => li(P(r)));
 
   sec(fr ? 'Loisirs et alentours' : 'Leisure and surroundings');
-  li(LEISURE.map(l => P(l)).join(' · '));
-  li(P(TEXT.kidsBox));
-  li((fr ? 'Golf : ' : 'Golf: ') + GOLF.map(g => P(g.n) + ' ' + P(g.d)).join(' ; '));
-  li((fr ? 'Activités : ' : 'Activities: ') + ACTIVITIES.map(a => P(a.n)).join(', '));
-  li((fr ? 'Restaurants conseillés : ' : 'Recommended restaurants: ') + RESTAURANTS.map(r => P(r.n)).join(', '));
+  if (A(LEISURE).length) li(A(LEISURE).map(l => P(l)).join(' · '));
+  if (has(P(T.kidsBox))) li(P(T.kidsBox));
+  if (A(GOLF).length) li((fr ? 'Golf : ' : 'Golf: ') + A(GOLF).map(g => P(g.n) + ' ' + P(g.d)).join(' ; '));
+  if (A(ACTIVITIES).length) li((fr ? 'Activités : ' : 'Activities: ') + A(ACTIVITIES).map(a => P(a.n)).join(', '));
+  if (A(RESTAURANTS).length) li((fr ? 'Restaurants conseillés : ' : 'Recommended restaurants: ') + A(RESTAURANTS).map(r => P(r.n)).join(', '));
 
   return out.join('\n');
 }
 
 
 const out = {};
-KEYS.forEach(k => { if (data[k] !== undefined) out[k] = data[k]; });
+// Fiche partielle : une section absente devient une liste vide (TEXT, QR : objet vide),
+// pour que livret, Espace et vue équipe n'aient jamais à tester chaque clé.
+KEYS.forEach(k => { out[k] = data[k] != null ? data[k] : (k === 'TEXT' || k === 'QR' ? {} : k === 'VILLA' ? data[k] : []); });
 out.digest = digest;
 return Object.freeze(out);
 }
