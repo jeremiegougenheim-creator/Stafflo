@@ -10,6 +10,7 @@
 //      (QR) sont renvoyées telles quelles, rien d'autre ne change ;
 //   4. aucune valeur d'une autre villa dans une fiche neuve (pas de défaut recopié).
 import http from 'node:http';
+import zlib from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -482,6 +483,86 @@ await r.ctx.close();
   const left = await r.page.evaluate(() => ['stafflo_session', 'stafflo_cfg', 'stafflo_house_facts'].filter((k) => localStorage.getItem(k) != null));
   const lo = r.calls.filter((x) => x.kind === 'logout').pop();
   check('se déconnecter : jeton révoqué (auth/v1/logout), session et données locales effacées, écran de connexion', !!lo && lo.auth === 'Bearer tok' && !left.length && !!(await r.page.$('#loginForm')), { lo, left });
+  await r.ctx.close();
+}
+
+// ── 5 nonies. WhatsApp → séjour : export lu sur l'appareil, propositions citées, rien sans validation ──
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null };
+  const dmy = (d, sep = '/') => { const x = new Date(Date.now() + d * 86400000); return String(x.getUTCDate()).padStart(2, '0') + sep + String(x.getUTCMonth() + 1).padStart(2, '0') + sep + x.getUTCFullYear(); };
+  const IOS = [
+    `[${dmy(-9)}, 18:29:01] Ana Ruiz: Hi, thank you for the message. Sending you on here so you also have my number`,
+    `[${dmy(-6)}, 11:49:10] Nadia: Hi Ana, could you send me your flight numbers and arrival time, and who shares each bedroom? We are 12 people max at the villa.`,
+    `[${dmy(-6)}, 15:20:33] Ana Ruiz: Hi! Thank you so much for sending this over, it has been hectic with the final preparations for the wedding so apologies I didn't respond earlier.`,
+    `This looks amazing, the booklet is very useful. A minor update, in the end only 4 of us will stay at the villa, I will attach passports shortly, looking at the booklet this would change the price of our meals?`,
+    `[${dmy(-6)}, 15:38:02] Ana Ruiz: ‎<attached: 00000012-PHOTO-2026-10-09-15-38-02.jpg>`,
+    `[${dmy(-2)}, 14:02:11] Nadia: Our driver is waiting at the airport`,
+    `[${dmy(-2)}, 14:05:40] Ana Ruiz: Ah perfect thank you, hoping to arrive in about 1hr15`,
+  ].join('\n');
+  const S = [{ id: 'w1', name: 'Ana Ruiz', arrival: iso(3), departure: iso(7), adults: 7, booking_status: 'confirmed', source: 'Airbnb', price: 3000, details: { reservation_code: 'HMTEST0003' }, notes: 'Arrivée tardive possible' }];
+  r = await open({ tab: 'sejours', villa: V, stays: S, ai: (b) => ({ text: JSON.stringify({ party: { adults: 5, children: null, quote: 'in the end only 4 of us will stay at the villa' }, arrival: null, meals: null, requests: [
+    { value: 'Mariage du couple', quote: 'final preparations for the wedding' }, { value: 'Végétarien', quote: 'we are all vegetarian' }] }) }) });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="w1"]'); await r.page.click('[data-a="panel"][data-id="w1"][data-v="edit"]');
+  await r.page.click('#st-w1 [data-a="panel"][data-v="wa"]'); await r.page.waitForSelector('#wa-paste-w1');
+  check('Modifier › « Remplir depuis WhatsApp » : étapes d’export, dépôt de fichier, coller, mention de confidentialité', /Exporter la discussion/.test(await r.page.innerText('#st-w1')) && !!(await r.page.$('#st-w1 input[type=file][data-file="wa"]')) && /lue sur cet appareil/.test(await r.page.innerText('#st-w1')));
+  await r.page.fill('#wa-paste-w1', IOS); await r.page.click('[data-a="waread"][data-id="w1"]'); await r.page.waitForTimeout(150);
+  let tw = await r.page.innerText('#st-w1');
+  check('export iPhone collé : 6 messages lus, 1 photo non importée, client reconnu (Ana Ruiz)', /6 messages/.test(tw) && /1 photo ou document non importé/.test(tw) && (await r.page.$eval('[data-a="waguest"][aria-pressed="true"]', (b) => b.innerText)) === 'Ana Ruiz', tw.slice(0, 400));
+  check('composition : 4 (phrase du client citée), jamais les « 12 people » de l’hôte', (await r.page.inputValue('#wa-ad-w1-0')) === '4' && /« in the end only 4 of us will stay at the villa »/.test(tw));
+  const arrV = await r.page.inputValue('#wa-v-w1-1');
+  check('arrivée : la phrase du client avec la date et l’heure du message, rien de calculé', /^« hoping to arrive in about 1hr15 » \(WhatsApp, .+ 14:05\)$/.test(arrV), arrV);
+  check('une question n’est pas une commande : pas de « repas » tiré de « would change the price of our meals? » ; le mariage proposé en note', (await r.page.$$('#st-w1 .wa-p')).length === 3 && !/meals\?/.test(await r.page.$$eval('#st-w1 .wa-p textarea', (ts) => ts.map((t) => t.value).join('|'))) && /À noter \(privé\)/.test(tw) && /wedding/.test(await r.page.$$eval('#st-w1 .wa-p textarea', (ts) => ts.map((x) => x.value).join('|'))));
+  check('rien d’envoyé à ce stade (ni base, ni ARIA)', !r.calls.some((x) => x.kind === 'stay' || x.kind === 'ai'));
+  await r.page.click('[data-a="waaria"][data-id="w1"]'); await r.page.waitForTimeout(300);
+  const ai = r.calls.filter((x) => x.kind === 'ai').pop();
+  tw = await r.page.innerText('#st-w1');
+  check('« Lire avec ARIA » : tâche extract, seulement les messages du client (pas ceux de l’hôte) ; citation absente des messages → jetée ; nombre absent de la citation → jeté', !!ai && ai.body.task === 'extract' && /only 4 of us/.test(ai.body.user) && !/12 people/.test(ai.body.user) && /Mariage du couple/.test(await r.page.$$eval('#st-w1 .wa-p textarea', (ts) => ts.map((t) => t.value).join('|'))) && !/Végétarien/.test(await r.page.$$eval('#st-w1 .wa-p textarea', (ts) => ts.map((t) => t.value).join('|'))) && (await r.page.$$('#st-w1 .wa-p')).length === 4, { n: (await r.page.$$('#st-w1 .wa-p')).length, task: ai && ai.body.task, tw: tw.slice(tw.indexOf('Remplir depuis'), tw.indexOf('Remplir depuis') + 900) });
+  await r.page.uncheck('#wa-on-w1-2'); // la note « wedding » tirée par expression régulière : décochée
+  await r.page.click('[data-a="waapply"][data-id="w1"]'); await r.page.waitForTimeout(400);
+  const wp = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('enregistrer : adultes 4, arrivée, note ARIA ajoutée (pas la décochée), code de réservation gardé, aucun message stocké', !!wp && wp.body.adults === 4 && wp.body.guests === 4 && /hoping to arrive in about 1hr15/.test(wp.body.details.arrival_time) && wp.body.notes === 'Arrivée tardive possible\nWhatsApp : Mariage du couple' && wp.body.details.reservation_code === 'HMTEST0003' && wp.body.details.whatsapp.messages === 6 && !/thank you so much/i.test(JSON.stringify(wp.body)), wp && wp.body);
+  await r.ctx.close();
+  // Android, .zip avec média ; vol et heure ; adultes + enfants
+  const crc = (b) => (zlib.crc32 ? zlib.crc32(b) : 0) >>> 0;
+  const mkzip = (entries) => {
+    const parts = [], central = []; let off = 0;
+    for (const e of entries) {
+      const name = Buffer.from(e.name), data = Buffer.from(e.data), comp = e.deflate ? zlib.deflateRawSync(data) : data, c32 = crc(data);
+      const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(e.deflate ? 8 : 0, 8); lh.writeUInt32LE(c32, 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(data.length, 22); lh.writeUInt16LE(name.length, 26);
+      const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(e.deflate ? 8 : 0, 10); ch.writeUInt32LE(c32, 16); ch.writeUInt32LE(comp.length, 20); ch.writeUInt32LE(data.length, 24); ch.writeUInt16LE(name.length, 28); ch.writeUInt32LE(off, 42);
+      parts.push(lh, name, comp); central.push(ch, name); off += 30 + name.length + comp.length;
+    }
+    const cd = Buffer.concat(central), end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(off, 16);
+    return Buffer.concat([...parts, cd, end]);
+  };
+  const AND = [`${dmy(-5)}, 10:00 - Messages and calls are end-to-end encrypted. No one outside of this chat can read them.`,
+    `${dmy(-5)}, 10:01 - Ana Ruiz: Hello! We will be 6 people including 2 kids, flight AT801 landing at 16:40`,
+    `${dmy(-5)}, 10:02 - Ana Ruiz: For dinner on the first night we would love the tajine.`,
+    `${dmy(-5)}, 10:03 - Ana Ruiz: IMG-20261009-WA0001.jpg (file attached)`].join('\n');
+  const Z = mkzip([{ name: 'WhatsApp Chat with Ana Ruiz.txt', data: AND, deflate: true }, { name: 'IMG-20261009-WA0001.jpg', data: 'xx', deflate: false }]);
+  r = await open({ tab: 'sejours', villa: V, stays: [{ ...S[0], notes: null }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="w1"]'); await r.page.click('[data-a="panel"][data-id="w1"][data-v="edit"]'); await r.page.click('#st-w1 [data-a="panel"][data-v="wa"]');
+  await r.page.setInputFiles('#st-w1 input[data-file="wa"]', { name: 'WhatsApp Chat with Ana Ruiz.zip', mimeType: 'application/zip', buffer: Z });
+  await r.page.waitForSelector('#wa-ad-w1-0', { timeout: 4000 }).catch(() => {});
+  tw = await r.page.innerText('#st-w1');
+  check('export Android (.zip, deflate) : lu sur l’appareil, message système ignoré, 1 média non importé', /3 messages/.test(tw) && /1 photo ou document non importé/.test(tw) && !/end-to-end/.test(tw.split('Voir les')[0]), tw.slice(0, 500));
+  check('« 6 people including 2 kids » → 4 adultes + 2 enfants ; vol AT801 et heure dans l’arrivée ; dîner proposé en repas', (await r.page.inputValue('#wa-ad-w1-0')) === '4' && (await r.page.inputValue('#wa-ch-w1-0')) === '2' && /^Vol AT801 · « flight AT801 landing at 16:40 »/.test(await r.page.inputValue('#wa-v-w1-1')) && /tajine/.test(await r.page.inputValue('#wa-v-w1-2')));
+  await r.ctx.close();
+  // Format US (mois/jour, AM/PM) ; contact enregistré sous son numéro : le propriétaire désigne le client
+  const x0 = new Date(Date.now() - 2 * 86400000), us = (x0.getUTCMonth() + 1) + '/' + x0.getUTCDate() + '/' + String(x0.getUTCFullYear()).slice(2);
+  const USX = [`${us}, 3:38 PM - +33 6 00 00 00 01: we're 5 adults now`, `${us}, 3:40 PM - Nadia: Noted!`].join('\n');
+  r = await open({ tab: 'sejours', villa: V, stays: [{ ...S[0] }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="w1"]'); await r.page.click('[data-a="panel"][data-id="w1"][data-v="edit"]'); await r.page.click('#st-w1 [data-a="panel"][data-v="wa"]');
+  await r.page.fill('#wa-paste-w1', USX); await r.page.click('[data-a="waread"][data-id="w1"]'); await r.page.waitForTimeout(100);
+  check('client pas reconnu (numéro) : rien proposé tant que le propriétaire ne l’a pas désigné', /Touchez le nom du client/.test(await r.page.innerText('#st-w1')) && !(await r.page.$('#wa-ad-w1-0')));
+  await r.page.click('[data-a="waguest"][data-v="0"]'); await r.page.waitForTimeout(100);
+  check('format US (10/13/26, 3:38 PM) : 5 adultes, heure 15:38', (await r.page.inputValue('#wa-ad-w1-0')) === '5' && /15:38/.test(await r.page.innerText('#st-w1')));
+  await r.page.click('[data-a="wareset"][data-id="w1"]');
+  await r.page.fill('#wa-paste-w1', 'Hi! We are now 3 adults and 1 baby, see you soon'); await r.page.click('[data-a="waread"][data-id="w1"]'); await r.page.waitForTimeout(100);
+  check('un message copié sans date : lu tel quel (3 adultes, 1 enfant)', (await r.page.inputValue('#wa-ad-w1-0')) === '3' && (await r.page.inputValue('#wa-ch-w1-0')) === '1' && !r.errs.length, r.errs);
   await r.ctx.close();
 }
 
