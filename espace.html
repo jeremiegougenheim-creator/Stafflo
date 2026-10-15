@@ -69,6 +69,7 @@ main{flex:1 1 auto;padding:14px 14px calc(96px + env(safe-area-inset-bottom))}
 .t-house{background:var(--house-bg);color:var(--house)}.t-alert{background:var(--alert-bg);color:var(--alert)}
 .gold{background:var(--wait-bg);color:var(--gold-ink)}
 .sub{font-size:13px;color:var(--muted)}
+.lnk{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--gm);text-decoration:underline;cursor:pointer}
 details.more{display:inline}details.more summary{display:inline;cursor:pointer;color:var(--gm);font-weight:600;list-style:none}details.more summary::-webkit-details-marker{display:none}details.more[open] summary{display:none}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:10px;display:flex;flex-direction:column;gap:2px}
@@ -334,6 +335,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       pushUnsupported: 'Ce navigateur ne gère pas les alertes. Utilisez Safari (iPhone, depuis l’écran d’accueil) ou Chrome.',
       pushOn: 'Alertes activées — un test arrive', pushOff: 'Alertes désactivées sur cet appareil', pushErr: 'Activation impossible — réessayez', pushTestSent: 'Test envoyé',
       nudge: 'Soyez prévenu des demandes Airbnb (24 h pour répondre) sans ouvrir l’app.', nudgeHow: 'Voir comment', later: 'Plus tard',
+      ed: { net: 'Net reçu', paid: 'Payé par le client', comm: function (p, net) { return 'L’app complète déduit encore ' + p + ' % de ce montant (soit ' + net + ' net). Si ce montant est déjà votre net :'; }, netOk: 'c’est mon net (commission 0)', comp: 'Séjour offert : non compté dans vos revenus.', errAmt: 'Montant invalide.' },
       editTitle: 'Modifier le séjour', fAdults: 'Adultes', fChildren: 'Enfants', fInfants: 'Bébés', fPhone: 'Téléphone (WhatsApp)', fMeals: 'Repas commandés', fNotes: 'Notes', save: 'Enregistrer',
       mealsPh: 'Ex. : mar. dîner tajine poulet · mer. brunch · jeu. dîner couscous', notesPh: 'Anniversaire, allergies, préférences… (privé : l’équipe ne le voit pas)',
       fArrival: 'Heure d’arrivée / vol', fBeds: 'Couchages', fStaffNote: 'Consigne pour l’équipe',
@@ -445,6 +447,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       pushUnsupported: 'This browser does not support alerts. Use Safari (iPhone, from the Home Screen) or Chrome.',
       pushOn: 'Alerts on — a test is on its way', pushOff: 'Alerts off on this device', pushErr: 'Could not turn alerts on — try again', pushTestSent: 'Test sent',
       nudge: 'Be told about Airbnb enquiries (24 h to reply) without opening the app.', nudgeHow: 'Show me how', later: 'Later',
+      ed: { net: 'Net received', paid: 'Paid by the guest', comm: function (p, net) { return 'The full app still deducts ' + p + '% from this amount (' + net + ' net). If this amount is already your net:'; }, netOk: 'it is my net (no commission)', comp: 'Complimentary stay: not counted in your revenue.', errAmt: 'Invalid amount.' },
       editTitle: 'Edit the stay', fAdults: 'Adults', fChildren: 'Children', fInfants: 'Infants', fPhone: 'Phone (WhatsApp)', fMeals: 'Meals ordered', fNotes: 'Notes', save: 'Save',
       mealsPh: 'E.g.: Tue dinner chicken tagine · Wed brunch · Thu dinner couscous', notesPh: 'Birthday, allergies, preferences… (private: the team does not see it)',
       fArrival: 'Arrival time / flight', fBeds: 'Beds', fStaffNote: 'Note for the team',
@@ -711,7 +714,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
 
   /* ── Données ─────────────────────────────────────────────────────── */
-  var FIELDS = 'id,name,nat,phone,arrival,departure,guests,adults,children,infants,price,source,booking_status,meals,notes,remarks,details,messages,staff_briefed_at,is_comp';
+  var FIELDS = 'id,name,nat,phone,arrival,departure,guests,adults,children,infants,price,source,booking_status,meals,notes,remarks,details,messages,staff_briefed_at,is_comp,commission,comm_mode';
   function load() {
     D.error = false;
     var since = new Date(Date.now() - 10 * 86400000).toISOString();
@@ -1046,10 +1049,32 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (saved && saved.at) h += '<span class="sub">' + esc(l.bSaved + fmtDay(dayNum(String(saved.at).slice(0, 10))) + ' · ' + mad(saved.total)) + '</span>';
     return h + '</div>';
   }
+  /* Sources proposées ; celle du séjour est gardée telle quelle si elle n'est pas dans la liste (ex. WhatsApp). */
+  function sourceOpts(cur) {
+    var k = L().ns, o = [['Direct', k.direct], ['Airbnb', 'Airbnb'], ['Booking', 'Booking.com'], ['Autre', k.other]];
+    cur = String(cur || '').trim();
+    if (cur && !o.some(function (x) { return x[0].toLowerCase() === cur.toLowerCase(); })) o.push([cur, cur]);
+    var sel = cur ? (o.filter(function (x) { return x[0].toLowerCase() === cur.toLowerCase(); })[0] || o[0])[0] : 'Direct';
+    return o.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (x[0] === sel ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('');
+  }
+  var finOf = function (c) { var f = c.details.financial; return f && typeof f === 'object' ? f : null; };
+  var amt = function (x) { return x == null || x === '' || !isFinite(+x) ? '' : String(Math.round(+x * 100) / 100); };
   function editPanel(c) {
-    var l = L(), id = esc(c.id);
+    var l = L(), k = l.ns, e = l.ed, id = esc(c.id), fin = finOf(c);
     var n = function (k, lbl, val) { return '<label class="fl"><span>' + esc(lbl) + '</span><input class="t" type="number" inputmode="numeric" min="0" max="20" step="1" id="ed-' + k + '-' + id + '" value="' + esc(val == null ? '' : val) + '"></label>'; };
+    var f = function (key, lbl, type, val, attrs) { return '<label class="fl"><span>' + esc(lbl) + '</span><input class="t" type="' + type + '" id="ed-' + key + '-' + id + '" value="' + esc(val == null ? '' : val) + '"' + (attrs || '') + '></label>'; };
+    // Montant : price = ce que reçoit le propriétaire (net), comme la synchro et « Nouveau séjour ». Un séjour
+    // saisi autrefois dans l'app complète peut porter une commission : on la montre, le propriétaire tranche.
+    var comm = +c.commission || 0, pct = comm > 0 && (c.comm_mode || 'percent') === 'percent';
+    var commLine = pct && +c.price > 0 ? '<span class="sub" id="ed-comm-' + id + '"><i class="ti ti-info-circle" aria-hidden="true"></i> ' + esc(e.comm(String(comm).replace('.', U.lang === 'en' ? '.' : ','), euro(+c.price * (1 - comm / 100)))) +
+      ' <button type="button" class="lnk" data-a="netok" data-id="' + id + '"' + (U.busy ? ' disabled' : '') + '>' + esc(e.netOk) + '</button></span>' : '';
     return '<div class="panel"><span class="ttl">' + esc(l.editTitle) + '</span>' +
+      f('name', k.name, 'text', c.name, ' maxlength="120" autocomplete="off"') +
+      '<div class="grid2">' + f('arr', k.arr, 'date', c.arrival) + f('dep', k.dep, 'date', c.departure) + '</div>' +
+      '<label class="fl"><span>' + esc(k.source) + '</span><select class="t" id="ed-source-' + id + '">' + sourceOpts(c.source) + '</select></label>' +
+      '<div class="grid2">' + f('net', e.net + ' (€)', 'number', amt(c.price) === '0' ? '' : amt(c.price), ' min="0" step="any" inputmode="decimal"') +
+        f('paid', l.ed.paid + ' (€)', 'number', fin ? amt(fin.guestTotal) : '', ' min="0" step="any" inputmode="decimal"') + '</div>' +
+      commLine + (c.is_comp ? '<span class="sub">' + esc(e.comp) + '</span>' : '') +
       '<div class="grid3">' + n('adults', l.fAdults, c.adults) + n('children', l.fChildren, c.children) + n('infants', l.fInfants, c.infants) + '</div>' +
       '<label class="fl"><span>' + esc(l.fPhone) + '</span><input class="t" type="tel" id="ed-phone-' + id + '" value="' + esc(c.phone || '') + '" placeholder="' + esc(l.phonePh) + '"></label>' +
       '<label class="fl"><span>' + esc(l.fMeals) + '</span><textarea class="t" style="min-height:88px" id="ed-meals-' + id + '" placeholder="' + esc(l.mealsPh) + '">' + esc(c.meals || '') + '</textarea></label>' +
@@ -1063,6 +1088,40 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function saveEdit(c) {
     var g = function (k) { var el = document.getElementById('ed-' + k + '-' + c.id); return el ? el.value : null; };
     var body = {}, int = function (v) { v = String(v == null ? '' : v).trim(); if (v === '') return null; var x = parseInt(v, 10); return isFinite(x) && x >= 0 ? x : null; };
+    var l = L(), k = l.ns;
+    // Nom, dates, source : vérifiés avant tout envoi (un refus ne ferme pas le formulaire : rien n'est perdu).
+    if (g('name') != null) {
+      var nm = String(g('name')).trim();
+      if (!nm) { toast(k.errName, true); return; }
+      if (nm !== String(c.name || '').trim()) body.name = nm;
+    }
+    if (g('arr') != null && g('dep') != null) {
+      var ar = String(g('arr')).trim(), de = String(g('dep')).trim(), iso = /^\d{4}-\d{2}-\d{2}$/;
+      if (ar !== String(c.arrival || '') || de !== String(c.departure || '')) {
+        var a = dayNum(ar), d = dayNum(de);
+        if (!iso.test(ar) || !iso.test(de) || !(d > a)) { toast(k.errDates, true); return; }
+        var clash = D.stays.concat(D.past || []).filter(function (x) { return String(x.id) !== String(c.id) && x.a < d && a < x.d; })[0];
+        if (clash) { toast(k.errOverlap(clash.name), true); return; }
+        body.arrival = ar; body.departure = de;
+      }
+    }
+    var so = g('source'); if (so != null && String(so).trim() && String(so).trim() !== String(c.source || '').trim()) body.source = String(so).trim();
+    // Montants (€). Net modifié → price = net et commission 0 (même règle que la confirmation Airbnb de l'app).
+    // Payé par le client → details.financial.guestTotal. Les autres clés de financial (relevé de l'email) restent.
+    var num = function (x) { x = String(x == null ? '' : x).trim().replace(',', '.'); if (x === '') return null; var v = parseFloat(x); return isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : NaN; };
+    var fin = finOf(c), fch = {};
+    if (g('net') != null) {
+      var nv = num(g('net'));
+      if (nv !== nv) { toast(l.ed.errAmt, true); return; }
+      var cur = +c.price || 0;
+      if ((nv || 0) !== Math.round(cur * 100) / 100) { body.price = nv || 0; body.commission = 0; if (fin || nv) fch.net = nv; }
+    }
+    if (g('paid') != null) {
+      var pv = num(g('paid'));
+      if (pv !== pv) { toast(l.ed.errAmt, true); return; }
+      var was = fin && fin.guestTotal != null && isFinite(+fin.guestTotal) ? Math.round(+fin.guestTotal * 100) / 100 : null;
+      if (pv !== was) fch.guestTotal = pv;
+    }
     ['adults', 'children', 'infants'].forEach(function (k) { var v = int(g(k)); if (v !== (c[k] == null ? null : +c[k])) body[k] = v; });
     var ph = String(g('phone') || '').trim(); if (ph !== String(c.phone || '').trim()) body.phone = ph || null;
     var me = String(g('meals') || '').trim(); if (me !== String(c.meals || '').trim()) body.meals = me || null;
@@ -1073,11 +1132,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       var raw = g(p[0]); if (raw == null) return;
       var v = String(raw).trim(); if (v !== String(c.details[p[1]] || '').trim()) dch[p[1]] = v;
     });
-    if (Object.keys(dch).length) { var nd = Object.assign({}, c.details); Object.keys(dch).forEach(function (k) { if (dch[k]) nd[k] = dch[k]; else delete nd[k]; }); body.details = nd; }
+    if (Object.keys(dch).length || Object.keys(fch).length) {
+      var nd = Object.assign({}, c.details); Object.keys(dch).forEach(function (k) { if (dch[k]) nd[k] = dch[k]; else delete nd[k]; });
+      if (Object.keys(fch).length) nd.financial = Object.assign({ source: 'espace' }, fin || {}, fch, { editedAt: new Date().toISOString() });
+      body.details = nd;
+    }
     if ('adults' in body || 'children' in body) { var ad = 'adults' in body ? body.adults : c.adults, ch = 'children' in body ? body.children : c.children; if (ad != null) body.guests = (+ad || 0) + (+ch || 0); }
     if (!Object.keys(body).length) { U.panel[c.id] = ''; render(); return; }
     U.panel[c.id] = '';
-    patch(c, body);
+    var moved = 'arrival' in body;
+    patch(c, body).then(function () { if (moved) return load(); }); // nouvelles dates : listes, calendrier et « à faire » recalculés
   }
 
   /* ── Messages prêts, construits depuis la fiche maison ─────────────── */
@@ -2212,6 +2276,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'pushtest') testPush();
     else if (a === 'nudgeoff') { try { localStorage.setItem(NUDGE_KEY, 'later'); } catch (er) {} render(); }
     else if (a === 'editsave' && c) saveEdit(c);
+    else if (a === 'netok' && c && +c.commission > 0) patch(c, { commission: 0 }); // le propriétaire confirme : ce montant est déjà son net
     else if (a === 'eqcreate') createLink();
     else if (a === 'eqrevoke' && v) revokeLink(v);
     else if (a === 'eqcopy') { var em = document.getElementById('eq-msg'); if (em) copyText(em.value); }

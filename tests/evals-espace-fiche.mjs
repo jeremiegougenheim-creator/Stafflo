@@ -55,7 +55,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/email_inbox') && u.includes('source=eq.email_in')) return json(inMails);
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
     if (u.includes('/rest/v1/crm_clients') && m === 'POST') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'insert', body: b, prefer: req.headers().prefer }); stays.push({ ...b }); return json([b], 201); }
-    if (u.includes('/rest/v1/crm_clients') && m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'stay', url: u, body: b }); return json([{ ...stays[0], ...b }]); }
+    if (u.includes('/rest/v1/crm_clients') && m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'stay', url: u, body: b }); const id = decodeURIComponent((u.match(/id=eq\.([^&]+)/) || [])[1] || ''); const row = stays.find((x) => String(x.id) === id) || stays[0]; if (row) Object.assign(row, b); return json([{ ...row }]); }
     if (u.includes('/rest/v1/crm_clients')) return json(stays);
     if (u.includes('/rest/v1/')) return json([]);
     return route.fulfill({ status: 204, body: '' });
@@ -312,6 +312,64 @@ await r.ctx.close();
   await r.page.waitForTimeout(200);
   const mob = await r.page.evaluate(() => ({ pos: getComputedStyle(document.getElementById('tabs')).position, cols: getComputedStyle(document.querySelector('main .stack')).columnCount }));
   check('téléphone (390 px) : menu en bas, une colonne', mob.pos === 'fixed' && (mob.cols === 'auto' || mob.cols === '1'), mob);
+  await r.ctx.close();
+}
+
+// ── 5 sexies. Modifier un séjour : nom, dates, source, montants ──────────────────────
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null };
+  const S = [
+    { id: 'e1', name: 'Sean Byrne', arrival: iso(5), departure: iso(9), adults: 2, booking_status: 'confirmed', source: 'Airbnb', price: 3533.9, commission: 15.5, comm_mode: 'percent',
+      details: { financial: { net: 3533.9, guestTotal: 4000, bookingRef: 'HMTEST0001', source: 'confirmation_email', reconciled: true }, reservation_code: 'HMTEST0001' } },
+    { id: 'e2', name: 'Léo Petit', arrival: iso(20), departure: iso(24), adults: 3, booking_status: 'confirmed', source: 'WhatsApp', price: 0, commission: 0, details: {} },
+  ];
+  r = await open({ tab: 'sejours', villa: V, stays: S });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="e1"]'); await r.page.click('[data-a="panel"][data-id="e1"][data-v="edit"]'); await r.page.waitForSelector('#ed-name-e1');
+  const pre = { name: await r.page.inputValue('#ed-name-e1'), arr: await r.page.inputValue('#ed-arr-e1'), dep: await r.page.inputValue('#ed-dep-e1'), src: await r.page.inputValue('#ed-source-e1'), net: await r.page.inputValue('#ed-net-e1'), paid: await r.page.inputValue('#ed-paid-e1') };
+  check('modifier : nom, dates, source, net et payé par le client pré-remplis depuis le séjour', pre.name === 'Sean Byrne' && pre.arr === iso(5) && pre.dep === iso(9) && pre.src === 'Airbnb' && pre.net === '3533.9' && pre.paid === '4000', pre);
+  const cl = await r.page.innerText('#ed-comm-e1').catch(() => '');
+  check('commission saisie autrefois dans l’app complète : montrée (15,5 %, soit 2 986 € net), le propriétaire tranche', /15,5 %/.test(cl) && /2\s?986 €/.test(cl) && /c’est mon net/.test(cl), cl);
+  await r.page.click('[data-a="editsave"][data-id="e1"]'); await r.page.waitForTimeout(150);
+  check('rien changé → rien envoyé', !r.calls.some((x) => x.kind === 'stay'));
+  await r.page.click('[data-a="panel"][data-id="e1"][data-v="edit"]'); await r.page.waitForSelector('#ed-name-e1');
+  await r.page.fill('#ed-name-e1', '  '); await r.page.click('[data-a="editsave"][data-id="e1"]'); await r.page.waitForTimeout(100);
+  check('nom vidé → refusé, rien envoyé, formulaire gardé', /Le nom du client est requis/.test(await r.page.innerText('#toastHost')) && !r.calls.some((x) => x.kind === 'stay') && !!(await r.page.$('#ed-name-e1')));
+  await r.page.fill('#ed-name-e1', 'Seán Byrne'); await r.page.fill('#ed-dep-e1', iso(21));
+  await r.page.click('[data-a="editsave"][data-id="e1"]'); await r.page.waitForTimeout(100);
+  check('dates qui chevauchent un autre séjour → refusé avec son nom, rien envoyé', /chevauchent le séjour de Léo Petit/.test(await r.page.innerText('#toastHost')) && !r.calls.some((x) => x.kind === 'stay'));
+  await r.page.fill('#ed-dep-e1', iso(4)); await r.page.click('[data-a="editsave"][data-id="e1"]'); await r.page.waitForTimeout(100);
+  check('départ avant l’arrivée → refusé', /Dates invalides/.test(await r.page.innerText('#toastHost')) && !r.calls.some((x) => x.kind === 'stay'));
+  await r.page.fill('#ed-arr-e1', iso(6)); await r.page.fill('#ed-dep-e1', iso(10)); await r.page.selectOption('#ed-source-e1', 'Direct');
+  await r.page.click('[data-a="editsave"][data-id="e1"]'); await r.page.waitForTimeout(500);
+  let pc = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('nom, dates décalées (sur ses propres anciennes dates : pas un chevauchement), source → envoyés ; montants intacts', !!pc && /id=eq\.e1/.test(pc.url) && pc.body.name === 'Seán Byrne' && pc.body.arrival === iso(6) && pc.body.departure === iso(10) && pc.body.source === 'Direct' && !('price' in pc.body) && !('commission' in pc.body) && !('details' in pc.body), pc && pc.body);
+  check('après le changement de dates : séjour rechargé, nouvelles dates affichées, 0 erreur', /Seán Byrne/.test(await txt(r.page)) && !r.errs.length, r.errs);
+  // Montants : net → price + commission 0 ; payé → details.financial.guestTotal ; le relevé de l'email reste.
+  await r.page.click('[data-a="panel"][data-id="e1"][data-v="edit"]').catch(() => {});
+  if (!(await r.page.$('#ed-net-e1'))) { await r.page.click('[data-a="toggle"][data-id="e1"]'); await r.page.click('[data-a="panel"][data-id="e1"][data-v="edit"]'); }
+  await r.page.waitForSelector('#ed-net-e1');
+  await r.page.fill('#ed-net-e1', '2986'); await r.page.fill('#ed-paid-e1', '4100');
+  await r.page.click('[data-a="editsave"][data-id="e1"]'); await r.page.waitForTimeout(400);
+  pc = r.calls.filter((x) => x.kind === 'stay').pop();
+  const fin = pc && pc.body.details && pc.body.details.financial;
+  check('net modifié → price = net, commission 0 ; payé → financial.guestTotal ; bookingRef, code et relevé gardés', !!pc && pc.body.price === 2986 && pc.body.commission === 0 && !!fin && fin.net === 2986 && fin.guestTotal === 4100 && fin.bookingRef === 'HMTEST0001' && fin.source === 'confirmation_email' && fin.reconciled === true && !!fin.editedAt && pc.body.details.reservation_code === 'HMTEST0001' && !('name' in pc.body), pc && pc.body);
+  // Le séjour WhatsApp : sa source est gardée dans la liste (pas remplacée par « Direct » à l'enregistrement)
+  await r.page.click('[data-a="toggle"][data-id="e2"]'); await r.page.click('[data-a="panel"][data-id="e2"][data-v="edit"]'); await r.page.waitForSelector('#ed-source-e2');
+  check('source hors liste (WhatsApp) : proposée et sélectionnée, net vide quand 0', (await r.page.inputValue('#ed-source-e2')) === 'WhatsApp' && (await r.page.inputValue('#ed-net-e2')) === '' && !(await r.page.$('#ed-comm-e2')));
+  const before = r.calls.filter((x) => x.kind === 'stay').length;
+  await r.page.fill('#ed-adults-e2', '4'); await r.page.click('[data-a="editsave"][data-id="e2"]'); await r.page.waitForTimeout(300);
+  pc = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('autre champ seulement (adultes) : ni source, ni montant, ni dates envoyés', r.calls.filter((x) => x.kind === 'stay').length === before + 1 && Object.keys(pc.body).sort().join() === 'adults,guests' && pc.body.adults === 4, pc && pc.body);
+  await r.ctx.close();
+  // « C'est mon net » : commission 0, montant inchangé.
+  const S2 = [{ id: 'e3', name: 'Lea Roy', arrival: iso(3), departure: iso(6), adults: 2, booking_status: 'confirmed', source: 'Airbnb', price: 1200, commission: 15.5, comm_mode: 'percent', details: {} }];
+  r = await open({ tab: 'sejours', villa: V, stays: S2 });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="e3"]'); await r.page.click('[data-a="panel"][data-id="e3"][data-v="edit"]'); await r.page.waitForSelector('#ed-comm-e3');
+  await r.page.click('[data-a="netok"][data-id="e3"]'); await r.page.waitForTimeout(300);
+  pc = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('« c’est mon net » → commission 0 seulement, le montant ne bouge pas, la ligne disparaît', !!pc && Object.keys(pc.body).join() === 'commission' && pc.body.commission === 0 && !(await r.page.$('#ed-comm-e3')) && !r.errs.length, pc && pc.body);
   await r.ctx.close();
 }
 
