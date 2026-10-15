@@ -50,7 +50,7 @@ check('nuits du mois comptent aussi les séjours terminés', /D\.stays\.concat\(
 // v3 — alertes, modification d'un séjour, décompte
 for (const bad of ['14h', '400 MAD', 'MAD par article'])
   check(`aucun horaire ni prix recopié : « ${bad} »`, !script.includes(bad));
-check('décompte : prix lus dans la fiche (F.MEALS)', /unitPrice\(F\.MEALS\[1\], col\)/.test(script) && /unitPrice\(F\.MEALS\[2\], col\)/.test(script));
+check('décompte : prix lus dans la fiche (F.MEALS), sans erreur si la fiche n’a pas ces lignes', /unitPrice\(F\.MEALS\[1\] \|\| \{\}, col\)/.test(script) && /unitPrice\(F\.MEALS\[2\] \|\| \{\}, col\)/.test(script));
 check('décompte enregistré dans details.billing (fusion, rien d’écrasé)', /setDetail\(c, 'billing'/.test(script));
 check('modification : seuls les champs changés sont envoyés', /if \(!Object\.keys\(body\)\.length\)/.test(script));
 check('alertes : la clé publique vient du serveur (jamais de clé privée côté page)', /pushCall\('public_key'\)/.test(script) && !/priv/i.test(script.replace(/private|privée|privé/g, '')));

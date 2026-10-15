@@ -318,7 +318,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         add: 'Ajouter', remove: 'Retirer', phFr: 'Français', phEn: 'English (sinon le français est repris)',
         translate: 'Traduire en anglais les champs vides (ARIA)', translating: 'ARIA traduit…', translated: function (n) { return n + ' champ' + (n > 1 ? 's' : '') + ' traduit' + (n > 1 ? 's' : '') + ' — relisez, puis enregistrez'; }, trNone: 'Rien à traduire : tous les champs anglais sont remplis.', trErr: 'Traduction impossible pour le moment — réessayez.',
         s: { villa: 'La villa', team: 'Équipe', practical: 'Pratique', rooms: 'Chambres', meals: 'Repas et prix', menus: 'Menus', rules: 'Règles de la maison', good: 'Bon à savoir', leisure: 'Loisirs à la villa', around: 'Alentours' },
-        v: { name: 'Nom de la villa', host: 'Prénom de l’hôte', hostPhone: 'WhatsApp de l’hôte', address: 'Adresse', lat: 'Latitude (GPS)', lng: 'Longitude (GPS)', wifiNet: 'Nom du Wi-Fi', wifiPass: 'Mot de passe Wi-Fi', staff: 'Premier contact sur place (prénom)', said: 'Son WhatsApp', xFrom: 'Supplément Airbnb à partir du … voyageur', xFee: '€ par nuit et par personne', xMax: 'Personnes au maximum' },
+        v: { name: 'Nom de la villa', city: 'Ville', host: 'Prénom de l’hôte', hostPhone: 'WhatsApp de l’hôte', address: 'Adresse', lat: 'Latitude (GPS)', lng: 'Longitude (GPS)', wifiNet: 'Nom du Wi-Fi', wifiPass: 'Mot de passe Wi-Fi', staff: 'Premier contact sur place (prénom)', said: 'Son WhatsApp', xFrom: 'Supplément Airbnb à partir du … voyageur', xFee: '€ par nuit et par personne', xMax: 'Personnes au maximum' },
         t: { name: 'Prénom', role: 'Rôle', phone: 'Téléphone (facultatif, jamais montré au client)', brief: 'Reçoit le brief', kitchen: 'Cuisine' },
         r: { t: 'Nom de la chambre', tag: 'Précision (ex. : pavillon indépendant)', bed: 'Lit', bath: 'Salle de bain', d: 'Description' },
         m: { n: 'Repas', a: 'Prix groupe 1–6 (MAD, ou « Inclus »)', b: 'Prix groupe 7–10 (MAD)', h: 'Horaires', notes: 'Notes sur les repas (courses, boissons, logistique)' },
@@ -421,7 +421,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         add: 'Add', remove: 'Remove', phFr: 'Français', phEn: 'English (otherwise the French is used)',
         translate: 'Translate empty fields into English (ARIA)', translating: 'ARIA is translating…', translated: function (n) { return n + ' field' + (n > 1 ? 's' : '') + ' translated — review, then save'; }, trNone: 'Nothing to translate: every English field is filled.', trErr: 'Translation unavailable right now — try again.',
         s: { villa: 'The villa', team: 'Team', practical: 'Practical', rooms: 'Bedrooms', meals: 'Meals and prices', menus: 'Menus', rules: 'House rules', good: 'Good to know', leisure: 'Leisure at the villa', around: 'Around' },
-        v: { name: 'Villa name', host: 'Host first name', hostPhone: 'Host WhatsApp', address: 'Address', lat: 'Latitude (GPS)', lng: 'Longitude (GPS)', wifiNet: 'Wi-Fi name', wifiPass: 'Wi-Fi password', staff: 'First contact on site (first name)', said: 'Their WhatsApp', xFrom: 'Airbnb extra fee from guest no.', xFee: '€ per night per person', xMax: 'Guests maximum' },
+        v: { name: 'Villa name', city: 'City', host: 'Host first name', hostPhone: 'Host WhatsApp', address: 'Address', lat: 'Latitude (GPS)', lng: 'Longitude (GPS)', wifiNet: 'Wi-Fi name', wifiPass: 'Wi-Fi password', staff: 'First contact on site (first name)', said: 'Their WhatsApp', xFrom: 'Airbnb extra fee from guest no.', xFee: '€ per night per person', xMax: 'Guests maximum' },
         t: { name: 'First name', role: 'Role', phone: 'Phone (optional, never shown to guests)', brief: 'Gets the brief', kitchen: 'Kitchen' },
         r: { t: 'Bedroom name', tag: 'Detail (e.g. independent pavilion)', bed: 'Bed', bath: 'Bathroom', d: 'Description' },
         m: { n: 'Meal', a: 'Price group 1–6 (MAD, or “Included”)', b: 'Price group 7–10 (MAD)', h: 'Times', notes: 'Notes on meals (groceries, drinks, logistics)' },
@@ -809,7 +809,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return [
       mk('phone', !!String(c.phone || '').trim(), c.a - 3),
       HAS_FACTS ? mk('livret', !!c.details.livretSentAt, c.a - 3) : null,
-      F.MEALS.length ? mk('meals', !!String(c.meals || '').trim(), c.a - 2) : null,
+      mealsOn() ? mk('meals', !!String(c.meals || '').trim(), c.a - 2) : null,
       // Ce que la vue équipe affiche en « ? » tant que c'est vide : heure d'arrivée et couchages (Modifier).
       mk('team', !!(String(c.details.arrival_time || '').trim() && String(c.details.beds || '').trim()), c.a - 2),
       mk('brief', !!c.staff_briefed_at, c.a - 1)
@@ -942,7 +942,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return m ? +m[1].replace(/\s/g, '') : 0;
   }
   function billCalc(c) {
-    var b = billOf(c), col = b.col || 'a', uS = unitPrice(F.MEALS[1], col), uG = unitPrice(F.MEALS[2], col);
+    var b = billOf(c), col = b.col || 'a', uS = unitPrice(F.MEALS[1] || {}, col), uG = unitPrice(F.MEALS[2] || {}, col);
     var n = function (x) { x = +x; return isFinite(x) && x > 0 ? x : 0; };
     var lines = [], total = 0;
     if (n(b.services) && uS) { var hs = Math.min(n(b.holiday), n(b.services)); var v = n(b.services) * uS + hs * uS; total += v; lines.push({ k: 'services', q: n(b.services), u: uS, h: hs, v: v }); }
@@ -1048,47 +1048,52 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function msgMeals(c) {
     var g = guestLang(c), i = g === 'en' ? 1 : 0, M = F.MEALS, col = mealsRow(c);
     var order = flat(P(F.TEXT.orderRule, i)), m2 = order.match(/(Deux jours avant[^.]*\.|Two days before[^.]*\.)/), m3 = order.match(/(Vous pourrez ensuite[^.]*\.|You can then[^.]*\.)/);
-    var drinks = (flat(P(F.MEAL_NOTES[3], i)).match(/^[^.]*\./) || [''])[0];
+    var drinks = F.MEAL_NOTES[3] ? (flat(P(F.MEAL_NOTES[3], i)).match(/^[^.]*\./) || [''])[0] : '';
     var dates = fmtDay(c.a, g) + ' → ' + fmtDay(c.d, g);
     if (g === 'fr') {
       return 'Bonjour ' + firstName(c) + ',\n\nVotre séjour à ' + atVilla(true) + ' approche (' + dates + ') ! ' + (m2 ? m2[0] : '') + '\n\n' +
         'Pour votre groupe de ' + c.pax + ' personnes :\n' +
         '• ' + P(M[1].n, 0) + ' : ' + P(M[1][col], 0) + ' par service pour tout le groupe\n' +
-        '• ' + P(M[2].n, 0) + ' : ' + P(M[2][col], 0) + '\n' +
-        '• ' + flat(P(F.MEAL_NOTES[1], 0)) + ' Courses au prix réel, ticket envoyé par WhatsApp.\n' +
-        '• ' + drinks + '\n\n' +
+        (M[2] ? '• ' + P(M[2].n, 0) + ' : ' + P(M[2][col], 0) + '\n' : '') +
+        (F.MEAL_NOTES[1] ? '• ' + flat(P(F.MEAL_NOTES[1], 0)) + ' Courses au prix réel, ticket envoyé par WhatsApp.\n' : '') +
+        (drinks ? '• ' + drinks + '\n' : '') + '\n' +
         'Les menus sont dans votre livret : pour chaque service, le groupe choisit une entrée, un plat et un dessert. ' + (m3 ? m3[0] : '') + '\n\nÀ très vite,\n' + owner();
     }
     return 'Hello ' + firstName(c) + ',\n\nYour stay at ' + atVilla(false) + ' is coming up (' + dates + ')! ' + (m2 ? m2[0] : '') + '\n\n' +
       'For your group of ' + c.pax + ':\n' +
       '• ' + P(M[1].n, 1) + ': ' + P(M[1][col], 1) + ' per service for the whole group\n' +
-      '• ' + P(M[2].n, 1) + ': ' + P(M[2][col], 1) + '\n' +
-      '• ' + flat(P(F.MEAL_NOTES[1], 1)) + ' Groceries at cost, receipt sent on WhatsApp.\n' +
-      '• ' + drinks + '\n\n' +
+      (M[2] ? '• ' + P(M[2].n, 1) + ': ' + P(M[2][col], 1) + '\n' : '') +
+      (F.MEAL_NOTES[1] ? '• ' + flat(P(F.MEAL_NOTES[1], 1)) + ' Groceries at cost, receipt sent on WhatsApp.\n' : '') +
+      (drinks ? '• ' + drinks + '\n' : '') + '\n' +
       'The menus are in your guide: for each service the group chooses one starter, one main and one dessert. ' + (m3 ? m3[0] : '') + '\n\nSee you soon,\n' + owner();
   }
   function msgArrival(c) {
     var g = guestLang(c), i = g === 'en' ? 1 : 0;
     var arr = flat(P(F.PRACTICAL.filter(function (p) { return /^(Arrivée et départ|Arrival and departure)/.test(p[0]) || /^Arrival and departure/.test(p[1]); })[0] || ['', ''], i));
     var said = F.TEAM.filter(function (m) { return m.phone; })[0];
-    var map = 'https://www.google.com/maps/search/?api=1&query=' + F.VILLA.pin.lat + ',' + F.VILLA.pin.lng;
+    var pin = F.VILLA.pin, map = pin && pin.lat != null && pin.lng != null ? 'https://www.google.com/maps/search/?api=1&query=' + pin.lat + ',' + pin.lng : '';
+    var role = said && !(i === 1 && Array.isArray(said.role) && !said.role[1]) ? String(P(said.role, i)).split(' — ')[0].trim() : '', addr = String(F.VILLA.address || '').trim();
     var first = (arr.replace(/^(Arrivée et départ|Arrival and departure)\s*:\s*/, '').match(/^[^.]*\./) || [''])[0];
     if (g === 'fr') {
       return 'Bonjour ' + firstName(c) + ',\n\nTout est prêt pour votre arrivée le ' + fmtLongDay(c.a, 'fr') + '.\n\n' +
-        '• ' + first.charAt(0).toUpperCase() + first.slice(1) + '\n' +
-        '• Adresse : ' + F.VILLA.address + '\n• Position exacte : ' + map + '\n' +
-        (said ? '• Sur place, ' + said.name + ', notre majordome, vous accueille : ' + said.phone + '\n' : '') +
+        (first ? '• ' + first.charAt(0).toUpperCase() + first.slice(1) + '\n' : '') +
+        (addr ? '• Adresse : ' + addr + '\n' : '') + (map ? '• Position exacte : ' + map + '\n' : '') +
+        (said ? '• Sur place, ' + said.name + (role ? ', notre ' + role + ',' : '') + ' vous accueille : ' + said.phone + '\n' : '') +
         '\nEnvoyez-nous votre heure d’arrivée (et votre numéro de vol) pour que l’équipe vous attende.\n\nÀ très vite,\n' + owner();
     }
     return 'Hello ' + firstName(c) + ',\n\nEverything is ready for your arrival on ' + fmtLongDay(c.a, 'en') + '.\n\n' +
-      '• ' + first.charAt(0).toUpperCase() + first.slice(1) + '\n' +
-      '• Address: ' + F.VILLA.address + '\n• Exact location: ' + map + '\n' +
-      (said ? '• On site, ' + said.name + ', our house manager, will welcome you: ' + said.phone + '\n' : '') +
+      (first ? '• ' + first.charAt(0).toUpperCase() + first.slice(1) + '\n' : '') +
+      (addr ? '• Address: ' + addr + '\n' : '') + (map ? '• Exact location: ' + map + '\n' : '') +
+      (said ? '• On site, ' + said.name + (role ? ', our ' + role + ',' : '') + ' will welcome you: ' + said.phone + '\n' : '') +
       '\nPlease send us your arrival time (and flight number) so the team is ready for you.\n\nSee you soon,\n' + owner();
   }
+  /* Fiche partielle (toute villa) : le message repas suppose un service chiffré (2e ligne des repas),
+     le message passeports une règle « Passeports : … ». Sans eux, pas de bouton. */
+  function mealsOn() { return F.MEALS.length > 1; }
+  function passRule() { return F.RULES.filter(function (r) { return /^Passeports|^Passports/.test(r[0]) || /^Passports/.test(r[1]); })[0] || null; }
   function msgPassports(c) {
     var g = guestLang(c), i = g === 'en' ? 1 : 0;
-    var rule = F.RULES.filter(function (r) { return /^Passeports|^Passports/.test(r[0]) || /^Passports/.test(r[1]); })[0];
+    var rule = passRule();
     var body = rule ? flat(P(rule, i)).replace(/^(Passeports|Passports)\s*:\s*/, '') : '';
     body = body.charAt(0).toUpperCase() + body.slice(1);
     return (g === 'fr' ? 'Bonjour ' : 'Hello ') + firstName(c) + ',\n\n' + body + (g === 'fr' ? '\n\nMerci beaucoup,\n' : '\n\nThank you very much,\n') + owner();
@@ -1449,13 +1454,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     h += '<div class="acts">' +
       (HAS_FACTS && LINKS && LINKS.get(c.id) ? '<a class="act" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener" title="' + esc(l.act.livret) + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</a>' : '') +
       (wa ? '<a class="act" href="https://wa.me/' + wa + '" target="_blank" rel="noopener" title="WhatsApp"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
-      (c.a < todayNum() || !HAS_FACTS ? ['brief'] : (F.MEALS.length ? ['meals', 'arrival', 'passports', 'brief'] : ['arrival', 'passports', 'brief'])).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
+      (c.a < todayNum() || !HAS_FACTS ? ['brief'] : (['meals', 'arrival', 'passports', 'brief'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'passports' ? !!passRule() : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
         return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', brief: 'clipboard-list' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
       }).join('') +
       (wa ? '' : '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="phone" aria-pressed="' + (pn === 'phone') + '"><i class="ti ti-phone" aria-hidden="true"></i>' + esc(l.act.phone) + '</button>') +
       (HAS_FACTS && c.d - todayNum() <= 2 ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="depart" aria-pressed="' + (pn === 'depart') + '"><i class="ti ti-door-exit" aria-hidden="true"></i>' + esc(l.actDepart) + '</button>' : '') +
       '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="edit" aria-pressed="' + (pn === 'edit') + '"><i class="ti ti-pencil" aria-hidden="true"></i>' + esc(l.act2.edit) + '</button>' +
-      (HAS_FACTS && F.MEALS.length ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="bill" aria-pressed="' + (pn === 'bill') + '"><i class="ti ti-receipt" aria-hidden="true"></i>' + esc(l.act2.bill) + '</button>' : '') +
+      (HAS_FACTS && mealsOn() ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="bill" aria-pressed="' + (pn === 'bill') + '"><i class="ti ti-receipt" aria-hidden="true"></i>' + esc(l.act2.bill) + '</button>' : '') +
       '</div>';
     var ls = c.details.livretSentAt;
     if (HAS_FACTS && c.a >= todayNum()) h += '<div class="row2"><button type="button" class="btn ghost" data-a="livret" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-' + (ls ? 'check' : 'file-text') + '" aria-hidden="true"></i>' +
@@ -1580,22 +1585,24 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
      montre pas (QR…) sont conservées telles quelles. Aucune valeur par défaut d'une
      autre villa : une fiche neuve est vide. */
   var FE = { on: false, data: null, busy: false, tr: false, open: {} };
-  var FE_PAIRS = ['PRACTICAL', 'RULES', 'GOOD_TO_KNOW', 'MEAL_NOTES', 'LEISURE', 'BREAKFAST', 'GOUTER', 'STARTERS', 'MAINS', 'SIMPLE', 'DESSERTS', 'CAFES'];
+  var FE_PAIRS = ['PRACTICAL', 'RULES', 'GOOD_TO_KNOW', 'MEAL_NOTES', 'LEISURE', 'BREAKFAST', 'GOUTER', 'STARTERS', 'MAINS', 'SIMPLE', 'DESSERTS'];
+  // CAFES : [nom, site facultatif] — pas une paire fr/en (le livret y lit un lien).
   var FE_PLACES = ['MEDINA', 'GOLF', 'ACTIVITIES', 'RESTAURANTS'];
   var FE_TEXTS = ['roomsIntro', 'orderRule', 'mealsIntro', 'earlyBrk', 'menuIntro', 'menuNote', 'kidsBox'];
   function feBlank() { return { VILLA: { name: '', host: '', hostPhone: '', address: '', pin: null, wifi: { net: '', pass: '' }, staff: '', said: '', extraGuest: null }, TEXT: {}, TEAM: [], ROOMS: [], MEALS: [] }; }
   function feOpen() {
     var src = HAS_FACTS && D.villa && D.villa.house_facts ? D.villa.house_facts : null;
     FE.data = src ? JSON.parse(JSON.stringify(src)) : feBlank();
-    FE.data.VILLA = Object.assign({ name: '', host: '', hostPhone: '', address: '', staff: '', said: '' }, FE.data.VILLA || {});
+    FE.data.VILLA = Object.assign({ name: '', city: '', host: '', hostPhone: '', address: '', staff: '', said: '' }, FE.data.VILLA || {});
     if (!src) {
       var v = D.villa || {};
       FE.data.VILLA.name = String(v.villa_name || '').trim();
+      FE.data.VILLA.city = String(v.city || '').split(',')[0].trim();
       FE.data.VILLA.host = cap1(v.owner_name) || '';
       // L'équipe déjà enregistrée dans Réglages (table staff) sert de point de départ : prénoms seulement.
       FE.data.TEAM = (D.staff || []).filter(function (m) { return m.name; }).map(function (m) { return { name: String(m.name), role: [String(m.role || ''), ''], phone: m.wa ? String(m.wa) : undefined, brief: true }; });
     }
-    FE_PAIRS.concat(FE_PLACES, ['TEAM', 'ROOMS', 'MEALS']).forEach(function (k) { if (!Array.isArray(FE.data[k])) FE.data[k] = []; });
+    FE_PAIRS.concat(FE_PLACES, ['TEAM', 'ROOMS', 'MEALS', 'CAFES']).forEach(function (k) { if (!Array.isArray(FE.data[k])) FE.data[k] = []; });
     if (!FE.data.TEXT || typeof FE.data.TEXT !== 'object') FE.data.TEXT = {};
     FE.on = true; FE.tr = false; FE.open = {}; U.tab = 'maison'; render(); window.scrollTo(0, 0);
   }
@@ -1633,7 +1640,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var h = '<section class="card"><div class="b"><h2 style="margin:0;font-family:var(--serif);font-weight:500;font-size:24px">' + esc(l.title) + '</h2><p class="sub" style="margin:0">' + esc(l.intro) + '</p>' + (fresh ? '<p style="margin:0;font-size:14px"><b>' + esc(l.first) + '</b></p>' : '') + '</div></section>';
     // 1. La villa
     h += feCard('home', l.s.villa, '<div class="fe-grid">' +
-      feInput('VILLA.name', l.v.name, V.name, { w: true }) + feInput('VILLA.host', l.v.host, V.host) + feInput('VILLA.hostPhone', l.v.hostPhone, V.hostPhone, { tel: true, ph: '+…' }) +
+      feInput('VILLA.name', l.v.name, V.name) + feInput('VILLA.city', l.v.city, V.city) + feInput('VILLA.host', l.v.host, V.host) + feInput('VILLA.hostPhone', l.v.hostPhone, V.hostPhone, { tel: true, ph: '+…' }) +
       feInput('VILLA.address', l.v.address, V.address, { w: true }) + feInput('VILLA.pin.lat', l.v.lat, pin.lat, { type: 'number', step: 'any', ph: '31.62' }) + feInput('VILLA.pin.lng', l.v.lng, pin.lng, { type: 'number', step: 'any', ph: '-7.98' }) +
       feInput('VILLA.wifi.net', l.v.wifiNet, wifi.net) + feInput('VILLA.wifi.pass', l.v.wifiPass, wifi.pass) +
       feInput('VILLA.staff', l.v.staff, V.staff) + feInput('VILLA.said', l.v.said, V.said, { tel: true, ph: '+…' }) +
@@ -1668,7 +1675,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         var p = k + '.' + i;
         return '<div class="fe-row">' + feRm(p) + fePair(p + '.n', l.p.n, pl.n) + fePair(p + '.d', l.p.d, pl.d) + feInput(p + '.url', l.p.url, pl.url, { ph: 'https://' }) + '</div>';
       }).join('') + '</div>' + feAdd(k);
-    }).join('') + fePairList('CAFES', l.lists.CAFES));
+    }).join('') + '<span class="fe-l" style="font-size:13px">' + esc(l.lists.CAFES) + '</span><div class="fe-list">' + (d.CAFES || []).map(function (c, i) {
+      var p = 'CAFES.' + i, a = Array.isArray(c) ? c : [c, ''];
+      return '<div class="fe-row">' + feRm(p) + '<div class="fe-grid">' + feInput(p + '.0', l.p.n, a[0]) + feInput(p + '.1', l.p.url, a[1], { ph: 'https://' }) + '</div></div>';
+    }).join('') + '</div>' + feAdd('CAFES'));
     h += '<button type="button" class="btn ghost" data-a="fetr"' + (FE.tr ? ' disabled' : '') + '><i class="ti ti-language" aria-hidden="true"></i>' + esc(FE.tr ? l.translating : l.translate) + '</button>';
     h += '<div class="fe-bar"><button type="button" class="btn ghost" data-a="fecancel">' + esc(l.cancel) + '</button><button type="button" class="btn gold" data-a="fesave"' + (FE.busy ? ' disabled' : '') + '><i class="ti ti-device-floppy" aria-hidden="true"></i>' + esc(l.save) + '</button></div>';
     return h;
@@ -1677,7 +1687,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var FE_NEW = { TEAM: function () { return { name: '', role: ['', ''], brief: true }; }, ROOMS: function () { return { t: ['', ''], tag: ['', ''], bed: ['', ''], bath: ['', ''], d: ['', ''] }; }, MEALS: function () { return { n: ['', ''], a: ['', ''], b: ['', ''], h: ['', ''] }; } };
   function feAddRow(k) {
     if (!Array.isArray(FE.data[k])) FE.data[k] = [];
-    FE.data[k].push(FE_NEW[k] ? FE_NEW[k]() : FE_PLACES.indexOf(k) > -1 ? { n: ['', ''], d: ['', ''] } : ['', '']);
+    FE.data[k].push(FE_NEW[k] ? FE_NEW[k]() : FE_PLACES.indexOf(k) > -1 ? { n: ['', ''], d: ['', ''] } : ['', '']); // CAFES : [nom, site]
     render();
     var all = document.querySelectorAll('[data-fe^="' + k + '.' + (FE.data[k].length - 1) + '."]'); if (all.length) { all[0].focus(); all[0].scrollIntoView({ block: 'center' }); }
   }
@@ -1697,13 +1707,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var d = JSON.parse(JSON.stringify(src)), V = d.VILLA || {}, out = {};
     Object.keys(d).forEach(function (k) { out[k] = d[k]; }); // clés inconnues de l'éditeur (QR…) conservées
     var villa = { name: S(V.name), host: S(V.host), hostPhone: S(V.hostPhone), address: S(V.address), staff: S(V.staff), said: S(V.said) };
+    if (S(V.city)) villa.city = S(V.city); // absent de la fiche du pilote : le livret prend alors le dernier mot de l'adresse
     var lat = N(V.pin && V.pin.lat), lng = N(V.pin && V.pin.lng); if (lat != null && lng != null) villa.pin = { lat: lat, lng: lng };
     if (V.wifi && S(V.wifi.net)) villa.wifi = { net: S(V.wifi.net), pass: S(V.wifi.pass) };
     var x = V.extraGuest || {}; if (N(x.from) != null && N(x.fee) != null) villa.extraGuest = { from: N(x.from), fee: N(x.fee), max: N(x.max) != null ? N(x.max) : N(x.from) };
-    Object.keys(V).forEach(function (k) { if (!(k in villa) && ['pin', 'wifi', 'extraGuest'].indexOf(k) < 0) villa[k] = V[k]; });
+    Object.keys(V).forEach(function (k) { if (!(k in villa) && ['pin', 'wifi', 'extraGuest', 'city'].indexOf(k) < 0) villa[k] = V[k]; });
     out.VILLA = villa;
     FE_PAIRS.forEach(function (k) { out[k] = (d[k] || []).map(cleanPair).filter(pairOk).map(fixPair); });
     FE_PLACES.forEach(function (k) { out[k] = (d[k] || []).map(function (p) { var o = { n: fixPair(cleanPair(p.n)), d: fixPair(cleanPair(p.d)) }; if (S(p.url)) o.url = S(p.url); return o; }).filter(function (o) { return o.n[0] !== ''; }); });
+    out.CAFES = (d.CAFES || []).map(function (c) { var a = Array.isArray(c) ? c : [c, '']; return S(a[1]) ? [S(a[0]), S(a[1])] : [S(a[0])]; }).filter(function (a) { return a[0] !== ''; });
     out.TEAM = (d.TEAM || []).map(function (m) { var o = { name: S(m.name), role: fixPair(cleanPair(m.role)) }; if (S(m.phone)) o.phone = S(m.phone); if (m.brief) o.brief = true; if (m.kitchen) o.kitchen = true; return o; }).filter(function (o) { return o.name !== ''; });
     out.ROOMS = (d.ROOMS || []).map(function (r) { var o = { t: fixPair(cleanPair(r.t)), bed: fixPair(cleanPair(r.bed)), bath: fixPair(cleanPair(r.bath)), d: fixPair(cleanPair(r.d)) }; var tg = cleanPair(r.tag); if (pairOk(tg)) o.tag = fixPair(tg); return o; }).filter(function (o) { return o.t[0] !== ''; });
     out.MEALS = (d.MEALS || []).map(function (m) { var a = S(Array.isArray(m.a) ? m.a[0] : m.a), b = S(Array.isArray(m.b) ? m.b[0] : m.b); return { n: fixPair(cleanPair(m.n)), a: [a, a], b: [b || a, b || a], h: fixPair(cleanPair(m.h)) }; }).filter(function (o) { return o.n[0] !== ''; });
