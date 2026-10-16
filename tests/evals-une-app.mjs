@@ -101,6 +101,7 @@ async function pullCfg(baseEc, localEc) {
 
 const esp = fs.readFileSync(path.join(root, 'espace.html'), 'utf8');
 check('Espace : aucun lien nu vers app.html (il renverrait à l’Espace) — « app complète » = app.html?app=1', !/href="app\.html"/.test(esp) && /href="app\.html\?app=1"/.test(esp));
+check('Espace : app.html s’appelle « ancienne version » (l’Espace est l’app, pas sa version réduite)', /fullApp: 'Ouvrir l’ancienne version'/.test(esp) && /fullApp: 'Open the previous version'/.test(esp) && !/l’app complète|the full app/i.test(esp.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')));
 
 await browser.close(); server.close();
 console.log(`\n${pass}/${pass + fail} PASS`);

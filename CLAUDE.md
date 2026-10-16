@@ -40,7 +40,7 @@ Ce que Stafflo est : **la base** (seule vérité), **le serveur** (automatisatio
 | Intervenant | Interface | Règle |
 |---|---|---|
 | Propriétaire | `espace.html` (Jour / Séjours / Maison, ARIA dans l'en-tête) | écran principal ; moins à l'écran, pas plus |
-| Propriétaire | `app.html` | **gelé** = réglages, prix, facturation, création d'un séjour direct — jusqu'à leur arrivée dans l'Espace, puis extinction. **Depuis le 15/10/2026, un compte connecté et configuré qui ouvre app.html arrive sur l'Espace** (script en tête d'app.html ; restent sur app.html : connexion, inscription, mise en route, liens profonds `?open=…`, retours OAuth/lien magique, `?app=1` = « Ouvrir l'app complète » pour cet onglet ; interrupteur `localStorage.stafflo_espace_home = 'off'`). Garde-fou : `evals-une-app` (Chromium) |
+| Propriétaire | `app.html` | **gelé** = réglages, prix, facturation, création d'un séjour direct — jusqu'à leur arrivée dans l'Espace, puis extinction. **Depuis le 15/10/2026, un compte connecté et configuré qui ouvre app.html arrive sur l'Espace** (script en tête d'app.html ; restent sur app.html : connexion, inscription, mise en route, liens profonds `?open=…`, retours OAuth/lien magique, `?app=1` = « Ouvrir l'ancienne version » pour cet onglet — depuis le 16/10 l'Espace dit « ancienne version », jamais « app complète » ; interrupteur `localStorage.stafflo_espace_home = 'off'`). Garde-fou : `evals-une-app` (Chromium) |
 | Équipe | `equipe.html` (lien personnel, FR/AR) | jamais de prix, de téléphone, de notes |
 | Client | `livret.html` (lien personnel par séjour) | lecture + « Votre arrivée » (répond vers la base) |
 
