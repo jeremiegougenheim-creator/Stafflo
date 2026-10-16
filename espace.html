@@ -302,7 +302,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       rvUntil: function (d) { return 'avis possible jusqu’au ' + d; },
       bSessions: 'Sessions de courses', bAdvance: 'Avance déjà reçue (MAD)', bRate: 'Taux : 1 € = … MAD (facultatif)', bRest: 'Reste à payer',
       mPlanning: 'Planning équipe', mPlanningTxt: 'Les plannings à envoyer à Saïd et à Léa (arrivées, groupes, repas), générés depuis les séjours.', mPlanningBtn: 'Ouvrir le planning équipe',
-      act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief maison', chef: 'Brief cuisine', phone: 'Téléphone', reg: 'Fiches voyageurs' },
+      act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief maison', chef: 'Brief prestataire', phone: 'Téléphone', reg: 'Fiches voyageurs' },
       copy: 'Copier', copied: 'Copié', openWa: 'Ouvrir WhatsApp', close: 'Fermer',
       markLivret: 'Marquer le livret envoyé', seeLivret: 'Voir le livret',
       cal: { title: 'Calendrier', prev: 'Mois précédent', next: 'Mois suivant', arr: 'arrivée', dep: 'départ', occ: 'séjour', today: 'aujourd’hui', free: function (n) { return n ? n + (n > 1 ? ' nuits libres' : ' nuit libre') + ' à venir ce mois-ci' : 'Plus aucune nuit libre ce mois-ci'; }, wd: ['L', 'M', 'M', 'J', 'V', 'S', 'D'] },
@@ -446,7 +446,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       rvUntil: function (d) { return 'review possible until ' + d; },
       bSessions: 'Shopping runs', bAdvance: 'Advance already received (MAD)', bRate: 'Rate: €1 = … MAD (optional)', bRest: 'Balance due',
       mPlanning: 'Team planning', mPlanningTxt: 'The schedules to send to Saïd and Léa (arrivals, groups, meals), built from the stays.', mPlanningBtn: 'Open the team planning',
-      act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'House brief', chef: 'Kitchen brief', phone: 'Phone', reg: 'Guest forms' },
+      act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'House brief', chef: 'Provider brief', phone: 'Phone', reg: 'Guest forms' },
       copy: 'Copy', copied: 'Copied', openWa: 'Open WhatsApp', close: 'Close',
       markLivret: 'Mark guide as sent', seeLivret: 'Open the guide',
       cal: { title: 'Calendar', prev: 'Previous month', next: 'Next month', arr: 'arrival', dep: 'departure', occ: 'stay', today: 'today', free: function (n) { return n ? n + ' free night' + (n > 1 ? 's' : '') + ' left this month' : 'No free night left this month'; }, wd: ['M', 'T', 'W', 'T', 'F', 'S', 'S'] },
@@ -1646,11 +1646,23 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   /* Brief cuisine (16/10/2026) : le prestataire repas (drapeau « kitchen » de la fiche) reçoit ce qu'il
      cuisine — couverts, services, commande du client — jamais un prix client ni le téléphone du client.
      La maison (majordome, ménage) reçoit le reste. Aucun prénom en dur : tout vient de la fiche. */
+  /* Interlocation : le prochain séjour ferme qui commence après ce départ (D.all, le plus proche).
+     La remise en état (grand ménage, tous les 3–4 mois) n'est pas un événement de séjour : pas ici. */
+  function nextStay(c) {
+    return (D.all || []).filter(function (x) { return x.id !== c.id && x.a >= c.d; }).sort(function (x, y) { return x.a - y.a; })[0] || null;
+  }
+  function turnLine(c) {
+    var n = nextStay(c);
+    if (!n) return 'Interlocation : aucune arrivée prévue après ce départ';
+    var at = String(n.details && n.details.arrival_time || '').trim();
+    return 'Interlocation : prochaine arrivée ' + fmtLongDay(n.a, 'fr') + (at ? ' — ' + flat(at) : '') + (n.a === c.d ? ' (le jour même)' : '');
+  }
   function msgKitchen(c) {
     var t = TXT.fr, who = kitchenTeam().map(function (m) { return m.name; }).join(', ') || 'la cuisine';
     var lines = ['Cuisine ' + (c.name || '') + ' — pour ' + who];
     lines.push('Arrivée : ' + fmtLongDay(c.a, 'fr') + (String(c.details.arrival_time || '').trim() ? ' — ' + flat(c.details.arrival_time) : ''));
     lines.push('Départ : ' + fmtLongDay(c.d, 'fr') + ' — ' + t.nights(c.n));
+    lines.push(turnLine(c));
     var comp = t.composition(c.ad, c.ch, c.inf);
     lines.push('Couverts : ' + (c.pax ? c.pax + ' personnes' : 'nombre à confirmer') + (comp ? ' (' + comp + ')' : ''));
     lines.push('Repas : ' + (String(c.meals || '').trim() ? flat(c.meals) : 'pas encore reçus — à demander au client (2 jours avant l’arrivée)'));
@@ -1668,6 +1680,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var ready = (arrFact.match(/prêtes (à partir de [^.,;]+)/) || [])[1];
     lines.push('Arrivée : ' + fmtLongDay(c.a, 'fr') + (ready ? ' (chambres prêtes ' + ready + ')' : ''));
     lines.push('Départ : ' + fmtLongDay(c.d, 'fr') + ' — ' + t.nights(c.n));
+    lines.push(turnLine(c));
     var comp = t.composition(c.ad, c.ch, c.inf);
     lines.push('Groupe : ' + (c.pax ? c.pax + ' personnes' : 'nombre à confirmer') + (comp ? ' (' + comp + ')' : ''));
     if (c.inf) {

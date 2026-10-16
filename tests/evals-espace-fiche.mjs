@@ -856,21 +856,34 @@ await r.ctx.close();
   r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, stays: ST });
   await r.page.waitForTimeout(250);
   await r.page.click('[data-a="toggle"][data-id="k1"]');
-  check('deux briefs dans la grille : « Brief cuisine » et « Brief maison »', !!(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !!(await r.page.$('#st-k1 [data-a="panel"][data-v="brief"]')) &&
-    /Brief cuisine/.test(await r.page.innerText('#st-k1')) && /Brief maison/.test(await r.page.innerText('#st-k1')));
+  check('deux briefs dans la grille : « Brief prestataire » et « Brief maison »', !!(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !!(await r.page.$('#st-k1 [data-a="panel"][data-v="brief"]')) &&
+    /Brief prestataire/.test(await r.page.innerText('#st-k1')) && /Brief maison/.test(await r.page.innerText('#st-k1')));
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kt = await r.page.inputValue('#tx-k1');
-  check('brief cuisine : pour le prestataire, couverts, services, commande du livret, consigne — jamais un prix ni le téléphone du client',
+  check('brief prestataire : couverts, services, commande du livret, consigne — jamais un prix ni le téléphone du client',
     /^Cuisine Felipe Villalobos — pour Léa/.test(kt) && /Couverts : 7 personnes \(6 adultes, 1 enfant\)/.test(kt) && /Repas : .*1 végétarien/.test(kt) &&
     /Commande du livret : 3 × Dîner cuisinière · 2 × Déjeuner léger/.test(kt) && /Consigne : Tajine de kefta/.test(kt) && /Arrivée : .*15h30/.test(kt) &&
     !/2 600|MAD|€|7700 900123/.test(kt), kt);
   check('envoi : « Envoyer à Léa » sur SON numéro, jamais celui de la maison ni celui du client', !!(await r.page.$('#st-k1 [data-a="sendchef"]')) && /Envoyer à Léa/.test(await r.page.innerText('#st-k1')) &&
     !(await r.page.$('#st-k1 [data-a="sendwa"]')) && !/· EN|· FR/.test(await r.page.innerText('#st-k1 .panel .ttl')));
+  check('interlocation : aucune arrivée après ce départ → dit tel quel, jamais une date supposée', /Interlocation : aucune arrivée prévue après ce départ/.test(kt));
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bt = await r.page.inputValue('#tx-k1');
   check('brief maison : pour le majordome et le ménage, jamais le prestataire repas ; couchages et contact client gardés',
     /^Brief Felipe Villalobos — pour Saïd, Bouchra$/m.test(bt) && !/Léa/.test(bt) && /Contact client : \+44 7700 900123/.test(bt) && /Chambres : à préparer/.test(bt) &&
     /Envoyer à Saïd/.test(await r.page.innerText('#st-k1')), bt);
+  await r.ctx.close();
+  // Deux séjours qui s'enchaînent : les deux briefs disent de combien de temps dispose l'équipe
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF },
+    stays: ST.concat([{ id: 'k2', name: 'Thibaut Vauclare', arrival: iso(5), departure: iso(9), adults: 10, booking_status: 'confirmed', source: 'Airbnb', details: { arrival_time: '15h30' } },
+      { id: 'k3', name: 'Ana Ruiz', arrival: iso(20), departure: iso(24), adults: 4, booking_status: 'confirmed', source: 'Airbnb', details: {} }]) });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+  const kt2 = await r.page.inputValue('#tx-k1');
+  check('interlocation : la prochaine arrivée (le séjour ferme le plus proche, avec son heure), le jour même du départ', /Interlocation : prochaine arrivée [^\n]*15h30 \(le jour même\)/.test(kt2) && !/Ana Ruiz/.test(kt2), kt2);
+  await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+  check('le brief maison la porte aussi ; la remise en état (tous les 3–4 mois) n’est jamais dans un brief de séjour', /Interlocation : prochaine arrivée/.test(await r.page.inputValue('#tx-k1')) &&
+    !/[Rr]emise en état/.test(await r.page.inputValue('#tx-k1')) && !r.errs.length, r.errs);
   await r.ctx.close();
   // Une villa sans prestataire repas : un seul brief, inchangé
   const NK = JSON.parse(JSON.stringify(PILOT));
@@ -878,7 +891,7 @@ await r.ctx.close();
   r = await open({ tab: 'sejours', villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: NK }, stays: ST });
   await r.page.waitForTimeout(250);
   await r.page.click('[data-a="toggle"][data-id="k1"]');
-  check('sans prestataire repas : pas de « Brief cuisine », le brief maison part chez le seul contact', !(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !/Brief cuisine/.test(await r.page.innerText('#st-k1')));
+  check('sans prestataire repas : pas de « Brief prestataire », le brief maison part chez le seul contact', !(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !/Brief prestataire/.test(await r.page.innerText('#st-k1')));
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   check('brief maison : le seul membre de l’équipe est le destinataire', /— pour Omar$/m.test(await r.page.inputValue('#tx-k1')) && /Envoyer à Omar/.test(await r.page.innerText('#st-k1')) && !r.errs.length, r.errs);
   await r.ctx.close();
