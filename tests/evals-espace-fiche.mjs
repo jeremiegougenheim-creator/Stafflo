@@ -19,6 +19,10 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PDFLib = require(path.join(root, 'assets/vendor/pdf-lib-1.17.1.min.js'));
+const PDF1 = Buffer.from(await (async () => { const d = await PDFLib.PDFDocument.create(); d.addPage([200, 300]); return d.save(); })());
+const JPG1 = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64');
+let SIGNED_DELAY = 0; // ms avant de servir un fichier signé (préparation longue du PDF)
 let pass = 0, fail = 0;
 const check = (name, ok, detail) => { if (ok) { pass++; console.log('PASS', name); } else { fail++; console.log('FAIL', name, detail === undefined ? '' : JSON.stringify(detail).slice(0, 400)); } };
 
@@ -74,8 +78,16 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
       if (m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sfpatch', url: u, body: b }); return json([{}]); }
       calls.push({ kind: 'sfget', url: u }); return json(files.filter((f) => !f.deleted_at));
     }
-    if (u.includes('/storage/v1/object/sign/stay-files') && m === 'GET' && req.resourceType() === 'fetch') calls.push({ kind: 'sfdl', url: u });
-    if (u.includes('/storage/v1/object/sign/stay-files') && m === 'GET') return route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
+    if (u.includes('/storage/v1/object/sign/stay-files') && m === 'GET') {
+      // Le fichier servi suit l'extension du chemin ; « download=nom » = pièce jointe nommée (comme Supabase)
+      const pth = decodeURIComponent(u.split('?')[0]), q = new URL(u).searchParams, dlName = q.get('download');
+      const ext = (pth.match(/\.([a-z0-9]+)$/i) || [])[1] || '', body = ext === 'pdf' ? PDF1 : ext === 'jpg' ? JPG1 : Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+      if (req.resourceType() === 'fetch') calls.push({ kind: 'sfdl', url: u });
+      if (dlName !== null) calls.push({ kind: 'sfnative', url: u, name: dlName });
+      const headers = { 'Access-Control-Allow-Origin': '*' }; if (dlName !== null) headers['Content-Disposition'] = 'attachment; filename="' + dlName + '"';
+      const send = () => route.fulfill({ status: 200, contentType: ext === 'pdf' ? 'application/pdf' : ext === 'jpg' ? 'image/jpeg' : 'image/png', headers, body });
+      return SIGNED_DELAY && req.resourceType() === 'fetch' ? new Promise((ok) => setTimeout(ok, SIGNED_DELAY)).then(send) : send();
+    }
     if (u.includes('/storage/v1/object/sign/stay-files')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sign', body: b, auth: req.headers().authorization }); return json(b.paths.map((p) => ({ path: p, signedURL: '/object/sign/stay-files/' + p + '?token=t', error: null }))); }
     if (u.includes('/storage/v1/object/stay-files/')) { calls.push({ kind: 'upload', url: u, type: req.headers()['content-type'], auth: req.headers().authorization, size: (req.postDataBuffer() || Buffer.alloc(0)).length }); return json({ Key: 'k' }); }
     if (u.includes('/rest/v1/sync_runs')) return json(sync);
@@ -627,16 +639,21 @@ await r.ctx.close();
   const up = r.calls.filter((x) => x.kind === 'upload'), ins = r.calls.filter((x) => x.kind === 'sfinsert');
   check('ajout : une photo envoyée dans le dossier du compte et du séjour, ligne stay_files ; un .txt refusé avec un message', up.length === 1 && new RegExp('/storage/v1/object/stay-files/' + UID + '/b1/[^/]+\\.(png|jpg)$').test(up[0].url) && up[0].auth === 'Bearer tok' && /^image\//.test(up[0].type) &&
     ins.length === 1 && ins[0].body.client_id === 'b1' && ins[0].body.path.startsWith(UID + '/b1/') && ins[0].body.size === up[0].size && /Photos \(JPEG, PNG, HEIC\) ou PDF seulement/.test(await r.page.innerText('#st-b1')) && (await r.page.$$('#st-b1 .bf-it')).length === 2, { up, ins });
-  // Télécharger (16/10) : WhatsApp ne joint rien par lien ; le propriétaire enregistre les pièces sur l'appareil
-  const dls = []; r.page.on('download', (d) => dls.push(d.suggestedFilename()));
+  // Télécharger (16/10) : WhatsApp ne joint rien par lien ; « Tout » = UN seul PDF (plusieurs téléchargements
+  // enchaînés restaient en .crdownload dans Chrome), une pièce = téléchargement natif nommé par le serveur
+  const dls = []; r.page.on('download', (d) => dls.push(d));
   const sign0 = r.calls.filter((x) => x.kind === 'sign').length;
-  check('télécharger : un bouton par pièce et « Tout télécharger (2) »', (await r.page.$$('#st-b1 .bf-it [data-a="bfdl"]')).length === 2 && /Tout télécharger \(2\)/.test(await r.page.innerText('#st-b1')));
-  await r.page.click('#st-b1 button.btn[data-a="bfdl"][data-v=""]'); await r.page.waitForTimeout(1500);
-  const sfdl = r.calls.filter((x) => x.kind === 'sfdl');
-  check('tout télécharger : liens signés refaits, chaque pièce lue puis enregistrée sous son nom, rien d’autre n’est envoyé', r.calls.filter((x) => x.kind === 'sign').length === sign0 + 1 && sfdl.length === 2 &&
-    dls.length === 2 && dls[0] === 'facture-marche.pdf' && /^ticket\.(png|jpg)$/.test(dls[1]) && /2 fichiers dans Téléchargements/.test(await r.page.innerText('body')) && !r.errs.length, { dls, sfdl, errs: r.errs });
+  check('télécharger : un bouton par pièce et « Tout en un seul PDF (2 pièces) »', (await r.page.$$('#st-b1 .bf-it [data-a="bfdl"]')).length === 2 && /Tout en un seul PDF \(2 pièces\)/.test(await r.page.innerText('#st-b1')) && /Un seul fichier à joindre dans WhatsApp/.test(await r.page.innerText('#st-b1')));
+  await r.page.click('#st-b1 button.btn[data-a="bfdl"][data-v=""]'); await r.page.waitForTimeout(2500);
+  const pdf0 = dls[0], pdfDoc = pdf0 ? await PDFLib.PDFDocument.load(fs.readFileSync(await pdf0.path())) : null;
+  check('un seul PDF : un téléchargement, nommé d’après le séjour, une page par photo + les pages du PDF ; liens signés refaits', dls.length === 1 && pdf0.suggestedFilename() === 'Justificatifs - Ana Ruiz - ' + iso(-2).slice(0, 10) + '.pdf' &&
+    !!pdfDoc && pdfDoc.getPageCount() === 2 && r.calls.filter((x) => x.kind === 'sign').length === sign0 + 1 && r.calls.filter((x) => x.kind === 'sfdl').length === 2 &&
+    /PDF dans Téléchargements/.test(await r.page.innerText('body')) && !r.errs.length, { n: dls.length, name: pdf0 && pdf0.suggestedFilename(), pages: pdfDoc && pdfDoc.getPageCount(), errs: r.errs });
+  const sign1 = r.calls.filter((x) => x.kind === 'sign').length;
   await r.page.click('#st-b1 .bf-it [data-a="bfdl"][data-v="f0"]'); await r.page.waitForTimeout(800);
-  check('télécharger une pièce : seulement celle-ci', dls.length === 3 && dls[2] === 'facture-marche.pdf' && r.calls.filter((x) => x.kind === 'sfdl').length === 3, dls);
+  const nat = r.calls.filter((x) => x.kind === 'sfnative');
+  check('une pièce : téléchargement natif (download=nom), lien encore valable réutilisé, la page reste ouverte', dls.length === 2 && dls[1].suggestedFilename() === 'facture-marche.pdf' && nat.length === 1 && nat[0].name === 'facture-marche.pdf' &&
+    r.calls.filter((x) => x.kind === 'sign').length === sign1 && !!(await r.page.$('#st-b1 .bf-grid')) && !r.errs.length, { nat, errs: r.errs });
   await r.page.click('#st-b1 [data-a="bfdel"][data-v="f0"]'); await r.page.waitForTimeout(300);
   const del = r.calls.filter((x) => x.kind === 'sfpatch').pop();
   check('retirer : suppression douce (deleted_at), jamais de DELETE ; la pièce disparaît', !!del && /stay_files\?id=eq\.f0/.test(del.url) && Object.keys(del.body).join() === 'deleted_at' && (await r.page.$$('#st-b1 .bf-it')).length === 1 && !r.errs.length, r.errs);
@@ -649,9 +666,19 @@ await r.ctx.close();
     stays: [{ id: 'b1', name: 'Ana Ruiz', arrival: iso(-2), departure: iso(1), adults: 6, booking_status: 'confirmed', source: 'Airbnb', details: {} }] });
   await r.page.waitForTimeout(250);
   await r.page.click('[data-a="toggle"][data-id="b1"]'); await r.page.click('[data-a="panel"][data-id="b1"][data-v="bill"]'); await r.page.waitForTimeout(300);
-  const dl2 = []; r.page.on('download', (d) => dl2.push(d.suggestedFilename()));
-  await r.page.click('#st-b1 button.btn[data-a="bfdl"][data-v=""]'); await r.page.waitForTimeout(2000);
-  check('noms : « image.jpg », « image 2.jpg », « facture.pdf »', dl2.join('|') === 'image.jpg|image 2.jpg|facture.pdf' && !r.errs.length, { dl2, errs: r.errs });
+  const dl2 = []; r.page.on('download', (d) => dl2.push(d));
+  await r.page.click('#st-b1 .bf-it [data-a="bfdl"][data-v="g3"]'); await r.page.waitForTimeout(800);
+  check('une pièce sans extension la reçoit (« facture.pdf »)', dl2.length === 1 && dl2[0].suggestedFilename() === 'facture.pdf', dl2.map((d) => d.suggestedFilename()));
+  SIGNED_DELAY = 1700; // trois pièces → plus de 4 s : le clic ne compte plus, la page propose « Enregistrer le PDF »
+  await r.page.click('#st-b1 button.btn[data-a="bfdl"][data-v=""]'); await r.page.waitForTimeout(800);
+  const busy = /Préparation du PDF… \(\d\/3\)/.test(await r.page.innerText('#st-b1'));
+  await r.page.waitForSelector('#st-b1 [data-a="bfpdfsave"]', { timeout: 15000 }).catch(() => {});
+  SIGNED_DELAY = 0;
+  const saveBtn = await r.page.$('#st-b1 [data-a="bfpdfsave"]'), nBefore = dl2.length;
+  if (saveBtn) { await saveBtn.click(); await r.page.waitForTimeout(800); }
+  const pdf2 = dl2[1], doc2 = pdf2 ? await PDFLib.PDFDocument.load(fs.readFileSync(await pdf2.path())) : null;
+  check('préparation longue : « Préparation du PDF… », puis « Enregistrer le PDF » ; deux photos JPEG + un PDF = 3 pages', busy && !!saveBtn && nBefore === 1 && dl2.length === 2 && /\.pdf$/.test(pdf2.suggestedFilename()) && !!doc2 && doc2.getPageCount() === 3 &&
+    !(await r.page.$('#st-b1 [data-a="bfpdfsave"]')) && !r.errs.length, { busy, save: !!saveBtn, n: dl2.length, pages: doc2 && doc2.getPageCount(), errs: r.errs });
   await r.ctx.close();
 }
 

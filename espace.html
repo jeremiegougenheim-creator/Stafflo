@@ -356,7 +356,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       bf: { title: 'Tickets et factures', drop: 'Ajouter des photos ou des PDF (ou les glisser ici)', sending: function (n) { return 'Envoi… (' + n + ')'; }, added: 'Ajouté au séjour', removed: 'Retiré', remove: 'Retirer',
         note: 'Visibles par vous seulement (jamais par l’équipe ni le client). Une photo est réduite avant l’envoi.', errType: 'Photos (JPEG, PNG, HEIC) ou PDF seulement.', errBig: 'Fichier trop lourd (10 Mo max).',
         dl: 'Télécharger', dlAll: function (n) { return 'Tout télécharger (' + n + ')'; }, dlBusy: function (i, n) { return 'Téléchargement… (' + i + '/' + n + ')'; },
-        dlDone: function (n) { return n > 1 ? n + ' fichiers dans Téléchargements' : 'Fichier dans Téléchargements'; }, dlErr: 'Téléchargement impossible. Réessayez.' },
+        dlDone: function (n) { return n > 1 ? n + ' fichiers dans Téléchargements' : 'Fichier dans Téléchargements'; }, dlErr: 'Téléchargement impossible. Réessayez.',
+        pdfAll: function (n) { return 'Tout en un seul PDF (' + n + ' pièces)'; }, pdfBusy: function (i, n) { return 'Préparation du PDF… (' + i + '/' + n + ')'; },
+        pdfDone: 'PDF dans Téléchargements', pdfPart: function (n) { return 'PDF prêt, sans ' + n + (n > 1 ? ' pièces illisibles' : ' pièce illisible'); },
+        pdfSave: 'Enregistrer le PDF', pdfName: 'Justificatifs', pdfHint: 'Un seul fichier à joindre dans WhatsApp.' },
       wa: { title: 'Remplir depuis WhatsApp', fromWa: 'Remplir depuis WhatsApp',
         steps: ['Dans WhatsApp, ouvrez la conversation avec le client, touchez son nom, puis « Exporter la discussion » › « Sans médias ».', 'Enregistrez le fichier (iPhone : « Enregistrer dans Fichiers ») et choisissez-le ici — ou glissez-le sur ordinateur.', 'Ou copiez quelques messages et collez-les ci-dessous.'],
         drop: 'Choisir ou déposer l’export (.zip ou .txt)', paste: 'Ou collez des messages', pastePh: 'Collez ici les messages du client…', read: 'Lire les messages', reading: 'Lecture de la conversation…',
@@ -497,7 +500,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       bf: { title: 'Receipts and invoices', drop: 'Add photos or PDFs (or drag them here)', sending: function (n) { return 'Sending… (' + n + ')'; }, added: 'Added to the stay', removed: 'Removed', remove: 'Remove',
         note: 'Only you can see them (never the team or the guest). Photos are shrunk before sending.', errType: 'Photos (JPEG, PNG, HEIC) or PDF only.', errBig: 'File too large (10 MB max).',
         dl: 'Download', dlAll: function (n) { return 'Download all (' + n + ')'; }, dlBusy: function (i, n) { return 'Downloading… (' + i + '/' + n + ')'; },
-        dlDone: function (n) { return n > 1 ? n + ' files in Downloads' : 'File in Downloads'; }, dlErr: 'Download failed. Try again.' },
+        dlDone: function (n) { return n > 1 ? n + ' files in Downloads' : 'File in Downloads'; }, dlErr: 'Download failed. Try again.',
+        pdfAll: function (n) { return 'All in one PDF (' + n + ' items)'; }, pdfBusy: function (i, n) { return 'Preparing the PDF… (' + i + '/' + n + ')'; },
+        pdfDone: 'PDF in Downloads', pdfPart: function (n) { return 'PDF ready, without ' + n + (n > 1 ? ' unreadable items' : ' unreadable item'); },
+        pdfSave: 'Save the PDF', pdfName: 'Receipts', pdfHint: 'One single file to attach in WhatsApp.' },
       wa: { title: 'Fill in from WhatsApp', fromWa: 'Fill in from WhatsApp',
         steps: ['In WhatsApp, open the chat with the guest, tap their name, then “Export chat” › “Without media”.', 'Save the file (iPhone: “Save to Files”) and choose it here — or drag it in on a computer.', 'Or copy a few messages and paste them below.'],
         drop: 'Choose or drop the export (.zip or .txt)', paste: 'Or paste messages', pastePh: 'Paste the guest’s messages here…', read: 'Read the messages', reading: 'Reading the chat…',
@@ -1135,7 +1141,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       if (!s) return;
       return fetch(SB_URL + '/storage/v1/object/sign/stay-files', { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SB_ANON, Authorization: 'Bearer ' + s.access_token }, body: JSON.stringify({ expiresIn: 3600, paths: rows.map(function (r) { return r.path; }) }) })
         .then(function (r) { return r.ok ? r.json() : []; })
-        .then(function (list) { (list || []).forEach(function (x) { if (x && x.path && x.signedURL) st.urls[x.path] = SB_URL + '/storage/v1' + (x.signedURL.charAt(0) === '/' ? '' : '/') + x.signedURL; }); });
+        .then(function (list) { st.at = st.at || {}; (list || []).forEach(function (x) { if (x && x.path && x.signedURL) { st.urls[x.path] = SB_URL + '/storage/v1' + (x.signedURL.charAt(0) === '/' ? '' : '/') + x.signedURL; st.at[x.path] = Date.now(); } }); });
     }).catch(function () {});
   }
   /* Photo → JPEG 2000 px max (un ticket reste lisible, l'envoi passe en 4G). Si le navigateur ne sait
@@ -1180,9 +1186,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       .catch(function () { toast(L().saveErr, true); }).finally(render);
   }
   /* Télécharger sur l'appareil (16/10/2026) : WhatsApp n'accepte aucune pièce jointe par lien wa.me ;
-     en attendant le partage, le propriétaire télécharge les pièces puis les joint lui-même. Liens
-     signés refaits au clic (un onglet ouvert depuis plus d'une heure), fichier lu puis enregistré
-     sous son nom (un lien d'un autre domaine ignore l'attribut download). Rien n'est envoyé à personne. */
+     en attendant le partage, le propriétaire télécharge les pièces puis les joint lui-même. Rien n'est
+     envoyé à personne.
+     - Une pièce : téléchargement natif du serveur (lien signé + « download= » → pièce jointe nommée).
+     - Toutes : UN seul PDF (photos une par page, PDF recopiés page à page), un seul fichier à glisser
+       dans WhatsApp. Plusieurs téléchargements enchaînés par la page restaient en « .crdownload » dans
+       Chrome (Mac, 16/10) : on n'en déclenche plus qu'un. Bibliothèque pdf-lib (MIT) servie par le site,
+       chargée au clic seulement. */
   function bfName(r, used) {
     var n = String(r.name || 'document').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '-').trim() || 'document';
     var ext = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/heic': '.heic', 'image/heif': '.heif' }[r.mime] || '';
@@ -1194,26 +1204,83 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
   function bfSave(blob, name) {
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
-    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 120000);
   }
-  function bfDownload(c, fid) {
-    var st = BF[c.id], k = L().bf; if (!st || !st.rows || st.dl) return;
-    var rows = fid ? st.rows.filter(function (r) { return r.id === fid; }) : st.rows.slice();
-    if (!rows.length) return;
-    var used = {}, names = rows.map(function (r) { return bfName(r, used); }), done = 0, failed = 0;
-    st.dl = { i: 0, n: rows.length }; render();
-    bfSign(st, rows).then(function () {
-      return rows.reduce(function (p, r, i) {
-        return p.then(function () {
-          st.dl.i = i + 1; render();
-          var url = st.urls[r.path]; if (!url) { failed++; return; }
-          return fetch(url).then(function (res) { if (!res.ok) throw new Error('dl'); return res.blob(); })
-            .then(function (b) { bfSave(b, names[i]); done++; return new Promise(function (ok) { setTimeout(ok, 400); }); })
-            .catch(function () { failed++; });
+  function bfFresh(st, path) { return !!(st.urls[path] && st.at && st.at[path] && Date.now() - st.at[path] < 50 * 60000); }
+  function bfOne(c, fid) {
+    var st = BF[c.id], k = L().bf; if (!st || !st.rows) return;
+    var r = st.rows.filter(function (x) { return x.id === fid; })[0]; if (!r) return;
+    var go = function () {
+      var u = st.urls[r.path]; if (!u) { toast(k.dlErr, true); return; }
+      var a = document.createElement('a'); a.href = u + (u.indexOf('?') < 0 ? '?' : '&') + 'download=' + encodeURIComponent(bfName(r, {})); a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+    if (bfFresh(st, r.path)) go(); else bfSign(st, [r]).then(go); // onglet ouvert depuis plus de 50 min
+  }
+  var BF_LIB = null;
+  function bfLib() {
+    if (window.PDFLib) return Promise.resolve(window.PDFLib);
+    return BF_LIB || (BF_LIB = new Promise(function (ok, ko) {
+      var sc = document.createElement('script'); sc.src = 'assets/vendor/pdf-lib-1.17.1.min.js'; sc.async = true;
+      sc.onload = function () { window.PDFLib ? ok(window.PDFLib) : ko(new Error('lib')); };
+      sc.onerror = function () { BF_LIB = null; ko(new Error('lib')); };
+      document.head.appendChild(sc);
+    }));
+  }
+  function bfJpeg(blob) { // WebP, HEIC (Safari)… → JPEG, ce que pdf-lib sait mettre dans une page
+    return createImageBitmap(blob).then(function (bmp) {
+      var cv = document.createElement('canvas'); cv.width = bmp.width; cv.height = bmp.height; cv.getContext('2d').drawImage(bmp, 0, 0);
+      return new Promise(function (ok, ko) { cv.toBlob(function (b) { b ? ok(b.arrayBuffer()) : ko(new Error('jpeg')); }, 'image/jpeg', 0.9); });
+    });
+  }
+  function bfAddPdf(P, doc, mime, buf) {
+    if (mime === 'application/pdf') return P.PDFDocument.load(buf, { ignoreEncryption: true })
+      .then(function (src) { return doc.copyPages(src, src.getPageIndices()); }).then(function (pages) { pages.forEach(function (pg) { doc.addPage(pg); }); });
+    var emb = mime === 'image/jpeg' ? doc.embedJpg(buf) : mime === 'image/png' ? doc.embedPng(buf) : bfJpeg(new Blob([buf], { type: mime })).then(function (b) { return doc.embedJpg(b); });
+    return Promise.resolve(emb).then(function (img) {
+      var land = img.width > img.height, W = land ? 841.89 : 595.28, H = land ? 595.28 : 841.89, m = 28; // A4
+      var sc = Math.min((W - 2 * m) / img.width, (H - 2 * m) / img.height), w = img.width * sc, h = img.height * sc;
+      doc.addPage([W, H]).drawImage(img, { x: (W - w) / 2, y: (H - h) / 2, width: w, height: h });
+    });
+  }
+  function bfPdfName(c) {
+    var n = String(c.name || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return L().bf.pdfName + (n ? ' - ' + n : '') + (c.arrival ? ' - ' + String(c.arrival).slice(0, 10) : '') + '.pdf';
+  }
+  function bfPdf(c) {
+    var st = BF[c.id], k = L().bf; if (!st || !st.rows || !st.rows.length || st.dl) return;
+    var rows = st.rows.slice(), t0 = Date.now(), skipped = 0;
+    st.dl = { i: 0, n: rows.length }; st.pdf = null; render();
+    Promise.all([bfLib(), bfSign(st, rows)]).then(function (res) {
+      var P = res[0];
+      return P.PDFDocument.create().then(function (doc) {
+        return rows.reduce(function (p, r, i) {
+          return p.then(function () {
+            st.dl.i = i + 1; render();
+            var url = st.urls[r.path]; if (!url) { skipped++; return; }
+            return fetch(url).then(function (x) { if (!x.ok) throw new Error('dl'); return x.arrayBuffer(); })
+              .then(function (buf) { return bfAddPdf(P, doc, r.mime, buf); })
+              .catch(function () { skipped++; });
+          });
+        }, Promise.resolve()).then(function () {
+          if (!doc.getPageCount()) throw new Error('empty');
+          doc.setTitle(bfPdfName(c).replace(/\.pdf$/, '')); doc.setCreator('Stafflo'); doc.setProducer('Stafflo');
+          return doc.save();
         });
-      }, Promise.resolve());
-    }).finally(function () { st.dl = null; render(); toast(failed ? k.dlErr : k.dlDone(done), !!failed); });
+      });
+    }).then(function (bytes) {
+      var pdf = { blob: new Blob([bytes], { type: 'application/pdf' }), name: bfPdfName(c), skipped: skipped };
+      // Après plus de 4 s le navigateur ne compte plus le clic : un bouton « Enregistrer le PDF » le refait
+      if (Date.now() - t0 < 4000) { bfSave(pdf.blob, pdf.name); toast(skipped ? k.pdfPart(skipped) : k.pdfDone, !!skipped); }
+      else st.pdf = pdf;
+    }).catch(function () { toast(k.dlErr, true); })
+      .finally(function () { st.dl = null; render(); });
   }
+  function bfPdfSave(c) {
+    var st = BF[c.id], k = L().bf; if (!st || !st.pdf) return;
+    var pdf = st.pdf; st.pdf = null; bfSave(pdf.blob, pdf.name); toast(pdf.skipped ? k.pdfPart(pdf.skipped) : k.pdfDone, !!pdf.skipped); render();
+  }
+  function bfDownload(c, fid) { if (fid) bfOne(c, fid); else if (BF[c.id] && BF[c.id].rows && BF[c.id].rows.length > 1) bfPdf(c); else if (BF[c.id] && BF[c.id].rows && BF[c.id].rows[0]) bfOne(c, BF[c.id].rows[0].id); }
   function billFilesBlock(c) {
     var k = L().bf, id = esc(c.id), st = BF[c.id];
     if (!st || (!st.rows && !st.loading)) { bfLoad(c); st = BF[c.id]; }
@@ -1226,8 +1293,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         (url ? '</a>' : '</span>') + '<button type="button" class="bf-d" data-a="bfdl" data-id="' + id + '" data-v="' + esc(r.id) + '" aria-label="' + esc(k.dl + ' ' + r.name) + '" title="' + esc(k.dl) + '"' + (st.dl ? ' disabled' : '') + '><i class="ti ti-download" aria-hidden="true"></i></button>' +
         '<button type="button" class="bf-x" data-a="bfdel" data-id="' + id + '" data-v="' + esc(r.id) + '" aria-label="' + esc(k.remove + ' ' + r.name) + '">×</button></div>';
     }).join('') + '</div>' +
-      '<button type="button" class="btn ghost full" data-a="bfdl" data-id="' + id + '" data-v=""' + (st.dl ? ' disabled' : '') + '><i class="ti ti-download" aria-hidden="true"></i>' +
-      esc(st.dl ? k.dlBusy(st.dl.i, st.dl.n) : rows.length > 1 ? k.dlAll(rows.length) : k.dl) + '</button>';
+      (st.pdf ? '<button type="button" class="btn gold full" data-a="bfpdfsave" data-id="' + id + '"><i class="ti ti-file-type-pdf" aria-hidden="true"></i>' + esc(k.pdfSave) + '</button>' :
+      '<button type="button" class="btn ghost full" data-a="bfdl" data-id="' + id + '" data-v=""' + (st.dl ? ' disabled' : '') + '><i class="ti ti-' + (rows.length > 1 ? 'file-type-pdf' : 'download') + '" aria-hidden="true"></i>' +
+      esc(st.dl ? k.pdfBusy(st.dl.i, st.dl.n) : rows.length > 1 ? k.pdfAll(rows.length) : k.dl) + '</button>') +
+      (rows.length > 1 ? '<span class="sub">' + esc(k.pdfHint) + '</span>' : '');
     else if (st && st.loading) h += '<span class="sub">' + esc(L().loading) + '</span>';
     h += '<label class="drop" data-drop="bill" data-id="' + id + '"><input type="file" multiple accept="image/*,application/pdf" data-file="bill" data-id="' + id + '"><i class="ti ti-camera-plus" aria-hidden="true"></i><span>' +
       esc(st && st.busy ? k.sending(st.busy) : k.drop) + '</span></label>';
@@ -3110,6 +3179,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'editsave' && c) saveEdit(c);
     else if (a === 'bfdel' && c && v) bfRemove(c, v);
     else if (a === 'bfdl' && c) bfDownload(c, v || '');
+    else if (a === 'bfpdfsave' && c) bfPdfSave(c);
     else if (a === 'wlfill' && c) wlFill(c);
     else if (a === 'waconnect') waConnect();
     else if (a === 'gmconnect') gmConnect(); // synchrone dans le clic : sinon la fenêtre Google est bloquée
