@@ -43,6 +43,15 @@ check('résumé ARIA (fr) inchangé', h(F.digest('fr')) === 'cfa3c6ea33b4acac', 
 check('résumé ARIA (en) inchangé', h(F.digest('en')) === 'fdf79c93a9fdc5cf', h(F.digest('en')));
 check('équipe actuelle seulement (jamais l’ancienne cuisinière)', !/Faiza/.test(F.digest('fr')) && !/Faiza/.test(JSON.stringify(data.TEAM)));
 
+// 3 bis. Brunch (16/10/2026) : une composition sur demande, résumée par le nom des plats ; absente → aucune ligne
+{
+  const FB = HF.build(Object.assign(JSON.parse(JSON.stringify(data)), { BRUNCH: [["Msemen et pain marocain","Msemen and Moroccan bread"],["Œufs brouillés ou au plat","Scrambled or fried eggs"],["Zaalouk — aubergine fumée et tomate","Zaalouk — smoky aubergine and tomato"]] }));
+  const fr = FB.digest('fr'), en = FB.digest('en');
+  check('brunch : « Brunch (sur demande) : Msemen…, Œufs…, Zaalouk » (nom seul, sans la description), FR et EN',
+    /Brunch \(sur demande\) : Msemen et pain marocain, Œufs brouillés ou au plat, Zaalouk(\n|$)/.test(fr) && /Brunch \(on request\): Msemen and Moroccan bread, Scrambled or fried eggs, Zaalouk(\n|$)/.test(en), fr.split('\n').filter((x) => /Brunch/.test(x)));
+  check('brunch absent de la fiche : aucune ligne, liste vide exposée', !/Brunch \(sur demande\)/.test(F.digest('fr')) && Array.isArray(F.BRUNCH) && F.BRUNCH.length === 0);
+}
+
 // 4. Le JSON de référence n'est jamais publié.
 check('données de référence hors du site (dossier « _ », absent du build)', !/_private/.test(read('scripts/build-site.sh')) && !fs.existsSync(path.join(root, '.nojekyll')));
 

@@ -16,12 +16,12 @@
 (function () {
 'use strict';
 
-const KEYS = ['VILLA','PRACTICAL','ROOMS','GOOD_TO_KNOW','MEAL_NOTES','MEALS','LEISURE','RULES','BREAKFAST','GOUTER','STARTERS','MAINS','SIMPLE','DESSERTS','MEDINA','GOLF','ACTIVITIES','RESTAURANTS','CAFES','TEXT','TEAM','QR','EXTRAS'];
+const KEYS = ['VILLA','PRACTICAL','ROOMS','GOOD_TO_KNOW','MEAL_NOTES','MEALS','LEISURE','RULES','BREAKFAST','BRUNCH','GOUTER','STARTERS','MAINS','SIMPLE','DESSERTS','MEDINA','GOLF','ACTIVITIES','RESTAURANTS','CAFES','TEXT','TEAM','QR','EXTRAS'];
 
 function build(data) {
 if (!data || typeof data !== 'object' || !data.VILLA) return null;
 const {VILLA, PRACTICAL, ROOMS, GOOD_TO_KNOW, MEAL_NOTES, MEALS, LEISURE, RULES,
-  BREAKFAST, GOUTER, STARTERS, MAINS, SIMPLE, DESSERTS, MEDINA, GOLF,
+  BREAKFAST, BRUNCH, GOUTER, STARTERS, MAINS, SIMPLE, DESSERTS, MEDINA, GOLF,
   ACTIVITIES, RESTAURANTS, CAFES, TEXT, TEAM, EXTRAS} = data;
 
 function pick(pair, i) {
@@ -76,6 +76,8 @@ function digest(lang) {
   A(MEAL_NOTES).forEach(n => li(P(n)));
   ['orderRule', 'menuIntro', 'earlyBrk'].forEach(k => { if (has(P(T[k]))) li(P(T[k])); });
   if (A(BREAKFAST).length) li((fr ? 'Petit-déjeuner : ' : 'Breakfast: ') + A(BREAKFAST).map(b => P(b)).join(', '));
+  // Brunch (16/10/2026) : une composition, pas un choix entrée-plat-dessert. Absent de la fiche du pilote copiée : résumé inchangé.
+  if (A(BRUNCH).length) li((fr ? 'Brunch (sur demande) : ' : 'Brunch (on request): ') + A(BRUNCH).map(b => head(P(b))).join(', '));
   if (A(GOUTER).length) li((fr ? 'Goûter : ' : 'Afternoon tea: ') + A(GOUTER).map(g => P(g)).join(', '));
   if (A(STARTERS).length) li((fr ? 'Entrées : ' : 'Starters: ') + A(STARTERS).map(s => head(P(s))).join(', '));
   if (A(MAINS).length) li((fr ? 'Plats : ' : 'Mains: ') + A(MAINS).map(s => head(P(s))).join(', '));

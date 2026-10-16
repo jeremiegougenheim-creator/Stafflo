@@ -222,6 +222,18 @@ check('autre villa : pied de page = nom · ville, signature Stafflo', /Riad Zina
 check('autre villa : onglet « Livret d’accueil — Riad Zina », jamais « Villa Dar J »', (await r.page.title()) === "Livret d'accueil — Riad Zina" && !/Dar J/.test(await r.page.content()), await r.page.title());
 await r.ctx.close();
 
+// ── Brunch (16/10/2026) : rubrique rendue juste après le petit-déjeuner, seulement si la fiche la remplit ──
+{
+  const FB = JSON.stringify(Object.assign(JSON.parse(FACTS), { BRUNCH: [["Msemen et pain marocain","Msemen and Moroccan bread"],["Œufs brouillés ou au plat","Scrambled or fried eggs"],["Zaalouk — aubergine fumée et tomate","Zaalouk — smoky aubergine and tomato"]] }));
+  for (const lang of ['fr', 'en']) {
+    r = await open('t=' + TOK + '&lang=' + lang, { view: () => ({ status: 200, body: '{"facts":' + FB + '}' }) });
+    const tx = await r.page.innerText('#sheet');
+    const head = lang === 'fr' ? /BRUNCH — SUR DEMANDE/i : /BRUNCH — ON REQUEST/i, b = tx.search(head), k = tx.search(lang === 'fr' ? /PETIT-DÉJEUNER — INCLUS/i : /BREAKFAST — INCLUDED/i), g = tx.search(lang === 'fr' ? /\nGOÛTER\n/i : /\nAFTERNOON TEA\n/i);
+    check('brunch (' + lang + ') : rubrique entre le petit-déjeuner et le goûter, avec ses plats', b > k && k > -1 && g > b && (lang === 'fr' ? /Msemen et pain marocain/ : /Msemen and Moroccan bread/).test(tx) && !r.errs.length, { b, k, g, errs: r.errs });
+    await r.ctx.close();
+  }
+}
+
 await browser.close(); server.close();
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
