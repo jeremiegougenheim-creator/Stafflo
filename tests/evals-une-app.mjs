@@ -67,25 +67,36 @@ check('interrupteur stafflo_espace_home = off : app.html redevient l’accueil',
 
 // L'Espace modifie l'identité de la villa en base (Maison › Réglages) : l'app complète la relit au
 // démarrage, même quand son cfg local est « plus récent » — sinon son prochain enregistrement l'écraserait.
-{
+// Même chose pour Gmail relié depuis l'Espace (16/10) : une connexion plus récente en base remplace la locale.
+async function pullCfg(baseEc, localEc) {
   const ctx = await browser.newContext({ serviceWorkers: 'block' });
   await ctx.route('**/*', (route) => {
     const u = route.request().url();
     if (u.startsWith('http://127.0.0.1')) return route.continue();
-    if (u.includes('/rest/v1/villa_settings') && route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify([{ onboarded: true, onboarded_at: '2026-01-01T00:00:00Z', villa_name: 'Riad Neuf', owner_name: 'Nadia', city: 'Essaouira, Maroc', country: 'Maroc', bedrooms: 5, max_guests: null, house_facts_ref: null, house_facts: null }]) });
+    if (u.includes('/rest/v1/villa_settings') && route.request().method() === 'GET') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify([{ onboarded: true, onboarded_at: '2026-01-01T00:00:00Z', villa_name: 'Riad Neuf', owner_name: 'Nadia', city: 'Essaouira, Maroc', country: 'Maroc', bedrooms: 5, max_guests: null, house_facts_ref: null, house_facts: null, email_connection: baseEc }]) });
     return route.fulfill({ status: 204, body: '' });
   });
-  await ctx.addInitScript(([s]) => {
+  await ctx.addInitScript(([s, lec]) => {
     if (sessionStorage.getItem('__init')) return; sessionStorage.setItem('__init', '1');
     localStorage.setItem('stafflo_session', s);
-    localStorage.setItem('stafflo_cfg', JSON.stringify({ onboarded: true, onboardedAt: new Date().toISOString(), villa: 'Ancien nom', owner: 'Nadia', city: 'Paris', bedrooms: 3, maxGuests: 6 }));
-  }, [SESSION]);
+    localStorage.setItem('stafflo_cfg', JSON.stringify({ onboarded: true, onboardedAt: new Date().toISOString(), villa: 'Ancien nom', owner: 'Nadia', city: 'Paris', bedrooms: 3, maxGuests: 6, email_connection: lec }));
+  }, [SESSION, localEc]);
   const page = await ctx.newPage();
   await page.goto(`http://127.0.0.1:${PORT}/app.html?app=1`, { waitUntil: 'domcontentloaded' });
   let cfg = null;
   for (let i = 0; i < 20 && !(cfg && cfg.villa === 'Riad Neuf'); i++) { await page.waitForTimeout(250); cfg = await page.evaluate(() => JSON.parse(localStorage.getItem('stafflo_cfg') || 'null')).catch(() => null); }
-  check('app complète : nom, ville, chambres relus depuis la base au démarrage (changés dans l’Espace) ; un champ vide en base ne vide pas le local', !!cfg && cfg.villa === 'Riad Neuf' && cfg.city === 'Essaouira, Maroc' && cfg.bedrooms === 5 && cfg.maxGuests === 6 && cfg.onboarded === true, cfg);
+  await page.waitForTimeout(300); cfg = await page.evaluate(() => JSON.parse(localStorage.getItem('stafflo_cfg') || 'null')).catch(() => cfg);
   await ctx.close();
+  return cfg;
+}
+{
+  const OLD = { provider: 'Google', email: 'ancienne@example.com', refresh_token: 'RT-OLD', access_token: 'AT-OLD', expires_at: 1, connected_at: '2026-08-24T19:58:02.669Z' };
+  const NEW = { provider: 'Google', email: 'nouvelle@example.com', refresh_token: 'RT-NEW', access_token: 'AT-NEW', expires_at: 2, connected_at: '2026-10-16T01:00:00.000Z', source: 'espace' };
+  let cfg = await pullCfg(NEW, OLD);
+  check('app complète : nom, ville, chambres relus depuis la base au démarrage (changés dans l’Espace) ; un champ vide en base ne vide pas le local', !!cfg && cfg.villa === 'Riad Neuf' && cfg.city === 'Essaouira, Maroc' && cfg.bedrooms === 5 && cfg.maxGuests === 6 && cfg.onboarded === true, cfg);
+  check('app complète : Gmail relié depuis l’Espace (plus récent en base) remplace la connexion locale — l’ancienne ne sera pas réécrite par-dessus', !!cfg && cfg.email_connection && cfg.email_connection.refresh_token === 'RT-NEW' && cfg.email_connection.email === 'nouvelle@example.com', cfg && cfg.email_connection);
+  cfg = await pullCfg(OLD, NEW);
+  check('app complète : une connexion locale plus récente que la base est gardée', !!cfg && cfg.email_connection && cfg.email_connection.refresh_token === 'RT-NEW', cfg && cfg.email_connection);
 }
 
 const esp = fs.readFileSync(path.join(root, 'espace.html'), 'utf8');

@@ -97,7 +97,7 @@ check('multi-villa : « Envoyer à » la personne de l’équipe, pas un prénom
 // v10 — compte neuf : « Mise en route » cochée d'après les vraies données, disparaît une fois le compte prêt
 check('mise en route : Gmail (synchro serveur), premier séjour, équipe — cochés d’après les données', /var gmail = !!D\.sync, stay = \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) > 0, team = teamList\(\)\.length > 0;/.test(script));
 check('mise en route : disparaît quand Gmail, séjours et équipe sont là (jamais pour un compte établi)', /if \(gmail && stay && team\) return '';/.test(script));
-check('mise en route : chaque étape mène au bon écran (Gmail dans l’app ; premier séjour et équipe ici, dans l’Espace)', /href: 'app\.html\?open=gmail'/.test(script) && /k: 'stay', done: stay, icon: 'calendar-plus', act: 'nsopen'/.test(script) && /k: 'team', done: team, icon: 'user-plus', act: 'feopen', v: 'team'/.test(script));
+check('mise en route : chaque étape mène au bon écran (Gmail, premier séjour et équipe : ici, dans l’Espace)', /k: 'gmail', done: gmail, icon: 'brand-gmail', act: 'gmconnect'/.test(script) && /k: 'stay', done: stay, icon: 'calendar-plus', act: 'nsopen'/.test(script) && /k: 'team', done: team, icon: 'user-plus', act: 'feopen', v: 'team'/.test(script));
 check('mise en route : pas de doublon avec l’invitation aux alertes', /if \(!setup\) h \+= nudgeCard\(\);/.test(script));
 check('compte sans aucun séjour : pas de tuiles « 0 / 0 / 0 € » (tuiles dans Séjours, v12)', /if \(D\.stays\.length \+ \(D\.past \|\| \[\]\)\.length\) \{\s*var up = D\.stays/.test(script) && (script.match(/<div class="tiles span">/g) || []).length === 1);
 const appH = fs.readFileSync(path.join(root, 'app.html'), 'utf8');

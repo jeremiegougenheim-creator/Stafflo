@@ -25658,7 +25658,10 @@ async function pullVillaSettings() {
     try {
       var _rec = row.email_connection || null;
       var _lec = cfg.email_connection || null;
-      if (_rec && _rec.refresh_token && (!_lec || !_lec.refresh_token)) {
+      /* 16/10/2026 : Gmail se relie aussi depuis l'Espace (gmail-connect écrit la base). Une connexion plus
+         récente en base remplace la copie locale — sinon le prochain rafraîchissement du jeton
+         (saveEmailConnection) réécrirait l'ancienne connexion par-dessus. */
+      if (_rec && _rec.refresh_token && (!_lec || !_lec.refresh_token || String(_rec.connected_at || '') > String(_lec.connected_at || ''))) {
         cfg.email_connection = _rec;
         setCfg(cfg);
         try { if (typeof renderInboxConnectionStatus === 'function') renderInboxConnectionStatus(); } catch(e) {}

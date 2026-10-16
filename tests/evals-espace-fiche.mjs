@@ -63,6 +63,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
       const fin = { type: 'WA_EMBEDDED_SIGNUP', event: 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING', data: { waba_id: '5550001', phone_number_id: '106540352242922' } };
       return route.fulfill({ status: 200, contentType: 'text/javascript', body: `window.FB = { init: function (o) { window.__fbInit = o; }, login: function (cb, o) { window.__fbLogin = o; ${fbEvil ? ev('https://evil.example.com', fin) : ev('https://www.facebook.com', fin)} cb({ authResponse: { code: 'CODE1' } }); } }; window.fbAsyncInit && window.fbAsyncInit();` });
     }
+    if (u.includes('/functions/v1/gmail-connect')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'gmconnect', body: b, auth: req.headers().authorization }); return b.code === 'GSCOPE' ? json({ error: 'scope_missing' }, 400) : json({ ok: true, email: 'riad.neuf@example.com' }); }
     if (u.includes('/functions/v1/wa-connect')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'waconnect', body: b, auth: req.headers().authorization }); return b.waba_id ? json({ ok: true, display_phone: '+212 600-000111', on_biz_app: true }) : json({ error: 'bad_request' }, 400); }
     if (u.includes('/rest/v1/wa_messages')) {
       if (m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'wapatch', url: decodeURIComponent(u), body: b }); return json([{}]); }
@@ -455,7 +456,7 @@ await r.ctx.close();
   await r.page.waitForTimeout(200);
   let ts = await r.page.innerText('#settings');
   check('Maison › Réglages : la villa (nom, ville, chambres, capacité), Gmail relié + dernière synchro, iCal, abonnement, compte', /Riad Zina · Marrakech · 4 chambres · 8 pers\./.test(ts) && /Gmail relié : riad@example\.com · synchronisé il y a 8 min/.test(ts) && /Calendriers \(iCal\)/.test(ts) && /Essai : 12 jours restants/.test(ts) && /x@y\.z/.test(ts) && /Se déconnecter/.test(ts) && !r.errs.length, ts);
-  check('Gmail : « Reconnecter » ouvre la connexion dans l’app complète (lien profond, pas d’aiguillage vers l’Espace)', !!(await r.page.$('#settings a[href="app.html?open=gmail"]')) && !!(await r.page.$('#settings a[href="app.html?open=settings"]')));
+  check('Gmail : « Reconnecter » ici (bouton, plus de détour par l’app complète) ; iCal reste dans l’app complète', !!(await r.page.$('#settings [data-a="gmconnect"]')) && !(await r.page.$('#settings a[href="app.html?open=gmail"]')) && !!(await r.page.$('#settings a[href="app.html?open=settings"]')));
   await r.page.click('[data-a="vsedit"]'); await r.page.waitForSelector('#vs-villa_name');
   check('modifier la villa : champs pré-remplis depuis la base', (await r.page.inputValue('#vs-villa_name')) === 'Riad Zina' && (await r.page.inputValue('#vs-city')) === 'Marrakech, Maroc' && (await r.page.inputValue('#vs-bedrooms')) === '4');
   await r.page.fill('#vs-bedrooms', '4.5'); await r.page.click('[data-a="vssave"]'); await r.page.waitForTimeout(100);
@@ -477,6 +478,29 @@ await r.ctx.close();
   await r.page.waitForTimeout(200);
   ts = await r.page.innerText('#settings');
   check('Gmail pas relié → « Relier Gmail » ; accès offert → aucun bouton de paiement', /Gmail pas relié/.test(ts) && /Relier Gmail/.test(ts) && /Accès offert/.test(ts) && !(await r.page.$('[data-a="billcheckout"]')) && !(await r.page.$('[data-a="billportal"]')));
+  check('Gmail pas relié : « lecture seule » dit ce que Stafflo fait de la boîte', /Lecture seule : Stafflo lit vos emails Airbnb, n’envoie et ne supprime rien/.test(ts));
+  // Relier Gmail depuis l'Espace : fenêtre Google (lecture seule), retour par la page déjà déclarée, code → gmail-connect
+  await r.page.evaluate(() => { window.__opens = []; window.open = (u, n) => { window.__opens.push({ u, n }); return { closed: false }; }; });
+  await r.page.click('#settings [data-a="gmconnect"]'); await r.page.waitForTimeout(100);
+  const go = await r.page.evaluate(() => window.__opens[0]);
+  const gq = go ? new URL(go.u).searchParams : new URLSearchParams();
+  check('clic : fenêtre de consentement Google — lecture seule, code + jeton de rafraîchissement, retour sur app.html?oauth_callback=1, état tiré au hasard', !!go && /^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?/.test(go.u) && gq.get('client_id') === '657823663741-b34rdmlb08obva72vcibt34mp49iqlom.apps.googleusercontent.com' && /\/app\.html\?oauth_callback=1$/.test(gq.get('redirect_uri')) && gq.get('response_type') === 'code' && gq.get('access_type') === 'offline' && gq.get('prompt') === 'consent' && gq.get('scope').split(' ').includes('https://www.googleapis.com/auth/gmail.readonly') && !/gmail\.(send|modify|compose)|mail\.google\.com/.test(gq.get('scope')) && /^espace\.[0-9a-f]{24}$/.test(gq.get('state') || '') && /Connexion…/.test(await r.page.innerText('#settings')), go);
+  await r.page.evaluate((st) => { window.postMessage({ type: 'stafflo_oauth_code', code: 'GBAD', state: st + 'x' }, location.origin); }, gq.get('state')); await r.page.waitForTimeout(300);
+  check('un code avec un autre état est ignoré (rien envoyé)', !r.calls.some((x) => x.kind === 'gmconnect'));
+  await r.page.evaluate((st) => { window.postMessage({ type: 'stafflo_oauth_code', code: 'G1', state: st }, location.origin); }, gq.get('state')); await r.page.waitForTimeout(600);
+  const gc = r.calls.filter((x) => x.kind === 'gmconnect').pop();
+  check('le bon code → gmail-connect avec la session, la même page de retour ; « Gmail relié » affiché, rechargé depuis la base', !!gc && gc.body.code === 'G1' && gc.body.redirect_uri === gq.get('redirect_uri') && gc.auth === 'Bearer tok' && /Gmail relié : riad\.neuf@example\.com/.test(await r.page.innerText('#toastHost')) && !r.errs.length, { gc, e: r.errs });
+  await r.page.evaluate((st) => { window.postMessage({ type: 'stafflo_oauth_code', code: 'G1', state: st }, location.origin); }, gq.get('state')); await r.page.waitForTimeout(300);
+  check('le même code rejoué : ignoré (état consommé)', r.calls.filter((x) => x.kind === 'gmconnect').length === 1);
+  // Case « lire vos emails » décochée chez Google
+  await r.page.click('#settings [data-a="gmconnect"]'); await r.page.waitForTimeout(100);
+  const st2 = await r.page.evaluate(() => new URL(window.__opens[1].u).searchParams.get('state'));
+  await r.page.evaluate((st) => { window.postMessage({ type: 'stafflo_oauth_code', code: 'GSCOPE', state: st }, location.origin); }, st2); await r.page.waitForTimeout(500);
+  check('droit de lecture refusé dans la fenêtre Google → explication claire + secours par l’ancienne version', /cochez « Consulter vos messages et vos paramètres de messagerie »/.test(await r.page.innerText('#settings')) && !!(await r.page.$('#settings .err a[href="app.html?open=gmail"]')));
+  // Fenêtre bloquée par le navigateur
+  await r.page.evaluate(() => { window.open = () => null; });
+  await r.page.click('#settings [data-a="gmconnect"]'); await r.page.waitForTimeout(100);
+  check('fenêtre bloquée → message, rien envoyé', /La fenêtre Google a été bloquée/.test(await r.page.innerText('#settings')) && r.calls.filter((x) => x.kind === 'gmconnect').length === 2);
   await r.ctx.close();
   r = await open({ villa: V, sync: [{ finished_at: new Date(Date.now() - 3 * 3600e3).toISOString(), ok: true }], bill: [] });
   await r.page.waitForTimeout(200);
