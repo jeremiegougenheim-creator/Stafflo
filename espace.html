@@ -302,7 +302,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       rvUntil: function (d) { return 'avis possible jusqu’au ' + d; },
       bSessions: 'Sessions de courses', bAdvance: 'Avance déjà reçue (MAD)', bRate: 'Taux : 1 € = … MAD (facultatif)', bRest: 'Reste à payer',
       mPlanning: 'Planning équipe', mPlanningTxt: 'Les plannings à envoyer à Saïd et à Léa (arrivées, groupes, repas), générés depuis les séjours.', mPlanningBtn: 'Ouvrir le planning équipe',
-      act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief équipe', phone: 'Téléphone', reg: 'Fiches voyageurs' },
+      act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief maison', chef: 'Brief cuisine', phone: 'Téléphone', reg: 'Fiches voyageurs' },
       copy: 'Copier', copied: 'Copié', openWa: 'Ouvrir WhatsApp', close: 'Fermer',
       markLivret: 'Marquer le livret envoyé', seeLivret: 'Voir le livret',
       cal: { title: 'Calendrier', prev: 'Mois précédent', next: 'Mois suivant', arr: 'arrivée', dep: 'départ', occ: 'séjour', today: 'aujourd’hui', free: function (n) { return n ? n + (n > 1 ? ' nuits libres' : ' nuit libre') + ' à venir ce mois-ci' : 'Plus aucune nuit libre ce mois-ci'; }, wd: ['L', 'M', 'M', 'J', 'V', 'S', 'D'] },
@@ -446,7 +446,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       rvUntil: function (d) { return 'review possible until ' + d; },
       bSessions: 'Shopping runs', bAdvance: 'Advance already received (MAD)', bRate: 'Rate: €1 = … MAD (optional)', bRest: 'Balance due',
       mPlanning: 'Team planning', mPlanningTxt: 'The schedules to send to Saïd and Léa (arrivals, groups, meals), built from the stays.', mPlanningBtn: 'Open the team planning',
-      act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'Team brief', phone: 'Phone', reg: 'Guest forms' },
+      act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'House brief', chef: 'Kitchen brief', phone: 'Phone', reg: 'Guest forms' },
       copy: 'Copy', copied: 'Copied', openWa: 'Open WhatsApp', close: 'Close',
       markLivret: 'Mark guide as sent', seeLivret: 'Open the guide',
       cal: { title: 'Calendar', prev: 'Previous month', next: 'Next month', arr: 'arrival', dep: 'departure', occ: 'stay', today: 'today', free: function (n) { return n ? n + ' free night' + (n > 1 ? 's' : '') + ' left this month' : 'No free night left this month'; }, wd: ['M', 'T', 'W', 'T', 'F', 'S', 'S'] },
@@ -1442,7 +1442,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return sm.filter(function (m) { return m && typeof m === 'object' && String(m.name || '').trim(); });
   }
   function teamList() {
-    return HAS_FACTS ? F.TEAM.filter(function (m) { return m.name && m.brief; }).map(function (m) { return { name: m.name, phone: m.phone || '' }; })
+    return HAS_FACTS ? F.TEAM.filter(function (m) { return m.name && m.brief; }).map(function (m) { return { name: m.name, phone: m.phone || '', kitchen: !!m.kitchen }; })
       : staffRows().filter(function (m) { return m.name; }).map(function (m) { return { name: String(m.name), phone: m.wa || '' }; });
   }
   function mealsRow(c) { return c.pax >= 7 ? 'b' : 'a'; }
@@ -1638,8 +1638,30 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       .finally(render);
   }
   /* Brief équipe : en français (l'équipe parle arabe, français et anglais de base). */
+  function kitchenTeam() { return teamList().filter(function (m) { return m.kitchen; }); }
+  function houseTeam() { var h = teamList().filter(function (m) { return !m.kitchen; }); return h.length ? h : teamList(); }
+  function kitchenOn() { return HAS_FACTS && kitchenTeam().length > 0; }
+  function kitchenWa() { var k = kitchenTeam().filter(function (m) { return m.phone; })[0]; return k ? waDigits(k.phone) : ''; }
+  function kitchenName() { var k = kitchenTeam().filter(function (m) { return m.phone; })[0]; return k ? k.name : ''; }
+  /* Brief cuisine (16/10/2026) : le prestataire repas (drapeau « kitchen » de la fiche) reçoit ce qu'il
+     cuisine — couverts, services, commande du client — jamais un prix client ni le téléphone du client.
+     La maison (majordome, ménage) reçoit le reste. Aucun prénom en dur : tout vient de la fiche. */
+  function msgKitchen(c) {
+    var t = TXT.fr, who = kitchenTeam().map(function (m) { return m.name; }).join(', ') || 'la cuisine';
+    var lines = ['Cuisine ' + (c.name || '') + ' — pour ' + who];
+    lines.push('Arrivée : ' + fmtLongDay(c.a, 'fr') + (String(c.details.arrival_time || '').trim() ? ' — ' + flat(c.details.arrival_time) : ''));
+    lines.push('Départ : ' + fmtLongDay(c.d, 'fr') + ' — ' + t.nights(c.n));
+    var comp = t.composition(c.ad, c.ch, c.inf);
+    lines.push('Couverts : ' + (c.pax ? c.pax + ' personnes' : 'nombre à confirmer') + (comp ? ' (' + comp + ')' : ''));
+    lines.push('Repas : ' + (String(c.meals || '').trim() ? flat(c.meals) : 'pas encore reçus — à demander au client (2 jours avant l’arrivée)'));
+    var o = orderOf(c);
+    if (o) lines.push('Commande du livret : ' + o.items.map(function (x) { return x.q + ' × ' + P(x.n); }).join(' · '));
+    var sn = String(c.details.staff_note || '').trim();
+    if (sn) lines.push('Consigne : ' + flat(sn).slice(0, 600));
+    return lines.join('\n');
+  }
   function msgBrief(c) {
-    var t = TXT.fr, team = teamList().map(function (m) { return m.name; }).join(', ') || 'l’équipe';
+    var t = TXT.fr, team = houseTeam().map(function (m) { return m.name; }).join(', ') || 'l’équipe';
     var lines = [];
     lines.push('Brief ' + (c.name || '') + ' — pour ' + team);
     var arrFact = flat(P(F.PRACTICAL.filter(function (p) { return /^Arrivée et départ/.test(p[0]); })[0] || ['', ''], 0));
@@ -1664,8 +1686,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return lines.join('\n');
   }
   var waDigits = function (raw) { return String(raw || '').replace(/\(0\)/g, '').replace(/\D/g, ''); };
-  function saidWa() { var s = teamList().filter(function (m) { return m.phone; })[0]; return s ? waDigits(s.phone) : ''; }
-  function saidName() { var s = teamList().filter(function (m) { return m.phone; })[0]; return s ? s.name : ''; }
+  function saidWa() { var s = houseTeam().filter(function (m) { return m.phone; })[0]; return s ? waDigits(s.phone) : ''; }
+  function saidName() { var s = houseTeam().filter(function (m) { return m.phone; })[0]; return s ? s.name : ''; }
 
   /* ── ARIA ─────────────────────────────────────────────────────────── */
   function staysForAI() {
@@ -1978,8 +2000,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     h += '<div class="acts">' +
       (HAS_FACTS && LINKS && LINKS.get(c.id) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="livret" aria-pressed="' + (pn === 'livret') + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</button>' : '') +
       '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="wa" aria-pressed="' + (pn === 'wa') + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.act.wa) + '</button>' +
-      (c.d < todayNum() - 1 ? [] : c.a < todayNum() || !HAS_FACTS ? ['brief'] : (['meals', 'arrival', 'passports', 'brief'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'passports' ? !regOf(c) && (!!passRule() || (regOnF() && !!(LINKS && LINKS.get(c.id)))) : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
-        return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', brief: 'clipboard-list' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
+      (c.d < todayNum() - 1 ? [] : c.a < todayNum() || !HAS_FACTS ? (kitchenOn() ? ['chef', 'brief'] : ['brief']) : (['meals', 'arrival', 'passports', 'chef', 'brief'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'chef' ? kitchenOn() : k === 'passports' ? !regOf(c) && (!!passRule() || (regOnF() && !!(LINKS && LINKS.get(c.id)))) : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
+        return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', chef: 'chef-hat', brief: 'clipboard-list' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
       }).join('') +
       (regOnF() && regOf(c) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="reg" aria-pressed="' + (pn === 'reg') + '"><i class="ti ti-id" aria-hidden="true"></i>' + esc(l.act.reg) + '</button>' : '') +
       (wa ? '' : '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="phone" aria-pressed="' + (pn === 'phone') + '"><i class="ti ti-phone" aria-hidden="true"></i>' + esc(l.act.phone) + '</button>') +
@@ -2004,18 +2026,20 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     } else if (pn === 'reg') {
       h += regPanel(c);
     } else if (pn) {
-      var txt = pn === 'livret' ? msgLivret(c) : pn === 'meals' ? msgMeals(c) : pn === 'arrival' ? msgArrival(c) : pn === 'passports' ? msgPassports(c) : pn === 'depart' ? msgDepart(c) : msgBrief(c);
-      h += '<div class="panel"><span class="ttl">' + esc(pn === 'depart' ? l.actDepart : l.act[pn]) + (pn === 'brief' ? '' : ' · ' + guestLang(c).toUpperCase()) + '</span>' +
+      var team = pn === 'brief' || pn === 'chef'; // message d'équipe : français, jamais la langue du client
+      var txt = pn === 'livret' ? msgLivret(c) : pn === 'meals' ? msgMeals(c) : pn === 'arrival' ? msgArrival(c) : pn === 'passports' ? msgPassports(c) : pn === 'depart' ? msgDepart(c) : pn === 'chef' ? msgKitchen(c) : msgBrief(c);
+      h += '<div class="panel"><span class="ttl">' + esc(pn === 'depart' ? l.actDepart : l.act[pn]) + (team ? '' : ' · ' + guestLang(c).toUpperCase()) + '</span>' +
         '<textarea class="t" id="tx-' + esc(c.id) + '">' + esc(txt) + '</textarea><div class="row2">' +
         '<button type="button" class="btn gold" data-a="copy" data-id="' + esc(c.id) + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
-        (wa && pn !== 'brief' ? '<button type="button" class="btn ghost" data-a="sendwa" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.openWa) + '</button>' : '') +
+        (wa && !team ? '<button type="button" class="btn ghost" data-a="sendwa" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.openWa) + '</button>' : '') +
         (pn === 'livret' ? '<a class="btn ghost" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.seeLivret) + '</a>' : '') +
+        (pn === 'chef' && kitchenWa() ? '<button type="button" class="btn ghost" data-a="sendchef" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(kitchenName())) + '</button>' : '') +
         (pn === 'brief' && saidWa() ? '<button type="button" class="btn ghost" data-a="sendsaid" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(saidName())) + '</button>' : '') +
         (pn === 'brief' ? '<button type="button" class="btn ghost" data-a="briefdone" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' +
           esc(c.staff_briefed_at ? l.briefDone + fmtDay(dayNum(String(c.staff_briefed_at).slice(0, 10))) : l.markBrief) + '</button>' : '') +
         (pn === 'depart' ? '<button type="button" class="btn ghost" data-a="departdone" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' +
           esc(c.details.departMsgAt ? l.departDoneOn + fmtDay(dayNum(String(c.details.departMsgAt).slice(0, 10))) : l.departDone) + '</button>' : '') +
-        '</div>' + (!wa && pn !== 'brief' ? '<span class="sub">' + esc(l.noPhone) + '</span>' : '') + '</div>';
+        '</div>' + (!wa && !team ? '<span class="sub">' + esc(l.noPhone) + '</span>' : '') + '</div>';
     }
     return h;
   }
@@ -3170,6 +3194,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'draft') { var m1 = D.msgs.filter(function (x) { return x.id === v; })[0]; if (m1) draftFor(m1); }
     else if (a === 'archive') { var m2 = D.msgs.filter(function (x) { return x.id === v; })[0]; if (m2) archiveMsg(m2); }
     else if (a === 'copydraft') { var dt = document.getElementById('dr-' + v); if (dt) copyText(dt.value); }
+    else if (a === 'sendchef' && c) { var tx4 = document.getElementById('tx-' + c.id); window.open('https://wa.me/' + kitchenWa() + '?text=' + encodeURIComponent(tx4 ? tx4.value : msgKitchen(c)), '_blank', 'noopener'); }
     else if (a === 'sendsaid' && c) { var tx3 = document.getElementById('tx-' + c.id); window.open('https://wa.me/' + saidWa() + '?text=' + encodeURIComponent(tx3 ? tx3.value : msgBrief(c)), '_blank', 'noopener'); }
     else if (a === 'reload') { D.loaded = false; render(); load(); }
     else if (a === 'seen') { var rp = (D.reports || []).filter(function (x) { return x.id === v; })[0]; if (rp) seenReport(rp); }

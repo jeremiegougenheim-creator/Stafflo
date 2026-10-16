@@ -842,6 +842,48 @@ const s7 = r.calls.filter((c) => c.kind === 'PATCH').pop(), h7 = s7 && s7.body.h
 check('extras : enregistrés avec prix numérique et unité, rangée vide ignorée, devise sur la villa', !!h7 && h7.VILLA.currency === '€' && h7.EXTRAS.length === 1 && h7.EXTRAS[0].price === 40 && h7.EXTRAS[0].n[0] === 'Transfert aéroport' && h7.EXTRAS[0].unit[0] === 'par trajet' && !r.errs.length, h7 && h7.EXTRAS);
 await r.ctx.close();
 
+// ── 5 duodecies. Deux briefs : la maison (majordome, ménage) et la cuisine (prestataire repas) ──────
+{
+  // Le contact de la maison est le majordome ; la cuisine passe par le prestataire repas (drapeau kitchen)
+  const KF = JSON.parse(JSON.stringify(PILOT));
+  KF.TEAM = [{ name: 'Saïd', brief: true, phone: '+212 600 000 011', role: ['majordome', 'house manager'] },
+    { name: 'Bouchra', brief: true, role: ['ménage', 'housekeeping'] },
+    { name: 'Léa', brief: true, kitchen: true, phone: '+33 6 20 80 11 27', role: ['prestataire repas', 'meal provider'] }];
+  const ST = [{ id: 'k1', name: 'Felipe Villalobos', arrival: iso(2), departure: iso(5), adults: 6, children: 1, booking_status: 'confirmed', source: 'Airbnb', price: 2000, phone: '+44 7700 900123',
+    meals: 'Mardi dîner, mercredi déjeuner et dîner · 1 végétarien, rien de pimenté',
+    details: { arrival_time: '15h30', staff_note: 'Tajine de kefta le mercredi soir, semoule en accompagnement',
+      guest_orders: { at: new Date().toISOString(), total: 2600, cur: 'MAD', items: [{ n: ['Dîner cuisinière', 'Cook dinner'], q: 3 }, { n: ['Déjeuner léger', 'Light lunch'], q: 2 }] } } }];
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, stays: ST });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]');
+  check('deux briefs dans la grille : « Brief cuisine » et « Brief maison »', !!(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !!(await r.page.$('#st-k1 [data-a="panel"][data-v="brief"]')) &&
+    /Brief cuisine/.test(await r.page.innerText('#st-k1')) && /Brief maison/.test(await r.page.innerText('#st-k1')));
+  await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+  const kt = await r.page.inputValue('#tx-k1');
+  check('brief cuisine : pour le prestataire, couverts, services, commande du livret, consigne — jamais un prix ni le téléphone du client',
+    /^Cuisine Felipe Villalobos — pour Léa/.test(kt) && /Couverts : 7 personnes \(6 adultes, 1 enfant\)/.test(kt) && /Repas : .*1 végétarien/.test(kt) &&
+    /Commande du livret : 3 × Dîner cuisinière · 2 × Déjeuner léger/.test(kt) && /Consigne : Tajine de kefta/.test(kt) && /Arrivée : .*15h30/.test(kt) &&
+    !/2 600|MAD|€|7700 900123/.test(kt), kt);
+  check('envoi : « Envoyer à Léa » sur SON numéro, jamais celui de la maison ni celui du client', !!(await r.page.$('#st-k1 [data-a="sendchef"]')) && /Envoyer à Léa/.test(await r.page.innerText('#st-k1')) &&
+    !(await r.page.$('#st-k1 [data-a="sendwa"]')) && !/· EN|· FR/.test(await r.page.innerText('#st-k1 .panel .ttl')));
+  await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+  const bt = await r.page.inputValue('#tx-k1');
+  check('brief maison : pour le majordome et le ménage, jamais le prestataire repas ; couchages et contact client gardés',
+    /^Brief Felipe Villalobos — pour Saïd, Bouchra$/m.test(bt) && !/Léa/.test(bt) && /Contact client : \+44 7700 900123/.test(bt) && /Chambres : à préparer/.test(bt) &&
+    /Envoyer à Saïd/.test(await r.page.innerText('#st-k1')), bt);
+  await r.ctx.close();
+  // Une villa sans prestataire repas : un seul brief, inchangé
+  const NK = JSON.parse(JSON.stringify(PILOT));
+  NK.TEAM = [{ name: 'Omar', brief: true, phone: '+212 600 000 012', role: ['gardien', 'caretaker'] }];
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: NK }, stays: ST });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]');
+  check('sans prestataire repas : pas de « Brief cuisine », le brief maison part chez le seul contact', !(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !/Brief cuisine/.test(await r.page.innerText('#st-k1')));
+  await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+  check('brief maison : le seul membre de l’équipe est le destinataire', /— pour Omar$/m.test(await r.page.inputValue('#tx-k1')) && /Envoyer à Omar/.test(await r.page.innerText('#st-k1')) && !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
 await browser.close(); server.close();
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
