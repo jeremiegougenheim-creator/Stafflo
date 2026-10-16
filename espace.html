@@ -789,7 +789,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       // Dates fortes : table events (sourcée, une ligne par période), suppressions douces exclues.
       api('events?select=id,name,name_en,category,start_date,end_date,source,notes,zones&deleted_at=is.null&end_date=gte.' + new Date(todayNum() * 86400000).toISOString().slice(0, 10) + '&order=start_date.asc&limit=40').catch(function () { return []; }),
       api('staff_links?select=id,name,lang,created_at,last_seen_at&deleted_at=is.null&order=created_at.desc').catch(function () { return []; }),
-      api('villa_settings?select=villa_name,city,country,owner_name,bedrooms,max_guests,house_facts_ref,house_facts,staff_members,gmail:email_connection->>email,gmail_at:email_connection->>connected_at&order=created_at.asc&limit=1').catch(function () { return []; }),
+      api('villa_settings?select=villa_name,city,country,owner_name,bedrooms,max_guests,house_facts_ref,house_facts,staff_members,gmail:email_connection->>email,gmail_at:email_connection->>connected_at,wa_connect_enabled&order=created_at.asc&limit=1').catch(function () { return []; }),
       api('staff?select=name,role,wa&active=eq.true&order=name.asc').catch(function () { return []; }),
       LINKS ? LINKS.load() : null,
       // Retours de l'équipe (chambres prêtes, problème) des 7 derniers jours — lus par le propriétaire (RLS).
@@ -2729,10 +2729,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var ST = { edit: false, err: '' };
   var VS_F = [['villa_name', 'text'], ['owner_name', 'text'], ['city', 'text'], ['country', 'text'], ['bedrooms', 'int'], ['max_guests', 'int']];
   /* Relier WhatsApp Business (inscription intégrée de Meta, coexistence) : le SDK de Meta n'est chargé
-     qu'au clic. Identifiants PUBLICS de l'app Meta de Stafflo (Tech Provider) ; vides = bouton absent.
-     localStorage.stafflo_wa_meta = '{"appId":"…","configId":"…"}' permet d'essayer avant de les publier. */
-  var WA_META = { appId: '', configId: '', v: 'v25.0' };
-  try { var wmo = JSON.parse(localStorage.getItem('stafflo_wa_meta') || 'null'); if (wmo && /^\d{5,25}$/.test(String(wmo.appId)) && /^\d{5,25}$/.test(String(wmo.configId))) { WA_META.appId = String(wmo.appId); WA_META.configId = String(wmo.configId); } } catch (e) {}
+     qu'au clic. Identifiants PUBLICS de l'app Meta de Stafflo (Tech Provider, 16/10/2026) ; vides = bouton absent.
+     Le bouton n'apparaît qu'aux comptes ouverts par la base (villa_settings.wa_connect_enabled) : avant
+     l'App Review de Meta, seul un admin de l'app Meta peut aboutir — on ne promet rien aux autres.
+     localStorage.stafflo_wa_meta = '{"appId":"…","configId":"…"}' = essai (autres identifiants, bouton affiché). */
+  var WA_META = { appId: '4788920158094935', configId: '2570136620077692', v: 'v25.0', trial: false };
+  try { var wmo = JSON.parse(localStorage.getItem('stafflo_wa_meta') || 'null'); if (wmo && /^\d{5,25}$/.test(String(wmo.appId)) && /^\d{5,25}$/.test(String(wmo.configId))) { WA_META.appId = String(wmo.appId); WA_META.configId = String(wmo.configId); WA_META.trial = true; } } catch (e) {}
+  var waOpen = function () { return !!(WA_META.appId && WA_META.configId && (WA_META.trial || (D.villa && D.villa.wa_connect_enabled === true))); };
   var WAC = { busy: false, err: '', ids: null };
   function waSdk() {
     return new Promise(function (res, rej) {
@@ -2751,7 +2754,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (d.event === 'CANCEL') { WAC.busy = false; render(); }
   });
   function waConnect() {
-    if (!WA_META.appId || !WA_META.configId || WAC.busy) return;
+    if (!waOpen() || WAC.busy) return;
     var k = L().wb;
     WAC.busy = true; WAC.err = ''; WAC.ids = null; render();
     waSdk().then(function (FB) {
@@ -2777,10 +2780,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var k = L().wb, wn = D.waNum;
     if (wn) {
       var hs = wn.history_status, st = hs === 'syncing' ? k.hist.syncing(wn.history_progress || 0) : k.hist[hs] || '';
-      var again = (hs === 'disconnected') && WA_META.appId ? '<button type="button" class="btn gold" data-a="waconnect"' + (WAC.busy ? ' disabled' : '') + '>' + esc(WAC.busy ? k.busy : k.connect) + '</button>' : '';
+      var again = (hs === 'disconnected') && waOpen() ? '<button type="button" class="btn gold" data-a="waconnect"' + (WAC.busy ? ' disabled' : '') + '>' + esc(WAC.busy ? k.busy : k.connect) + '</button>' : '';
       return row('brand-whatsapp', k.title, k.on(wn.display_phone || '') + (st ? ' · ' + st : ''), again, hs === 'declined' || hs === 'disconnected') + (WAC.err ? '<span class="err">' + esc(WAC.err) + '</span>' : '');
     }
-    if (!WA_META.appId) return '';
+    if (!waOpen()) return '';
     return row('brand-whatsapp', k.title, k.off, '<button type="button" class="btn gold" data-a="waconnect"' + (WAC.busy ? ' disabled' : '') + '>' + esc(WAC.busy ? k.busy : k.connect) + '</button>') +
       (WAC.err ? '<span class="err">' + esc(WAC.err) + '</span>' : '');
   }
