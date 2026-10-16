@@ -74,7 +74,8 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
       if (m === 'PATCH') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sfpatch', url: u, body: b }); return json([{}]); }
       calls.push({ kind: 'sfget', url: u }); return json(files.filter((f) => !f.deleted_at));
     }
-    if (u.includes('/storage/v1/object/sign/stay-files') && m === 'GET') return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
+    if (u.includes('/storage/v1/object/sign/stay-files') && m === 'GET' && req.resourceType() === 'fetch') calls.push({ kind: 'sfdl', url: u });
+    if (u.includes('/storage/v1/object/sign/stay-files') && m === 'GET') return route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
     if (u.includes('/storage/v1/object/sign/stay-files')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sign', body: b, auth: req.headers().authorization }); return json(b.paths.map((p) => ({ path: p, signedURL: '/object/sign/stay-files/' + p + '?token=t', error: null }))); }
     if (u.includes('/storage/v1/object/stay-files/')) { calls.push({ kind: 'upload', url: u, type: req.headers()['content-type'], auth: req.headers().authorization, size: (req.postDataBuffer() || Buffer.alloc(0)).length }); return json({ Key: 'k' }); }
     if (u.includes('/rest/v1/sync_runs')) return json(sync);
@@ -626,9 +627,31 @@ await r.ctx.close();
   const up = r.calls.filter((x) => x.kind === 'upload'), ins = r.calls.filter((x) => x.kind === 'sfinsert');
   check('ajout : une photo envoyée dans le dossier du compte et du séjour, ligne stay_files ; un .txt refusé avec un message', up.length === 1 && new RegExp('/storage/v1/object/stay-files/' + UID + '/b1/[^/]+\\.(png|jpg)$').test(up[0].url) && up[0].auth === 'Bearer tok' && /^image\//.test(up[0].type) &&
     ins.length === 1 && ins[0].body.client_id === 'b1' && ins[0].body.path.startsWith(UID + '/b1/') && ins[0].body.size === up[0].size && /Photos \(JPEG, PNG, HEIC\) ou PDF seulement/.test(await r.page.innerText('#st-b1')) && (await r.page.$$('#st-b1 .bf-it')).length === 2, { up, ins });
+  // Télécharger (16/10) : WhatsApp ne joint rien par lien ; le propriétaire enregistre les pièces sur l'appareil
+  const dls = []; r.page.on('download', (d) => dls.push(d.suggestedFilename()));
+  const sign0 = r.calls.filter((x) => x.kind === 'sign').length;
+  check('télécharger : un bouton par pièce et « Tout télécharger (2) »', (await r.page.$$('#st-b1 .bf-it [data-a="bfdl"]')).length === 2 && /Tout télécharger \(2\)/.test(await r.page.innerText('#st-b1')));
+  await r.page.click('#st-b1 button.btn[data-a="bfdl"][data-v=""]'); await r.page.waitForTimeout(1500);
+  const sfdl = r.calls.filter((x) => x.kind === 'sfdl');
+  check('tout télécharger : liens signés refaits, chaque pièce lue puis enregistrée sous son nom, rien d’autre n’est envoyé', r.calls.filter((x) => x.kind === 'sign').length === sign0 + 1 && sfdl.length === 2 &&
+    dls.length === 2 && dls[0] === 'facture-marche.pdf' && /^ticket\.(png|jpg)$/.test(dls[1]) && /2 fichiers dans Téléchargements/.test(await r.page.innerText('body')) && !r.errs.length, { dls, sfdl, errs: r.errs });
+  await r.page.click('#st-b1 .bf-it [data-a="bfdl"][data-v="f0"]'); await r.page.waitForTimeout(800);
+  check('télécharger une pièce : seulement celle-ci', dls.length === 3 && dls[2] === 'facture-marche.pdf' && r.calls.filter((x) => x.kind === 'sfdl').length === 3, dls);
   await r.page.click('#st-b1 [data-a="bfdel"][data-v="f0"]'); await r.page.waitForTimeout(300);
   const del = r.calls.filter((x) => x.kind === 'sfpatch').pop();
   check('retirer : suppression douce (deleted_at), jamais de DELETE ; la pièce disparaît', !!del && /stay_files\?id=eq\.f0/.test(del.url) && Object.keys(del.body).join() === 'deleted_at' && (await r.page.$$('#st-b1 .bf-it')).length === 1 && !r.errs.length, r.errs);
+  await r.ctx.close();
+  // L'iPhone nomme toutes ses photos « image.jpg » : deux pièces, deux noms ; un nom sans extension la reçoit
+  const F2 = [{ id: 'g1', path: UID + '/b1/a.jpg', name: 'image.jpg', mime: 'image/jpeg', size: 9, created_at: new Date().toISOString() },
+    { id: 'g2', path: UID + '/b1/b.jpg', name: 'image.jpg', mime: 'image/jpeg', size: 9, created_at: new Date().toISOString() },
+    { id: 'g3', path: UID + '/b1/c.pdf', name: 'facture', mime: 'application/pdf', size: 9, created_at: new Date().toISOString() }];
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT }, files: F2.slice(),
+    stays: [{ id: 'b1', name: 'Ana Ruiz', arrival: iso(-2), departure: iso(1), adults: 6, booking_status: 'confirmed', source: 'Airbnb', details: {} }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="b1"]'); await r.page.click('[data-a="panel"][data-id="b1"][data-v="bill"]'); await r.page.waitForTimeout(300);
+  const dl2 = []; r.page.on('download', (d) => dl2.push(d.suggestedFilename()));
+  await r.page.click('#st-b1 button.btn[data-a="bfdl"][data-v=""]'); await r.page.waitForTimeout(2000);
+  check('noms : « image.jpg », « image 2.jpg », « facture.pdf »', dl2.join('|') === 'image.jpg|image 2.jpg|facture.pdf' && !r.errs.length, { dl2, errs: r.errs });
   await r.ctx.close();
 }
 
