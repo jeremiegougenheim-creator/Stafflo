@@ -360,7 +360,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         pdfAll: function (n) { return 'Tout en un seul PDF (' + n + ' pièces)'; }, pdfBusy: function (i, n) { return 'Préparation du PDF… (' + i + '/' + n + ')'; },
         pdfDone: 'PDF dans Téléchargements', pdfPart: function (n) { return 'PDF prêt, sans ' + n + (n > 1 ? ' pièces illisibles' : ' pièce illisible'); },
         pdfSave: 'Enregistrer le PDF', pdfName: 'Justificatifs', pdfHint: 'Un seul fichier à joindre dans WhatsApp.' },
-      wa: { title: 'Remplir depuis WhatsApp', fromWa: 'Remplir depuis WhatsApp',
+      wa: { title: 'WhatsApp', fromWa: 'Remplir depuis WhatsApp', write: 'Écrire au client', fill: 'Remplir le séjour depuis la conversation',
         steps: ['Dans WhatsApp, ouvrez la conversation avec le client, touchez son nom, puis « Exporter la discussion » › « Sans médias ».', 'Enregistrez le fichier (iPhone : « Enregistrer dans Fichiers ») et choisissez-le ici — ou glissez-le sur ordinateur.', 'Ou copiez quelques messages et collez-les ci-dessous.'],
         drop: 'Choisir ou déposer l’export (.zip ou .txt)', paste: 'Ou collez des messages', pastePh: 'Collez ici les messages du client…', read: 'Lire les messages', reading: 'Lecture de la conversation…',
         onDevice: 'La conversation est lue sur cet appareil. Rien n’est enregistré avant votre validation, et seulement les champs cochés — jamais les messages ni les photos.',
@@ -504,7 +504,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         pdfAll: function (n) { return 'All in one PDF (' + n + ' items)'; }, pdfBusy: function (i, n) { return 'Preparing the PDF… (' + i + '/' + n + ')'; },
         pdfDone: 'PDF in Downloads', pdfPart: function (n) { return 'PDF ready, without ' + n + (n > 1 ? ' unreadable items' : ' unreadable item'); },
         pdfSave: 'Save the PDF', pdfName: 'Receipts', pdfHint: 'One single file to attach in WhatsApp.' },
-      wa: { title: 'Fill in from WhatsApp', fromWa: 'Fill in from WhatsApp',
+      wa: { title: 'WhatsApp', fromWa: 'Fill in from WhatsApp', write: 'Message the guest', fill: 'Fill in the stay from the conversation',
         steps: ['In WhatsApp, open the chat with the guest, tap their name, then “Export chat” › “Without media”.', 'Save the file (iPhone: “Save to Files”) and choose it here — or drag it in on a computer.', 'Or copy a few messages and paste them below.'],
         drop: 'Choose or drop the export (.zip or .txt)', paste: 'Or paste messages', pastePh: 'Paste the guest’s messages here…', read: 'Read the messages', reading: 'Reading the chat…',
         onDevice: 'The chat is read on this device. Nothing is saved until you confirm, and only the ticked fields — never the messages or photos.',
@@ -1977,7 +1977,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var wa = waDigits(c.phone);
     h += '<div class="acts">' +
       (HAS_FACTS && LINKS && LINKS.get(c.id) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="livret" aria-pressed="' + (pn === 'livret') + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</button>' : '') +
-      (wa ? '<a class="act" href="https://wa.me/' + wa + '" target="_blank" rel="noopener" title="WhatsApp"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
+      '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="wa" aria-pressed="' + (pn === 'wa') + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.act.wa) + '</button>' +
       (c.d < todayNum() - 1 ? [] : c.a < todayNum() || !HAS_FACTS ? ['brief'] : (['meals', 'arrival', 'passports', 'brief'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'passports' ? !regOf(c) && (!!passRule() || (regOnF() && !!(LINKS && LINKS.get(c.id)))) : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
         return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', brief: 'clipboard-list' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
       }).join('') +
@@ -2325,9 +2325,14 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function waPanel(c) {
     var l = L(), k = l.wa, id = esc(c.id), st = WA[c.id] || {};
     var h = '<div class="panel"><span class="ttl"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i> ' + esc(k.title) + '</span>';
+    // Deux gestes au même endroit : écrire au client (lien natif) ou remplir le séjour depuis la conversation
+    var wn = waDigits(c.phone);
+    if (!st.msgs && !st.busy) h += wn ? '<a class="btn green" href="https://wa.me/' + wn + '" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(k.write) + '</a>'
+      : '<span class="sub">' + esc(l.noPhone) + '</span>';
     if (st.busy) return h + '<span class="sub">' + esc(k.reading) + '</span></div>';
     if (!st.msgs) {
-      h += '<ol class="f wa-steps">' + k.steps.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>' +
+      h += '<span class="ttl" style="margin-top:6px"><i class="ti ti-download" aria-hidden="true"></i> ' + esc(k.fill) + '</span>' +
+        '<ol class="f wa-steps">' + k.steps.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>' +
         '<label class="drop" data-drop="wa" data-id="' + id + '"><input type="file" accept=".zip,.txt,text/plain,application/zip" data-file="wa" data-id="' + id + '"><i class="ti ti-file-upload" aria-hidden="true"></i><span>' + esc(k.drop) + '</span></label>' +
         '<label class="fl"><span>' + esc(k.paste) + '</span><textarea class="t" style="min-height:90px" id="wa-paste-' + id + '" placeholder="' + esc(k.pastePh) + '"></textarea></label>' +
         (st.err ? '<span class="err">' + esc(st.err) + '</span>' : '') +
