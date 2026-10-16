@@ -245,6 +245,15 @@ await r.ctx.close();
   }
 }
 
+// ── Brunch à part, fait par la maison : au tarif négocié, une seule ligne « Brunch » (celle de la fiche) ──
+{
+  const FB2 = JSON.parse(FACTS); FB2.MEALS = FB2.MEALS.slice(0, 3).concat([{ n: ['Brunch (sur demande)', 'Brunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'], h: ['Dès 10h30', 'From 10:30 am'], house: true }]);
+  r = await open('t=' + TOK + '&lang=fr&pax=8&tarifs=600/600/800', { view: () => ({ status: 200, body: '{"facts":' + JSON.stringify(FB2) + '}' }) });
+  const rowsB = await r.page.$$eval('#sheet table tr', (trs) => trs.map((tr) => tr.innerText.replace(/\s+/g, ' ').trim()).filter((t) => /^Brunch/i.test(t)));
+  check('tarif négocié + brunch de la maison : une seule ligne Brunch, à 450 MAD (pas 600)', rowsB.length === 1 && /450 MAD/.test(rowsB[0]) && !r.errs.length, rowsB);
+  await r.ctx.close();
+}
+
 await browser.close(); server.close();
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

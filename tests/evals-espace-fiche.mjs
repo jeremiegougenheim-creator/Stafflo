@@ -913,6 +913,29 @@ await r.ctx.close();
   const sv = r.calls.filter((c) => c.kind === 'PATCH').pop(), hm = sv && sv.body.house_facts && sv.body.house_facts.MEALS;
   check('enregistrement : la marque « maison » est gardée (et seulement là)', !!hm && hm.length === 4 && hm[3].house === true && !hm[1].house && !r.errs.length, hm && hm.map((m) => m.house));
   await r.ctx.close();
+  // Brunch fait par la maison (16/10) : décompte et message repas comptent chaque repas à son prix, jamais au tarif de la cuisinière
+  const KB = JSON.parse(JSON.stringify(KH));
+  KB.MEALS[1] = { ...KB.MEALS[1], n: ['Déjeuner ou dîner (sur demande)', 'Lunch or dinner (on request)'] };
+  KB.MEALS.push({ n: ['Brunch (sur demande)', 'Brunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'], h: ['Dès 10h30', 'From 10:30 am'], house: true });
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KB },
+    stays: [{ id: 'k9', name: 'Felipe Villalobos', arrival: iso(2), departure: iso(5), adults: 7, booking_status: 'confirmed', source: 'Direct', details: {} }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k9"]'); await r.page.click('#st-k9 [data-a="panel"][data-v="bill"]'); await r.page.waitForTimeout(200);
+  const bp = await r.page.innerText('#st-k9');
+  check('décompte : un compteur par repas — « Déjeuner ou dîner », « Déjeuner léger (450 MAD) », « Brunch (450 MAD) » — plus de « Brunchs, déjeuners, dîners »',
+    /Déjeuner ou dîner — nombre servi/.test(bp) && /Déjeuner léger — nombre servi \(450 MAD\)/.test(bp) && /Brunch — nombre servi \(450 MAD\)/.test(bp) && !/Brunchs, déjeuners, dîners/.test(bp) &&
+    !!(await r.page.$('#st-k9 input[data-bill="xm3"]')) && !!(await r.page.$('#st-k9 input[data-bill="xm4"]')), bp.slice(0, 600));
+  await r.page.fill('#st-k9 input[data-bill="services"]', '3'); await r.page.fill('#st-k9 input[data-bill="xm3"]', '2'); await r.page.fill('#st-k9 input[data-bill="xm4"]', '1'); await r.page.waitForTimeout(150);
+  const btot = await r.page.innerText('#bt-k9'), bmsg = await r.page.inputValue('#tx-k9');
+  check('décompte : 3 × 850 + 2 × 450 + 1 × 450 = 3 900 MAD ; le message détaille chaque repas à son prix',
+    /^3\s?900 MAD$/.test(btot) && /3 × déjeuner ou dîner \(850 MAD|3 × lunch or dinner \(850 MAD/.test(bmsg) && /2 × (déjeuner léger|light lunch) \(450 MAD\) : 900 MAD/.test(bmsg) && /1 × brunch \(450 MAD\) : 450 MAD/.test(bmsg), { btot, bmsg });
+  await r.page.click('#st-k9 [data-a="billsave"]'); await r.page.waitForTimeout(300);
+  const bs = r.calls.filter((x) => x.kind === 'stay').pop(), bil = bs && bs.body.details && bs.body.details.billing;
+  check('décompte enregistré : compteurs des repas de la maison gardés (xm3, xm4), total 3 900', !!bil && bil.xm3 === 2 && bil.xm4 === 1 && bil.services === 3 && bil.total === 3900 && !r.errs.length, bil);
+  await r.page.click('#st-k9 [data-a="panel"][data-v="meals"]'); await r.page.waitForTimeout(150);
+  const mm = await r.page.inputValue('#tx-k9');
+  check('message repas au client : le brunch et le déjeuner léger annoncés à 450 MAD pour tout le groupe', /(Brunch \(sur demande\) : 450 MAD pour tout le groupe|Brunch \(on request\): 450 MAD for the whole group)/.test(mm) && /(Déjeuner léger \(sur demande\) : 450 MAD|Light lunch \(on request\): 450 MAD)/.test(mm), mm);
+  await r.ctx.close();
   // Une villa sans prestataire repas : un seul brief, inchangé
   const NK = JSON.parse(JSON.stringify(PILOT));
   NK.TEAM = [{ name: 'Omar', brief: true, phone: '+212 600 000 012', role: ['gardien', 'caretaker'] }];

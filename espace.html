@@ -388,7 +388,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       eqWho: 'Pour', eqLang: 'Langue', eqCreate: 'Créer le lien', eqNone: 'Aucun lien pour l’instant.', eqOnce: 'Ce lien ne s’affiche qu’une fois : envoyez-le maintenant. Pour le renvoyer plus tard, créez-en un nouveau.',
       eqSend: 'Envoyer sur WhatsApp', eqRevoke: 'Retirer', eqRevoked: 'Accès retiré', eqSeen: 'ouvert ', eqNever: 'jamais ouvert', eqErr: 'Création impossible. Réessayez.', eqPreview: 'Voir la vue équipe',
       arrTime: 'Heure d’arrivée', beds: 'Couchages', staffNote: 'Consigne équipe',
-      billTitle: 'Décompte de fin de séjour', bServices: 'Brunchs, déjeuners, dîners servis', bHoliday: 'dont un jour férié (tarif double)', bGouters: 'Goûters servis',
+      billTitle: 'Décompte de fin de séjour', bServices: 'Brunchs, déjeuners, dîners servis', bServed: function (n) { return n + ' — nombre servi'; }, bHoliday: 'dont un jour férié (tarif double)', bGouters: 'Goûters servis',
       bCourses: 'Courses et boissons (MAD, au ticket)', bOther: 'Autres (MAD)', bOtherLbl: 'Détail des autres (transfert, massage…)',
       bTier: function (n, u, g) { return 'Tarif ' + (n ? 'groupe de ' + n + ' pers.' : 'à choisir') + ' : ' + u + ' MAD par service' + (g ? ', goûter ' + g + ' MAD' : '') + ' — fiche maison'; },
       bNoPax: 'Nombre de personnes inconnu : choisissez le tarif.', bTotal: 'Total', bSave: 'Enregistrer le décompte', bSaved: 'Décompte enregistré le ', bMsg: 'Message au client',
@@ -532,7 +532,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       eqWho: 'For', eqLang: 'Language', eqCreate: 'Create the link', eqNone: 'No link yet.', eqOnce: 'This link is shown only once: send it now. To resend it later, create a new one.',
       eqSend: 'Send on WhatsApp', eqRevoke: 'Remove', eqRevoked: 'Access removed', eqSeen: 'opened ', eqNever: 'never opened', eqErr: 'Could not create the link. Try again.', eqPreview: 'Open the team view',
       arrTime: 'Arrival time', beds: 'Beds', staffNote: 'Team note',
-      billTitle: 'End-of-stay bill', bServices: 'Brunches, lunches, dinners served', bHoliday: 'of which on a public holiday (double rate)', bGouters: 'Afternoon teas served',
+      billTitle: 'End-of-stay bill', bServices: 'Brunches, lunches, dinners served', bServed: function (n) { return n + ' — number served'; }, bHoliday: 'of which on a public holiday (double rate)', bGouters: 'Afternoon teas served',
       bCourses: 'Groceries and drinks (MAD, at cost)', bOther: 'Other (MAD)', bOtherLbl: 'Other items (transfer, massage…)',
       bTier: function (n, u, g) { return (n ? 'Group of ' + n : 'Rate to choose') + ': ' + u + ' MAD per service' + (g ? ', afternoon tea ' + g + ' MAD' : '') + ' — house facts'; },
       bNoPax: 'Group size unknown: choose the rate.', bTotal: 'Total', bSave: 'Save the bill', bSaved: 'Bill saved on ', bMsg: 'Message to the guest',
@@ -1079,6 +1079,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       var b = c.details.billing || {};
       BILL[c.id] = { col: b.col || (c.pax ? mealsRow(c) : ''), services: b.services || 0, holiday: b.holiday || 0, gouters: b.gouters || 0, courses: b.courses || 0, other: b.other || 0, otherLbl: b.otherLbl || '',
         sessions: b.sessions || 0, advance: b.advance || 0, rate: b.rate || '' };
+      Object.keys(b).forEach(function (k) { if (/^xm\d+$/.test(k)) BILL[c.id][k] = b[k]; }); // repas au-delà des trois habituels (16/10/2026)
     }
     return BILL[c.id];
   }
@@ -1087,12 +1088,19 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var m = (F.MEAL_NOTES || []).map(function (x) { return x[0]; }).join(' ').match(/(\d[\d\s]*)\s*MAD de logistique/);
     return m ? +m[1].replace(/\s/g, '') : 0;
   }
+  /* Repas de la fiche au-delà des trois habituels (petit-déjeuner, service de la cuisinière, goûter) :
+     déjeuner léger, brunch fait par la maison… — chacun son compteur et son prix, jamais le tarif de la cuisinière. */
+  function xMeals(col) {
+    var out = []; (F.MEALS || []).forEach(function (row, i) { var u = i > 2 && row ? unitPrice(row, col || 'a') : null; if (u) out.push({ i: i, u: u, n: P(row.n, 0).replace(/\s*\([^)]*\)/, '') }); });
+    return out;
+  }
   function billCalc(c) {
     var b = billOf(c), col = b.col || 'a', uS = unitPrice(F.MEALS[1] || {}, col), uG = unitPrice(F.MEALS[2] || {}, col);
     var n = function (x) { x = +x; return isFinite(x) && x > 0 ? x : 0; };
     var lines = [], total = 0;
     if (n(b.services) && uS) { var hs = Math.min(n(b.holiday), n(b.services)); var v = n(b.services) * uS + hs * uS; total += v; lines.push({ k: 'services', q: n(b.services), u: uS, h: hs, v: v }); }
     if (n(b.gouters) && uG) { total += n(b.gouters) * uG; lines.push({ k: 'gouters', q: n(b.gouters), u: uG, v: n(b.gouters) * uG }); }
+    xMeals(col).forEach(function (r) { var q = n(b['xm' + r.i]); if (q) { total += q * r.u; lines.push({ k: 'xmeal', i: r.i, q: q, u: r.u, v: q * r.u }); } });
     if (n(b.courses)) { total += n(b.courses); lines.push({ k: 'courses', v: n(b.courses) }); }
     var uL = logiUnit();
     if (n(b.sessions) && uL) { total += n(b.sessions) * uL; lines.push({ k: 'logi', q: n(b.sessions), u: uL, v: n(b.sessions) * uL }); }
@@ -1106,6 +1114,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var m = function (v) { return (Math.round(v) || 0).toLocaleString(fr ? 'fr-FR' : 'en-GB') + ' MAD'; };
     x.lines.forEach(function (ln) {
       if (ln.k === 'services') out.push('• ' + ln.q + ' × ' + P(M[1].n, fr ? 0 : 1).replace(/\s*\([^)]*\)/, '').toLowerCase() + ' (' + m(ln.u) + (fr ? ' par service pour le groupe' : ' per service for the group') + ')' + (ln.h ? (fr ? ', dont ' + ln.h + ' jour férié au tarif double' : ', ' + ln.h + ' on a public holiday at double rate') : '') + ' : ' + m(ln.v));
+      if (ln.k === 'xmeal') out.push('• ' + ln.q + ' × ' + P(M[ln.i].n, fr ? 0 : 1).replace(/\s*\([^)]*\)/, '').toLowerCase() + ' (' + m(ln.u) + ') : ' + m(ln.v));
       if (ln.k === 'gouters') out.push('• ' + ln.q + ' × ' + P(M[2].n, fr ? 0 : 1).replace(/\s*\([^)]*\)/, '').toLowerCase() + ' (' + m(ln.u) + ') : ' + m(ln.v));
       if (ln.k === 'courses') out.push('• ' + (fr ? 'Courses et boissons, au prix des tickets envoyés : ' : 'Groceries and drinks, at the cost of the receipts sent: ') + m(ln.v));
       if (ln.k === 'logi') out.push('• ' + ln.q + (fr ? ' session' + (ln.q > 1 ? 's' : '') + ' de courses × ' + m(ln.u) + ' de logistique : ' : ' shopping run' + (ln.q > 1 ? 's' : '') + ' × ' + m(ln.u) + ' logistics: ') + m(ln.v));
@@ -1310,7 +1319,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (!c.pax) h += '<span class="sub" style="color:var(--wait)">' + esc(l.bNoPax) + '</span>';
     h += '<div class="seg" role="group">' + ['a', 'b'].map(function (k) { return '<button type="button" data-bill-col="' + k + '" data-id="' + id + '" aria-pressed="' + (x.col === k) + '">' + esc(k === 'a' ? l.mGroup16 : l.mGroup710) + '</button>'; }).join('') + '</div>';
     h += '<span class="sub">' + esc(l.bTier(c.pax, x.uS || '?', x.uG)) + '</span>';
-    h += '<div class="grid2">' + num('services', l.bServices, b.services) + num('holiday', l.bHoliday, b.holiday) + num('gouters', l.bGouters, b.gouters) + num('courses', l.bCourses, b.courses) +
+    var sName = F.MEALS && F.MEALS[1] ? P(F.MEALS[1].n, U.lang === 'en' ? 1 : 0).replace(/\s*\([^)]*\)/, '') : '';
+    h += '<div class="grid2">' + num('services', sName ? l.bServed(sName) : l.bServices, b.services) + num('holiday', l.bHoliday, b.holiday) + num('gouters', l.bGouters, b.gouters) +
+      xMeals(x.col).map(function (r) { return num('xm' + r.i, l.bServed(P(F.MEALS[r.i].n, U.lang === 'en' ? 1 : 0).replace(/\s*\([^)]*\)/, '')) + ' (' + r.u + ' MAD)', b['xm' + r.i]); }).join('') + num('courses', l.bCourses, b.courses) +
       (x.uL ? num('sessions', l.bSessions + ' (× ' + x.uL + ' MAD)', b.sessions) : '') + num('other', l.bOther, b.other) +
       '<label class="fl"><span>' + esc(l.bOtherLbl) + '</span><input class="t" type="text" data-bill="otherLbl" data-id="' + id + '" value="' + esc(b.otherLbl) + '"></label></div>';
     h += '<div class="line" style="font-size:16px"><span>' + esc(l.bTotal) + '</span><b id="bt-' + id + '">' + esc(mad(x.total)) + '</b></div>';
@@ -1456,6 +1467,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         'Pour votre groupe de ' + c.pax + ' personnes :\n' +
         '• ' + P(M[1].n, 0) + ' : ' + P(M[1][col], 0) + ' par service pour tout le groupe\n' +
         (M[2] ? '• ' + P(M[2].n, 0) + ' : ' + P(M[2][col], 0) + '\n' : '') +
+        xMeals(col).map(function (r) { return '• ' + P(M[r.i].n, 0) + ' : ' + P(M[r.i][col], 0) + ' pour tout le groupe\n'; }).join('') +
         (F.MEAL_NOTES[1] ? '• ' + flat(P(F.MEAL_NOTES[1], 0)) + ' Courses au prix réel, ticket envoyé par WhatsApp.\n' : '') +
         (drinks ? '• ' + drinks + '\n' : '') + '\n' +
         'Les menus sont dans votre livret : pour chaque service, le groupe choisit une entrée, un plat et un dessert. ' + (m3 ? m3[0] : '') + '\n\nÀ très vite,\n' + owner();
@@ -1464,6 +1476,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       'For your group of ' + c.pax + ':\n' +
       '• ' + P(M[1].n, 1) + ': ' + P(M[1][col], 1) + ' per service for the whole group\n' +
       (M[2] ? '• ' + P(M[2].n, 1) + ': ' + P(M[2][col], 1) + '\n' : '') +
+      xMeals(col).map(function (r) { return '• ' + P(M[r.i].n, 1) + ': ' + P(M[r.i][col], 1) + ' for the whole group\n'; }).join('') +
       (F.MEAL_NOTES[1] ? '• ' + flat(P(F.MEAL_NOTES[1], 1)) + ' Groceries at cost, receipt sent on WhatsApp.\n' : '') +
       (drinks ? '• ' + drinks + '\n' : '') + '\n' +
       'The menus are in your guide: for each service the group chooses one starter, one main and one dessert. ' + (m3 ? m3[0] : '') + '\n\nSee you soon,\n' + owner();
@@ -3264,8 +3277,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'ferm' && v) feRmRow(v);
     else if (a === 'fetr') feTranslate();
     else if (a === 'billsave' && c) {
-      var bx = billCalc(c), bb = billOf(c);
-      setDetail(c, 'billing', { col: bx.col, unit: bx.uS, unitGouter: bx.uG, services: +bb.services || 0, holiday: +bb.holiday || 0, gouters: +bb.gouters || 0, courses: +bb.courses || 0, other: +bb.other || 0, otherLbl: bb.otherLbl || '', sessions: +bb.sessions || 0, logistics: bx.uL, advance: bx.advance, rate: bx.rate || null, rest: bx.rest, total: bx.total, at: new Date().toISOString() });
+      var bx = billCalc(c), bb = billOf(c), bxm = {};
+      Object.keys(bb).forEach(function (k) { if (/^xm\d+$/.test(k) && +bb[k] > 0) bxm[k] = +bb[k]; });
+      setDetail(c, 'billing', Object.assign(bxm, { col: bx.col, unit: bx.uS, unitGouter: bx.uG, services: +bb.services || 0, holiday: +bb.holiday || 0, gouters: +bb.gouters || 0, courses: +bb.courses || 0, other: +bb.other || 0, otherLbl: bb.otherLbl || '', sessions: +bb.sessions || 0, logistics: bx.uL, advance: bx.advance, rate: bx.rate || null, rest: bx.rest, total: bx.total, at: new Date().toISOString() }));
     }
   });
   /* Décompte : saisie au fil de l'eau, sans redessiner tout l'écran (le clavier reste ouvert). */
