@@ -888,6 +888,31 @@ await r.ctx.close();
   check('le brief maison la porte aussi ; la remise en état (tous les 3–4 mois) n’est jamais dans un brief de séjour', /Interlocation : prochaine arrivée/.test(await r.page.inputValue('#tx-k1')) &&
     !/[Rr]emise en état/.test(await r.page.inputValue('#tx-k1')) && !r.errs.length, r.errs);
   await r.ctx.close();
+  // Déjeuner léger marqué « maison » dans la fiche (16/10) : la commande du livret part chez celui qui la prépare
+  const KH = JSON.parse(JSON.stringify(KF));
+  KH.MEALS = KH.MEALS.slice(0, 3).concat([{ n: ['Déjeuner léger (sur demande)', 'Light lunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'], h: ['12h30 – 14h30', '12:30 – 2:30 pm'], house: true }]);
+  const SH = [{ ...ST[0], details: { ...ST[0].details, guest_orders: { at: new Date().toISOString(), total: 3450, cur: 'MAD', items: [
+    { id: 'm1', kind: 'meal', n: KH.MEALS[1].n, q: 3, unit: 850, sub: 2550 }, { id: 'm3', kind: 'meal', n: KH.MEALS[3].n, q: 2, unit: 450, sub: 900 }] } } }];
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KH }, stays: SH });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+  const kh = await r.page.inputValue('#tx-k1');
+  check('brief prestataire : ses repas seulement ; le déjeuner léger est signalé « préparé par la maison, pas par vous »',
+    /Commande du livret : 3 × Brunch, déjeuner ou dîner \(sur demande\)$/m.test(kh) && /Préparé par la maison, pas par vous : 2 × Déjeuner léger \(sur demande\)$/m.test(kh) && !/450|850|MAD/.test(kh), kh);
+  await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+  const bh = await r.page.inputValue('#tx-k1');
+  check('brief maison : « À préparer par la maison : 2 × Déjeuner léger », jamais les repas de la cuisinière ni un prix',
+    /À préparer par la maison : 2 × Déjeuner léger \(sur demande\)$/m.test(bh) && !/3 × Brunch/.test(bh) && !/450|850 MAD/.test(bh) && !r.errs.length, bh);
+  await r.ctx.close();
+  // Éditeur : la case « Préparé par la maison » sur chaque repas (fiche avec prestataire), gardée à l'enregistrement
+  r = await open({ villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KH } });
+  await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
+  const ck3 = await r.page.$('input[type="checkbox"][data-fe="MEALS.3.house"]'), ck1 = await r.page.$('input[type="checkbox"][data-fe="MEALS.1.house"]');
+  check('éditeur : case « Préparé par la maison » sur chaque repas, cochée pour le déjeuner léger seulement', !!ck3 && !!ck1 && (await ck3.isChecked()) && !(await ck1.isChecked()) && /Préparé par la maison \(brief maison/.test(await txt(r.page)));
+  await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
+  const sv = r.calls.filter((c) => c.kind === 'PATCH').pop(), hm = sv && sv.body.house_facts && sv.body.house_facts.MEALS;
+  check('enregistrement : la marque « maison » est gardée (et seulement là)', !!hm && hm.length === 4 && hm[3].house === true && !hm[1].house && !r.errs.length, hm && hm.map((m) => m.house));
+  await r.ctx.close();
   // Une villa sans prestataire repas : un seul brief, inchangé
   const NK = JSON.parse(JSON.stringify(PILOT));
   NK.TEAM = [{ name: 'Omar', brief: true, phone: '+212 600 000 012', role: ['gardien', 'caretaker'] }];

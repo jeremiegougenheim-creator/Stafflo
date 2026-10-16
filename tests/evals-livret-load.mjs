@@ -234,6 +234,17 @@ await r.ctx.close();
   }
 }
 
+// ── Un repas ajouté après les trois habituels (déjeuner léger, 16/10) : visible aussi au tarif négocié ──
+{
+  const FL = JSON.parse(FACTS); FL.MEALS = FL.MEALS.slice(0, 3).concat([{ n: ['Déjeuner léger (sur demande)', 'Light lunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'], h: ['12h30 – 14h30', '12:30 – 2:30 pm'], house: true }]);
+  for (const qs of ['t=' + TOK + '&lang=fr', 't=' + TOK + '&lang=fr&pax=8&tarifs=600/600/800']) {
+    r = await open(qs, { view: () => ({ status: 200, body: '{"facts":' + JSON.stringify(FL) + '}' }) });
+    const tx = await r.page.innerText('#sheet');
+    check('déjeuner léger dans le tableau des repas, prix unique 450 MAD' + (/tarifs/.test(qs) ? ' (tarif négocié)' : ''), /Déjeuner léger \(sur demande\)[^\n]*450 MAD/.test(tx) && !r.errs.length, { errs: r.errs, line: (tx.match(/Déjeuner léger[^\n]*/) || [''])[0] });
+    await r.ctx.close();
+  }
+}
+
 await browser.close(); server.close();
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
