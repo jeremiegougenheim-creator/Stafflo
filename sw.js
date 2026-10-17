@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v525 (équipe → base : chambres prêtes, problème signalé)
-const CACHE = 'stafflo-v544';
+// Stafflo Service Worker — v545 (17/10 : entrée pro — connexion, inscription et lien par email vers l'Espace)
+const CACHE = 'stafflo-v545';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
