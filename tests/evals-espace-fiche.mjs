@@ -161,6 +161,7 @@ await r.ctx.close();
 // ── 3. Pilote : une modification ne touche que ce qui a changé, QR conservé ───────────
 r = await open({ villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT } });
 check('fiche en place : bouton « Modifier la fiche maison »', /Modifier la fiche maison/.test(await txt(r.page)));
+check('fiche en place : « Voir mon livret » ouvre livret.html avec la session du propriétaire (18/10)', (await r.page.getAttribute('#main a[href="livret.html?lang=fr"]', 'target')) === '_blank' && /Voir mon livret/.test(await txt(r.page)));
 await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
 check('éditeur : la fiche du pilote est chargée (repas, équipe, chambres)', (await r.page.inputValue('#fe-MEALS\\.1\\.a')) === PILOT.MEALS[1].a[0] && (await r.page.$$('[data-fe^="TEAM."][data-fe$=".name"]')).length === PILOT.TEAM.length && (await r.page.$$('[data-fe^="ROOMS."][data-fe$=".t.0"]')).length === PILOT.ROOMS.length);
 await r.page.fill('#fe-MEALS\\.1\\.a', '700 MAD');
@@ -510,6 +511,16 @@ await r.ctx.close();
   const tj0 = await txt(r.page);
   check('essai terminé : carte en tête de Jour — « Essai terminé · … abonnez-vous » avec le bouton S’abonner', /^Essai terminé · Vos données restent lisibles/m.test(tj0.replace(/\n/g, ' ').replace(/MISE EN ROUTE.*$/, '')) || /Essai terminé · Vos données restent lisibles ; pour modifier un séjour, la fiche ou envoyer un livret, abonnez-vous\./.test(tj0), tj0.slice(0, 300));
   check('essai terminé : le bouton S’abonner est dans cette carte, avant « Mise en route »', tj0.indexOf('S’abonner') > -1 && tj0.indexOf('S’abonner') < tj0.indexOf('MISE EN ROUTE'));
+  await r.ctx.close();
+  // 18/10 — essai qui se termine dans 3 jours au plus : le prix et « S'abonner » en tête de Jour, avant la coupure
+  r = await open({ tab: 'jour', villa: V, bill: { entitled: true, status: 'trialing', trial_ends_at: iso(2) + 'T10:00:00Z' } });
+  await r.page.waitForTimeout(200);
+  const tj1 = await txt(r.page);
+  check('essai : 2 jours restants → carte douce en tête de Jour avec le prix et S’abonner, sans parler de données bloquées', /Essai : 2 jours restants · Pour continuer après l’essai : 79 € par mois, résiliable chaque mois\./.test(tj1) && !/restent lisibles/.test(tj1) && tj1.indexOf('S’abonner') < tj1.indexOf('MISE EN ROUTE'), tj1.slice(0, 300));
+  await r.ctx.close();
+  r = await open({ tab: 'jour', villa: V, bill: { entitled: true, status: 'trialing', trial_ends_at: iso(4) + 'T10:00:00Z' } });
+  await r.page.waitForTimeout(200);
+  check('essai : 4 jours restants → rien en tête de Jour', !/Pour continuer après l’essai/.test(await txt(r.page)));
   await r.ctx.close();
   r = await open({ villa: { ...V, gmail: null }, bill: { entitled: true, status: 'comp' } });
   await r.page.waitForTimeout(200);
@@ -933,6 +944,8 @@ const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + titl
   check('brief maison : pour le majordome et le ménage, jamais le prestataire repas ; couchages et contact client gardés',
     /^\*Brief maison — Felipe Villalobos\*\npour Saïd, Bouchra$/m.test(bt) && !/Léa/.test(bt) && /\*Client\* : \+44 7700 900123/.test(bt) && /\*Couchages\* : à confirmer$/m.test(bt) &&
     /Envoyer à Saïd/.test(await r.page.innerText('#st-k1')), bt);
+  const fit = await r.page.$eval('#tx-k1', (x) => ({ h: x.getBoundingClientRect().height, s: x.scrollHeight, cap: Math.round(window.innerHeight * 0.7) }));
+  check('le brief se lit en entier : la zone prend la taille du texte (au plus 70 % de l’écran), pas une boîte de 150 px à faire défiler (18/10)', fit.h > 200 && (fit.h >= fit.s || fit.h >= fit.cap - 2), fit);
   await r.ctx.close();
   // 17/10/2026 — briefs nettoyés (brief de Thibaut) : l'heure dite par le client sur la ligne Arrivée, sans « (WhatsApp, date) »
   // ni tiret ; départ et boissons ; « 10 adultes » ; pas de nuits, pas de « à demander au client », jamais les notes privées.
