@@ -585,6 +585,35 @@ await r.ctx.close();
   const wp = r.calls.filter((x) => x.kind === 'stay').pop();
   check('enregistrer : adultes 4, arrivée, note ARIA ajoutée (pas la décochée), code de réservation gardé, aucun message stocké', !!wp && wp.body.adults === 4 && wp.body.guests === 4 && /hoping to arrive in about 1hr15/.test(wp.body.details.arrival_time) && wp.body.notes === 'Arrivée tardive possible\nWhatsApp : Mariage du couple' && wp.body.details.reservation_code === 'HMTEST0003' && wp.body.details.whatsapp.messages === 6 && !/thank you so much/i.test(JSON.stringify(wp.body)), wp && wp.body);
   await r.ctx.close();
+  // 17/10/2026 — messages copiés depuis WhatsApp Mac : « Read more » coupe les longs messages ; une commande de
+  // repas sur plusieurs lignes (« jeudi midi », « kebabs & frites », desserts) ; réimporter ne double rien.
+  {
+    const RM = '‎Read more';
+    const PASTE = [`[${dmy(-11)}, 22:53:43] Nadia: Bonjour Paul,`, '', 'Aucun dérangement, au contraire. Merci pour vos réponses : votr…', RM,
+      `[${dmy(-6)}, 08:15:53] Paul Marchal Marrakech: Nous venons de nous mettre tous d’accord : `,
+      'Pour le mercredi soir, pas d’entrées mais un plat commun de tajine de Kefta avec en accompagnement de la semoule si possible. ',
+      'En dessert: assortiment de pâtisseries marocaines.', 'Pour le jeudi midi: pas d’entrées. ', 'Nous voudrions tous des kebabs marocains & frites. ',
+      'En dessert, pastilla au lait. ', 'J’imagine que le tarif sera don…', RM,
+      `[${dmy(-6)}, 11:44:32] Nadia: Bonjour Paul,`, '', 'Mercredi 21, dîner vers 19h30', '•⁠  ⁠Kebabs marocains et frites…', RM,
+      `[${dmy(-5)}, 04:36:57] Paul Marchal Marrakech: Bonjour Nadia `, 'Sur les allergies alimentaires ras.', 'Notre vol retour est à 9h vendredi. On partira donc très tôt de la villa (6h30).',
+      'Pour les boissons on aura besoin :', 'Eau plate (12 bouteilles)', '12 bières', 'On souhaite organiser un massage pour les filles … pouvez-vous me donner le tarif ?',
+      `[${dmy(-4)}, 10:43:44] Paul Marchal Marrakech: Bonjour,`, 'Je viens de vous faire un virement de 420 €.'].join('\n');
+    const OLD = 'Pour le mercredi soir, pas d’entrées mais un plat commun de tajine de Kefta avec en accompagnement de la semoule si possible.';
+    r = await open({ tab: 'sejours', villa: V, stays: [{ id: 'w1', name: 'Paul Marchal', arrival: iso(3), departure: iso(7), adults: 10, booking_status: 'confirmed', source: 'Airbnb', details: {}, meals: OLD, notes: 'Famille du sud\nWhatsApp : Sur les allergies alimentaires ras.' }] });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="w1"]'); await r.page.click('[data-a="panel"][data-id="w1"][data-v="edit"]');
+    await r.page.click('#st-w1 .panel [data-a="panel"][data-v="wa"]'); await r.page.waitForSelector('#wa-paste-w1');
+    await r.page.fill('#wa-paste-w1', PASTE); await r.page.click('[data-a="waread"][data-id="w1"]'); await r.page.waitForTimeout(150);
+    const vals = await r.page.$$eval('#st-w1 .wa-p textarea', (ts) => ts.map((t) => t.value)), mv = vals.filter((v) => /tajine/.test(v))[0] || '';
+    check('repas copiés : toute la commande — mercredi soir, desserts, jeudi midi, « kebabs & frites » — sans l’introduction ni la phrase coupée',
+      /^Pour le mercredi soir, .* tajine de Kefta .* En dessert: assortiment de pâtisseries marocaines\. Pour le jeudi midi: pas d’entrées\. Nous voudrions tous des kebabs marocains & frites\. En dessert, pastilla au lait\.$/.test(mv) && !/Nous venons|J’imagine/.test(mv), vals);
+    check('« Read more » : messages coupés comptés et signalés (export conseillé), « Read more » absent du texte', /3 messages coupés par WhatsApp/.test(await r.page.innerText('#st-w1')) && !vals.some((v) => /Read more/.test(v)));
+    check('boissons et virement ne sont pas des repas ; la question sur le massage n’est pas une demande', !vals.some((v) => /bières|virement|massage/.test(v)));
+    await r.page.click('[data-a="waapply"][data-id="w1"]'); await r.page.waitForTimeout(400);
+    const rp = r.calls.filter((x) => x.kind === 'stay').pop();
+    check('réimport : la version complète des repas remplace l’ancienne (pas de doublon), note déjà présente pas recopiée', !!rp && rp.body.meals === mv && rp.body.notes === undefined && !r.errs.length, rp && { meals: rp.body.meals, notes: rp.body.notes, errs: r.errs });
+    await r.ctx.close();
+  }
   // Android, .zip avec média ; vol et heure ; adultes + enfants
   const crc = (b) => (zlib.crc32 ? zlib.crc32(b) : 0) >>> 0;
   const mkzip = (entries) => {

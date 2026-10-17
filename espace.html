@@ -368,6 +368,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         drop: 'Choisir ou déposer l’export (.zip ou .txt)', paste: 'Ou collez des messages', pastePh: 'Collez ici les messages du client…', read: 'Lire les messages', reading: 'Lecture de la conversation…',
         onDevice: 'La conversation est lue sur cet appareil. Rien n’est enregistré avant votre validation, et seulement les champs cochés — jamais les messages ni les photos.',
         got: function (n, a, b) { return n + ' messages' + (a ? ' · du ' + a + ' au ' + b : ''); }, media: function (n) { return n + (n > 1 ? ' photos ou documents non importés' : ' photo ou document non importé'); },
+        cut: function (n) { return n + (n > 1 ? ' messages coupés' : ' message coupé') + ' par WhatsApp (« Read more ») : la fin manque. Pour le texte entier, exportez la discussion (WhatsApp › Exporter la discussion).'; },
         who: 'Le client :', pickGuest: 'Touchez le nom du client pour lire ses messages.', none: 'Rien à reprendre dans les messages du client (composition, arrivée, repas, demandes).',
         kinds: { party: 'Composition du groupe', arrival: 'Arrivée', meals: 'Repas', note: 'À noter (privé)' }, now: 'Actuel', appended: 'sera complété', replaced: 'sera remplacé',
         apply: 'Enregistrer la sélection', aria: 'Lire avec ARIA', ariaBusy: 'ARIA lit…', ariaNone: 'ARIA n’a rien trouvé de plus.', ariaNote: 'ARIA lit les messages du client (Mistral, Paris) pour les repas et les demandes ; chaque proposition cite le message.',
@@ -515,6 +516,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         drop: 'Choose or drop the export (.zip or .txt)', paste: 'Or paste messages', pastePh: 'Paste the guest’s messages here…', read: 'Read the messages', reading: 'Reading the chat…',
         onDevice: 'The chat is read on this device. Nothing is saved until you confirm, and only the ticked fields — never the messages or photos.',
         got: function (n, a, b) { return n + ' messages' + (a ? ' · from ' + a + ' to ' + b : ''); }, media: function (n) { return n + (n > 1 ? ' photos or documents not imported' : ' photo or document not imported'); },
+        cut: function (n) { return n + (n > 1 ? ' messages' : ' message') + ' cut by WhatsApp (“Read more”): the end is missing. For the full text, export the chat (WhatsApp › Export chat).'; },
         who: 'The guest:', pickGuest: 'Tap the guest’s name to read their messages.', none: 'Nothing to pick up from the guest’s messages (group, arrival, meals, requests).',
         kinds: { party: 'Group', arrival: 'Arrival', meals: 'Meals', note: 'To note (private)' }, now: 'Current', appended: 'will be added to', replaced: 'will be replaced',
         apply: 'Save the selection', aria: 'Read with ARIA', ariaBusy: 'ARIA is reading…', ariaNone: 'ARIA found nothing more.', ariaNote: 'ARIA reads the guest’s messages (Mistral, Paris) for meals and requests; each proposal quotes the message.',
@@ -2301,6 +2303,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var rows = [], cur = null;
     var ts = /^\[?\d{1,4}[\/.\-]\d{1,2}[\/.\-]\d{1,4},?\s+\d{1,2}[:.]\d{2}/;
     txt.split('\n').forEach(function (line) {
+      // Copié depuis WhatsApp (Mac, web) : un long message s'arrête sur « … » puis « Read more » — le reste n'est
+      // pas dans le texte copié. On le compte pour le dire ; l'export de la discussion, lui, est entier.
+      if (cur && /^\s*(read more|lire la suite|afficher plus|voir plus|leer m[áa]s|mehr lesen)\s*$/i.test(line)) { cur.cut = true; return; }
       var m = re.exec(line);
       if (!m && ts.test(line)) { cur = null; return; } // message système (chiffrement, appel manqué…) : ignoré
       if (m) { cur = { p: [+m[1], +m[2], +m[3]], h: +m[4], mi: +m[5], ap: m[7] ? m[7].toLowerCase().charAt(0) : '', who: m[8].trim(), text: m[9] }; rows.push(cur); }
@@ -2316,7 +2321,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       return { who: r.who, text: r.text.trim(), dn: isFinite(dn) ? dn : null, hm: (h < 10 ? '0' : '') + h + ':' + (r.mi < 10 ? '0' : '') + r.mi };
     });
     var senders = []; msgs.forEach(function (x) { if (x.who && senders.indexOf(x.who) < 0) senders.push(x.who); });
-    return { msgs: msgs.slice(-3000), senders: senders, dated: true };
+    return { msgs: msgs.slice(-3000), senders: senders, dated: true, cut: rows.filter(function (r) { return r.cut; }).length };
   }
   /* Le client = l'expéditeur dont le nom partage un mot (3 lettres au moins) avec le nom du séjour. */
   function waGuessGuest(c, senders) {
@@ -2336,6 +2341,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     flightCtx: /\b(flight|vol|flying|fly|land(?:ing|s)?|atterri\w*|depart\w*|d[ée]coll\w*|arriv\w*)\b/i,
     flight: /\b([A-Z]{2}|[A-Z]\d|\d[A-Z]|[A-Z]{3})\s?(\d{2,4})\b/g,
     meals: /\b(dinner|lunch|breakfast|brunch|meals?|menu|d[îi]ner|d[ée]jeuner|repas|tajine|tagine|couscous|bbq|barbecue)\b/i,
+    // 17/10/2026 : « Pour le jeudi midi : pas d’entrées. » — un jour + midi/soir est un repas ; entrée, plat, dessert
+    // bornent le reste de la commande (seulement dans un message qui parle déjà de repas).
+    mealDay: /\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(soir|midi|night|evening|noon|lunch|dinner)\b/i,
+    course: /\b(entr[ée]es?|plats?|desserts?|starters?|main course|go[ûu]ter|afternoon tea|p[âa]tisseries?)\b/i,
     notes: /\b(allerg\w*|vegetarian|vegan|v[ée]g[ée]\w*|gluten|lactose|halal|kosher|peanuts?|nuts?|arachides?|intol[ée]ran\w*|birthday|anniversaire|wedding|mariage|honeymoon|lune de miel|proposal|demande en mariage)\b/i
   };
   var WA_NOTFLIGHT = /^(AM|PM|UK|US|EU|OK|NO|ID|TV|PC|HM|CET|GMT|UTC|MAD|EUR|USD|GBP|BST|AND|THE|FOR|ARE|WAS|PDF|PNG|JPG)$/;
@@ -2375,7 +2384,20 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       props.push({ k: 'arrival', value: v.slice(0, 300), quote: [arr && arr.quote, flight && flight.quote].filter(Boolean).filter(function (x, i, a) { return a.indexOf(x) === i; }).join(' … '), when: (arr || flight).when });
     }
     // Repas et demandes : des phrases affirmatives (une question n'est pas une commande).
-    var meal = last(function (m) { var s = waSentences(m.text).filter(function (x) { return WA_RX.meals.test(x) && !/\?\s*$/.test(x); }); return s.length ? { value: s.join(' ').slice(0, 400), quote: s.join(' ').slice(0, 400), when: waWhen(m) } : null; });
+    // Repas (17/10/2026) : le dernier message du client qui parle de repas, de la première à la dernière phrase
+    // « repas » — celles d'entre les deux suivent. Avant, seules les phrases avec un mot-clé restaient : « Pour le jeudi
+    // midi : pas d'entrées. Nous voudrions tous des kebabs marocains & frites. » disparaissait (Thibaut, 12/10).
+    var isMeal = function (x) { return WA_RX.meals.test(x) || WA_RX.mealDay.test(x); };
+    var isCourse = function (x) { return isMeal(x) || WA_RX.course.test(x); };
+    var meal = last(function (m) {
+      var s = waSentences(m.text).filter(function (x) { return !/\?\s*$/.test(x); });
+      if (!s.some(isMeal)) return null;
+      var i = 0, j = s.length - 1;
+      while (i < j && !isCourse(s[i])) i++;
+      while (j > i && !isCourse(s[j])) j--;
+      var v = s.slice(i, j + 1).slice(0, 12).join(' ').slice(0, 600);
+      return { value: v, quote: v, when: waWhen(m) };
+    });
     if (meal) props.push({ k: 'meals', value: meal.value, quote: meal.quote, when: meal.when });
     var seen = {};
     mine.forEach(function (m) { waSentences(m.text).forEach(function (x) { if (WA_RX.notes.test(x) && !/\?\s*$/.test(x) && !seen[x]) { seen[x] = 1; props.push({ k: 'note', value: x.slice(0, 300), quote: x.slice(0, 300), when: waWhen(m) }); } }); });
@@ -2448,11 +2470,19 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       } else {
         var val = String((g('wa-v-' + c.id + '-' + p.id) || {}).value || '').trim(); if (!val) return;
         if (p.k === 'arrival') det.arrival_time = val;
-        else if (p.k === 'meals') body.meals = String(c.meals || '').trim() ? String(c.meals).trim() + '\n' + val : val;
+        else if (p.k === 'meals') {
+          // 17/10/2026 : réimporter la même conversation n'ajoute rien ; une version plus complète remplace l'ancienne.
+          var cm = String(c.meals || '').trim();
+          var nm = !cm ? val : cm.indexOf(val) > -1 ? cm : val.indexOf(cm) > -1 ? val : cm + '\n' + val;
+          if (nm !== cm) body.meals = nm;
+        }
         else notes.push(val);
       }
     });
-    if (notes.length) body.notes = (String(c.notes || '').trim() ? String(c.notes).trim() + '\n' : '') + notes.map(function (n) { return 'WhatsApp : ' + n; }).join('\n');
+    // Une note déjà présente n'est pas recopiée (trois imports avaient triplé « Sur les allergies alimentaires ras. »).
+    var had = String(c.notes || '');
+    notes = notes.filter(function (n, i) { return notes.indexOf(n) === i && had.indexOf('WhatsApp : ' + n) < 0; });
+    if (notes.length) body.notes = (had.trim() ? had.trim() + '\n' : '') + notes.map(function (n) { return 'WhatsApp : ' + n; }).join('\n');
     var lastDated = st.msgs.filter(function (m) { return m.dn != null; }).pop();
     det.whatsapp = { importedAt: new Date().toISOString(), messages: st.msgs.length, lastAt: lastDated ? new Date(lastDated.dn * 86400000).toISOString().slice(0, 10) + 'T' + lastDated.hm : null };
     body.details = det;
@@ -2478,7 +2508,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       return h + '</div>';
     }
     var dated = st.msgs.filter(function (m) { return m.dn != null; });
-    h += '<span class="sub">' + esc(k.got(st.msgs.length, dated.length ? waWhen(dated[0]).split(' ').slice(0, 3).join(' ') : '', dated.length ? waWhen(dated[dated.length - 1]).split(' ').slice(0, 3).join(' ') : '')) + (st.media ? ' · ' + esc(k.media(st.media)) : '') + '</span>';
+    h += '<span class="sub">' + esc(k.got(st.msgs.length, dated.length ? waWhen(dated[0]).split(' ').slice(0, 3).join(' ') : '', dated.length ? waWhen(dated[dated.length - 1]).split(' ').slice(0, 3).join(' ') : '')) + (st.media ? ' · ' + esc(k.media(st.media)) : '') + '</span>' +
+      (st.cut ? '<span class="sub" style="color:var(--wait)">' + esc(k.cut(st.cut)) + '</span>' : '');
     if (st.dated && !st.live) {
       h += '<div class="wa-who"><span class="sub">' + esc(k.who) + '</span>' + st.senders.slice(0, 6).map(function (s, i) { return '<button type="button" class="chipb" data-a="waguest" data-id="' + id + '" data-v="' + i + '" aria-pressed="' + (s === st.guest) + '">' + esc(s) + '</button>'; }).join('') + '</div>';
       if (!st.guest) return h + '<span class="sub">' + esc(k.pickGuest) + '</span>' + waFooter(c, false) + '</div>';
