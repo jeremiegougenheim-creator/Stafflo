@@ -73,7 +73,8 @@
 (function(){try{
   var q = location.search.replace(/^\?/, '').split('&').filter(Boolean);
   var onlyLang = q.every(function (p) { return /^(lang=(fr|en)|checkout=success|sub=[^&]*)$/.test(p); });
-  if (!onlyLang || location.hash) { try { sessionStorage.setItem('stafflo_app_tab', '1'); } catch (e) {} return; }
+  var magic = /access_token=/.test(location.hash) && !/type=recovery/.test(location.hash); // lien par email : app.html pose la session puis va sur l'Espace
+  if (!onlyLang || location.hash) { if (!magic) { try { sessionStorage.setItem('stafflo_app_tab', '1'); } catch (e) {} } return; }
   if (localStorage.getItem('stafflo_espace_home') === 'off') return;
   try { if (sessionStorage.getItem('stafflo_app_tab') === '1') return; } catch (e) {}
   var s = JSON.parse(localStorage.getItem('stafflo_session') || 'null');
@@ -8194,7 +8195,9 @@ function staffloWipeIfUserChanged(newUid) {
   } catch(e){}
   // If a previous user's cache was present, reload so in-memory state resets and
   // the new user loads only their own (RLS-scoped) Supabase rows.
-  if (removed) { try { location.reload(); } catch(e){} }
+  // 17/10/2026 : ce rechargement gardait ?signup=1 et épinglait l'onglet sur l'ancienne version ;
+  // on passe par staffloAfterAuth (l'Espace, sauf ancienne version demandée).
+  if (removed) { try { if (typeof staffloAfterAuth === 'function') staffloAfterAuth(); else location.reload(); } catch(e){} }
 }
 
 async function authSignIn(email, password) {
@@ -8558,6 +8561,19 @@ function setAuthMsg(txt, kind) {
   el.style.color = kind === 'err' ? '#A32D2D' : kind === 'ok' ? '#3B6D11' : '#8A8070';
 }
 
+/* 17/10/2026 — après connexion, inscription ou lien par email : l'Espace (une seule app), sauf si
+   l'ancienne version a été demandée (?app=1, ?open=…, ?onboarding=1, retours OAuth / paiement) ou si
+   l'interrupteur stafflo_espace_home est sur off. Avant : location.reload() gardait l'adresse
+   (?signup=1, #access_token) et l'onglet restait sur l'ancienne version, assistant ARIA compris. */
+function staffloAfterAuth() {
+  try { sessionStorage.removeItem('stafflo_app_tab'); } catch(e){}
+  var q = location.search;
+  if (localStorage.getItem('stafflo_espace_home') === 'off' || /[?&](app=1|open=|oauth_callback=|checkout=|onboarding=1|demo=1)/.test(q)) { location.reload(); return; }
+  var lg = (/lang=(fr|en)/.exec(q) || [])[1] || ((typeof lang !== 'undefined' && lang === 'en') ? 'en' : 'fr');
+  try { localStorage.setItem('stafflo_espace_lang', lg); } catch(e){}
+  location.replace('espace.html');
+}
+window.staffloAfterAuth = staffloAfterAuth;
 async function handleAuthLogin() {
   var fr = (typeof lang !== 'undefined' && lang === 'fr');
   var email = (document.getElementById('authEmail').value || '').trim();
@@ -8569,7 +8585,7 @@ async function handleAuthLogin() {
   try {
     await authSignIn(email, pass);
     setAuthMsg(fr?'✓ Connecté · chargement...':'✓ Signed in · loading...', 'ok');
-    setTimeout(function(){ location.reload(); }, 400);
+    setTimeout(function(){ staffloAfterAuth(); }, 400);
   } catch(e) {
     setAuthMsg('✗ ' + (e.message || (lang==='fr'?'Erreur':'Error')), 'err');
     btn.disabled = false; btn.textContent = fr?'Se connecter':'Sign in';
@@ -8601,7 +8617,7 @@ async function handleAuthSignup() {
       // Auto-confirmed signup — go straight to app
       posthog.capture('signup_completed');
       setAuthMsg(fr?'✓ Compte créé · chargement...':'✓ Account created · loading...', 'ok');
-      setTimeout(function(){ location.reload(); }, 600);
+      setTimeout(function(){ staffloAfterAuth(); }, 600);
     } else {
       // Email confirmation required — show BIG visible banner instead of tiny msg
       var formArea = document.getElementById('authForms');
@@ -10856,8 +10872,8 @@ async function pullSettingsFromSupabase() {
       }
       // Clean the hash from the URL so it's not re-processed on reload
       try { history.replaceState(null, '', location.pathname + location.search); } catch(_){}
-      // Reload to let the rest of the app boot with the fresh session
-      location.reload();
+      // Reload to let the rest of the app boot with the fresh session — l'Espace, sauf réinitialisation de mot de passe (17/10)
+      if (tokenType !== 'recovery' && typeof staffloAfterAuth === 'function') staffloAfterAuth(); else location.reload();
     }).catch(function(e){
       console.warn('[magic-link] user fetch failed:', e);
       try { history.replaceState(null, '', location.pathname + location.search); } catch(_){}
@@ -20824,7 +20840,10 @@ document.addEventListener('DOMContentLoaded', function() {
           // Best-effort, jamais bloquant sur le boot.
           if (typeof pushVillaSettings === 'function') pushVillaSettings(getCfg()).catch(function(){});
           var cfg = getCfg();
-          if (!cfg.onboarded) {
+          // 17/10/2026 — la mise en route se fait dans l'Espace : l'assistant V3 ne se lance plus tout seul
+          // (il rouvrait l'ancien pitch ARIA après chaque inscription) ; ?onboarding=1 le rouvre à la demande.
+          var wizardOff = localStorage.getItem('stafflo_espace_home') !== 'off' && !/[?&]onboarding=1/.test(location.search);
+          if (!cfg.onboarded && !wizardOff) {
             // Defer slightly so the rest of the UI has rendered behind the modal
             /* v178 — legacy wizard neutralisé. V3 est désormais canonique. */
             setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
@@ -20832,7 +20851,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(function() {
           // If pull fails, still check local cfg
           var cfg = getCfg();
-          if (!cfg.onboarded) setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
+          var wizardOff = localStorage.getItem('stafflo_espace_home') !== 'off' && !/[?&]onboarding=1/.test(location.search);
+          if (!cfg.onboarded && !wizardOff) setTimeout(function() { if (typeof startTour==='function'&&startTour()) return; if (typeof launchOnboardingV3==='function') launchOnboardingV3(); }, 400);
         });
         // v-item37 : taux de change live, non bloquant — n'attend pas pullVillaSettings
         if (typeof fetchAndMergeExchangeRates === 'function') fetchAndMergeExchangeRates();

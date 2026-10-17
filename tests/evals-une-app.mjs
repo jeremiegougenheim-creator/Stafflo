@@ -67,6 +67,36 @@ check('« Ouvrir l’app complète » (?app=1) : reste sur app.html, même aprè
 r = await visit('', { off: true });
 check('interrupteur stafflo_espace_home = off : app.html redevient l’accueil', !onEspace(r.url), r.url);
 
+// 17/10 — après connexion, inscription ou lien par email : l'Espace, même depuis ?signup=1 ou #access_token
+async function authFlow(qs, act) {
+  const ctx = await browser.newContext({ serviceWorkers: 'block' });
+  const SESS = { access_token: 'tok', refresh_token: 'r', expires_in: 3600, token_type: 'bearer', user: { id: 'u1', email: 'x@y.z' } };
+  await ctx.route('**/*', (route) => {
+    const u = route.request().url(), j = (b) => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' }, body: JSON.stringify(b) });
+    if (u.startsWith('http://127.0.0.1')) return route.continue();
+    if (route.request().method() === 'OPTIONS') return j({});
+    if (/\/auth\/v1\/(signup|token)/.test(u)) return j(SESS);
+    if (/\/auth\/v1\/user/.test(u)) return j(SESS.user);
+    return route.fulfill({ status: 204, body: '' });
+  });
+  const page = await ctx.newPage();
+  await page.goto(`http://127.0.0.1:${PORT}/app.html${qs}`, { waitUntil: 'load' });
+  await page.waitForTimeout(900);
+  if (act) await act(page);
+  await page.waitForTimeout(1500);
+  const out = page.url();
+  await ctx.close();
+  return out;
+}
+let u = await authFlow('?lang=fr&signup=1', async (p) => { await p.fill('#authSuName', 'Riad Test'); await p.fill('#authSuEmail', 'x@y.z'); await p.fill('#authSuPassword', 'motdepasse1'); await p.click('#authSignupBtn'); });
+check('inscription depuis le site (?signup=1) → l’Espace, pas l’ancien assistant', onEspace(u), u);
+u = await authFlow('?lang=en&signup=1', async (p) => { await p.click('[data-tab="login"]'); await p.fill('#authEmail', 'x@y.z'); await p.fill('#authPassword', 'motdepasse1'); await p.click('#authLoginBtn'); });
+check('connexion (onglet Connexion de la page d’inscription) → l’Espace', onEspace(u), u);
+u = await authFlow('#access_token=abc&refresh_token=def&type=magiclink&expires_in=3600');
+check('lien par email (#access_token, magiclink) → l’Espace', onEspace(u), u);
+u = await authFlow('#access_token=abc&refresh_token=def&type=recovery&expires_in=3600');
+check('réinitialisation du mot de passe (type=recovery) : reste sur app.html (le formulaire de nouveau mot de passe y est)', !onEspace(u), u);
+
 // L'Espace modifie l'identité de la villa en base (Maison › Réglages) : l'app complète la relit au
 // démarrage, même quand son cfg local est « plus récent » — sinon son prochain enregistrement l'écraserait.
 // Même chose pour Gmail relié depuis l'Espace (16/10) : une connexion plus récente en base remplace la locale.
