@@ -936,14 +936,14 @@ await r.ctx.close();
     /À préparer par la maison : 2 × Déjeuner léger \(sur demande\)$/m.test(bh) && !/3 × Brunch/.test(bh) && !/450|850 MAD/.test(bh) && !r.errs.length, bh);
   await r.ctx.close();
   // 17/10/2026 — à partir de 7 personnes, un repas « maison » part chez le prestataire ; le goûter reste à la maison
-  const KG = JSON.parse(JSON.stringify(KH)); KG.MEALS[2].house = true;
+  const KG = JSON.parse(JSON.stringify(KH)); KG.MEALS[2].house = true; KG.MEALS[3].big = 'kitchen'; // goûter : maison (défaut) ; déjeuner léger : prestataire à 7+
   const SG = [{ ...ST[0], details: { ...ST[0].details, guest_orders: { at: new Date().toISOString(), total: 3850, cur: 'MAD', items: [
     { id: 'm1', kind: 'meal', n: KG.MEALS[1].n, q: 3, unit: 850, sub: 2550 }, { id: 'm3', kind: 'meal', n: KG.MEALS[3].n, q: 2, unit: 450, sub: 900 }, { id: 'm2', kind: 'meal', n: KG.MEALS[2].n, q: 1, unit: 400, sub: 400 }] } } }];
   r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KG }, stays: SG });
   await r.page.waitForTimeout(250);
   await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kg = await r.page.inputValue('#tx-k1');
-  check('7 personnes et plus : le déjeuner léger part chez le prestataire ; le goûter reste à la maison',
+  check('7 personnes et plus : un repas « maison » marqué « par le prestataire » y part ; le goûter (toujours la maison) reste à la maison',
     /^Commande du livret : 3 × Brunch, déjeuner ou dîner \(sur demande\) · 2 × Déjeuner léger \(sur demande\)$/m.test(kg) && new RegExp('^Préparé par la maison, pas par vous : 1 × ' + KG.MEALS[2].n[0].replace(/[()]/g, '\\$&') + '$', 'm').test(kg), kg);
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bg = await r.page.inputValue('#tx-k1');
@@ -953,10 +953,12 @@ await r.ctx.close();
   r = await open({ villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KH } });
   await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
   const ck3 = await r.page.$('input[type="checkbox"][data-fe="MEALS.3.house"]'), ck1 = await r.page.$('input[type="checkbox"][data-fe="MEALS.1.house"]');
-  check('éditeur : case « Préparé par la maison » sur chaque repas, cochée pour le déjeuner léger seulement', !!ck3 && !!ck1 && (await ck3.isChecked()) && !(await ck1.isChecked()) && /Préparé par la maison jusqu’à 6 personnes \(brief maison\) — à partir de 7, par le prestataire, sauf le goûter/.test(await txt(r.page)));
+  check('éditeur : case « Préparé par la maison » sur chaque repas, cochée pour le déjeuner léger seulement', !!ck3 && !!ck1 && (await ck3.isChecked()) && !(await ck1.isChecked()) && /Préparé par la maison \(brief maison/.test(await txt(r.page)));
+  check('éditeur : « à partir de 7 personnes » — toujours la maison (défaut), par le prestataire, ou pas proposé', (await r.page.inputValue('select[data-fe="MEALS.3.big"]')) === 'house' && (await r.page.$$eval('select[data-fe="MEALS.3.big"] option', (os) => os.map((o) => o.value).join('|'))) === 'house|kitchen|off');
+  await r.page.selectOption('select[data-fe="MEALS.3.big"]', 'off');
   await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
   const sv = r.calls.filter((c) => c.kind === 'PATCH').pop(), hm = sv && sv.body.house_facts && sv.body.house_facts.MEALS;
-  check('enregistrement : la marque « maison » est gardée (et seulement là)', !!hm && hm.length === 4 && hm[3].house === true && !hm[1].house && !r.errs.length, hm && hm.map((m) => m.house));
+  check('enregistrement : la marque « maison » est gardée (et seulement là), avec « pas proposé à 7+ »', !!hm && hm.length === 4 && hm[3].house === true && hm[3].big === 'off' && !hm[1].house && !hm[1].big && !r.errs.length, hm && hm.map((m) => [m.house, m.big]));
   await r.ctx.close();
   // Brunch fait par la maison (16/10) : décompte et message repas comptent chaque repas à son prix, jamais au tarif de la cuisinière
   const KB = JSON.parse(JSON.stringify(KH));

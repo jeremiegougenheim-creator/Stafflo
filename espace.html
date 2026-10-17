@@ -410,7 +410,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         t: { name: 'Prénom', role: 'Rôle', phone: 'Téléphone (facultatif, jamais montré au client)', brief: 'Reçoit le brief', kitchen: 'Cuisine' },
         r: { t: 'Nom de la chambre', tag: 'Précision (ex. : pavillon indépendant)', bed: 'Lit', bath: 'Salle de bain', d: 'Description' },
         e: { n: 'Extra (ex. : transfert aéroport)', d: 'Description (facultatif)', price: 'Prix', unit: 'Par (ex. : par trajet, par personne)' },
-        m: { n: 'Repas', a: 'Prix groupe 1–6 (MAD, ou « Inclus »)', b: 'Prix groupe 7–10 (MAD)', h: 'Horaires', notes: 'Notes sur les repas (courses, boissons, logistique)', house: 'Préparé par la maison jusqu’à 6 personnes (brief maison) — à partir de 7, par le prestataire, sauf le goûter' },
+        m: { n: 'Repas', a: 'Prix groupe 1–6 (MAD, ou « Inclus »)', b: 'Prix groupe 7–10 (MAD)', h: 'Horaires', notes: 'Notes sur les repas (courses, boissons, logistique)', house: 'Préparé par la maison (brief maison, pas le prestataire)', big: 'Ce repas « maison », à partir de 7 personnes', bigOpt: { house: 'Toujours par la maison', kitchen: 'Par le prestataire, au prix 7–10', off: 'Pas proposé' } },
         x: { roomsIntro: 'Présentation des chambres', orderRule: 'Comment commander les repas', mealsIntro: 'Introduction des repas', earlyBrk: 'Petit-déjeuner plus tôt', menuIntro: 'Introduction des menus', menuNote: 'Note sous les menus', kidsBox: 'Avec des enfants' },
         lists: { BREAKFAST: 'Petit-déjeuner', BRUNCH: 'Brunch (sur demande)', GOUTER: 'Goûter', STARTERS: 'Entrées', MAINS: 'Plats', SIMPLE: 'Pour les enfants', DESSERTS: 'Desserts', MEDINA: 'Médina et monuments', GOLF: 'Golf', ACTIVITIES: 'Activités', RESTAURANTS: 'Restaurants', CAFES: 'Cafés' },
         p: { n: 'Nom', d: 'Description', url: 'Site web (facultatif)' },
@@ -557,7 +557,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         t: { name: 'First name', role: 'Role', phone: 'Phone (optional, never shown to guests)', brief: 'Gets the brief', kitchen: 'Kitchen' },
         r: { t: 'Bedroom name', tag: 'Detail (e.g. independent pavilion)', bed: 'Bed', bath: 'Bathroom', d: 'Description' },
         e: { n: 'Extra (e.g. airport transfer)', d: 'Description (optional)', price: 'Price', unit: 'Per (e.g. per trip, per person)' },
-        m: { n: 'Meal', a: 'Price group 1–6 (MAD, or “Included”)', b: 'Price group 7–10 (MAD)', h: 'Times', notes: 'Notes on meals (groceries, drinks, logistics)', house: 'Prepared by the house team up to 6 guests (house brief) — from 7, by the provider, except afternoon tea' },
+        m: { n: 'Meal', a: 'Price group 1–6 (MAD, or “Included”)', b: 'Price group 7–10 (MAD)', h: 'Times', notes: 'Notes on meals (groceries, drinks, logistics)', house: 'Prepared by the house team (house brief, not the provider)', big: 'This “house” meal, from 7 guests', bigOpt: { house: 'Still by the house team', kitchen: 'By the meal provider, at the 7–10 price', off: 'Not offered' } },
         x: { roomsIntro: 'Bedrooms introduction', orderRule: 'How to order meals', mealsIntro: 'Meals introduction', earlyBrk: 'Earlier breakfast', menuIntro: 'Menus introduction', menuNote: 'Note under the menus', kidsBox: 'With children' },
         lists: { BREAKFAST: 'Breakfast', BRUNCH: 'Brunch (on request)', GOUTER: 'Afternoon tea', STARTERS: 'Starters', MAINS: 'Mains', SIMPLE: 'For children', DESSERTS: 'Desserts', MEDINA: 'Medina and monuments', GOLF: 'Golf', ACTIVITIES: 'Activities', RESTAURANTS: 'Restaurants', CAFES: 'Cafés' },
         p: { n: 'Name', d: 'Description', url: 'Website (optional)' },
@@ -1096,10 +1096,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var m = (F.MEAL_NOTES || []).map(function (x) { return x[0]; }).join(' ').match(/(\d[\d\s]*)\s*MAD de logistique/);
     return m ? +m[1].replace(/\s/g, '') : 0;
   }
+  /* Deux versions de la carte (17/10/2026) : un repas « maison » (MEALS[i].house) dit dans la fiche qui le prépare à
+     partir de 7 personnes (MEALS[i].big) — 'house' (la maison, défaut), 'kitchen' (le prestataire, au prix 7–10) ou 'off'
+     (pas proposé). Même limite que les prix 1–6 / 7–10 (mealsRow). Pilote : goûter 'house', brunch 'kitchen',
+     déjeuner léger 'off'. Même règle dans livret.html, livret-view et house-facts.js. */
+  function bigMode(row) { return row && (row.big === 'kitchen' || row.big === 'off') ? row.big : 'house'; }
   /* Repas de la fiche au-delà des trois habituels (petit-déjeuner, service de la cuisinière, goûter) :
-     déjeuner léger, brunch fait par la maison… — chacun son compteur et son prix, jamais le tarif de la cuisinière. */
+     déjeuner léger, brunch fait par la maison… — chacun son compteur et son prix, jamais le tarif de la cuisinière.
+     Colonne 7–10 : un repas « maison » non proposé à 7 et plus n'a ni compteur ni ligne dans le message repas. */
   function xMeals(col) {
-    var out = []; (F.MEALS || []).forEach(function (row, i) { var u = i > 2 && row ? unitPrice(row, col || 'a') : null; if (u) out.push({ i: i, u: u, n: P(row.n, 0).replace(/\s*\([^)]*\)/, '') }); });
+    var out = []; (F.MEALS || []).forEach(function (row, i) { var u = i > 2 && row && !(row.house && col === 'b' && bigMode(row) === 'off') ? unitPrice(row, col || 'a') : null; if (u) out.push({ i: i, u: u, n: P(row.n, 0).replace(/\s*\([^)]*\)/, '') }); });
     return out;
   }
   function billCalc(c) {
@@ -1740,10 +1746,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
   /* Commande du livret, par destinataire (16/10/2026) : un repas marqué « maison » dans la fiche (MEALS[i].house,
      ex. déjeuner léger grillé par le majordome) et les extras vont au brief maison ; les autres repas au prestataire. */
-  /* 17/10/2026 : à partir de 7 personnes (même limite que les prix 1–6 / 7–10, mealsRow), un repas « maison » part
-     chez le prestataire — cuisiner pour un grand groupe en plus de l'accueil et du ménage, c'est trop pour la maison.
-     Le goûter (MEALS[2] : thé et pâtisseries, rien à cuisiner) reste à la maison. */
-  function houseMeal(c, i) { var row = (F.MEALS || [])[i]; return !!(row && row.house) && (mealsRow(c) === 'a' || i === 2); }
+  /* 17/10/2026 : à partir de 7 personnes, un repas « maison » suit la fiche (bigMode) : la maison le garde ('house'),
+     ou il part chez le prestataire — 'kitchen', et 'off' pour une ancienne commande d'un repas qui n'est plus proposé. */
+  function houseMeal(c, i) { var row = (F.MEALS || [])[i]; return !!(row && row.house) && (mealsRow(c) === 'a' || bigMode(row) === 'house'); }
   function orderSplit(c) {
     var o = orderOf(c), out = { kitchen: [], house: [] }; if (!o) return out;
     o.items.forEach(function (x) {
@@ -2846,7 +2851,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     h += feCard('tools-kitchen-2', l.s.meals, '<p class="sub" style="margin:0">' + esc(l.hints.meals) + '</p><div class="fe-list">' + (d.MEALS || []).map(function (m, i) {
       var p = 'MEALS.' + i, a = Array.isArray(m.a) ? m.a[0] : m.a, b = Array.isArray(m.b) ? m.b[0] : m.b;
       return '<div class="fe-row">' + feRm(p) + fePair(p + '.n', l.m.n, m.n) + '<div class="fe-grid">' + feInput(p + '.a', l.m.a, a) + feInput(p + '.b', l.m.b, b) + '</div>' + fePair(p + '.h', l.m.h, m.h) +
-        ((d.TEAM || []).some(function (t) { return t && t.kitchen; }) ? '<label class="fe-ck"><input type="checkbox" data-fe="' + p + '.house"' + (m.house ? ' checked' : '') + '>' + esc(l.m.house) + '</label>' : '') + '</div>';
+        ((d.TEAM || []).some(function (t) { return t && t.kitchen; }) ? '<label class="fe-ck"><input type="checkbox" data-fe="' + p + '.house"' + (m.house ? ' checked' : '') + '>' + esc(l.m.house) + '</label>' +
+          '<label class="fl"><span>' + esc(l.m.big) + '</span><select class="t" data-fe="' + p + '.big">' + ['house', 'kitchen', 'off'].map(function (k) { return '<option value="' + k + '"' + (bigMode(m) === k ? ' selected' : '') + '>' + esc(l.m.bigOpt[k]) + '</option>'; }).join('') + '</select></label>' : '') + '</div>';
     }).join('') + '</div>' + feAdd('MEALS') + fePairList('MEAL_NOTES', l.m.notes) + ['orderRule', 'mealsIntro', 'earlyBrk'].map(function (k) { return fePair('TEXT.' + k, l.x[k], T[k]); }).join(''));
     // 5 bis. Extras à commander depuis le livret (15/10/2026)
     h += feCard('shopping-bag', l.s.extras, '<p class="sub" style="margin:0">' + esc(l.hints.extras) + '</p><div class="fe-list">' + (d.EXTRAS || []).map(function (e, i) {
@@ -2910,7 +2916,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     out.CAFES = (d.CAFES || []).map(function (c) { var a = Array.isArray(c) ? c : [c, '']; return S(a[1]) ? [S(a[0]), S(a[1])] : [S(a[0])]; }).filter(function (a) { return a[0] !== ''; });
     out.TEAM = (d.TEAM || []).map(function (m) { var o = { name: S(m.name), role: fixPair(cleanPair(m.role)) }; if (S(m.phone)) o.phone = S(m.phone); if (m.brief) o.brief = true; if (m.kitchen) o.kitchen = true; return o; }).filter(function (o) { return o.name !== ''; });
     out.ROOMS = (d.ROOMS || []).map(function (r) { var o = { t: fixPair(cleanPair(r.t)), bed: fixPair(cleanPair(r.bed)), bath: fixPair(cleanPair(r.bath)), d: fixPair(cleanPair(r.d)) }; var tg = cleanPair(r.tag); if (pairOk(tg)) o.tag = fixPair(tg); return o; }).filter(function (o) { return o.t[0] !== ''; });
-    out.MEALS = (d.MEALS || []).map(function (m) { var a = S(Array.isArray(m.a) ? m.a[0] : m.a), b = S(Array.isArray(m.b) ? m.b[0] : m.b); var o = { n: fixPair(cleanPair(m.n)), a: [a, a], b: [b || a, b || a], h: fixPair(cleanPair(m.h)) }; if (m.house) o.house = true; return o; }).filter(function (o) { return o.n[0] !== ''; });
+    out.MEALS = (d.MEALS || []).map(function (m) { var a = S(Array.isArray(m.a) ? m.a[0] : m.a), b = S(Array.isArray(m.b) ? m.b[0] : m.b); var o = { n: fixPair(cleanPair(m.n)), a: [a, a], b: [b || a, b || a], h: fixPair(cleanPair(m.h)) }; if (m.house) o.house = true; if (m.house && (m.big === 'kitchen' || m.big === 'off')) o.big = m.big; return o; }).filter(function (o) { return o.n[0] !== ''; });
     // Extras : nom obligatoire, prix numérique (sans prix : affiché, pas commandable). Section vide → absente de la fiche.
     out.EXTRAS = (d.EXTRAS || []).map(function (e) { var o = { n: fixPair(cleanPair(e.n)) }; var pr = N(e.price); if (pr != null && pr > 0) o.price = pr; var u = cleanPair(e.unit); if (pairOk(u)) o.unit = fixPair(u); var ds = cleanPair(e.d); if (pairOk(ds)) o.d = fixPair(ds); return o; }).filter(function (o) { return o.n[0] !== ''; });
     if (!out.EXTRAS.length) delete out.EXTRAS;

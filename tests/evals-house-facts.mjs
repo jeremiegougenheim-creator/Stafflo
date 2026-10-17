@@ -41,6 +41,17 @@ check('QR WhatsApp du livret : dans les données, plus dans la page', !!(F.QR &&
 const h = (s) => crypto.createHash('sha256').update(s).digest('hex').slice(0, 16);
 check('résumé ARIA (fr) inchangé', h(F.digest('fr')) === 'cfa3c6ea33b4acac', h(F.digest('fr')));
 check('résumé ARIA (en) inchangé', h(F.digest('en')) === 'fdf79c93a9fdc5cf', h(F.digest('en')));
+// 17/10/2026 — deux versions de la carte : ARIA lit qui prépare un repas « maison » à partir de 7 personnes
+{
+  const d2 = JSON.parse(JSON.stringify(data));
+  d2.MEALS = d2.MEALS.slice(0, 3).concat([
+    { n: ['Déjeuner léger (sur demande)', 'Light lunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'], h: ['12h30 – 14h30', '12:30 – 2:30 pm'], house: true, big: 'off' },
+    { n: ['Brunch (sur demande)', 'Brunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['850 MAD', '850 MAD'], h: ['Dès 10h30', 'From 10:30 am'], house: true, big: 'kitchen' }]);
+  const g = HF.build(d2).digest('fr');
+  check('résumé ARIA : déjeuner léger « groupes de 1 à 6 seulement », brunch « 450 (maison) / 850 (cuisinière) »',
+    /Déjeuner léger \(sur demande\) : 450 MAD — groupes de 1 à 6 seulement, préparé par la maison/.test(g) &&
+    /Brunch \(sur demande\) : 450 MAD \(1–6 pers\., préparé par la maison\) \/ 850 MAD \(7–10 pers\., préparé par la cuisinière\)/.test(g), g.split('\n').filter((x) => /léger|Brunch \(/.test(x)));
+}
 check('équipe actuelle seulement (jamais l’ancienne cuisinière)', !/Faiza/.test(F.digest('fr')) && !/Faiza/.test(JSON.stringify(data.TEAM)));
 
 // 3 bis. Brunch (16/10/2026) : une composition sur demande, résumée par le nom des plats ; absente → aucune ligne

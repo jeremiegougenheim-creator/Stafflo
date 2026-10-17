@@ -132,6 +132,16 @@ check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
   DB.links.push({ token: 'C'.repeat(43), owner_id: 'o2', client_id: 's2' });
   DB.stays.push({ id: 's2', user_id: 'o2', name: 'Big Group', arrival: iso(4), departure: iso(9), adults: 8, children: 1, details: { livretSentAt: '2026-10-15T09:00:00Z' } });
   check('carte : repas chiffrés seulement (« Inclus » exclu), prix du groupe selon sa taille, extras avec prix', JSON.stringify(M.orderMenu(F2, 4).map((x) => x.id + ':' + x.unit)) === '["m1:650","m2:300","x0:400"]' && JSON.stringify(M.orderMenu(F2, 9).map((x) => x.id + ':' + x.unit)) === '["m1:850","m2:400","x0:400"]');
+  { // 17/10/2026 — deux versions de la carte : un repas « maison » 'off' n'est proposé qu'aux groupes de 1 à 6 ; 'kitchen' l'est à 7+ au prix 7–10
+    const F3 = { MEALS: F2.MEALS.concat([
+      { n: ['Déjeuner léger', 'Light lunch'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'], house: true, big: 'off' },
+      { n: ['Brunch', 'Brunch'], a: ['450 MAD', '450 MAD'], b: ['850 MAD', '850 MAD'], house: true, big: 'kitchen' }]) };
+    check('deux versions : 1–6 → déjeuner léger et brunch à 450 ; 7+ → pas de déjeuner léger, brunch à 850 ; une commande du déjeuner léger à 7+ est ignorée',
+      JSON.stringify(M.orderMenu(F3, 6).map((x) => x.id + ':' + x.unit)) === '["m1:650","m2:300","m3:450","m4:450"]' &&
+      JSON.stringify(M.orderMenu(F3, 8).map((x) => x.id + ':' + x.unit)) === '["m1:850","m2:400","m4:850"]' &&
+      M.mealOff(F3.MEALS[3], 7) && !M.mealOff(F3.MEALS[3], 6) && !M.mealOff(F3.MEALS[4], 10) &&
+      !JSON.stringify(M.cleanOrders([{ id: 'm3', q: 1 }, { id: 'm1', q: 2 }], F3, 8) || {}).includes('"m3"'));
+  }
   check('devise : celle de la villa, sinon lue dans le prix des repas ; prix « 1 500 MAD » lu 1500', M.curOf(F2) === 'MAD' && M.curOf({ VILLA: { currency: '€' } }) === '€' && M.priceOf('1 500 MAD') === 1500 && M.priceOf('Inclus') === null && M.priceOf(0) === null);
   const n0 = PATCHES.length;
   r = await post({ t: 'C'.repeat(43), orders: [{ id: 'm1', q: 2, unit: 1 }, { id: 'x0', q: 1, unit: 0 }, { id: 'm0', q: 3 }, { id: 'x1', q: 2 }, { id: 'zz', q: 5 }, { id: 'm2', q: 99 }] }, '4.4.4.4');

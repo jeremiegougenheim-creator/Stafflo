@@ -71,6 +71,9 @@ function digest(lang) {
   sec(fr ? 'Repas' : 'Meals');
   A(MEALS).forEach(m => {
     const same = pick(m.a, i) === pick(m.b, i);
+    // 17/10/2026 : qui prépare un repas « maison » à partir de 7 personnes (MEALS[i].big) — dit à ARIA tel quel.
+    if (m && m.house && m.big === 'off') return li(P(m.n) + ' : ' + P(m.a) + (fr ? ' — groupes de 1 à 6 seulement, préparé par la maison' : ' — groups of 1 to 6 only, prepared by the house team') + ' — ' + P(m.h));
+    if (m && m.house && m.big === 'kitchen') return li(P(m.n) + ' : ' + P(m.a) + (fr ? ' (1–6 pers., préparé par la maison) / ' : ' (1–6 guests, prepared by the house team) / ') + P(m.b) + (fr ? ' (7–10 pers., préparé par la cuisinière)' : ' (7–10 guests, prepared by the cook)') + ' — ' + P(m.h));
     li(P(m.n) + ' : ' + (same ? P(m.a) : P(m.a) + (fr ? ' (1–6 pers.) / ' : ' (1–6 guests) / ') + P(m.b) + (fr ? ' (7–10 pers.)' : ' (7–10 guests)')) + ' — ' + P(m.h));
   });
   A(MEAL_NOTES).forEach(n => li(P(n)));

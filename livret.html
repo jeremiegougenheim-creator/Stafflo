@@ -648,9 +648,12 @@ const priceOf = v => { if (typeof v === 'number') return v > 0 ? v : null; const
 const CUR = (() => { const v = String(VILLA.currency || '').trim(); if (v) return v; for (const m of MEALS) { const x = /\d\s*([A-Za-z€$£]{1,4})\b|\d\s*([€$£])/.exec(String(Array.isArray(m.a) ? m.a[0] : m.a || '')); if (x) return x[1] || x[2]; } return ''; })();
 const money = v => (Math.round(v * 100) / 100).toLocaleString(LANG === 'en' ? 'en-GB' : 'fr-FR') + (CUR ? ' ' + CUR : '');
 const orderPax = () => parseInt(document.getElementById('p').value, 10) || 0;
+/* Deux versions de la carte (17/10/2026) : un repas « maison » que la fiche ne propose pas à partir de 7 personnes
+   (MEALS[i].big === 'off') sort de la commande et du tableau de ces groupes. Même règle que livret-view et l'Espace. */
+const mealOff = (m, pax) => !!(m && m.house && m.big === 'off') && pax >= 7;
 function orderMenu(){
   const pax = orderPax(), out = [];
-  MEALS.forEach((m, i) => { const unit = priceOf(pax >= 7 ? (m.b != null ? m.b : m.a) : m.a) || priceOf(m.a); if (unit) out.push({id:'m' + i, kind:'meal', n:m.n, unit}); });
+  MEALS.forEach((m, i) => { if (mealOff(m, pax)) return; const unit = priceOf(pax >= 7 ? (m.b != null ? m.b : m.a) : m.a) || priceOf(m.a); if (unit) out.push({id:'m' + i, kind:'meal', n:m.n, unit}); });
   (window.VILLA_FACTS.EXTRAS || []).forEach((x, i) => { const unit = priceOf(x && x.price); if (unit && x.n) out.push({id:'x' + i, kind:'extra', n:x.n, unit, per:x.unit, d:x.d}); });
   return out;
 }
@@ -834,12 +837,12 @@ function render(){
       h += '<tr><td>' + ti(m.n) + '</td><td>' + mad(tarifs[m.k]) + '</td><td>' + ti(m.h) + '</td></tr>';
     });
     h += '<tr><td>' + ti(MEALS[2].n) + '</td><td>' + mad(gt) + '</td><td>' + ti(MEALS[2].h) + '</td></tr>';
-    MEALS.slice(3).forEach(m => { h += '<tr><td>' + ti(m.n) + '</td><td>' + ti(pp <= 6 ? m.a : m.b) + '</td><td>' + ti(m.h) + '</td></tr>'; });
+    MEALS.slice(3).forEach(m => { if (mealOff(m, pp)) return; h += '<tr><td>' + ti(m.n) + '</td><td>' + ti(pp <= 6 ? m.a : m.b) + '</td><td>' + ti(m.h) + '</td></tr>'; });
   } else {
   h += '<table><thead><tr><th>' + ti(T.thMeal) + '</th><th>' + ti(T.th16) + '</th><th>' +
        ti(T.th710) + '</th><th>' + ti(T.thHours) + '</th></tr></thead><tbody>';
   MEALS.forEach(m => {
-    h += '<tr><td>' + ti(m.n) + '</td><td>' + ti(m.a) + '</td><td>' + ti(m.b) +
+    h += '<tr><td>' + ti(m.n) + '</td><td>' + ti(m.a) + '</td><td>' + (mealOff(m, 7) ? '—' : ti(m.b)) +
          '</td><td>' + ti(m.h) + '</td></tr>';
   });
   }

@@ -245,6 +245,22 @@ await r.ctx.close();
   }
 }
 
+// ── Deux versions de la carte (17/10) : le déjeuner léger 'off' n'est pas proposé à 7+, le brunch 'kitchen' l'est au prix 7–10 ──
+{
+  const FV = JSON.parse(FACTS); FV.MEALS = FV.MEALS.slice(0, 3).concat([
+    { n: ['Déjeuner léger (sur demande)', 'Light lunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'], h: ['12h30 – 14h30', '12:30 – 2:30 pm'], house: true, big: 'off' },
+    { n: ['Brunch (sur demande)', 'Brunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['850 MAD', '850 MAD'], h: ['Dès 10h30', 'From 10:30 am'], house: true, big: 'kitchen' }]);
+  r = await open('t=' + TOK + '&lang=fr', { view: () => ({ status: 200, body: '{"facts":' + JSON.stringify(FV) + '}' }) });
+  const rowsV = await r.page.$$eval('#sheet table tr', (trs) => trs.map((tr) => tr.innerText.replace(/\s+/g, ' ').trim()));
+  const ll = rowsV.filter((t) => /^Déjeuner léger/.test(t))[0] || '', br = rowsV.filter((t) => /^Brunch \(sur demande\)/.test(t))[0] || '';
+  check('tableau des repas : déjeuner léger « 450 MAD | — » (pas proposé à 7–10), brunch « 450 MAD | 850 MAD »', /450 MAD — /.test(ll) && !/450 MAD 450 MAD/.test(ll) && /450 MAD 850 MAD/.test(br) && !r.errs.length, { ll, br, errs: r.errs });
+  await r.ctx.close();
+  r = await open('t=' + TOK + '&lang=fr&pax=8&tarifs=600/600/800', { view: () => ({ status: 200, body: '{"facts":' + JSON.stringify(FV) + '}' }) });
+  const tv = await r.page.innerText('#sheet');
+  check('groupe de 8 (tarif négocié) : pas de ligne « Déjeuner léger », brunch à 850 MAD', !/Déjeuner léger/.test(tv) && /Brunch \(sur demande\)[^\n]*850 MAD/.test(tv) && !r.errs.length, (tv.match(/Brunch[^\n]*/) || [''])[0]);
+  await r.ctx.close();
+}
+
 // ── Brunch à part, fait par la maison : au tarif négocié, une seule ligne « Brunch » (celle de la fiche) ──
 {
   const FB2 = JSON.parse(FACTS); FB2.MEALS = FB2.MEALS.slice(0, 3).concat([{ n: ['Brunch (sur demande)', 'Brunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'], h: ['Dès 10h30', 'From 10:30 am'], house: true }]);
