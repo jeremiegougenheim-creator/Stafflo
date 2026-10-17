@@ -151,7 +151,7 @@ check('v11 : pastille Jour = lignes urgentes de « À faire » + messages sans s
 check('v11 : carte Départs sans recopier le texte de la fiche', !/departures, deps\.map[\s\S]{0,400}Arrivée et départ/.test(script));
 check('v11 : ancien générateur de planning derrière interrupteur (données jamais vues par l’équipe)', /stafflo_planning_old/.test(script) && /if \(oldPlanning\) h \+= card\('calendar-user', l\.mPlanning/.test(script));
 check('v11 : « Ce qu’ARIA sait de la maison » se présente comme dépliable (chevron)', /<details class="dig"><summary><i class="ti ti-chevron-right"/.test(script));
-check('une seule app (15/10) : l’écran de connexion et l’onglet s’appellent « Stafflo »', /textContent = 'Stafflo'; return; \}/.test(script) && /<title>Stafflo<\/title>/.test(esp));
+check('une seule app (15/10) : l’écran de connexion et l’onglet s’appellent « Stafflo »', /textContent = 'Stafflo'; var ab0 [^\n]*return; \}/.test(script) && /<title>Stafflo<\/title>/.test(esp));
 
 // ── v12 (15/10/2026) — allègement : moins à l'écran, grammaire v19 ─────────
 check('v12 : une ligne d’état par séjour (ce qui manque), plus de rangée de pastilles', /<p class="state (alert|wait|go)">/.test(script) && !/ck\.map\(function \(x\) \{\s*var cls = x\.done \? 't-go'/.test(script));
