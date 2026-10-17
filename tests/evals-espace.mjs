@@ -176,6 +176,36 @@ check('v13 : une fiche neuve est vide — aucune valeur par défaut d’une autr
 check('v13 : les clés que l’éditeur ne montre pas (QR…) sont conservées', /clés inconnues de l'éditeur \(QR…\) conservées/.test(script));
 check('v13 : l’écran n’est pas redessiné pendant la saisie (le clavier reste ouvert) ; pas de rechargement périodique pendant l’édition', /fePut\(fp, e\.target\.value\);/.test(script) && /!U\.busy && !FE\.on && !typing\(\)\) load\(\)/.test(script) && /U\.newStay \|\| ST\.edit \|\| Object\.keys\(U\.panel\)\.some\(function \(k\) \{ return U\.panel\[k\] === 'edit'; \}\)/.test(script));
 
+// ── v14 (17/10/2026) — ARIA voit la fiche du séjour en entier ───────────────
+// Cas réel (Thibaut) : repas de 270 caractères coupés à 200 → « kebabs marocains et frit » : le dessert du jeudi
+// n'a jamais atteint ARIA ; consigne équipe coupée juste avant « Boissons » ; notes : le début seulement, jamais
+// la dernière mise à jour (ajoutée en bas). Et un message collé par le propriétaire perdait contre la fiche tronquée.
+{
+  const flatSrc = (script.match(/var flat = function \(s\) \{[^\n]*\};/) || [''])[0];
+  const src = [fnSource(esp, 'aiClip'), fnSource(esp, 'staysForAI')];
+  const MEALS = 'Mercredi 21, dîner vers 19h30 : tajine de kefta à la sauce tomate, semoule en accompagnement ; dessert : assortiment de pâtisseries marocaines. Jeudi 22, déjeuner vers 12h30 : kebabs marocains et frites maison ; dessert : pastilla au lait. Pas d’entrées. Pas d’allergie.';
+  const NOTE = 'Départ vendredi 23 à 6h30 (vol à 9h) : petit-déjeuner préparé le jeudi soir, à prendre seuls — café prêt, msemen, pain, beurre, confitures, fruits ; Saïd leur montre jeudi où tout se trouve. Boissons au frais pour l’arrivée : 12 eaux plates, 6 eaux gazeuses. Pas de transfert : ils ont leur chauffeur. Dîner du mercredi : la cuisinière repart à 20h, Saïd sert et débarrasse.';
+  const DRINKS = '12 eaux plates, 6 eaux gazeuses, 2 Coca Zéro, 2 Hawaï, 12 bières, 1 vin blanc, 2 vins rouges (vins marocains, choisis par nous), glaçons, citrons, jus d’orange pour le petit-déjeuner du départ, le tout au frais avant leur arrivée.';
+  const NOTES = 'Groupe famille, anniversaire de mariage. ' + 'Historique des échanges. '.repeat(80) + 'MAJ 17/10 : départ ven. 23 à 6h30.';
+  if (src.every(Boolean) && flatSrc) {
+    const ctx = { U: { lang: 'fr' }, todayNum: () => 100, checks: () => [], fmtLongDay: () => 'lun. 19 oct.', payoutLines: () => [],
+      L: () => ({ night: () => '', inDays: () => 'dans 2 jours', nights: n => n + ' nuits', pax: n => n + ' personnes', composition: () => '' }),
+      D: { stays: [
+        { name: 'Thibaut', a: 102, d: 106, n: 4, pax: 10, source: 'Direct', price: 0, meals: MEALS, details: { staff_note: NOTE, drinks: DRINKS }, notes: NOTES, remarks: '' },
+        { name: 'Long', a: 110, d: 112, n: 2, pax: 2, source: 'Airbnb', price: 0, meals: 'x'.repeat(20000), details: { staff_note: 'y'.repeat(20000), drinks: 'w'.repeat(20000) }, notes: 'z'.repeat(20000), remarks: '' }] } };
+    vm.createContext(ctx);
+    vm.runInContext(flatSrc + '\n' + src.join('\n') + '\nvar OUT = staysForAI();', ctx);
+    const lines = String(ctx.OUT).split('\n'), first = lines[0] || '', second = lines[1] || '';
+    check('v14 : ARIA reçoit les repas en entier (dessert du jeudi « pastilla au lait », « Pas d’entrées »)', first.includes('dessert : pastilla au lait') && first.includes('Pas d’entrées'));
+    check('v14 : ARIA reçoit la consigne équipe en entier (boissons, transfert, service du dîner)', first.includes('Boissons au frais') && first.includes('Saïd sert et débarrasse'));
+    check('v14 : ARIA reçoit la liste des boissons en entier (details.drinks)', first.includes('2 vins rouges') && first.includes('au frais avant leur arrivée'));
+    check('v14 : notes longues → le début ET la dernière mise à jour (ajoutée en bas)', first.includes('Groupe famille') && first.includes('MAJ 17/10 : départ ven. 23 à 6h30'));
+    check('v14 : contexte borné même avec des champs énormes (≤ 6 000 caractères par séjour), coupe signalée', second.length > 0 && second.length <= 6000 && second.includes('[…]'));
+  } else check('v14 : staysForAI, aiClip et flat trouvés', false);
+}
+check('v14 : le texte du propriétaire (message client collé, correction) fait foi sur la fiche et sur un brouillon précédent — FR et EN', /ce que le propriétaire écrit ou colle dans cette conversation/i.test(script) && /what the owner writes or pastes in this conversation/i.test(script));
+check('v14 : repas recopiés tels quels (aucun plat ajouté, retiré ou renommé, catégorie inchangée) — FR et EN', /n’ajoute, ne retire et ne renomme aucun plat/.test(script) && /never add, drop or rename a dish/.test(script));
+
 for (const f of ['espace.html', 'livret.html', 'equipe.html']) { const s = fs.readFileSync(path.join(root, f), 'utf8'); check(f + ' : chaque <style> est refermé (sinon tout le script devient du texte)', (s.match(/<style[\s>]/g) || []).length === (s.match(/<\/style>/g) || []).length); }
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

@@ -1830,6 +1830,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function saidName() { var s = houseTeam().filter(function (m) { return m.phone; })[0]; return s ? s.name : ''; }
 
   /* ── ARIA ─────────────────────────────────────────────────────────── */
+  // v14 (17/10/2026) — la fiche du séjour arrive en entier à ARIA. Avant : repas coupés à 200 caractères (le dessert du
+  // jeudi de Thibaut tombait au 222e : ARIA lisait « kebabs marocains et frit »), consigne équipe coupée juste avant
+  // « Boissons », notes réduites à leur début (les mises à jour s'ajoutent en bas). Bornes larges, coupe signalée « […] » ;
+  // tail > 0 : on garde aussi la fin du texte.
+  function aiClip(s, head, tail) {
+    s = flat(s); tail = tail || 0;
+    if (s.length <= head + tail) return s;
+    return s.slice(0, head) + ' […]' + (tail ? ' ' + s.slice(s.length - tail) : '');
+  }
   function staysForAI() {
     var t = todayNum(), fr = U.lang !== 'en';
     return D.stays.filter(function (c) { return c.d >= t; }).slice(0, 15).map(function (c) {
@@ -1843,13 +1852,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         (payoutLines(c).length ? ' · ' + payoutLines(c).join(' ; ') : '') +
         ' · ' + (fr ? 'tél. ' : 'phone ') + st('phone') + ' · ' + (fr ? 'livret envoyé ' : 'guide sent ') + st('livret') +
         ' · ' + (fr ? 'repas reçus ' : 'meals received ') + st('meals') + ' · ' + (fr ? 'brief équipe ' : 'team brief ') + st('brief') +
-        (String(c.meals || '').trim() ? ' · ' + (fr ? 'repas : ' : 'meals: ') + flat(c.meals).slice(0, 200) : '') +
+        (String(c.meals || '').trim() ? ' · ' + (fr ? 'repas : ' : 'meals: ') + aiClip(c.meals, 1500) : '') +
         (String(c.details.arrival_time || '').trim() ? ' · ' + (fr ? 'heure d’arrivée : ' : 'arrival time: ') + flat(c.details.arrival_time).slice(0, 120) : '') +
         (String(c.details.departure_time || '').trim() ? ' · ' + (fr ? 'heure de départ : ' : 'departure time: ') + flat(c.details.departure_time).slice(0, 120) : '') +
-        (String(c.details.beds || '').trim() ? ' · ' + (fr ? 'couchages : ' : 'beds: ') + flat(c.details.beds).slice(0, 200) : '') +
-        (String(c.details.drinks || '').trim() ? ' · ' + (fr ? 'boissons : ' : 'drinks: ') + flat(c.details.drinks).slice(0, 200) : '') +
-        (String(c.details.staff_note || '').trim() ? ' · ' + (fr ? 'consigne équipe : ' : 'team note: ') + flat(c.details.staff_note).slice(0, 200) : '') +
-        ([c.notes, c.remarks].filter(Boolean).length ? ' · notes : ' + flat([c.notes, c.remarks].filter(Boolean).join(' ')).slice(0, 240) : '');
+        (String(c.details.beds || '').trim() ? ' · ' + (fr ? 'couchages : ' : 'beds: ') + aiClip(c.details.beds, 600) : '') +
+        (String(c.details.drinks || '').trim() ? ' · ' + (fr ? 'boissons : ' : 'drinks: ') + aiClip(c.details.drinks, 600) : '') +
+        (String(c.details.staff_note || '').trim() ? ' · ' + (fr ? 'consigne équipe : ' : 'team note: ') + aiClip(c.details.staff_note, 1000) : '') +
+        ([c.notes, c.remarks].filter(Boolean).length ? ' · notes : ' + aiClip([c.notes, c.remarks].filter(Boolean).join(' '), 400, 1200) : '');
     }).join('\n');
   }
   function basicsForAI(fr) {
@@ -1865,13 +1874,17 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var fr = U.lang !== 'en', t = todayNum();
     return (fr
       ? 'Tu es ARIA, l’assistante de ' + owner() + ' pour ' + atVilla(true) + (villaCity() ? ' à ' + villaCity() : '') + '. Réponds en français si la question est en français, en anglais si elle est en anglais, court et concret.\n' +
-        'Règles :\n- Utilise UNIQUEMENT la fiche maison et la liste des séjours ci-dessous. Une information absente se dit « à confirmer », jamais inventée (prix, nom, horaire, numéro, code).\n' +
+        'Règles :\n- Utilise UNIQUEMENT la fiche maison, la liste des séjours ci-dessous et ce que le propriétaire écrit ou colle dans cette conversation. Une information absente se dit « à confirmer », jamais inventée (prix, nom, horaire, numéro, code).\n' +
+        '- Ce que le propriétaire écrit ou colle ici (message d’un client, correction) l’emporte sur la liste des séjours et sur tes brouillons précédents : refais le texte à partir de lui.\n' +
+        '- Repas d’un séjour : recopie chaque plat et chaque dessert tels qu’ils sont écrits, à leur jour et à leur heure ; n’ajoute, ne retire et ne renomme aucun plat, et ne change jamais la catégorie d’un repas (un déjeuner n’est pas un « déjeuner léger » si personne ne l’a écrit).\n' +
         '- Les dates, nuits et délais sont déjà calculés : ne les recalcule jamais.\n- Le « suggested door code » des emails Airbnb n’est PAS un code de la villa : ne le donne jamais.\n' +
         '- Un message pour un client est prêt à copier, dans sa langue, signé ' + owner() + '. Un brief équipe est en français, simple.\n' +
         '- Prix des repas : par service et pour tout le groupe, jamais par personne.\n' +
         '- Dates fortes : dis si la villa est libre ou réservée ; ne propose jamais de prix chiffré ni de hausse en %.\n'
       : 'You are ARIA, ' + owner() + '’s assistant for ' + atVilla(false) + (villaCity() ? ' in ' + villaCity() : '') + '. Answer in the language of the question, short and concrete.\n' +
-        'Rules:\n- Use ONLY the house facts and the list of stays below. Anything missing is "to be confirmed", never invented (price, name, time, number, code).\n' +
+        'Rules:\n- Use ONLY the house facts, the list of stays below and what the owner writes or pastes in this conversation. Anything missing is "to be confirmed", never invented (price, name, time, number, code).\n' +
+        '- What the owner writes or pastes here (a guest message, a correction) wins over the list of stays and over your earlier drafts: redo the text from it.\n' +
+        '- A stay’s meals: copy each dish and each dessert as written, with its day and time; never add, drop or rename a dish, and never change a meal’s category (a lunch is not a "light lunch" unless someone wrote it).\n' +
         '- Dates, nights and deadlines are already computed: never recompute them.\n- The Airbnb "suggested door code" is NOT a villa code: never give it.\n' +
         '- A guest message is ready to copy, in the guest’s language, signed ' + owner() + '. A team brief is in French and simple.\n' +
         '- Meal prices are per service for the whole group, never per person.\n' +
