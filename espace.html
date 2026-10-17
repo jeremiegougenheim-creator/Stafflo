@@ -1646,7 +1646,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function orderOf(c) { var o = c.details && c.details.guest_orders; return o && typeof o === 'object' && +o.total > 0 && Array.isArray(o.items) ? o : null; }
   function orderOpen(c) { var o = orderOf(c); return !!o && !(c.details.orderConfirmedAt && String(c.details.orderConfirmedAt) >= String(o.at || '')); }
   function money(v, cur) { return (Math.round((+v || 0) * 100) / 100).toLocaleString(U.lang === 'en' ? 'en-GB' : 'fr-FR') + (cur ? ' ' + cur : ''); }
-  function orderText(o) { return o.items.map(function (x) { return x.q + ' × ' + P(x.n); }).join(' · ') + ' — ' + money(o.total, o.cur); }
+  /* Commande datée (17/10/2026) : une ligne de repas peut porter when [{d: AAAA-MM-JJ, s: b|l|d}] — le jour et le service
+     choisis par le client dans son livret (vérifiés par livret-view). « mer. 21 soir, jeu. 22 midi ». */
+  function whenTxt(w, lang) {
+    var en = lang === 'en', S = en ? { b: 'brunch', l: 'lunch', d: 'dinner' } : { b: 'brunch', l: 'midi', d: 'soir' };
+    return (Array.isArray(w) ? w : []).filter(function (x) { return x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.d || '')); }).map(function (x) {
+      return new Date(x.d + 'T12:00:00Z').toLocaleDateString(en ? 'en-GB' : 'fr-FR', { weekday: 'short', day: 'numeric', timeZone: 'UTC' }) + (S[x.s] ? ' ' + S[x.s] : '');
+    }).join(', ');
+  }
+  function orderLine(x, lang) { var w = whenTxt(x.when, lang); return x.q + ' × ' + P(x.n, lang === 'en' ? 1 : 0) + (w ? ' — ' + w : ''); }
+  function orderText(o) { return o.items.map(function (x) { return orderLine(x, U.lang); }).join(' · ') + ' — ' + money(o.total, o.cur); }
   function reviewWindowEnd(c) { return c.d + 14; } /* Airbnb : 14 jours après le départ */
   function reviewOpen(c) { var t = todayNum(); return /airbnb/i.test(String(c.source || '')) && !c.is_comp && !c.details.reviewDoneAt && t > c.d && t <= reviewWindowEnd(c); }
   /* Avis hôte (17/10/2026) : l'avis PUBLIC de l'hôte sur ses voyageurs — les futurs hôtes le lisent sur leur profil.
@@ -1754,7 +1763,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     o.items.forEach(function (x) {
       var m = /^m(\d+)$/.exec(String(x.id || ''));
       var house = x.kind === 'extra' || (m ? houseMeal(c, +m[1]) : false);
-      out[house ? 'house' : 'kitchen'].push(x.q + ' × ' + P(x.n));
+      out[house ? 'house' : 'kitchen'].push(orderLine(x, 'fr'));
     });
     return out;
   }

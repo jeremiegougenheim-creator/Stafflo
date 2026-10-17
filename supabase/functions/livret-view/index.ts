@@ -23,13 +23,17 @@
 //   repas va dans meals seulement s'il est vide. Rien n'est payé : le propriétaire confirme.
 //   Une commande nouvelle ou modifiée (total > 0) laisse une ligne dans guest_notices : push-notify
 //   en fait une alerte « Claire a commandé · 2 500 MAD » sur le téléphone du propriétaire.
+//   Commande datée (17/10/2026) : une ligne de repas peut porter when: [{ d: AAAA-MM-JJ, s }] — un jour du séjour
+//   (arrivée → départ) et, si la ligne de la fiche en compte plusieurs, le service (b brunch, l midi, d soir ;
+//   svcOf). Les cases hors séjour ou hors carte sont jetées, la quantité devient leur nombre. GET ?t= donne
+//   days: { from, to } (les dates du séjour) pour que le livret propose les jours.
 // POST { t, travellers: [...] }  (lien personnel, villa dont la fiche a VILLA.guest_registration = true) →
 //   les fiches voyageurs pour la déclaration aux autorités (ex. Maroc, loi 80-14 art. 36-38 : pièce d'identité
 //   et fiche individuelle à l'arrivée, déclaration électronique, fiches gardées un an). Chiffrées ici
 //   (AES-256-GCM, clé dans Vault, jamais dans la page), rangées dans guest_registrations (la dernière
 //   remplace la précédente), JAMAIS renvoyées au lien : un lien transféré ne montre pas les passeports.
 //   Le propriétaire les lit par la fonction guest-registrations. Effacées un an après le départ.
-// Rien d'autre n'est renvoyé (ni nom, ni prix, ni séjour). Limite par adresse IP.
+// Rien d'autre n'est renvoyé (ni nom, ni prix ; du séjour, seulement ses dates). Limite par adresse IP.
 // verify_jwt : off (le client n'a pas de compte) — l'accès, c'est le jeton.
 
 const SB_URL = Deno.env.get("SUPABASE_URL") || "";
@@ -153,16 +157,47 @@ export function paxOf(stay: Row): number {
   const ad = parseInt(stay && stay.adults, 10) || 0, ch = parseInt(stay && stay.children, 10) || 0;
   return (ad + ch) || parseInt(stay && stay.guests, 10) || 0;
 }
-// Lignes envoyées par la page → commande propre. Seuls id et quantité comptent ; tout le reste vient de la fiche.
-export function cleanOrders(raw: unknown, f: Row, pax: number): Row | null {
+// Services d'une ligne de repas, lus dans son nom : « Déjeuner ou dîner » → midi / soir ; une ligne d'un seul service → [""].
+export function svcOf(m: Row): string[] {
+  const n = ([] as unknown[]).concat((m && m.n) || []).join(" "), s: string[] = [];
+  if (/brunch/i.test(n)) s.push("b");
+  if (/d[ée]jeuner|lunch/i.test(n)) s.push("l");
+  if (/d[îi]ner|dinner/i.test(n)) s.push("d");
+  return s.length > 1 ? s : [""];
+}
+// Cases choisies par le client : jours du séjour seulement, services de la ligne seulement, sans doublon, triées.
+export function cleanWhen(raw: unknown, svc: string[], range: Row | null): Row[] | null {
+  if (!Array.isArray(raw) || !range || !range.from || !range.to) return null;
+  const seen = new Set<string>(), out: Row[] = [];
+  for (const w of raw.slice(0, 40)) {
+    const d = w && typeof w.d === "string" ? w.d : "", s = w && typeof w.s === "string" ? w.s : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d < range.from || d > range.to || !svc.includes(s) || seen.has(d + "|" + s)) continue;
+    seen.add(d + "|" + s); out.push(s ? { d, s } : { d });
+  }
+  return out.sort((a, b) => (a.d + (a.s || "")).localeCompare(b.d + (b.s || "")));
+}
+const SVC_FR: Record<string, string> = { b: "brunch", l: "midi", d: "soir" };
+/** « mer. 21 soir, jeu. 22 midi » — en français : c'est l'équipe qui le lit. */
+export function whenFr(when: Row[]): string {
+  return (when || []).map((w) => new Date(w.d + "T12:00:00Z").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", timeZone: "UTC" }) + (w.s ? " " + SVC_FR[w.s] : "")).join(", ");
+}
+// Lignes envoyées par la page → commande propre. Seuls id, quantité et cases datées comptent ; tout le reste vient de la fiche.
+export function cleanOrders(raw: unknown, f: Row, pax: number, range: Row | null = null): Row | null {
   if (!Array.isArray(raw) || raw.length > 40) return null;
-  const menu = orderMenu(f, pax), qty: Record<string, number> = {};
+  const menu = orderMenu(f, pax), qty: Record<string, number> = {}, when: Record<string, Row[]> = {};
+  const meals = Array.isArray(f && f.MEALS) ? f.MEALS : [];
   for (const l of raw) {
     const id = l && typeof l.id === "string" ? l.id : "", q = Number(l && l.q);
-    if (!/^[mx]\d{1,2}$/.test(id) || !Number.isInteger(q) || q < 0 || q > 30) continue;
+    if (!/^[mx]\d{1,2}$/.test(id)) continue;
+    if (id[0] === "m" && Array.isArray(l.when)) {
+      const w = cleanWhen(l.when, svcOf(meals[+id.slice(1)]), range);
+      if (w && w.length) { qty[id] = w.length; when[id] = w; }
+      continue;
+    }
+    if (!Number.isInteger(q) || q < 0 || q > 30) continue;
     qty[id] = q;
   }
-  const items = menu.filter((m) => qty[m.id] > 0).map((m) => ({ id: m.id, kind: m.kind, n: m.n, q: qty[m.id], unit: m.unit, sub: Math.round(m.unit * qty[m.id] * 100) / 100 }));
+  const items = menu.filter((m) => qty[m.id] > 0).map((m) => ({ id: m.id, kind: m.kind, n: m.n, q: qty[m.id], unit: m.unit, sub: Math.round(m.unit * qty[m.id] * 100) / 100, ...(when[m.id] ? { when: when[m.id] } : {}) }));
   const total = Math.round(items.reduce((t, x) => t + x.sub, 0) * 100) / 100;
   return { items, total, cur: curOf(f), at: new Date().toISOString() };
 }
@@ -170,14 +205,15 @@ export function cleanOrders(raw: unknown, f: Row, pax: number): Row | null {
 export function applyOrders(stay: Row, body: Row, o: Row): Row {
   const det = { ...(body.details || (stay.details && typeof stay.details === "object" ? stay.details : {})), guest_orders: o };
   const out: Row = { ...body, details: det };
-  const meals = o.items.filter((x: Row) => x.kind === "meal").map((x: Row) => x.q + " × " + x.n[0]).join(", ");
+  const ml = o.items.filter((x: Row) => x.kind === "meal"), dated = ml.some((x: Row) => x.when);
+  const meals = ml.map((x: Row) => x.q + " × " + x.n[0] + (x.when ? " — " + whenFr(x.when) : "")).join(dated ? " · " : ", ");
   if (meals && !String(stay.meals || "").trim()) out.meals = [body.meals, meals].filter(Boolean).join(" · ");
   return out;
 }
 
 // Même commande qu'avant (mêmes lignes, mêmes quantités) : pas de nouvelle alerte.
 export function sameOrder(a: Row | null, b: Row | null): boolean {
-  const k = (o: Row | null) => o && Array.isArray(o.items) ? o.items.map((x: Row) => x.id + "×" + x.q).sort().join(",") : "";
+  const k = (o: Row | null) => o && Array.isArray(o.items) ? o.items.map((x: Row) => x.id + "×" + x.q + (x.when ? "@" + x.when.map((w: Row) => w.d + (w.s || "")).join("+") : "")).sort().join(",") : "";
   return k(a) === k(b);
 }
 /** « Thibaut Vauclare » → « Thibaut V. » : le nom complet d'un client ne part pas dans une notification. */
@@ -249,13 +285,18 @@ async function factsOf(owner: string): Promise<Row | null> {
 async function stayOfToken(t: string, today: string): Promise<{ stay?: Row; owner?: string; err?: number }> {
   const l = await db(`livret_links?select=owner_id,client_id&token=eq.${t}&deleted_at=is.null&limit=1`);
   if (!l.length) return { err: 404 };
-  const s = await db(`crm_clients?select=id,name,departure,deleted_at,details,meals,adults,children,guests&id=eq.${encodeURIComponent(l[0].client_id)}&user_id=eq.${l[0].owner_id}&limit=1`);
+  const s = await db(`crm_clients?select=id,name,arrival,departure,deleted_at,details,meals,adults,children,guests&id=eq.${encodeURIComponent(l[0].client_id)}&user_id=eq.${l[0].owner_id}&limit=1`);
   const graceEnd = day(Date.parse(today + "T12:00:00Z") - GRACE_DAYS * 86400000);
   if (!s.length || s[0].deleted_at || String(s[0].departure || "").slice(0, 10) < graceEnd) return { err: 410 };
   return { stay: s[0], owner: String(l[0].owner_id) };
 }
 const answersOf = (stay: Row) => (stay.details && typeof stay.details === "object" && stay.details.guest_answers) || null;
 const ordersOf = (stay: Row) => (stay.details && typeof stay.details === "object" && stay.details.guest_orders) || null;
+// Les dates du séjour (jour d'arrivée → jour de départ) : ce que le livret propose pour dater les repas.
+export const daysOf = (stay: Row): Row | null => {
+  const a = String(stay && stay.arrival || "").slice(0, 10), d = String(stay && stay.departure || "").slice(0, 10), iso = /^\d{4}-\d{2}-\d{2}$/;
+  return iso.test(a) && iso.test(d) && a <= d ? { from: a, to: d } : null;
+};
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
@@ -279,7 +320,7 @@ Deno.serve(async (req: Request) => {
       if (String(r.stay.departure || "").slice(0, 10) < today) return out({ error: "expired" }, 410); // séjour terminé : plus rien à transmettre
       let patch: Row = a ? applyAnswers(r.stay, a) : {};
       const f = wantsOrder || wantsReg ? await factsOf(String(r.owner)) : null;
-      const o = f && wantsOrder ? cleanOrders(body.orders, f, paxOf(r.stay)) : null;
+      const o = f && wantsOrder ? cleanOrders(body.orders, f, paxOf(r.stay), daysOf(r.stay)) : null;
       if (o) patch = applyOrders(r.stay, patch, o);
       const tr = wantsReg && regOn(f) ? cleanTravellers(body.travellers) : null;
       if (!Object.keys(patch).length && !tr) return out({ error: "empty" }, 400);
@@ -299,7 +340,7 @@ Deno.serve(async (req: Request) => {
       if (r.err || !r.stay) return out({ error: r.err === 410 ? "expired" : "not_found" }, r.err || 404);
       const f = await factsOf(String(r.owner));
       if (!f) return out({ error: "not_found" }, 404);
-      return out({ facts: f, answers: answersOf(r.stay), orders: ordersOf(r.stay), ...(regOn(f) ? { reg: await regOf(String(r.owner), String(r.stay.id)).catch(() => null) } : {}) }); // une panne ici ne bloque jamais le livret
+      return out({ facts: f, answers: answersOf(r.stay), orders: ordersOf(r.stay), days: daysOf(r.stay), ...(regOn(f) ? { reg: await regOf(String(r.owner), String(r.stay.id)).catch(() => null) } : {}) }); // une panne ici ne bloque jamais le livret
     }
     const guest = q.get("guest") || "", dates = q.get("dates") || "";
     if (!guest || !dates) return out({ error: "not_found" }, 404);

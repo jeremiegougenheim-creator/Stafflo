@@ -117,6 +117,27 @@ await r.ctx.close();
 r = await open('t=' + TOK + '&lang=fr', { view: () => ({ status: 200, body: '{"facts":' + JSON.stringify({ VILLA: { name: 'Riad Zina' } }) + '}' }) });
 check('fiche sans repas chiffré ni extra : pas de carte', !(await r.page.$('#ord')) && r.form === true);
 await r.ctx.close();
+// Commande datée (17/10/2026) : avec les dates du séjour (days), chaque repas se choisit jour par jour, et par service
+{
+  const DV = (extra) => () => ({ status: 200, body: '{"facts":' + FACTS + ',"days":{"from":"2026-10-20","to":"2026-10-22"}' + (extra || '') + '}' });
+  r = await open('t=' + TOK + '&pax=4&lang=fr', { view: DV(), post: ORDER_OK });
+  const chips = (id) => r.page.$$eval('[data-ow="' + id + '"]', (bs) => bs.map((b) => b.innerText + (b.classList.contains('on') ? '*' : '')));
+  const c1 = await chips('m1'), c2 = await chips('m2');
+  check('jours du séjour proposés : 3 jours × brunch / midi / soir pour « Brunch, déjeuner ou dîner », 3 jours sans service pour le goûter ; les extras gardent leur compteur',
+    c1.length === 9 && c1[0] === 'mar. 20 · brunch' && c1[5] === 'mer. 21 · soir' && c2.length === 3 && c2[0] === 'mar. 20' && !!(await r.page.$('[data-ord="1"][data-id="x0"]')) && !(await r.page.$('[data-ord="1"][data-id="m1"]')), [c1, c2]);
+  for (const k of ['2026-10-21|d', '2026-10-22|l', '2026-10-22|l', '2026-10-22|l']) await r.page.click('[data-ow="m1"][data-k="' + k + '"]');
+  await r.page.click('[data-ow="m2"][data-k="2026-10-20|"]');
+  check('le client touche les cases : 2 services + 1 goûter → 2 × 650 + 300 = 1 600 MAD, compteurs à jour, cases marquées',
+    /1\s?600 MAD/.test(await r.page.innerText('#ord-tot')) && (await r.page.innerText('#oq-m1')) === '2' && (await r.page.innerText('#oq-m2')) === '1' && (await chips('m1')).filter((x) => x.endsWith('*')).join() === 'mer. 21 · soir*,jeu. 22 · midi*', await chips('m1'));
+  await r.page.click('#ar-send'); await r.page.waitForTimeout(400);
+  const pd = r.calls.filter((c) => c.kind === 'post').pop();
+  check('envoi : id + cases datées (jour, service), quantité = nombre de cases, jamais un prix', pd && JSON.stringify(pd.body.orders) === JSON.stringify([{ id: 'm1', q: 2, when: [{ d: '2026-10-21', s: 'd' }, { d: '2026-10-22', s: 'l' }] }, { id: 'm2', q: 1, when: [{ d: '2026-10-20' }] }]), pd && pd.body.orders);
+  check('aucune erreur dans la page', !r.errs.length, r.errs);
+  await r.ctx.close();
+  r = await open('t=' + TOK + '&pax=4&lang=en', { view: DV(',"orders":{"items":[{"id":"m1","q":1,"when":[{"d":"2026-10-21","s":"d"}]}],"total":650,"cur":"MAD"}') });
+  check('commande datée déjà envoyée → cases pré-cochées (en anglais : « Wed 21 · dinner »)', (await r.page.innerText('#oq-m1')) === '1' && (await chips('m1')).filter((x) => x.endsWith('*')).join() === 'Wed 21 · dinner*', await chips('m1'));
+  await r.ctx.close();
+}
 
 // ── Fiches voyageurs (15/10/2026) : seulement si la villa les demande, jamais renvoyées à la page ──
 {

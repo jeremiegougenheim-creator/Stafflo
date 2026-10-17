@@ -949,6 +949,22 @@ await r.ctx.close();
   const bg = await r.page.inputValue('#tx-k1');
   check('7 personnes et plus : le brief maison n’a plus que le goûter', new RegExp('^À préparer par la maison : 1 × ' + KG.MEALS[2].n[0].replace(/[()]/g, '\\$&') + '$', 'm').test(bg) && !/Déjeuner léger/.test(bg) && !r.errs.length, bg);
   await r.ctx.close();
+  // 17/10/2026 — commande datée dans le livret : chaque brief dit le jour et le service
+  const SD = [{ ...ST[0], details: { ...ST[0].details, guest_orders: { at: new Date().toISOString(), total: 2100, cur: 'MAD', items: [
+    { id: 'm1', kind: 'meal', n: KG.MEALS[1].n, q: 2, unit: 850, sub: 1700, when: [{ d: '2026-10-21', s: 'd' }, { d: '2026-10-22', s: 'l' }] }, { id: 'm2', kind: 'meal', n: KG.MEALS[2].n, q: 1, unit: 400, sub: 400, when: [{ d: '2026-10-23' }] }] } } }];
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KG }, stays: SD });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]');
+  const sdTxt = await r.page.innerText('#st-k1');
+  await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+  const kd = await r.page.inputValue('#tx-k1');
+  check('commande datée : le brief prestataire dit le jour et le service (« — mer. 21 soir, jeu. 22 midi »), jamais un prix',
+    /^Commande du livret : 2 × Brunch, déjeuner ou dîner \(sur demande\) — mer\. 21 soir, jeu\. 22 midi$/m.test(kd) && /^Préparé par la maison, pas par vous : 1 × .* — ven\. 23$/m.test(kd) && !/850|MAD/.test(kd), kd);
+  await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+  const bd = await r.page.inputValue('#tx-k1');
+  check('commande datée : le brief maison aussi (« À préparer par la maison : 1 × Goûter … — ven. 23 »)', /^À préparer par la maison : 1 × .* — ven\. 23$/m.test(bd) && !r.errs.length, bd);
+  check('commande datée : la carte du séjour montre les jours au propriétaire', /2 × Brunch, déjeuner ou dîner \(sur demande\) — mer\. 21 soir, jeu\. 22 midi/.test(sdTxt), sdTxt.slice(0, 800));
+  await r.ctx.close();
   // Éditeur : la case « Préparé par la maison » sur chaque repas (fiche avec prestataire), gardée à l'enregistrement
   r = await open({ villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KH } });
   await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);

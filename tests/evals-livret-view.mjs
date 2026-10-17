@@ -69,7 +69,7 @@ check('dates des anciens liens : identiques à fmtStayDates de l’app (730 jour
 check('jeton : 32 à 64 caractères base64url seulement', M.validToken('A'.repeat(43)) && !M.validToken('short') && !M.validToken("A'or'1'='1".padEnd(40, 'x')));
 let r = await get('t=' + 'A'.repeat(43));
 let b = await r.json();
-check('lien personnel valide → la fiche et les réponses du client, rien d’autre (ni nom, ni séjour, ni prix)', r.status === 200 && b.facts && b.facts.VILLA.name === 'Villa Test' && Object.keys(b).sort().join() === 'answers,facts,orders' && b.answers === null && b.orders === null);
+check('lien personnel valide → la fiche, les réponses du client et les dates du séjour (pour dater les repas), rien d’autre (ni nom, ni prix)', r.status === 200 && b.facts && b.facts.VILLA.name === 'Villa Test' && Object.keys(b).sort().join() === 'answers,days,facts,orders' && b.answers === null && b.orders === null && b.days.from === iso(2) && b.days.to === iso(5) && !JSON.stringify(b).includes('Ana'), b.days);
 r = await get('t=' + 'Z'.repeat(43));
 check('jeton inconnu → 404', r.status === 404);
 r = await get('t=' + 'B'.repeat(43));
@@ -159,6 +159,33 @@ check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
   check('GET avec jeton renvoie la commande déjà envoyée (pour pré-remplir)', b.orders && b.orders.total === 850);
   check('commande sur un séjour terminé → 410 ; jeton inconnu → 404', (await post({ t: 'B'.repeat(43), orders: [{ id: 'm1', q: 1 }] }, '4.4.4.7')).status === 410 && (await post({ t: 'Z'.repeat(43), orders: [{ id: 'm1', q: 1 }] }, '4.4.4.7')).status === 404);
   check('trop de lignes (> 40) → rien', M.cleanOrders(Array.from({ length: 41 }, () => ({ id: 'm1', q: 1 })), F2, 4) === null);
+  { // 17/10/2026 — commande datée : un jour du séjour et, si la ligne en a plusieurs, le service
+    const FD = { MEALS: [
+      { n: ['Petit-déjeuner', 'Breakfast'], a: ['Inclus', 'Included'], b: ['Inclus', 'Included'] },
+      { n: ['Déjeuner ou dîner', 'Lunch or dinner'], a: ['650 MAD', '650 MAD'], b: ['850 MAD', '850 MAD'] },
+      { n: ['Goûter', 'Afternoon tea'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'] }] };
+    const R = { from: '2026-10-20', to: '2026-10-23' };
+    check('services lus dans le nom de la ligne : « Déjeuner ou dîner » → midi / soir, « Brunch, déjeuner ou dîner » → les trois, un seul service → aucun choix',
+      M.svcOf(FD.MEALS[1]).join() === 'l,d' && M.svcOf({ n: ['Brunch, déjeuner ou dîner', 'Brunch, lunch or dinner'] }).join() === 'b,l,d' && M.svcOf(FD.MEALS[2]).join() === '' && M.svcOf({ n: ['Dîner', 'Dinner'] }).join() === '');
+    const o = M.cleanOrders([
+      { id: 'm1', q: 9, when: [{ d: '2026-10-22', s: 'l' }, { d: '2026-10-21', s: 'd' }, { d: '2026-10-21', s: 'd' }, { d: '2026-10-25', s: 'd' }, { d: '2026-10-21', s: 'x' }, { d: '2026-10-21' }, { d: 'demain', s: 'd' }] },
+      { id: 'm2', when: [{ d: '2026-10-22', s: 'd' }, { d: '2026-10-23' }] }], FD, 4, R);
+    check('cases datées : hors séjour, service inconnu ou absent, doublon → jetés ; quantité = nombre de cases (jamais celle envoyée) ; triées par jour ; prix de la fiche',
+      o && o.total === 2 * 650 + 450 && JSON.stringify(o.items.map((x) => [x.id, x.q, x.when])) === JSON.stringify([['m1', 2, [{ d: '2026-10-21', s: 'd' }, { d: '2026-10-22', s: 'l' }]], ['m2', 1, [{ d: '2026-10-23' }]]]), o && o.items);
+    check('sans dates de séjour, ou aucune case valable → la ligne datée est ignorée (pas de repli sur la quantité envoyée)',
+      M.cleanOrders([{ id: 'm1', q: 3, when: [{ d: '2026-10-21', s: 'd' }] }], FD, 4, null).items.length === 0 && M.cleanOrders([{ id: 'm1', q: 3, when: [{ d: '2026-11-30', s: 'd' }] }], FD, 4, R).items.length === 0);
+    check('ancienne page (quantités sans dates) → acceptée comme avant', M.cleanOrders([{ id: 'm1', q: 2 }], FD, 4, R).items[0].q === 2 && !('when' in M.cleanOrders([{ id: 'm1', q: 2 }], FD, 4, R).items[0]));
+    check('repas résumés pour l’équipe avec le jour et le service, en français', M.applyOrders({ details: {} }, {}, o).meals === '2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi · 1 × Goûter — ven. 23', M.applyOrders({ details: {} }, {}, o).meals);
+    const o2 = M.cleanOrders([{ id: 'm1', when: [{ d: '2026-10-21', s: 'l' }, { d: '2026-10-22', s: 'l' }] }, { id: 'm2', when: [{ d: '2026-10-23' }] }], FD, 4, R);
+    check('mêmes quantités, autres jours → commande modifiée (nouvelle alerte) ; mêmes cases → identique', !M.sameOrder(o, o2) && M.sameOrder(o, JSON.parse(JSON.stringify(o))));
+    const s2 = DB.stays[DB.stays.length - 1]; s2.details = {}; s2.meals = '';
+    r = await post({ t: 'C'.repeat(43), orders: [{ id: 'm1', when: [{ d: iso(5) }, { d: iso(6) }, { d: iso(30) }] }] }, '4.4.6.1'); b = await r.json();
+    const pd = PATCHES[PATCHES.length - 1];
+    check('par la fonction : jours du séjour seulement (arrivée → départ), quantité recalculée, écrite avec ses jours', r.status === 200 && b.orders.items.length === 1 && b.orders.items[0].q === 2 && b.orders.total === 1700 && pd.body.details.guest_orders.items[0].when.map((w) => w.d).join() === iso(5) + ',' + iso(6), b.orders);
+    r = await get('t=' + 'C'.repeat(43), '4.4.6.2'); b = await r.json();
+    check('GET : les dates du séjour pour proposer les jours', b.days && b.days.from === iso(4) && b.days.to === iso(9), b.days);
+    s2.details = {};
+  }
   {
     const s2 = DB.stays[DB.stays.length - 1]; s2.name = 'Big Group'; s2.details = {};
     const n0 = NOTICES.length;
