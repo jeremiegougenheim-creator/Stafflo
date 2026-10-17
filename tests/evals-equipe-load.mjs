@@ -22,7 +22,7 @@ await new Promise((r) => server.listen(0, r));
 const PORT = server.address().port;
 const browser = await chromium.launch();
 const K = 'K'.repeat(43);
-const iso = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+const iso = (d) => { const x = new Date(Date.now() + d * 86400000); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }; // date locale, comme la page (todayNum) — jamais l’UTC
 const DATA = { name: 'Saïd', lang: 'fr', today: iso(0), at: new Date().toISOString(), reports: [], stays: [
   { id: 's-now', name: 'Felipe V.', a: iso(-2), d: iso(1), nights: 3, adults: 7, children: null, infants: null, pax: 7, arrival_time: '', departure_time: 'vol retour 9h, départ de la villa 6h30', beds: '', meals: '', drinks: 'Eau plate (12 bouteilles), 12 bières', note: '', same_day: false },
   { id: 's-next', name: 'Thibaut V.', a: iso(4), d: iso(8), nights: 4, adults: 10, children: null, infants: null, pax: 10, arrival_time: 'vers 15h30', beds: '4 couples + 2 personnes seules', meals: '', note: '', extras: '1 × Transfert aéroport', same_day: false },

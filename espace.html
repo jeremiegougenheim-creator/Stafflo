@@ -1835,45 +1835,104 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     });
     return out;
   }
-  function msgKitchen(c) {
-    var t = TXT.fr, who = kitchenTeam().map(function (m) { return m.name; }).join(', ') || 'la cuisine';
-    var lines = ['Cuisine ' + (c.name || '') + ' — pour ' + who];
-    lines.push('Arrivée : ' + fmtLongDay(c.a, 'fr') + whenTeam(c.details.arrival_time, 'a'));
-    lines.push('Départ : ' + fmtLongDay(c.d, 'fr') + whenTeam(c.details.departure_time, 'd'));
-    lines.push(turnLine(c));
-    lines.push('Couverts : ' + groupTxt(c));
-    lines.push('Repas : ' + (String(c.meals || '').trim() ? flat(c.meals) : 'pas encore reçus'));
-    var os = orderSplit(c);
-    if (os.kitchen.length) lines.push('Commande du livret : ' + os.kitchen.join(' · '));
-    if (os.house.length) lines.push('Préparé par la maison, pas par vous : ' + os.house.join(' · '));
-    var sn = String(c.details.staff_note || '').trim();
-    if (sn) lines.push('Consigne : ' + flat(sn).slice(0, 600));
-    return lines.join('\n');
+  /* Briefs WhatsApp (18/10/2026) : lisibles sur un téléphone — un titre en gras (*…*, mis en forme par WhatsApp),
+     une section par sujet, une ligne vide entre les sections, une puce par élément. Les textes libres (repas,
+     consigne) sont découpés en puces : à chaque retour à la ligne et à chaque phrase ; les boissons à chaque virgule.
+     Rien n'est reformulé. */
+  function sentences(line) { // sans « lookbehind » (Safari iOS < 16.4) : coupe après « . ! ? » suivis d'une majuscule ou d'un chiffre
+    var out = [], last = 0, rx = /[.!?]\s+(?=[A-ZÀ-ÝÉÈÊ0-9«])/g, m;
+    while ((m = rx.exec(line))) { out.push(line.slice(last, m.index + 1)); last = m.index + m[0].length; }
+    out.push(line.slice(last));
+    return out.map(function (x) { return x.trim(); }).filter(Boolean);
   }
-  function msgBrief(c) {
-    var t = TXT.fr, team = houseTeam().map(function (m) { return m.name; }).join(', ') || 'l’équipe';
-    var lines = [];
-    lines.push('Brief ' + (c.name || '') + ' — pour ' + team);
-    var arrFact = flat(P(F.PRACTICAL.filter(function (p) { return /^Arrivée et départ/.test(p[0]); })[0] || ['', ''], 0));
-    var ready = (arrFact.match(/prêtes (à partir de [^.,;]+)/) || [])[1];
-    lines.push('Arrivée : ' + fmtLongDay(c.a, 'fr') + whenTeam(c.details.arrival_time, 'a') + (ready ? ' · chambres prêtes ' + ready : ''));
-    lines.push('Départ : ' + fmtLongDay(c.d, 'fr') + whenTeam(c.details.departure_time, 'd'));
-    lines.push(turnLine(c));
-    lines.push('Groupe : ' + groupTxt(c));
-    if (c.inf) {
-      var baby = flat(P((F.GOOD_TO_KNOW || []).filter(function (g) { return /lit bébé/i.test(g[0]); })[0] || ['', ''], 0));
-      lines.push('Bébés (' + c.inf + ') : lit bébé et chaise haute à installer' + (baby ? ' — ' + (baby.match(/^[^.]*\.[^.]*\./) || [baby])[0] : ''));
+  function listItems(line) { // « 12 eaux plates, 2 vins rouges (marocains, choisis par nous) » : la virgule entre parenthèses ne coupe pas
+    var out = [], cur = '', depth = 0;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (ch === '(') depth++; else if (ch === ')') depth = Math.max(0, depth - 1);
+      if (depth === 0 && (ch === ',' || ch === ';' || (ch === '·' && /\s/.test(line[i - 1] || '')))) { if (cur.trim()) out.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
     }
-    lines.push('Couchages : ' + (String(c.details.beds || '').trim() ? flat(c.details.beds) : 'à confirmer'));
-    lines.push('Repas : ' + (String(c.meals || '').trim() ? flat(c.meals) : 'pas encore reçus'));
-    if (kitchenOn()) { var oh = orderSplit(c).house; if (oh.length) lines.push('À préparer par la maison : ' + oh.join(' · ')); }
-    if (String(c.details.drinks || '').trim()) lines.push('Boissons : ' + flat(c.details.drinks).slice(0, 600));
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  }
+  function bulletsOf(text, mode) {
+    var raw = String(text || '').trim(); if (!raw) return [];
+    var parts = [];
+    raw.split(/\n+/).forEach(function (line) {
+      line = line.replace(/^\s*[-•*·]\s*/, '').trim(); if (!line) return;
+      if (mode === 'list') listItems(line).forEach(function (x) { parts.push(x); });
+      else sentences(line).forEach(function (x) { parts.push(x); });
+    });
+    return parts.map(function (x) { return x.slice(0, 400); });
+  }
+  function section(title, items, inline) {
+    var it = (items || []).filter(Boolean);
+    if (!it.length) return '';
+    if (inline) return title + ' : ' + it[0];
+    return title + '\n' + it.map(function (x) { return '• ' + x; }).join('\n');
+  }
+  var B = function (t) { return '*' + t + '*'; };
+  function roomsReady() {
+    var arrFact = flat(P(F.PRACTICAL.filter(function (p) { return /^Arrivée et départ/.test(p[0]); })[0] || ['', ''], 0));
+    return (arrFact.match(/prêtes (à partir de [^.,;]+)/) || [])[1] || '';
+  }
+  function arrivalSection(c, ready) {
+    var tm = teamTime(c.details.arrival_time, 'a');
+    return section('📍 ' + B('Arrivée') + ' : ' + fmtLongDay(c.a, 'fr'), [tm, ready ? 'chambres prêtes ' + ready : '']);
+  }
+  function departureSection(c) {
+    var tm = teamTime(c.details.departure_time, 'd');
+    return section('🚪 ' + B('Départ') + ' : ' + fmtLongDay(c.d, 'fr'), [tm]);
+  }
+  function turnSection(c) { return '🔄 ' + B('Interlocation') + turnLine(c).replace(/^Interlocation/, ''); }
+  function mealsSection(c) {
+    var m = String(c.meals || '').trim();
+    return m ? section('🍽 ' + B('Repas'), bulletsOf(m, 'sentences')) : '🍽 ' + B('Repas') + ' : pas encore reçus';
+  }
+  function noteSection(c) {
     // La consigne écrite pour l'équipe. Jamais les notes du propriétaire (17/10/2026 : elles partaient quand il n'y avait
     // pas de consigne — prix compris — alors que la fiche du séjour les dit privées).
     var sn = String(c.details.staff_note || '').trim();
-    if (sn) lines.push('Consigne : ' + flat(sn).slice(0, 600));
-    lines.push('Contact client : ' + (String(c.phone || '').trim() || 'pas encore de numéro'));
-    return lines.join('\n');
+    return sn ? section('📝 ' + B('Consigne'), bulletsOf(sn.slice(0, 1200), 'sentences')) : '';
+  }
+  function msgKitchen(c) {
+    var who = kitchenTeam().map(function (m) { return m.name; }).join(', ') || 'la cuisine';
+    var os = orderSplit(c);
+    return [
+      B('Brief prestataire — ' + (c.name || '')) + '\npour ' + who,
+      '👥 ' + B('Couverts') + ' : ' + groupTxt(c),
+      arrivalSection(c, ''),
+      departureSection(c),
+      turnSection(c),
+      mealsSection(c),
+      section('🧺 ' + B('Commande du livret'), os.kitchen),
+      section('🏠 ' + B('Préparé par la maison, pas par vous'), os.house),
+      noteSection(c)
+    ].filter(Boolean).join('\n\n');
+  }
+  function msgBrief(c) {
+    var team = houseTeam().map(function (m) { return m.name; }).join(', ') || 'l’équipe';
+    var baby = '';
+    if (c.inf) {
+      var bk = flat(P((F.GOOD_TO_KNOW || []).filter(function (g) { return /lit bébé/i.test(g[0]); })[0] || ['', ''], 0));
+      baby = '👶 ' + B('Bébés (' + c.inf + ')') + ' : lit bébé et chaise haute à installer' + (bk ? ' — ' + (bk.match(/^[^.]*\.[^.]*\./) || [bk])[0] : '');
+    }
+    var oh = kitchenOn() ? orderSplit(c).house : [];
+    return [
+      B('Brief maison — ' + (c.name || '')) + '\npour ' + team,
+      '👥 ' + B('Groupe') + ' : ' + groupTxt(c),
+      arrivalSection(c, roomsReady()),
+      departureSection(c),
+      turnSection(c),
+      baby,
+      '🛏 ' + B('Couchages') + ' : ' + (String(c.details.beds || '').trim() ? flat(c.details.beds) : 'à confirmer'),
+      mealsSection(c),
+      section('🏠 ' + B('À préparer par la maison'), oh),
+      section('🥤 ' + B('Boissons'), bulletsOf(c.details.drinks, 'list')),
+      noteSection(c),
+      '📞 ' + B('Client') + ' : ' + (String(c.phone || '').trim() || 'pas encore de numéro')
+    ].filter(Boolean).join('\n\n');
   }
   var waDigits = function (raw) { return String(raw || '').replace(/\(0\)/g, '').replace(/\D/g, ''); };
   function saidWa() { var s = houseTeam().filter(function (m) { return m.phone; })[0]; return s ? waDigits(s.phone) : ''; }

@@ -192,7 +192,7 @@ check('annuler : retour à la fiche sans envoi', !(await r.page.$('[data-a="fesa
 await r.ctx.close();
 
 // ── 5. Toute villa : une fiche partielle ne casse aucun message, rien du pilote ────────
-const iso = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+const iso = (d) => { const x = new Date(Date.now() + d * 86400000); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }; // date locale, comme la page (todayNum) — jamais l’UTC
 const ZINA = { VILLA: { name: 'Riad Zina', host: 'Nadia', address: 'Derb Sidi Bouloukat, Marrakech' }, TEAM: [{ name: 'Omar', role: ['gardien — sur place tous les jours', ''], phone: '+212600000000', brief: true }],
   PRACTICAL: [['Arrivée et départ : chambres prêtes à partir de 15h. Départ avant 11h.', '']], MEALS: [{ n: ['Petit-déjeuner', 'Breakfast'], a: ['Inclus', 'Inclus'], b: ['Inclus', 'Inclus'], h: ['8h – 10h', ''] }] };
 r = await open({ tab: 'sejours', villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: ZINA },
@@ -900,6 +900,8 @@ const s7 = r.calls.filter((c) => c.kind === 'PATCH').pop(), h7 = s7 && s7.body.h
 check('extras : enregistrés avec prix numérique et unité, rangée vide ignorée, devise sur la villa', !!h7 && h7.VILLA.currency === '€' && h7.EXTRAS.length === 1 && h7.EXTRAS[0].price === 40 && h7.EXTRAS[0].n[0] === 'Transfert aéroport' && h7.EXTRAS[0].unit[0] === 'par trajet' && !r.errs.length, h7 && h7.EXTRAS);
 await r.ctx.close();
 
+// Briefs WhatsApp (18/10) : « *Titre* » en gras WhatsApp, une section par sujet séparée d'une ligne vide, une puce par élément.
+const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\*([^\\n]*)\\n?((?:• [^\\n]*\\n?)*)').exec(txt); return m ? { head: m[1].trim(), items: m[2].split('\n').filter(Boolean).map((x) => x.replace(/^• /, '')) } : null; };
 // ── 5 duodecies. Deux briefs : la maison (majordome, ménage) et la cuisine (prestataire repas) ──────
 {
   // Le contact de la maison est le majordome ; la cuisine passe par le prestataire repas (drapeau kitchen)
@@ -919,16 +921,17 @@ await r.ctx.close();
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kt = await r.page.inputValue('#tx-k1');
   check('brief prestataire : couverts, services, commande du livret, consigne — jamais un prix ni le téléphone du client',
-    /^Cuisine Felipe Villalobos — pour Léa/.test(kt) && /Couverts : 7 personnes \(6 adultes, 1 enfant\)/.test(kt) && /Repas : .*1 végétarien/.test(kt) &&
-    /Commande du livret : 3 × Dîner cuisinière · 2 × Déjeuner léger/.test(kt) && /Consigne : Tajine de kefta/.test(kt) && /Arrivée : .*15h30/.test(kt) &&
+    /^\*Brief prestataire — Felipe Villalobos\*\npour Léa\n\n/.test(kt) && /\*Couverts\* : 7 personnes \(6 adultes, 1 enfant\)/.test(kt) && /\*Repas\*\n• .*1 végétarien/.test(kt) &&
+    JSON.stringify(sect(kt, 'Commande du livret').items) === '["3 × Dîner cuisinière","2 × Déjeuner léger"]' && /\*Consigne\*\n• Tajine de kefta/.test(kt) && /\*Arrivée\* : .*\n• 15h30/.test(kt) &&
     !/2 600|MAD|€|7700 900123/.test(kt), kt);
   check('envoi : « Envoyer à Léa » sur SON numéro, jamais celui de la maison ni celui du client', !!(await r.page.$('#st-k1 [data-a="sendchef"]')) && /Envoyer à Léa/.test(await r.page.innerText('#st-k1')) &&
     !(await r.page.$('#st-k1 [data-a="sendwa"]')) && !/· EN|· FR/.test(await r.page.innerText('#st-k1 .panel .ttl')));
-  check('interlocation : aucune arrivée après ce départ → dit tel quel, jamais une date supposée', /Interlocation : aucune arrivée prévue après ce départ/.test(kt));
+  check('interlocation : aucune arrivée après ce départ → dit tel quel, jamais une date supposée', /\*Interlocation\* : aucune arrivée prévue après ce départ/.test(kt));
+  check('WhatsApp : une ligne vide entre les sections, une puce par élément, titres en gras', /\n\n👥 \*Couverts\*/.test(kt) && /\n\n📍 \*Arrivée\*/.test(kt) && !/\n\n\n/.test(kt) && /\n• /.test(kt), kt);
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bt = await r.page.inputValue('#tx-k1');
   check('brief maison : pour le majordome et le ménage, jamais le prestataire repas ; couchages et contact client gardés',
-    /^Brief Felipe Villalobos — pour Saïd, Bouchra$/m.test(bt) && !/Léa/.test(bt) && /Contact client : \+44 7700 900123/.test(bt) && /^Couchages : à confirmer$/m.test(bt) &&
+    /^\*Brief maison — Felipe Villalobos\*\npour Saïd, Bouchra$/m.test(bt) && !/Léa/.test(bt) && /\*Client\* : \+44 7700 900123/.test(bt) && /\*Couchages\* : à confirmer$/m.test(bt) &&
     /Envoyer à Saïd/.test(await r.page.innerText('#st-k1')), bt);
   await r.ctx.close();
   // 17/10/2026 — briefs nettoyés (brief de Thibaut) : l'heure dite par le client sur la ligne Arrivée, sans « (WhatsApp, date) »
@@ -941,12 +944,12 @@ await r.ctx.close();
     await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
     const bc = await r.page.inputValue('#tx-k1');
     check('brief maison nettoyé : l’heure seulement — « atterrissage 14h », départ « 6h30 (vol 9h) » —, « Groupe : 10 adultes », couchages et repas sans consigne au propriétaire, boissons',
-      /^Arrivée : .+ — atterrissage 14h( · chambres prêtes [^\n]+)?$/m.test(bc) && /^Départ : .+ — 6h30 \(vol 9h\)$/m.test(bc) &&
-      /^Groupe : 10 adultes$/m.test(bc) && /^Couchages : à confirmer$/m.test(bc) && /^Repas : pas encore reçus$/m.test(bc) && /^Boissons : Eau plate \(12 bouteilles\), 12 bières$/m.test(bc) &&
-      !/WhatsApp,|nuits|à demander|Heure d’arrivée|TARIFS|850|privé/.test(bc) && /^Contact client : \+33615185187$/m.test(bc), bc);
+      /\*Arrivée\* : .+\n• atterrissage 14h\n(• chambres prêtes [^\n]+\n)?\n/.test(bc) && /\*Départ\* : .+\n• 6h30 \(vol 9h\)\n\n/.test(bc) &&
+      /\*Groupe\* : 10 adultes$/m.test(bc) && /\*Couchages\* : à confirmer$/m.test(bc) && /\*Repas\* : pas encore reçus$/m.test(bc) && JSON.stringify(sect(bc, 'Boissons').items) === '["Eau plate (12 bouteilles)","12 bières"]' &&
+      !/WhatsApp,|nuits|à demander|Heure d’arrivée|TARIFS|850|privé/.test(bc) && /\*Client\* : \+33615185187$/m.test(bc), bc);
     await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
     const kc = await r.page.inputValue('#tx-k1');
-    check('brief prestataire nettoyé : mêmes heures, « Couverts : 10 adultes », pas de boissons ni de téléphone', /^Arrivée : .+ — atterrissage 14h$/m.test(kc) && /^Départ : .+ — 6h30 \(vol 9h\)$/m.test(kc) && /^Couverts : 10 adultes$/m.test(kc) && !/Boissons|WhatsApp,|nuits|33615185187|TARIFS/.test(kc) && !r.errs.length, kc);
+    check('brief prestataire nettoyé : mêmes heures, « Couverts : 10 adultes », pas de boissons ni de téléphone', /\*Arrivée\* : .+\n• atterrissage 14h\n\n/.test(kc) && /\*Départ\* : .+\n• 6h30 \(vol 9h\)\n\n/.test(kc) && /\*Couverts\* : 10 adultes$/m.test(kc) && !/Boissons|WhatsApp,|nuits|33615185187|TARIFS/.test(kc) && !r.errs.length, kc);
     await r.ctx.close();
   }
   // Deux séjours qui s'enchaînent : les deux briefs disent de combien de temps dispose l'équipe
@@ -956,9 +959,9 @@ await r.ctx.close();
   await r.page.waitForTimeout(250);
   await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kt2 = await r.page.inputValue('#tx-k1');
-  check('interlocation : la prochaine arrivée (le séjour ferme le plus proche, avec son heure), le jour même du départ', /Interlocation : prochaine arrivée [^\n]*15h30 \(le jour même\)/.test(kt2) && !/Ana Ruiz/.test(kt2), kt2);
+  check('interlocation : la prochaine arrivée (le séjour ferme le plus proche, avec son heure), le jour même du départ', /\*Interlocation\* : prochaine arrivée [^\n]*15h30 \(le jour même\)/.test(kt2) && !/Ana Ruiz/.test(kt2), kt2);
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
-  check('le brief maison la porte aussi ; la remise en état (tous les 3–4 mois) n’est jamais dans un brief de séjour', /Interlocation : prochaine arrivée/.test(await r.page.inputValue('#tx-k1')) &&
+  check('le brief maison la porte aussi ; la remise en état (tous les 3–4 mois) n’est jamais dans un brief de séjour', /\*Interlocation\* : prochaine arrivée/.test(await r.page.inputValue('#tx-k1')) &&
     !/[Rr]emise en état/.test(await r.page.inputValue('#tx-k1')) && !r.errs.length, r.errs);
   await r.ctx.close();
   // Déjeuner léger marqué « maison » dans la fiche (16/10) : la commande du livret part chez celui qui la prépare
@@ -972,11 +975,11 @@ await r.ctx.close();
   await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kh = await r.page.inputValue('#tx-k1');
   check('brief prestataire : ses repas seulement ; le déjeuner léger est signalé « préparé par la maison, pas par vous »',
-    /Commande du livret : 3 × Brunch, déjeuner ou dîner \(sur demande\)$/m.test(kh) && /Préparé par la maison, pas par vous : 2 × Déjeuner léger \(sur demande\)$/m.test(kh) && !/450|850|MAD/.test(kh), kh);
+    JSON.stringify(sect(kh, 'Commande du livret').items) === '["3 × Brunch, déjeuner ou dîner (sur demande)"]' && JSON.stringify(sect(kh, 'Préparé par la maison, pas par vous').items) === '["2 × Déjeuner léger (sur demande)"]' && !/450|850|MAD/.test(kh), kh);
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bh = await r.page.inputValue('#tx-k1');
   check('brief maison : « À préparer par la maison : 2 × Déjeuner léger », jamais les repas de la cuisinière ni un prix',
-    /À préparer par la maison : 2 × Déjeuner léger \(sur demande\)$/m.test(bh) && !/3 × Brunch/.test(bh) && !/450|850 MAD/.test(bh) && !r.errs.length, bh);
+    JSON.stringify(sect(bh, 'À préparer par la maison').items) === '["2 × Déjeuner léger (sur demande)"]' && !/3 × Brunch/.test(bh) && !/450|850 MAD/.test(bh) && !r.errs.length, bh);
   await r.ctx.close();
   // 17/10/2026 — à partir de 7 personnes, un repas « maison » part chez le prestataire ; le goûter reste à la maison
   const KG = JSON.parse(JSON.stringify(KH)); KG.MEALS[2].house = true; KG.MEALS[3].big = 'kitchen'; // goûter : maison (défaut) ; déjeuner léger : prestataire à 7+
@@ -987,10 +990,10 @@ await r.ctx.close();
   await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kg = await r.page.inputValue('#tx-k1');
   check('7 personnes et plus : un repas « maison » marqué « par le prestataire » y part ; le goûter (toujours la maison) reste à la maison',
-    /^Commande du livret : 3 × Brunch, déjeuner ou dîner \(sur demande\) · 2 × Déjeuner léger \(sur demande\)$/m.test(kg) && new RegExp('^Préparé par la maison, pas par vous : 1 × ' + KG.MEALS[2].n[0].replace(/[()]/g, '\\$&') + '$', 'm').test(kg), kg);
+    JSON.stringify(sect(kg, 'Commande du livret').items) === '["3 × Brunch, déjeuner ou dîner (sur demande)","2 × Déjeuner léger (sur demande)"]' && JSON.stringify(sect(kg, 'Préparé par la maison, pas par vous').items) === JSON.stringify(['1 × ' + KG.MEALS[2].n[0]]), kg);
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bg = await r.page.inputValue('#tx-k1');
-  check('7 personnes et plus : le brief maison n’a plus que le goûter', new RegExp('^À préparer par la maison : 1 × ' + KG.MEALS[2].n[0].replace(/[()]/g, '\\$&') + '$', 'm').test(bg) && !/Déjeuner léger/.test(bg) && !r.errs.length, bg);
+  check('7 personnes et plus : le brief maison n’a plus que le goûter', JSON.stringify(sect(bg, 'À préparer par la maison').items) === JSON.stringify(['1 × ' + KG.MEALS[2].n[0]]) && !/Déjeuner léger/.test(bg) && !r.errs.length, bg);
   await r.ctx.close();
   // 17/10/2026 — commande datée dans le livret : chaque brief dit le jour et le service
   const SD = [{ ...ST[0], details: { ...ST[0].details, guest_orders: { at: new Date().toISOString(), total: 2100, cur: 'MAD', items: [
@@ -1002,10 +1005,10 @@ await r.ctx.close();
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kd = await r.page.inputValue('#tx-k1');
   check('commande datée : le brief prestataire dit le jour et le service (« — mer. 21 soir, jeu. 22 midi »), jamais un prix',
-    /^Commande du livret : 2 × Brunch, déjeuner ou dîner \(sur demande\) — mer\. 21 soir, jeu\. 22 midi$/m.test(kd) && /^Préparé par la maison, pas par vous : 1 × .* — ven\. 23$/m.test(kd) && !/850|MAD/.test(kd), kd);
+    JSON.stringify(sect(kd, 'Commande du livret').items) === '["2 × Brunch, déjeuner ou dîner (sur demande) — mer. 21 soir, jeu. 22 midi"]' && /^• 1 × .* — ven\. 23$/m.test(sect(kd, 'Préparé par la maison, pas par vous') ? '• ' + sect(kd, 'Préparé par la maison, pas par vous').items[0] : '') && !/850|MAD/.test(kd), kd);
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bd = await r.page.inputValue('#tx-k1');
-  check('commande datée : le brief maison aussi (« À préparer par la maison : 1 × Goûter … — ven. 23 »)', /^À préparer par la maison : 1 × .* — ven\. 23$/m.test(bd) && !r.errs.length, bd);
+  check('commande datée : le brief maison aussi (« À préparer par la maison : 1 × Goûter … — ven. 23 »)', /^• 1 × .* — ven\. 23$/m.test((sect(bd, 'À préparer par la maison') || { items: [''] }).items.map((x) => '• ' + x).join('\n')) && !r.errs.length, bd);
   check('commande datée : la carte du séjour montre les jours au propriétaire', /2 × Brunch, déjeuner ou dîner \(sur demande\) — mer\. 21 soir, jeu\. 22 midi/.test(sdTxt), sdTxt.slice(0, 800));
   await r.ctx.close();
   // Éditeur : la case « Préparé par la maison » sur chaque repas (fiche avec prestataire), gardée à l'enregistrement
@@ -1050,7 +1053,7 @@ await r.ctx.close();
   await r.page.click('[data-a="toggle"][data-id="k1"]');
   check('sans prestataire repas : pas de « Brief prestataire », le brief maison part chez le seul contact', !(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !/Brief prestataire/.test(await r.page.innerText('#st-k1')));
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
-  check('brief maison : le seul membre de l’équipe est le destinataire', /— pour Omar$/m.test(await r.page.inputValue('#tx-k1')) && /Envoyer à Omar/.test(await r.page.innerText('#st-k1')) && !r.errs.length, r.errs);
+  check('brief maison : le seul membre de l’équipe est le destinataire', /^pour Omar$/m.test(await r.page.inputValue('#tx-k1')) && /Envoyer à Omar/.test(await r.page.innerText('#st-k1')) && !r.errs.length, r.errs);
   await r.ctx.close();
 }
 
