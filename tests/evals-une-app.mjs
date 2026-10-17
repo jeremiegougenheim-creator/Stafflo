@@ -51,7 +51,9 @@ check('compte connecté et configuré : app.html → l’Espace', onEspace(r.url
 r = await visit('?lang=en');
 check('lien « Se connecter » du site (?lang=en) → l’Espace, en anglais', onEspace(r.url) && r.lang === 'en', r);
 r = await visit('', { onboarded: false });
-check('compte pas encore configuré : reste sur app.html (mise en route)', !onEspace(r.url), r.url);
+check('compte pas encore configuré : arrive aussi sur l’Espace — la mise en route s’y fait (17/10)', onEspace(r.url), r.url);
+r = await visit('?checkout=success&sub=abc');
+check('retour de paiement (?checkout=success) : l’Espace, avec le signal', /\/espace\.html\?checkout=success$/.test(r.url), r.url);
 r = await visit('', { session: false });
 check('pas connecté : reste sur app.html (connexion / inscription)', !onEspace(r.url), r.url);
 for (const qs of ['?open=settings', '?open=stay', '?signup=1', '?onboarding=1', '?oauth_callback=1&code=x', '?demo=1']) {

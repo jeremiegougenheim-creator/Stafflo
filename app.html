@@ -63,23 +63,24 @@
 }catch(e){}})();
 </script>
 <script>
-/* 15/10/2026 — UNE SEULE APP : l'Espace (espace.html) est l'écran d'accueil. Un compte connecté et déjà
-   configuré qui ouvre app.html arrive sur l'Espace. Restent ici : la connexion et l'inscription, la mise en
-   route (compte pas encore configuré), les liens profonds (?open=…, ?signup, ?onboarding, retours OAuth,
-   paiement…) et ?app=1 (« Ouvrir l'app complète » depuis l'Espace : cet onglet reste sur app.html).
+/* 15/10/2026 — UNE SEULE APP : l'Espace (espace.html) est l'écran d'accueil. Un compte connecté qui ouvre
+   app.html arrive sur l'Espace. Restent ici : la connexion et l'inscription, les liens profonds (?open=…,
+   ?signup, ?onboarding, retours OAuth…) et ?app=1 (« Ouvrir l'ancienne version » depuis l'Espace : cet
+   onglet reste sur app.html). 17/10/2026 : la mise en route se fait dans l'Espace (carte « Mise en route »),
+   plus dans l'assistant de l'ancienne version — un compte neuf y arrive donc aussi (?onboarding=1 rouvre
+   l'ancien assistant) ; le retour de paiement (?checkout=success) y arrive aussi.
    Interrupteur : localStorage.stafflo_espace_home = 'off' rend app.html à nouveau page d'accueil. */
 (function(){try{
   var q = location.search.replace(/^\?/, '').split('&').filter(Boolean);
-  var onlyLang = q.every(function (p) { return /^lang=(fr|en)$/.test(p); });
+  var onlyLang = q.every(function (p) { return /^(lang=(fr|en)|checkout=success|sub=[^&]*)$/.test(p); });
   if (!onlyLang || location.hash) { try { sessionStorage.setItem('stafflo_app_tab', '1'); } catch (e) {} return; }
   if (localStorage.getItem('stafflo_espace_home') === 'off') return;
   try { if (sessionStorage.getItem('stafflo_app_tab') === '1') return; } catch (e) {}
   var s = JSON.parse(localStorage.getItem('stafflo_session') || 'null');
-  var cfg = JSON.parse(localStorage.getItem('stafflo_cfg') || '{}');
-  if (!s || !s.access_token || !cfg || cfg.onboarded !== true) return;
+  if (!s || !s.access_token) return;
   var lang = (/lang=(fr|en)/.exec(location.search) || [])[1];
   if (lang) localStorage.setItem('stafflo_espace_lang', lang);
-  location.replace('espace.html');
+  location.replace('espace.html' + (/checkout=success/.test(location.search) ? '?checkout=success' : ''));
 }catch(e){}})();
 </script>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -8393,7 +8394,7 @@ function showAuthGate() {
       '<div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#C9963A 0%,#E4C68B 42%,rgba(201,150,58,0) 100%)"></div>' +
       '<div style="text-align:center;margin-bottom:26px">' +
         '<div style="display:flex;align-items:center;justify-content:center;gap:8px"><svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 L20 19 L17 19 L15 15 L9 15 L7 19 L4 19 Z" fill="#C9963A"/><path d="M10.3 12 L13.7 12 L12 8.5 Z" fill="#1a3a1a"/><circle cx="12" cy="6" r="1.5" fill="#C9963A"/></svg><span style="font-family:Cormorant Garamond,serif;font-size:34px;font-weight:500;color:#0F2318;letter-spacing:-.5px">Stafflo</span></div>' +
-        '<div style="font-size:10.5px;letter-spacing:2.2px;text-transform:uppercase;color:#706B5D;margin-top:6px">' + (fr?'Villa ops · IA':'Villa ops · AI') + '</div>' +
+        '<div style="font-size:10.5px;letter-spacing:2.2px;text-transform:uppercase;color:#706B5D;margin-top:6px">' + (fr?'Villas et riads avec équipe':'Staffed villas and riads') + '</div>' +
       '</div>' +
       '<div id="authTabs" style="display:flex;gap:0;margin-bottom:22px;border-bottom:1px solid #E8E2D8">' +
         '<button data-tab="login" class="auth-tab auth-tab-active" onclick="switchAuthTab(\'login\')" style="flex:1;background:none;border:none;padding:10px;font-size:13px;font-weight:600;color:#1a3a1a;cursor:pointer;border-bottom:2px solid #C9963A;font-family:inherit">' + (fr?'Connexion':'Login') + '</button>' +
@@ -8437,11 +8438,13 @@ function showAuthGate() {
         '</div>' +
       '</div>' +
       '<div id="authMsg" style="margin-top:14px;font-size:12px;text-align:center;min-height:18px"></div>' +
-      '<div style="margin:22px 0 0;padding-top:20px;border-top:1px solid #E8E2D8;text-align:center">' +
+      // 17/10/2026 — la démo publique ouvrait l'ancienne version (ARIA en vedette), à rebours de la page de vente :
+      // la démo se fait en vrai, sur WhatsApp. Le bouton reste derrière localStorage.stafflo_demo_link = 'on'.
+      (localStorage.getItem('stafflo_demo_link') === 'on' ? '<div style="margin:22px 0 0;padding-top:20px;border-top:1px solid #E8E2D8;text-align:center">' +
         '<button onclick="enterDemoMode();location.search=\'?demo=1\'" style="background:none;border:none;color:#1d4d3a;border-radius:var(--r-sm);padding:9px 14px;font-size:13.5px;font-weight:500;cursor:pointer;font-family:inherit">' + (fr?'🎬 Essayer en mode démo':'🎬 Try demo mode') + '</button>' +
         '<div style="font-size:10.5px;color:#706B5D;margin-top:4px">' + (fr?'Villa fictive · aucune inscription':'Demo villa · no signup') + '</div>' +
         '<div style="font-size:10.5px;color:#B5AC9C;margin-top:14px">' + (fr?'Données traitées en Europe':'Data processed in Europe') + '</div>' +
-      '</div>' +
+      '</div>' : '<div style="margin:22px 0 0;padding-top:16px;border-top:1px solid #E8E2D8;text-align:center;font-size:10.5px;color:#B5AC9C">' + (fr?'Données traitées en Europe':'Data processed in Europe') + '</div>') +
     '</div>';
   document.body.appendChild(gate);
 
@@ -8614,7 +8617,7 @@ async function handleAuthSignup() {
               '<strong>' + (fr?'Pas d\'email après 2 min ?':'No email after 2 min?') + '</strong><br>' +
               '• ' + (fr?'Vérifiez le dossier spam/promotions':'Check spam/promotions folder') + '<br>' +
               '• ' + (fr?'Vérifiez la bonne orthographe de l\'email':'Check email spelling') + '<br>' +
-              '• ' + (fr?'L\'admin doit activer la confirmation auto dans Supabase':'Admin must enable auto-confirm in Supabase') +
+              '• ' + (fr?'Toujours rien ? Écrivez-nous : hello@stafflo.app':'Still nothing? Write to hello@stafflo.app') +
             '</div>' +
             '<button onclick="location.reload()" style="background:#1a3a1a;color:#fff;border:none;border-radius:var(--r-sm);padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">' + (fr?'Retour à la connexion':'Back to login') + '</button>' +
           '</div>';
@@ -24144,6 +24147,8 @@ async function loadMorningBrief(forceRefresh = false) {
   const briefEl = document.getElementById('morningBrief');
   const cardsEl = document.getElementById('briefCards');
   if (!briefEl || !cardsEl) return;
+  // 17/10/2026 — ni session ni démo (page de connexion) : pas de brief, donc pas d'appel Mistral.
+  if (typeof STAFFLO_AUTH !== 'undefined' && STAFFLO_AUTH && STAFFLO_AUTH.mode === 'guest' && !/[?&]demo=1/.test(location.search)) return;
 
   // v-brief1 : la séquence de boot appelle cette fonction 3x en ~1s (re-render ~6745,
   // setLang ~12444, timer ~18477). Chaque appel lançait son propre appel Mistral payant
@@ -31810,6 +31815,10 @@ window.addEventListener('DOMContentLoaded', function() {
   // Garde la signature compatible avec callBestAI existant
   var _origCallBestAI = window.callBestAI;
   window.callBestAI = async function(task, systemPrompt, userContent, maxTokens){
+    // 17/10/2026 — pas de session, pas de démo (écran de connexion, visiteur, robot) : aucun appel IA.
+    // Avant : deux « brief » partaient vers ai-proxy à chaque ouverture de la page de connexion, puis le
+    // bandeau « Tous les services AI sont indisponibles » s'affichait au-dessus du formulaire.
+    if (typeof STAFFLO_AUTH !== 'undefined' && STAFFLO_AUTH && STAFFLO_AUTH.mode === 'guest' && !/[?&]demo=1/.test(location.search)) throw new Error('no_session');
     // Tentative proxy d'abord, en lisant provider_id dans la réponse (v3)
     if (typeof STAFFLO_PROXY !== 'undefined' && STAFFLO_PROXY){
       var t0 = Date.now();
