@@ -334,7 +334,7 @@ await r.ctx.close();
   await r.page.waitForTimeout(250);
   const cells = await r.page.$$eval('.cal .d:not(.x)', (cs) => cs.map((x) => x.className.replace(/\s+/g, ' ').trim() + '|' + x.innerText.replace(/\n/g, ' ')));
   check('calendrier : le mois réel, arrivée (nom), nuits du séjour, départ — et pas un seul prix', cells.length === new Date(d0.getFullYear(), d0.getMonth() + 1, 0).getDate() && /^d arr[^|]*\|10 Ana$/.test(cells[9]) && /^d in/.test(cells[10]) && /^d in/.test(cells[11]) && /^d dep/.test(cells[12]) && !/€|MAD/.test(cells.join(' ')) && !r.errs.length, cells.slice(8, 14));
-  check('calendrier : nuits libres à venir comptées depuis les séjours', /nuits? libres? à venir ce mois-ci|Plus aucune nuit libre/.test(await txt(r.page)));
+  check('calendrier : nuits libres à venir comptées depuis les séjours', /nuits? libres? ce mois-ci|Plus aucune nuit libre/.test(await txt(r.page)));
   await r.page.click('[data-a="calm"][data-v="1"]'); await r.page.waitForTimeout(100);
   check('calendrier : mois suivant', new RegExp(new Date(d0.getFullYear(), d0.getMonth() + 1, 1).toLocaleDateString('fr-FR', { month: 'long' }), 'i').test(await r.page.innerText('.cal-h b')));
   await r.page.click('[data-a="calm"][data-v="-1"]');
@@ -1119,7 +1119,7 @@ await r.ctx.close();
   await r.page.waitForTimeout(300);
   let tj = await txt(r.page);
   check('Jour : « réservations sans séjour » — la réservation Airbnb sans séjour (dates, nuits, code), pas celle couverte par le séjour de Léa, pas un blocage, pas un calendrier retiré',
-    /Calendriers : réservations sans séjour/i.test(tj) && /Airbnb · .+ → .+ · 3 nuits · HMTEST0012/.test(tj) && !/HMTEST0099/.test(tj) && !/Ancien/.test(tj) && (await r.page.$$('[data-a="icnew"]')).length === 1, tj.slice(0, 900));
+    /Calendriers : réservations sans séjour/i.test(tj) && /Airbnb · .+ → .+ · 3\u00a0nuits · HMTEST0012/.test(tj) && !/HMTEST0099/.test(tj) && !/Ancien/.test(tj) && (await r.page.$$('[data-a="icnew"]')).length === 1, tj.slice(0, 900));
   check('l’Espace lit les calendriers en base (dates seulement, non disparues)', r.reads.some((x) => x.kind === 'icget' && /gone_at=is\.null/.test(x.url) && /select=id,feed_id,start_date,end_date,kind,code,label,hidden_at/.test(x.url)));
   await r.page.click('[data-a="icnew"][data-v="e1"]'); await r.page.waitForSelector('#ns-name');
   check('« Créer le séjour » : formulaire avec les dates et la source remplies, le nom à saisir', (await r.page.inputValue('#ns-arr')) === isoD(3) && (await r.page.inputValue('#ns-dep')) === isoD(6) && (await r.page.inputValue('#ns-source')) === 'Airbnb' && (await r.page.inputValue('#ns-name')) === '');
