@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, rvMails = [] } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, rvMails = [], ical = [], icalRun = [], icalFn = null } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -49,7 +49,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (m === 'OPTIONS') return json({}, 204);
     if (u.includes('/functions/v1/ai-proxy')) { calls.push({ kind: 'ai', body: JSON.parse(req.postData() || '{}') }); return json(ai ? ai(JSON.parse(req.postData() || '{}')) : { text: '' }); }
     if (u.includes('/rest/v1/villa_settings')) {
-      if (m === 'PATCH' || m === 'POST') { calls.push({ kind: m, url: u, body: JSON.parse(req.postData() || '{}') }); return json(villa ? [{ id: 'vs1' }] : []); }
+      if (m === 'PATCH' || m === 'POST') { const vb = JSON.parse(req.postData() || '{}'); calls.push({ kind: m, url: u, body: vb }); if (villa && vb.ical_feeds) villa.ical_feeds = vb.ical_feeds; return json(villa ? [{ id: 'vs1' }] : []); }
       return json(villa ? [villa] : []);
     }
     if (u.includes('/rest/v1/staff?')) return json(staff);
@@ -91,6 +91,12 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     }
     if (u.includes('/storage/v1/object/sign/stay-files')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'sign', body: b, auth: req.headers().authorization }); return json(b.paths.map((p) => ({ path: p, signedURL: '/object/sign/stay-files/' + p + '?token=t', error: null }))); }
     if (u.includes('/storage/v1/object/stay-files/')) { calls.push({ kind: 'upload', url: u, type: req.headers()['content-type'], auth: req.headers().authorization, size: (req.postDataBuffer() || Buffer.alloc(0)).length }); return json({ Key: 'k' }); }
+    if (u.includes('/rest/v1/ical_events')) {
+      if (m === 'PATCH') { calls.push({ kind: 'icpatch', url: decodeURIComponent(u), body: JSON.parse(req.postData() || '{}') }); return json([{}]); }
+      reads.push({ kind: 'icget', url: decodeURIComponent(u) }); return json(ical);
+    }
+    if (u.includes('/rest/v1/sync_runs') && u.includes('source=eq.ical')) return json(icalRun);
+    if (u.includes('/functions/v1/ical-sync')) { calls.push({ kind: 'icsync', auth: req.headers().authorization }); const x = icalFn ? icalFn() : { status: 200, body: { ok: true, errors: [] } }; return json(x.body, x.status); }
     if (u.includes('/rest/v1/sync_runs')) return json(sync);
     if (u.includes('/functions/v1/polar-')) { calls.push({ kind: 'polar', url: u, auth: req.headers().authorization }); return json({ url: 'https://checkout.example.com/s/1' }); }
     if (u.startsWith('https://checkout.example.com/')) { calls.push({ kind: 'nav', url: u }); return route.fulfill({ status: 200, contentType: 'text/html', body: '<title>checkout</title>' }); }
@@ -473,7 +479,7 @@ await r.ctx.close();
   await r.page.waitForTimeout(200);
   let ts = await r.page.innerText('#settings');
   check('Maison › Réglages : la villa (nom, ville, chambres, capacité), Gmail relié + dernière synchro, iCal, abonnement, compte', /Riad Zina · Marrakech · 4 chambres · 8 pers\./.test(ts) && /Gmail relié : riad@example\.com · synchronisé il y a 8 min/.test(ts) && /Calendriers \(iCal\)/.test(ts) && /Essai : 12 jours restants/.test(ts) && /x@y\.z/.test(ts) && /Se déconnecter/.test(ts) && !r.errs.length, ts);
-  check('Gmail : « Reconnecter » ici (bouton, plus de détour par l’app complète) ; iCal reste dans l’app complète', !!(await r.page.$('#settings [data-a="gmconnect"]')) && !(await r.page.$('#settings a[href="app.html?open=gmail"]')) && !!(await r.page.$('#settings a[href="app.html?open=settings"]')));
+  check('Gmail : « Reconnecter » ici (bouton, plus de détour par l’app complète) ; iCal aussi ici depuis le 17/10', !!(await r.page.$('#settings [data-a="gmconnect"]')) && !(await r.page.$('#settings a[href="app.html?open=gmail"]')) && !(await r.page.$('#settings a[href="app.html?open=settings"]')) && !!(await r.page.$('#settings [data-a="icadd"]')));
   await r.page.click('[data-a="vsedit"]'); await r.page.waitForSelector('#vs-villa_name');
   check('modifier la villa : champs pré-remplis depuis la base', (await r.page.inputValue('#vs-villa_name')) === 'Riad Zina' && (await r.page.inputValue('#vs-city')) === 'Marrakech, Maroc' && (await r.page.inputValue('#vs-bedrooms')) === '4');
   await r.page.fill('#vs-bedrooms', '4.5'); await r.page.click('[data-a="vssave"]'); await r.page.waitForTimeout(100);
@@ -829,7 +835,7 @@ await r.ctx.close();
   r = await open({ villa: { ...V, wa_connect_enabled: true } });
   await r.page.waitForTimeout(200);
   const esrc = fs.readFileSync(path.join(root, 'espace.html'), 'utf8');
-  check('compte ouvert (villa_settings.wa_connect_enabled) : « Relier » avec les identifiants publiés de l’app Meta de Stafflo, SDK pas chargé', !!(await r.page.$('#settings [data-a="waconnect"]')) && !r.reads.some((x) => x.kind === 'fbsdk') && /appId: '4788920158094935', configId: '2570136620077692'/.test(esrc) && /wa_connect_enabled&order=/.test(esrc));
+  check('compte ouvert (villa_settings.wa_connect_enabled) : « Relier » avec les identifiants publiés de l’app Meta de Stafflo, SDK pas chargé', !!(await r.page.$('#settings [data-a="waconnect"]')) && !r.reads.some((x) => x.kind === 'fbsdk') && /appId: '4788920158094935', configId: '2570136620077692'/.test(esrc) && /wa_connect_enabled[,&]/.test(esrc));
   await r.ctx.close();
   r = await open({ villa: V, waMeta: { appId: '123456', configId: '654321' } });
   await r.page.waitForTimeout(200);
@@ -1075,6 +1081,77 @@ await r.ctx.close();
   const b2 = (r.calls.filter((x) => x.kind === 'ai').pop() || {}).body || {};
   check('export ajouté : avis réécrit avec la discussion (client et hôte nommés), rien d’écrit en base', /left everything tidy/.test(await r.page.inputValue('#tx-r1')) && /\] Guest : We left the keys on the table/.test(b2.user || '') && /\] Nadia : Welcome Anna!/.test(b2.user || '') &&
     /ARIA a lu 2 messages Airbnb et 3 messages WhatsApp/.test(await r.page.innerText('#pa-r1')) && !r.calls.some((x) => x.kind === 'stay' || x.kind === 'insert') && !r.errs.length, { user: (b2.user || '').slice(-400), errs: r.errs });
+  await r.ctx.close();
+}
+
+// ── 5 sexdecies. Calendriers iCal (17/10/2026) : liens sur le compte, lus par le serveur, jamais un séjour sans geste ──
+{
+  const isoD = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null, ical_feeds: [] };
+  r = await open({ villa: V });
+  await r.page.waitForSelector('#settings');
+  let st = await r.page.innerText('#settings');
+  check('Réglages : plus de renvoi vers l’ancienne version pour iCal ; « Aucun calendrier relié » et « Ajouter un calendrier »', /Aucun calendrier relié/.test(st) && !!(await r.page.$('#settings [data-a="icadd"]')) && !(await r.page.$('#settings a[href="app.html?open=settings"]')) && /Ancienne version \(prix\)/.test(st), st.slice(0, 600));
+  await r.page.click('#settings [data-a="icadd"]'); await r.page.waitForSelector('#ic-url');
+  await r.page.fill('#ic-url', 'https://evil.example.com/cal.ics'); await r.page.click('[data-a="icsave"]'); await r.page.waitForTimeout(100);
+  check('lien d’un autre site refusé avant tout envoi (liste fermée de plateformes)', /Lien non reconnu/.test(await r.page.innerText('#settings')) && !r.calls.some((c) => c.kind === 'PATCH') && (await r.page.inputValue('#ic-url')) === 'https://evil.example.com/cal.ics');
+  await r.page.fill('#ic-url', 'webcal://www.airbnb.fr/calendar/ical/123.ics?s=SECRET'); await r.page.fill('#ic-label', ''); await r.page.click('[data-a="icsave"]'); await r.page.waitForTimeout(500);
+  const pv = r.calls.filter((c) => c.kind === 'PATCH').pop(), f0 = pv && pv.body.ical_feeds && pv.body.ical_feeds[0];
+  check('relier : écrit sur SA ligne (owner_id) seulement ical_feeds — lien en https, nom déduit (Airbnb), id ; puis lecture serveur avec la session',
+    !!pv && /owner_id=eq\./.test(pv.url) && Object.keys(pv.body).join() === 'ical_feeds' && pv.body.ical_feeds.length === 1 && f0.url === 'https://www.airbnb.fr/calendar/ical/123.ics?s=SECRET' && f0.label === 'Airbnb' && /^f[a-z0-9]+$/.test(f0.id) &&
+    r.calls.some((c) => c.kind === 'icsync' && c.auth === 'Bearer tok') && !r.errs.length, { pv, errs: r.errs });
+  st = await r.page.innerText('#settings');
+  check('le lien (son jeton) n’est jamais affiché : seulement le nom et la plateforme', /1 calendrier relié/.test(st) && !/SECRET|calendar\/ical/.test(st), st.slice(0, 500));
+  await r.page.click('#settings [data-a="icadd"]'); await r.page.fill('#ic-url', 'https://www.airbnb.fr/calendar/ical/123.ics?s=SECRET'); await r.page.click('[data-a="icsave"]'); await r.page.waitForTimeout(100);
+  check('le même calendrier deux fois → refusé', /déjà relié/.test(await r.page.innerText('#settings')) && r.calls.filter((c) => c.kind === 'PATCH').length === 1);
+  await r.ctx.close();
+
+  // Un compte avec deux calendriers : nuits prises hachurées, réservation sans séjour signalée, une couverte par un séjour (même code)
+  const FEEDS = [{ id: 'fa', label: 'Airbnb', url: 'https://www.airbnb.com/calendar/ical/1.ics?s=x' }, { id: 'fb', label: 'Booking.com', url: 'https://admin.booking.com/ical.html?t=y' }];
+  const EV = [
+    { id: 'e1', feed_id: 'fa', start_date: isoD(3), end_date: isoD(6), kind: 'reserved', code: 'HMTEST0012', label: 'Airbnb', hidden_at: null },
+    { id: 'e2', feed_id: 'fa', start_date: isoD(9), end_date: isoD(12), kind: 'reserved', code: 'HMTEST0099', label: 'Airbnb', hidden_at: null },
+    { id: 'e3', feed_id: 'fb', start_date: isoD(1), end_date: isoD(2), kind: 'blocked', code: null, label: 'Booking.com', hidden_at: null },
+    { id: 'e4', feed_id: 'gone', start_date: isoD(14), end_date: isoD(16), kind: 'reserved', code: null, label: 'Ancien', hidden_at: null }];
+  const SS = [{ id: 'z1', name: 'Léa Martin', arrival: isoD(9), departure: isoD(12), adults: 2, booking_status: 'confirmed', source: 'Airbnb', details: { reservation_code: 'HMTEST0099' } }];
+  const RUN = [{ finished_at: new Date(Date.now() - 20 * 60000).toISOString(), ok: false, stats: { errors: [{ feed: 'fb', error: 'upstream_404' }] } }];
+  r = await open({ tab: 'jour', villa: { ...V, ical_feeds: FEEDS }, stays: SS.map((x) => ({ ...x })), ical: EV, icalRun: RUN });
+  await r.page.waitForTimeout(300);
+  let tj = await txt(r.page);
+  check('Jour : « réservations sans séjour » — la réservation Airbnb sans séjour (dates, nuits, code), pas celle couverte par le séjour de Léa, pas un blocage, pas un calendrier retiré',
+    /Calendriers : réservations sans séjour/i.test(tj) && /Airbnb · .+ → .+ · 3 nuits · HMTEST0012/.test(tj) && !/HMTEST0099/.test(tj) && !/Ancien/.test(tj) && (await r.page.$$('[data-a="icnew"]')).length === 1, tj.slice(0, 900));
+  check('l’Espace lit les calendriers en base (dates seulement, non disparues)', r.reads.some((x) => x.kind === 'icget' && /gone_at=is\.null/.test(x.url) && /select=id,feed_id,start_date,end_date,kind,code,label,hidden_at/.test(x.url)));
+  await r.page.click('[data-a="icnew"][data-v="e1"]'); await r.page.waitForSelector('#ns-name');
+  check('« Créer le séjour » : formulaire avec les dates et la source remplies, le nom à saisir', (await r.page.inputValue('#ns-arr')) === isoD(3) && (await r.page.inputValue('#ns-dep')) === isoD(6) && (await r.page.inputValue('#ns-source')) === 'Airbnb' && (await r.page.inputValue('#ns-name')) === '');
+  check('rien n’est créé tant que le propriétaire n’a pas enregistré', !r.calls.some((c) => c.kind === 'insert'));
+  await r.page.fill('#ns-name', 'Tom Durand'); await r.page.click('[data-a="nssave"]'); await r.page.waitForTimeout(500);
+  const ins = r.calls.find((c) => c.kind === 'insert');
+  check('enregistré : séjour Airbnb aux dates du calendrier, rattaché par son code (reservation_code)', !!ins && ins.body.arrival === isoD(3) && ins.body.departure === isoD(6) && ins.body.source === 'Airbnb' && ins.body.details.reservation_code === 'HMTEST0012' && ins.body.name === 'Tom Durand', ins && ins.body);
+  await r.ctx.close();
+  r = await open({ tab: 'jour', villa: { ...V, ical_feeds: FEEDS }, stays: SS.map((x) => ({ ...x })), ical: EV, icalRun: RUN });
+  await r.page.waitForTimeout(300);
+  await r.page.click('[data-a="ichide"][data-v="e1"]'); await r.page.waitForTimeout(300);
+  const hp = r.calls.find((c) => c.kind === 'icpatch');
+  check('« Masquer » : seulement hidden_at sur cet événement, carte vidée', !!hp && /ical_events\?id=eq\.e1/.test(hp.url) && Object.keys(hp.body).join() === 'hidden_at' && !/réservations sans séjour/i.test(await txt(r.page)), hp);
+  await r.ctx.close();
+  // Calendrier : nuits prises par un calendrier relié, hachurées, pas comptées libres
+  r = await open({ tab: 'sejours', villa: { ...V, ical_feeds: FEEDS }, stays: SS.map((x) => ({ ...x })), ical: EV, icalRun: RUN });
+  await r.page.waitForTimeout(300);
+  const extDays = await r.page.$$eval('.cal .d.ext', (ds) => ds.map((d) => d.getAttribute('title')));
+  const inMonth = (d) => new Date(Date.now() + d * 86400000).getMonth() === new Date().getMonth();
+  const want = [1, 3, 4, 5].filter(inMonth).length;
+  check('calendrier : nuits du calendrier relié sans séjour hachurées (Airbnb réservé, Booking bloqué), légende « calendrier relié »', extDays.length === want && (want === 0 || extDays.some((x) => /Airbnb · réservé|Booking\.com · bloqué/.test(x))) && (want === 0 || /calendrier relié/.test(await txt(r.page))), { extDays, want });
+  await r.ctx.close();
+  // Réglages : état de la lecture, calendrier illisible signalé, retirer, lire maintenant
+  r = await open({ villa: { ...V, ical_feeds: FEEDS }, ical: EV, icalRun: RUN });
+  await r.page.waitForSelector('#settings');
+  st = await r.page.innerText('#settings');
+  check('Réglages : « 2 calendriers reliés · lus il y a 20 min », Booking.com signalé illisible', /2 calendriers reliés · lus il y a 20 min · un calendrier n’a pas pu être lu/.test(st) && /Booking\.com\s*· illisible/.test(st) && !/Booking\.com\s*· Booking\.com/.test(st), st.slice(0, 700));
+  await r.page.click('#settings [data-a="icsync"]'); await r.page.waitForTimeout(400);
+  check('« Lire maintenant » : la fonction serveur avec la session, puis rechargement', r.calls.filter((c) => c.kind === 'icsync').length === 1 && r.reads.filter((x) => x.kind === 'icget').length >= 2);
+  await r.page.click('#settings [data-a="icdel"][data-v="fb"]'); await r.page.waitForTimeout(400);
+  const dp = r.calls.filter((c) => c.kind === 'PATCH').pop();
+  check('« Retirer » : la liste sans ce calendrier, rien d’autre', !!dp && JSON.stringify(dp.body) === JSON.stringify({ ical_feeds: [FEEDS[0]] }) && /1 calendrier relié/.test(await r.page.innerText('#settings')) && !r.errs.length, { dp, errs: r.errs });
   await r.ctx.close();
 }
 
