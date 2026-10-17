@@ -13,7 +13,7 @@
 //
 // Données minimales, en lecture seule : prénom + initiale, dates, nombre de
 // personnes, et trois champs écrits POUR l'équipe dans l'Espace
-// (details.arrival_time, details.beds, details.staff_note) + les repas, + les extras
+// (details.arrival_time, details.beds, details.staff_note ; depuis le 17/10/2026 details.departure_time et details.drinks) + les repas, + les extras
 // commandés par le client dans son livret (quoi et combien, sans prix).
 // Jamais : prix, versements, notes du propriétaire, téléphone, email,
 // nationalité, code de réservation. Les demandes (leads) n'apparaissent pas.
@@ -40,8 +40,16 @@ type Row = Record<string, any>;
 export type StaffStay = {
   id: string; name: string; a: string; d: string; nights: number;
   adults: number | null; children: number | null; infants: number | null; pax: number | null;
-  arrival_time: string; beds: string; meals: string; note: string; extras: string; same_day: boolean;
+  arrival_time: string; departure_time: string; beds: string; meals: string; drinks: string; note: string; extras: string; same_day: boolean;
 };
+// Heure tirée de WhatsApp (17/10/2026, même règle que les briefs de l'Espace, teamTxt) : « « - nous atterrissons à
+// 14h. » (WhatsApp, lun. 5 oct. 18:26) » → « « nous atterrissons à 14h » ». Le moment du message ne reste que pour
+// une heure relative (« in about 1hr15 »), qui ne veut rien dire sans lui.
+const REL = /\b(?:in|within|dans|d['’]ici)\s+(?:about\s+|around\s+|approx\.?\s+|environ\s+|à peu près\s+|moins d['’]\s*)?\d/i;
+export function teamTxt(v: string): string {
+  const s = String(v || "").replace(/«\s*[-–•*·]\s*/g, "« ").replace(/\s*\.\s*»/g, " »");
+  return s.replace(/\s*\(WhatsApp, ([^)]*)\)/g, (_all, w) => (REL.test(s) ? " (message du " + w + ")" : "")).trim();
+}
 // Même liste que l'Espace (espace.html, FIRM_OUT) : l'équipe voit les séjours que voit le propriétaire.
 const FIRM_OUT = ["inquiry", "lead", "quoted", "declined", "cancelled", "canceled"];
 
@@ -107,8 +115,8 @@ export function staffView(rows: Row[], todayIso: string): StaffStay[] {
       return {
         id: String(c.id || ""), name: shortName(c.name), a: iso(a), d: iso(d), nights: d - a,
         adults, children, infants, pax: pax || null,
-        arrival_time: txt(det.arrival_time, 120), beds: txt(det.beds, 300),
-        meals: txt(c.meals, 600), note: txt(det.staff_note, 600),
+        arrival_time: teamTxt(txt(det.arrival_time, 300)), departure_time: teamTxt(txt(det.departure_time, 300)), beds: txt(det.beds, 300),
+        meals: txt(c.meals, 600), drinks: txt(det.drinks, 600), note: txt(det.staff_note, 600),
         // Extras commandés par le client dans son livret (transfert, massage…) : quoi et combien, jamais le prix.
         extras: extrasLine(det.guest_orders),
         same_day: departures.has(a),

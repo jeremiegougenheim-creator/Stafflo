@@ -102,8 +102,8 @@ check('accès équipe : jeton aléatoire 32 octets, seule l’empreinte sha-256 
 check('accès équipe : retirer = suppression douce', /staff_links\?id=eq\.[\s\S]{0,200}deleted_at/.test(script));
 check('accès équipe : liens retirés non listés', /staff_links\?select=[^']*deleted_at=is\.null/.test(script));
 check('accès équipe : personnes de la fiche maison (pilote) ou de la table staff du compte', /function teamNames\(\) \{ return teamList\(\)/.test(script) && /HAS_FACTS \? F\.TEAM\.filter/.test(script) && /\(D\.staff \|\| \[\]\)/.test(script));
-check('champs équipe : fusion dans details, rien d’autre écrasé', /var nd = Object\.assign\(\{\}, c\.details\)/.test(script) && /\['arrival', 'arrival_time'\], \['beds', 'beds'\], \['staffnote', 'staff_note'\]/.test(script));
-check('brief équipe : la consigne remplace les notes privées', /if \(sn\) lines\.push\('Consigne : '/.test(script) && /else if \(notes\) lines\.push\('Notes : '/.test(script));
+check('champs équipe : fusion dans details, rien d’autre écrasé', /var nd = Object\.assign\(\{\}, c\.details\)/.test(script) && /\['arrival', 'arrival_time'\], \['departure', 'departure_time'\], \['drinks', 'drinks'\], \['beds', 'beds'\], \['staffnote', 'staff_note'\]/.test(script));
+check('brief équipe : la consigne, jamais les notes privées du propriétaire', /if \(sn\) lines\.push\('Consigne : '/.test(script) && !/lines\.push\('Notes : '/.test(script));
 // v8 — ARIA identifiée : le jeton de session part avec chaque appel ai-proxy
 check('ARIA : jeton de session envoyé à ai-proxy (quota et journal par propriétaire)', /function aiPost\(payload\)/.test(script) && /h\.Authorization = 'Bearer ' \+ s\.access_token/.test(script) && !/fetch\(PROXY, \{ method: 'POST', headers: \{ 'Content-Type': 'application\/json' \}/.test(script));
 // v9 — multi-villa : chaque compte voit SA villa, jamais celle du pilote

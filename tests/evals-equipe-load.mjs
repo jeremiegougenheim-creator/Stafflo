@@ -24,7 +24,7 @@ const browser = await chromium.launch();
 const K = 'K'.repeat(43);
 const iso = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
 const DATA = { name: 'Saïd', lang: 'fr', today: iso(0), at: new Date().toISOString(), reports: [], stays: [
-  { id: 's-now', name: 'Felipe V.', a: iso(-2), d: iso(1), nights: 3, adults: 7, children: null, infants: null, pax: 7, arrival_time: '', beds: '', meals: '', note: '', same_day: false },
+  { id: 's-now', name: 'Felipe V.', a: iso(-2), d: iso(1), nights: 3, adults: 7, children: null, infants: null, pax: 7, arrival_time: '', departure_time: 'vol retour 9h, départ de la villa 6h30', beds: '', meals: '', drinks: 'Eau plate (12 bouteilles), 12 bières', note: '', same_day: false },
   { id: 's-next', name: 'Thibaut V.', a: iso(4), d: iso(8), nights: 4, adults: 10, children: null, infants: null, pax: 10, arrival_time: 'vers 15h30', beds: '4 couples + 2 personnes seules', meals: '', note: '', extras: '1 × Transfert aéroport', same_day: false },
 ] };
 
@@ -62,6 +62,7 @@ check('« Chambres prêtes » sur l’arrivée à venir, pas sur le séjour déj
 check('« Signaler un problème » en bas, texte libre', /Signaler un problème/.test(txt) && !!(await r.page.$('#issueTxt')));
 check('rien de nouveau ne fuit : aucun prix, téléphone ni note du propriétaire', !/€|MAD|\+212|\+33|Notes/.test(txt));
 check('extras commandés par le client : « Commandé par le client · 1 × Transfert aéroport », sans prix', /Commandé par le client\s*1 × Transfert aéroport/.test(txt));
+check('heure de départ et boissons (17/10) : affichées quand elles sont connues, jamais « ? » sinon', /Heure de départ\s*vol retour 9h, départ de la villa 6h30/.test(txt) && /Boissons\s*Eau plate \(12 bouteilles\), 12 bières/.test(txt) && (txt.match(/Heure de départ/g) || []).length === 1 && (txt.match(/Boissons/g) || []).length === 1, txt.slice(0, 600));
 await r.page.click('[data-a="ready"]'); await r.page.waitForTimeout(300);
 const t2 = await r.page.evaluate(() => document.getElementById('app').innerText);
 check('un geste → envoi { k, action: report, kind: rooms_ready, client_id } et rien d’autre', r.posts.length === 1 && r.posts[0].k === K && r.posts[0].action === 'report' && r.posts[0].kind === 'rooms_ready' && r.posts[0].client_id === 's-next' && r.posts[0].text === null && Object.keys(r.posts[0]).sort().join() === 'action,client_id,k,kind,text');

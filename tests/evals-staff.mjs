@@ -56,13 +56,16 @@ check('séjour terminé hier exclu, départ du jour inclus', !names.includes('Pa
 check('au-delà de 30 jours exclu', !names.includes('Trop L.'), names);
 check('dates incohérentes exclues', !names.includes('Dates F.'), names);
 check('ordre par arrivée', names.join('|') === 'Part A.|Tomas H.|Arnaud D.|Rotation J.|Seán', names.join('|'));
-const KEYS = ['id', 'name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'beds', 'meals', 'note', 'extras', 'same_day'];
+const KEYS = ['id', 'name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'departure_time', 'beds', 'meals', 'drinks', 'note', 'extras', 'same_day'];
 check('champs exactement ceux prévus (aucun prix, note, téléphone, email, code)', V.every((s) => Object.keys(s).join(',') === KEYS.join(',')), Object.keys(V[0]).join(','));
 const flat = JSON.stringify(V);
 for (const bad of ['1298', 'TARIFS', '+44', 'f@x.com', 'Royaume', 'HMX', 'privé', 'Herrera'])
   check(`rien ne fuit : « ${bad} »`, !flat.includes(bad));
 const f = V.find((s) => s.name === 'Tomas H.');
 check('champs équipe lus dans details', f.arrival_time === 'Vol AT801 · 15h20' && f.beds === '3 couples + 1 seul' && f.note === 'Mariage : prévoir des fleurs');
+check('heure tirée de WhatsApp nettoyée pour l’équipe : tiret et point retirés, moment du message gardé seulement pour une heure relative',
+  M.teamTxt('« - nous atterrissons à 14h à Marrakech. » (WhatsApp, lun. 5 oct. 18:26)') === '« nous atterrissons à 14h à Marrakech »' &&
+  M.teamTxt('« hoping to arrive in about 1hr15 » (WhatsApp, sam. 17 oct. 14:05)') === '« hoping to arrive in about 1hr15 » (message du sam. 17 oct. 14:05)' && M.teamTxt('15h30') === '15h30');
 check('repas nettoyés', f.meals === 'Dîner du 13 : tajine');
 check('extras commandés par le client : quoi et combien, jamais le prix ni les repas (déjà dans « repas »)', M.extrasLine({ items: [{ kind: 'meal', n: ['Dîner'], q: 2, unit: 850 }, { kind: 'extra', n: ['Transfert aéroport', 'Airport transfer'], q: 1, unit: 400, sub: 400 }, { kind: 'extra', n: ['Massage'], q: 2, unit: 600 }] }) === '1 × Transfert aéroport · 2 × Massage' && M.extrasLine(null) === '' && M.extrasLine({ items: 'x' }) === '' && !/400|600|MAD/.test(M.extrasLine({ items: [{ kind: 'extra', n: ['Transfert'], q: 1, unit: 400 }] })));
 check('nuits calculées', f.nights === 3 && V.find((s) => s.name === 'Seán').nights === 7);

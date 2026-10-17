@@ -608,10 +608,16 @@ await r.ctx.close();
     check('repas copiés : toute la commande — mercredi soir, desserts, jeudi midi, « kebabs & frites » — sans l’introduction ni la phrase coupée',
       /^Pour le mercredi soir, .* tajine de Kefta .* En dessert: assortiment de pâtisseries marocaines\. Pour le jeudi midi: pas d’entrées\. Nous voudrions tous des kebabs marocains & frites\. En dessert, pastilla au lait\.$/.test(mv) && !/Nous venons|J’imagine/.test(mv), vals);
     check('« Read more » : messages coupés comptés et signalés (export conseillé), « Read more » absent du texte', /3 messages coupés par WhatsApp/.test(await r.page.innerText('#st-w1')) && !vals.some((v) => /Read more/.test(v)));
-    check('boissons et virement ne sont pas des repas ; la question sur le massage n’est pas une demande', !vals.some((v) => /bières|virement|massage/.test(v)));
+    check('boissons et virement ne sont pas des repas ; la question sur le massage n’est pas une demande', !/bières|boissons/.test(mv) && !vals.some((v) => /virement|massage/.test(v)));
+    const kinds = await r.page.$$eval('#st-w1 .wa-p', (ps) => ps.map((p) => p.querySelector('b').innerText + '=' + (p.querySelector('[id^="wa-v-"]') || {}).value));
+    const depV = (kinds.find((x) => /^Départ=/.test(x)) || '').slice(7), drV = (kinds.find((x) => /^Boissons=/.test(x)) || '').slice(9);
+    check('départ (17/10) : « vol retour à 9h » et « on partira (6h30) » cités tels quels — une heure dite, donc pas la date du message ; pas pris pour l’arrivée',
+      depV === '« Notre vol retour est à 9h vendredi. On partira donc très tôt de la villa (6h30) »' && !kinds.some((x) => /^Arrivée=/.test(x)), kinds);
+    check('boissons (17/10) : la liste entière en une proposition', drV === 'Pour les boissons on aura besoin : Eau plate (12 bouteilles), 12 bières', kinds);
     await r.page.click('[data-a="waapply"][data-id="w1"]'); await r.page.waitForTimeout(400);
     const rp = r.calls.filter((x) => x.kind === 'stay').pop();
     check('réimport : la version complète des repas remplace l’ancienne (pas de doublon), note déjà présente pas recopiée', !!rp && rp.body.meals === mv && rp.body.notes === undefined && !r.errs.length, rp && { meals: rp.body.meals, notes: rp.body.notes, errs: r.errs });
+    check('enregistrer : heure de départ et boissons dans le séjour (champs de l’équipe)', !!rp && rp.body.details.departure_time === depV && rp.body.details.drinks === drV, rp && rp.body.details);
     await r.ctx.close();
   }
   // Android, .zip avec média ; vol et heure ; adultes + enfants
@@ -630,6 +636,7 @@ await r.ctx.close();
   const AND = [`${dmy(-5)}, 10:00 - Messages and calls are end-to-end encrypted. No one outside of this chat can read them.`,
     `${dmy(-5)}, 10:01 - Ana Ruiz: Hello! We will be 6 people including 2 kids, flight AT801 landing at 16:40`,
     `${dmy(-5)}, 10:02 - Ana Ruiz: For dinner on the first night we would love the tajine.`,
+    `${dmy(-5)}, 10:02 - Ana Ruiz: Our return flight is AT802 on Sunday at 18:05.`,
     `${dmy(-5)}, 10:03 - Ana Ruiz: IMG-20261009-WA0001.jpg (file attached)`].join('\n');
   const Z = mkzip([{ name: 'WhatsApp Chat with Ana Ruiz.txt', data: AND, deflate: true }, { name: 'IMG-20261009-WA0001.jpg', data: 'xx', deflate: false }]);
   r = await open({ tab: 'sejours', villa: V, stays: [{ ...S[0], notes: null }] });
@@ -638,8 +645,9 @@ await r.ctx.close();
   await r.page.setInputFiles('#st-w1 input[data-file="wa"]', { name: 'WhatsApp Chat with Ana Ruiz.zip', mimeType: 'application/zip', buffer: Z });
   await r.page.waitForSelector('#wa-ad-w1-0', { timeout: 4000 }).catch(() => {});
   tw = await r.page.innerText('#st-w1');
-  check('export Android (.zip, deflate) : lu sur l’appareil, message système ignoré, 1 média non importé', /3 messages/.test(tw) && /1 photo ou document non importé/.test(tw) && !/end-to-end/.test(tw.split('Voir les')[0]), tw.slice(0, 500));
-  check('« 6 people including 2 kids » → 4 adultes + 2 enfants ; vol AT801 et heure dans l’arrivée ; dîner proposé en repas', (await r.page.inputValue('#wa-ad-w1-0')) === '4' && (await r.page.inputValue('#wa-ch-w1-0')) === '2' && /^Vol AT801 · « flight AT801 landing at 16:40 »/.test(await r.page.inputValue('#wa-v-w1-1')) && /tajine/.test(await r.page.inputValue('#wa-v-w1-2')));
+  check('export Android (.zip, deflate) : lu sur l’appareil, message système ignoré, 1 média non importé', /4 messages/.test(tw) && /1 photo ou document non importé/.test(tw) && !/end-to-end/.test(tw.split('Voir les')[0]), tw.slice(0, 500));
+  check('« 6 people including 2 kids » → 4 adultes + 2 enfants ; vol AT801 et heure dans l’arrivée ; dîner proposé en repas', (await r.page.inputValue('#wa-ad-w1-0')) === '4' && (await r.page.inputValue('#wa-ch-w1-0')) === '2' && /^Vol AT801 · « flight AT801 landing at 16:40 »/.test(await r.page.inputValue('#wa-v-w1-1')) && /tajine/.test(await r.page.inputValue('#wa-v-w1-3')));
+  check('vol retour : AT802 proposé en départ, jamais pris pour le vol d’arrivée', (await r.page.inputValue('#wa-v-w1-2')) === 'Vol AT802 · « Our return flight is AT802 on Sunday at 18:05 »' && !/AT802/.test(await r.page.inputValue('#wa-v-w1-1')), await r.page.inputValue('#wa-v-w1-2'));
   await r.ctx.close();
   // Format US (mois/jour, AM/PM) ; contact enregistré sous son numéro : le propriétaire désigne le client
   const x0 = new Date(Date.now() - 2 * 86400000), us = (x0.getUTCMonth() + 1) + '/' + x0.getUTCDate() + '/' + String(x0.getUTCFullYear()).slice(2);
@@ -903,9 +911,27 @@ await r.ctx.close();
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bt = await r.page.inputValue('#tx-k1');
   check('brief maison : pour le majordome et le ménage, jamais le prestataire repas ; couchages et contact client gardés',
-    /^Brief Felipe Villalobos — pour Saïd, Bouchra$/m.test(bt) && !/Léa/.test(bt) && /Contact client : \+44 7700 900123/.test(bt) && /Chambres : à préparer/.test(bt) &&
+    /^Brief Felipe Villalobos — pour Saïd, Bouchra$/m.test(bt) && !/Léa/.test(bt) && /Contact client : \+44 7700 900123/.test(bt) && /^Couchages : à confirmer$/m.test(bt) &&
     /Envoyer à Saïd/.test(await r.page.innerText('#st-k1')), bt);
   await r.ctx.close();
+  // 17/10/2026 — briefs nettoyés (brief de Thibaut) : l'heure dite par le client sur la ligne Arrivée, sans « (WhatsApp, date) »
+  // ni tiret ; départ et boissons ; « 10 adultes » ; pas de nuits, pas de « à demander au client », jamais les notes privées.
+  {
+    const SC = [{ ...ST[0], adults: 10, children: 0, phone: '+33615185187', notes: 'TARIFS APPLICABLES 850 MAD — privé', meals: '',
+      details: { arrival_time: '« - nous atterrissons à 14h à Marrakech. » (WhatsApp, lun. 5 oct. 18:26)', departure_time: '« Notre vol retour est à 9h vendredi. On partira donc très tôt de la villa (6h30) »', drinks: 'Eau plate (12 bouteilles), 12 bières' } }];
+    r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, stays: SC });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+    const bc = await r.page.inputValue('#tx-k1');
+    check('brief maison nettoyé : arrivée avec la phrase du client (sans tiret, point ni « WhatsApp, date »), départ avec son heure, « Groupe : 10 adultes », couchages et repas sans consigne au propriétaire, boissons',
+      /^Arrivée : .+ — « nous atterrissons à 14h à Marrakech »( · chambres prêtes [^\n]+)?$/m.test(bc) && /^Départ : .+ — « Notre vol retour est à 9h vendredi\. On partira donc très tôt de la villa \(6h30\) »$/m.test(bc) &&
+      /^Groupe : 10 adultes$/m.test(bc) && /^Couchages : à confirmer$/m.test(bc) && /^Repas : pas encore reçus$/m.test(bc) && /^Boissons : Eau plate \(12 bouteilles\), 12 bières$/m.test(bc) &&
+      !/WhatsApp,|nuits|à demander|Heure d’arrivée|TARIFS|850|privé/.test(bc) && /^Contact client : \+33615185187$/m.test(bc), bc);
+    await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+    const kc = await r.page.inputValue('#tx-k1');
+    check('brief prestataire nettoyé : mêmes heures, « Couverts : 10 adultes », pas de boissons ni de téléphone', /^Arrivée : .+ — « nous atterrissons à 14h à Marrakech »$/m.test(kc) && /^Départ : .+\(6h30\) »$/m.test(kc) && /^Couverts : 10 adultes$/m.test(kc) && !/Boissons|WhatsApp,|nuits|33615185187|TARIFS/.test(kc) && !r.errs.length, kc);
+    await r.ctx.close();
+  }
   // Deux séjours qui s'enchaînent : les deux briefs disent de combien de temps dispose l'équipe
   r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF },
     stays: ST.concat([{ id: 'k2', name: 'Thibaut Vauclare', arrival: iso(5), departure: iso(9), adults: 10, booking_status: 'confirmed', source: 'Airbnb', details: { arrival_time: '15h30' } },
