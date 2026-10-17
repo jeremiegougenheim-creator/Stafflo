@@ -67,6 +67,25 @@ check('message de départ tiré de la fiche maison (pas de texte figé)', /funct
 check('pas de lookbehind regex (Safari iOS < 16.4)', !/\(\?<[=!]/.test(script));
 check('avis Airbnb : fenêtre de 14 jours, jamais pour un séjour offert', /return c\.d \+ 14;/.test(script) && /!c\.is_comp && !c\.details\.reviewDoneAt/.test(script));
 check('avis hôte ARIA : 3e personne, jamais « X’s group », rien d’inventé', /N’écris jamais « ' \+ firstName\(c\) \+ '’s group »/.test(script) && /N’invente aucun détail/.test(script));
+// 17/10/2026 — l'avis parlait de la villa (jardin, chambres, transferts, repas) au lieu des voyageurs.
+{
+  const rd = fnSource(script, 'reviewDraft') || '', rc = fnSource(script, 'reviewConvo') || '';
+  check('avis hôte : son propre cadre, sans la fiche maison ni les autres séjours (plus d’ariaSystem)', /system: sys,/.test(rd) && !/ariaSystem\(\)/.test(rd));
+  check('avis hôte : sur les voyageurs, jamais une annonce pour la villa', /Ne décris jamais la maison, les chambres, le jardin, l’équipe, les repas, les transferts/.test(rd) && /Never describe the house, rooms, garden, team, meals, transfers/.test(rd));
+  check('avis hôte : lit toute la conversation (Airbnb archivés compris, WhatsApp relié, export de cet appareil)', /email_inbox\?select=received_at,extracted&client_id=eq\./.test(rc) && !/archived_at/.test(rc) && /WL\.byStay\[c\.id\]/.test(rc) && /WA\[c\.id\]/.test(rc) && /c\.details\.guest_message/.test(rc));
+  check('avis hôte : les lignes de prix des notes ne partent pas', /!RV_PRICE\.test\(x\)/.test(rd));
+  check('avis hôte : texte brut (plainReview) et ce qu’ARIA a lu affiché', /plainReview\(x\.d\.text\)/.test(rd) && /l\.rvRead\(dr\.a, dr\.w\)/.test(script));
+  check('avis hôte : discussion WhatsApp privée ajoutable, puis réécriture', /data-file="rvwa"/.test(script) && /kind === 'rvwa'\) waFile\(c, file, function/.test(script) && /a === 'rvre'/.test(script));
+  const m = /var RV_PRICE = (\/.*\/i);/.exec(script);
+  const rx = m ? vm.runInNewContext(m[1]) : null;
+  const priced = ['TARIFS APPLICABLES : repas 850 MAD par repas', 'Van 600 MAD par trajet', 'Avance de 300 €', 'Payé €2 334', 'Pas d’extra guest fee'];
+  const kept = ['OCCASION : ils se marient à Marrakech', 'GROUPE : 7 adultes, Royaume-Uni', 'Arrivée vers 19h30, vol AT 800'];
+  check('avis hôte : RV_PRICE retire les prix, garde le reste', !!rx && priced.every((x) => rx.test(x)) && kept.every((x) => !rx.test(x)), rx ? priced.filter((x) => !rx.test(x)).concat(kept.filter((x) => rx.test(x))).join(' | ') : 'RV_PRICE introuvable');
+  const ctx = {}; vm.createContext(ctx); vm.runInContext((fnSource(script, 'plainReview') || '') + '\nthis.f = plainReview;', ctx);
+  const pr = ctx.f || (() => '');
+  check('avis hôte : astérisques, « Here is… » et guillemets retirés', pr('**Felipe and their group** were *lovely* guests.') === 'Felipe and their group were lovely guests.' &&
+    pr('Here is a draft:\n\n“Anna and Tom were great.”') === 'Anna and Tom were great.' && pr('Anna and Tom were great.') === 'Anna and Tom were great.');
+}
 check('« À faire » : message de départ et avis', /k: 'depart'/.test(script) && /k: 'review'/.test(script));
 check('logistique des courses lue dans la fiche maison', /MAD de logistique/.test(script) && /function logiUnit\(\)/.test(script));
 check('décompte : avance déduite, équivalent € seulement au taux saisi', /var rest = Math\.max\(0, total - adv\);/.test(script) && /isFinite\(rate\) && rate > 0 \? rate : 0/.test(script));

@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, rvMails = [] } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -58,6 +58,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/inbound_addresses')) return json(inbound);
     if (u.includes('/rest/v1/rpc/inbound_address')) { calls.push({ kind: 'inaddr' }); return json('in-abcdefghij12@stafflo.app'); }
     if (u.includes('/rest/v1/email_inbox') && u.includes('source=eq.email_in')) return json(inMails);
+    if (u.includes('/rest/v1/email_inbox') && u.includes('client_id=eq.')) { reads.push({ kind: 'rvmails', url: decodeURIComponent(u) }); return json(rvMails); }
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
     if (u.includes('/rest/v1/rpc/billing_status')) return json(bill || []);
     if (u.includes('/rest/v1/wa_numbers')) return json(waNum);
@@ -945,6 +946,47 @@ await r.ctx.close();
   check('sans prestataire repas : pas de « Brief prestataire », le brief maison part chez le seul contact', !(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !/Brief prestataire/.test(await r.page.innerText('#st-k1')));
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   check('brief maison : le seul membre de l’équipe est le destinataire', /— pour Omar$/m.test(await r.page.inputValue('#tx-k1')) && /Envoyer à Omar/.test(await r.page.innerText('#st-k1')) && !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
+// ── Avis hôte (17/10/2026) : sur les voyageurs, depuis toute la conversation du séjour — jamais une annonce pour la villa ──
+{
+  const dmy = (d) => { const x = new Date(Date.now() + d * 86400000); return String(x.getUTCDate()).padStart(2, '0') + '/' + String(x.getUTCMonth() + 1).padStart(2, '0') + '/' + x.getUTCFullYear(); };
+  const BOOK = 'Hi! We would love to stay at your home to celebrate our engagement. Anna & Tom';
+  const ST = () => [{ id: 'r1', name: 'Anna Berg', arrival: iso(-6), departure: iso(-3), adults: 4, booking_status: 'confirmed', source: 'Airbnb', phone: '+44 7700 900123', price: 1300,
+    notes: 'OCCASION : ils fêtent leurs fiançailles.\nTARIFS APPLICABLES : repas 850 MAD par repas, van 600 MAD par trajet.', details: { guest_message: BOOK } }];
+  const MAILS = [
+    { received_at: iso(-20) + 'T10:00:00Z', extracted: { airbnb: { type: 'request', guest_message: BOOK + ' [https://www.airbnb.com/hosting/thread/1]' } } },
+    { received_at: iso(-7) + 'T09:00:00Z', extracted: { airbnb: { type: 'message', guest_message: 'We land at 3pm and will text you from the taxi. Anna' } } },
+    { received_at: iso(-2) + 'T09:00:00Z', extracted: { airbnb: { type: 'payout' } } }];
+  const WAM = [{ id: 'wm1', guest_wa: '447700900123', guest_name: 'Anna', direction: 'in', type: 'text', body: 'Thank you so much, we left the keys on the table as asked.', sent_at: iso(-3) + 'T10:30:00Z', client_id: null }];
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: PILOT };
+  r = await open({ tab: 'sejours', villa: V, stays: ST(), rvMails: MAILS, waMsgs: WAM, ai: () => ({ text: 'Here is a draft:\n\n**Anna and Tom** were *lovely* guests.' }) });
+  await r.page.waitForTimeout(250);
+  await r.page.click('#pa-r1 [data-a="rv"][data-v="host"]');
+  await r.page.waitForFunction(() => { const t = document.getElementById('tx-r1'); return t && t.value; }, null, { timeout: 5000 });
+  const call = r.calls.filter((x) => x.kind === 'ai').pop(), b = call ? call.body : {};
+  check('avis hôte : cadre à part — ni fiche maison, ni séjours, ni messages en attente', /^You write the public review an Airbnb host leaves about their guests/.test(b.system || '') && !/UPCOMING AND CURRENT STAYS|SÉJOURS À VENIR|UNHANDLED AIRBNB MESSAGES/.test(b.system || '') && !(b.system || '').includes(PILOT.VILLA.name), (b.system || '').slice(0, 300));
+  check('avis hôte : toute la conversation — message de réservation (une fois), message Airbnb, WhatsApp relié', (b.user || '').split('celebrate our engagement').length === 2 && /We land at 3pm/.test(b.user || '') && /\[WhatsApp · [^\]]+\] Guest : Thank you so much, we left the keys/.test(b.user || '') && !/airbnb\.com\/hosting/.test(b.user || '') && r.reads.some((x) => x.kind === 'rvmails' && /client_id=eq\.r1/.test(x.url) && !/archived_at/.test(x.url)), (b.user || '').slice(0, 600));
+  check('avis hôte : les notes passent sans leurs lignes de prix', /OCCASION : ils fêtent leurs fiançailles/.test(b.user || '') && !/850 MAD|600 MAD|TARIFS/.test(b.user || ''));
+  const tv = await r.page.inputValue('#tx-r1'), pa = await r.page.innerText('#pa-r1');
+  check('avis hôte : texte brut prêt à coller (ni « Here is », ni astérisques)', tv === 'Anna and Tom were lovely guests.', tv);
+  check('avis hôte : ce qu’ARIA a lu est affiché ; WhatsApp déjà là → pas d’import proposé ; « Réécrire »', /ARIA a lu 2 messages Airbnb et 1 message WhatsApp de ce séjour\./.test(pa) && !(await r.page.$('#pa-r1 input[data-file="rvwa"]')) && !!(await r.page.$('#pa-r1 [data-a="rvre"]')) && !r.errs.length, { pa, errs: r.errs });
+  await r.page.click('#pa-r1 [data-a="rvre"]'); await r.page.waitForTimeout(300);
+  check('« Réécrire » : un nouvel appel, même conversation', r.calls.filter((x) => x.kind === 'ai').length === 2);
+  await r.ctx.close();
+  // WhatsApp privé : l'export s'ajoute dans le panneau de l'avis, lu sur l'appareil, et l'avis est réécrit avec
+  const EXP = [`[${dmy(-8)}, 18:29:01] Anna Berg: Hi Nadia, sending you on here so you have my number`, `[${dmy(-8)}, 18:40:12] Nadia: Welcome Anna!`, `[${dmy(-3)}, 10:31:00] Anna Berg: We left the keys on the table, thank you for everything`].join('\n');
+  r = await open({ tab: 'sejours', villa: V, stays: ST(), rvMails: MAILS, ai: (bb) => ({ text: /left the keys on the table, thank you/.test(bb.user) ? 'Anna and Tom were great guests and left everything tidy.' : 'Anna and Tom were lovely guests.' }) });
+  await r.page.waitForTimeout(250);
+  await r.page.click('#pa-r1 [data-a="rv"][data-v="host"]');
+  await r.page.waitForSelector('#pa-r1 input[data-file="rvwa"]', { timeout: 5000 });
+  check('sans WhatsApp enregistré : « Ajouter la discussion WhatsApp », lue sur cet appareil', /ARIA a lu 2 messages Airbnb et 0 message WhatsApp/.test(await r.page.innerText('#pa-r1')) && /Ajouter la discussion WhatsApp/.test(await r.page.innerText('#pa-r1')));
+  await r.page.setInputFiles('#pa-r1 input[data-file="rvwa"]', { name: 'WhatsApp Chat with Anna Berg.txt', mimeType: 'text/plain', buffer: Buffer.from(EXP) });
+  await r.page.waitForFunction(() => { const t = document.getElementById('tx-r1'); return t && /left everything tidy/.test(t.value); }, null, { timeout: 5000 }).catch(() => {});
+  const b2 = (r.calls.filter((x) => x.kind === 'ai').pop() || {}).body || {};
+  check('export ajouté : avis réécrit avec la discussion (client et hôte nommés), rien d’écrit en base', /left everything tidy/.test(await r.page.inputValue('#tx-r1')) && /\] Guest : We left the keys on the table/.test(b2.user || '') && /\] Nadia : Welcome Anna!/.test(b2.user || '') &&
+    /ARIA a lu 2 messages Airbnb et 3 messages WhatsApp/.test(await r.page.innerText('#pa-r1')) && !r.calls.some((x) => x.kind === 'stay' || x.kind === 'insert') && !r.errs.length, { user: (b2.user || '').slice(-400), errs: r.errs });
   await r.ctx.close();
 }
 
