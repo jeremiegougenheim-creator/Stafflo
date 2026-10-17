@@ -502,6 +502,17 @@ await r.ctx.close();
   ts = await r.page.innerText('#settings');
   check('Gmail pas relié → « Relier Gmail » ; accès offert → aucun bouton de paiement', /Gmail pas relié/.test(ts) && /Relier Gmail/.test(ts) && /Accès offert/.test(ts) && !(await r.page.$('[data-a="billcheckout"]')) && !(await r.page.$('[data-a="billportal"]')));
   check('Gmail pas relié : « lecture seule » dit ce que Stafflo fait de la boîte', /Lecture seule : Stafflo lit vos emails Airbnb, n’envoie et ne supprime rien/.test(ts));
+  check('essai en cours : rien en tête de Jour', !(await r.page.$('#main [data-a="billcheckout"]')) || !/abonnez-vous/.test(await txt(r.page)));
+  await r.ctx.close();
+  // 17/10 — essai terminé (la base refuse les modifications) : dit en tête de Jour, avant le premier « Enregistrement impossible »
+  r = await open({ tab: 'jour', villa: V, bill: { entitled: false, status: 'trial_expired', trial_ends_at: iso(-2) + 'T10:00:00Z' } });
+  await r.page.waitForTimeout(200);
+  const tj0 = await txt(r.page);
+  check('essai terminé : carte en tête de Jour — « Essai terminé · … abonnez-vous » avec le bouton S’abonner', /^Essai terminé · Vos données restent lisibles/m.test(tj0.replace(/\n/g, ' ').replace(/MISE EN ROUTE.*$/, '')) || /Essai terminé · Vos données restent lisibles ; pour modifier un séjour, la fiche ou envoyer un livret, abonnez-vous\./.test(tj0), tj0.slice(0, 300));
+  check('essai terminé : le bouton S’abonner est dans cette carte, avant « Mise en route »', tj0.indexOf('S’abonner') > -1 && tj0.indexOf('S’abonner') < tj0.indexOf('MISE EN ROUTE'));
+  await r.ctx.close();
+  r = await open({ villa: { ...V, gmail: null }, bill: { entitled: true, status: 'comp' } });
+  await r.page.waitForTimeout(200);
   // Relier Gmail depuis l'Espace : fenêtre Google (lecture seule), retour par la page déjà déclarée, code → gmail-connect
   await r.page.evaluate(() => { window.__opens = []; window.open = (u, n) => { window.__opens.push({ u, n }); return { closed: false }; }; });
   await r.page.click('#settings [data-a="gmconnect"]'); await r.page.waitForTimeout(100);
