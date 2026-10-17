@@ -410,7 +410,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         t: { name: 'Prénom', role: 'Rôle', phone: 'Téléphone (facultatif, jamais montré au client)', brief: 'Reçoit le brief', kitchen: 'Cuisine' },
         r: { t: 'Nom de la chambre', tag: 'Précision (ex. : pavillon indépendant)', bed: 'Lit', bath: 'Salle de bain', d: 'Description' },
         e: { n: 'Extra (ex. : transfert aéroport)', d: 'Description (facultatif)', price: 'Prix', unit: 'Par (ex. : par trajet, par personne)' },
-        m: { n: 'Repas', a: 'Prix groupe 1–6 (MAD, ou « Inclus »)', b: 'Prix groupe 7–10 (MAD)', h: 'Horaires', notes: 'Notes sur les repas (courses, boissons, logistique)', house: 'Préparé par la maison (brief maison, pas le prestataire)' },
+        m: { n: 'Repas', a: 'Prix groupe 1–6 (MAD, ou « Inclus »)', b: 'Prix groupe 7–10 (MAD)', h: 'Horaires', notes: 'Notes sur les repas (courses, boissons, logistique)', house: 'Préparé par la maison jusqu’à 6 personnes (brief maison) — à partir de 7, par le prestataire, sauf le goûter' },
         x: { roomsIntro: 'Présentation des chambres', orderRule: 'Comment commander les repas', mealsIntro: 'Introduction des repas', earlyBrk: 'Petit-déjeuner plus tôt', menuIntro: 'Introduction des menus', menuNote: 'Note sous les menus', kidsBox: 'Avec des enfants' },
         lists: { BREAKFAST: 'Petit-déjeuner', BRUNCH: 'Brunch (sur demande)', GOUTER: 'Goûter', STARTERS: 'Entrées', MAINS: 'Plats', SIMPLE: 'Pour les enfants', DESSERTS: 'Desserts', MEDINA: 'Médina et monuments', GOLF: 'Golf', ACTIVITIES: 'Activités', RESTAURANTS: 'Restaurants', CAFES: 'Cafés' },
         p: { n: 'Nom', d: 'Description', url: 'Site web (facultatif)' },
@@ -557,7 +557,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         t: { name: 'First name', role: 'Role', phone: 'Phone (optional, never shown to guests)', brief: 'Gets the brief', kitchen: 'Kitchen' },
         r: { t: 'Bedroom name', tag: 'Detail (e.g. independent pavilion)', bed: 'Bed', bath: 'Bathroom', d: 'Description' },
         e: { n: 'Extra (e.g. airport transfer)', d: 'Description (optional)', price: 'Price', unit: 'Per (e.g. per trip, per person)' },
-        m: { n: 'Meal', a: 'Price group 1–6 (MAD, or “Included”)', b: 'Price group 7–10 (MAD)', h: 'Times', notes: 'Notes on meals (groceries, drinks, logistics)', house: 'Prepared by the house team (house brief, not the provider)' },
+        m: { n: 'Meal', a: 'Price group 1–6 (MAD, or “Included”)', b: 'Price group 7–10 (MAD)', h: 'Times', notes: 'Notes on meals (groceries, drinks, logistics)', house: 'Prepared by the house team up to 6 guests (house brief) — from 7, by the provider, except afternoon tea' },
         x: { roomsIntro: 'Bedrooms introduction', orderRule: 'How to order meals', mealsIntro: 'Meals introduction', earlyBrk: 'Earlier breakfast', menuIntro: 'Menus introduction', menuNote: 'Note under the menus', kidsBox: 'With children' },
         lists: { BREAKFAST: 'Breakfast', BRUNCH: 'Brunch (on request)', GOUTER: 'Afternoon tea', STARTERS: 'Starters', MAINS: 'Mains', SIMPLE: 'For children', DESSERTS: 'Desserts', MEDINA: 'Medina and monuments', GOLF: 'Golf', ACTIVITIES: 'Activities', RESTAURANTS: 'Restaurants', CAFES: 'Cafés' },
         p: { n: 'Name', d: 'Description', url: 'Website (optional)' },
@@ -1740,11 +1740,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
   /* Commande du livret, par destinataire (16/10/2026) : un repas marqué « maison » dans la fiche (MEALS[i].house,
      ex. déjeuner léger grillé par le majordome) et les extras vont au brief maison ; les autres repas au prestataire. */
+  /* 17/10/2026 : à partir de 7 personnes (même limite que les prix 1–6 / 7–10, mealsRow), un repas « maison » part
+     chez le prestataire — cuisiner pour un grand groupe en plus de l'accueil et du ménage, c'est trop pour la maison.
+     Le goûter (MEALS[2] : thé et pâtisseries, rien à cuisiner) reste à la maison. */
+  function houseMeal(c, i) { var row = (F.MEALS || [])[i]; return !!(row && row.house) && (mealsRow(c) === 'a' || i === 2); }
   function orderSplit(c) {
     var o = orderOf(c), out = { kitchen: [], house: [] }; if (!o) return out;
     o.items.forEach(function (x) {
-      var m = /^m(\d+)$/.exec(String(x.id || '')), row = m ? (F.MEALS || [])[+m[1]] : null;
-      var house = x.kind === 'extra' || !!(row && row.house);
+      var m = /^m(\d+)$/.exec(String(x.id || ''));
+      var house = x.kind === 'extra' || (m ? houseMeal(c, +m[1]) : false);
       out[house ? 'house' : 'kitchen'].push(x.q + ' × ' + P(x.n));
     });
     return out;

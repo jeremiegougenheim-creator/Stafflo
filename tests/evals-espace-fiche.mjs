@@ -921,7 +921,8 @@ await r.ctx.close();
   // Déjeuner léger marqué « maison » dans la fiche (16/10) : la commande du livret part chez celui qui la prépare
   const KH = JSON.parse(JSON.stringify(KF));
   KH.MEALS = KH.MEALS.slice(0, 3).concat([{ n: ['Déjeuner léger (sur demande)', 'Light lunch (on request)'], a: ['450 MAD', '450 MAD'], b: ['450 MAD', '450 MAD'], h: ['12h30 – 14h30', '12:30 – 2:30 pm'], house: true }]);
-  const SH = [{ ...ST[0], details: { ...ST[0].details, guest_orders: { at: new Date().toISOString(), total: 3450, cur: 'MAD', items: [
+  // 6 personnes : la maison prépare son déjeuner léger (à partir de 7, le prestataire — contrôlé plus bas)
+  const SH = [{ ...ST[0], adults: 5, children: 1, details: { ...ST[0].details, guest_orders: { at: new Date().toISOString(), total: 3450, cur: 'MAD', items: [
     { id: 'm1', kind: 'meal', n: KH.MEALS[1].n, q: 3, unit: 850, sub: 2550 }, { id: 'm3', kind: 'meal', n: KH.MEALS[3].n, q: 2, unit: 450, sub: 900 }] } } }];
   r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KH }, stays: SH });
   await r.page.waitForTimeout(250);
@@ -934,11 +935,25 @@ await r.ctx.close();
   check('brief maison : « À préparer par la maison : 2 × Déjeuner léger », jamais les repas de la cuisinière ni un prix',
     /À préparer par la maison : 2 × Déjeuner léger \(sur demande\)$/m.test(bh) && !/3 × Brunch/.test(bh) && !/450|850 MAD/.test(bh) && !r.errs.length, bh);
   await r.ctx.close();
+  // 17/10/2026 — à partir de 7 personnes, un repas « maison » part chez le prestataire ; le goûter reste à la maison
+  const KG = JSON.parse(JSON.stringify(KH)); KG.MEALS[2].house = true;
+  const SG = [{ ...ST[0], details: { ...ST[0].details, guest_orders: { at: new Date().toISOString(), total: 3850, cur: 'MAD', items: [
+    { id: 'm1', kind: 'meal', n: KG.MEALS[1].n, q: 3, unit: 850, sub: 2550 }, { id: 'm3', kind: 'meal', n: KG.MEALS[3].n, q: 2, unit: 450, sub: 900 }, { id: 'm2', kind: 'meal', n: KG.MEALS[2].n, q: 1, unit: 400, sub: 400 }] } } }];
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KG }, stays: SG });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+  const kg = await r.page.inputValue('#tx-k1');
+  check('7 personnes et plus : le déjeuner léger part chez le prestataire ; le goûter reste à la maison',
+    /^Commande du livret : 3 × Brunch, déjeuner ou dîner \(sur demande\) · 2 × Déjeuner léger \(sur demande\)$/m.test(kg) && new RegExp('^Préparé par la maison, pas par vous : 1 × ' + KG.MEALS[2].n[0].replace(/[()]/g, '\\$&') + '$', 'm').test(kg), kg);
+  await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+  const bg = await r.page.inputValue('#tx-k1');
+  check('7 personnes et plus : le brief maison n’a plus que le goûter', new RegExp('^À préparer par la maison : 1 × ' + KG.MEALS[2].n[0].replace(/[()]/g, '\\$&') + '$', 'm').test(bg) && !/Déjeuner léger/.test(bg) && !r.errs.length, bg);
+  await r.ctx.close();
   // Éditeur : la case « Préparé par la maison » sur chaque repas (fiche avec prestataire), gardée à l'enregistrement
   r = await open({ villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KH } });
   await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name'); await unfold(r.page);
   const ck3 = await r.page.$('input[type="checkbox"][data-fe="MEALS.3.house"]'), ck1 = await r.page.$('input[type="checkbox"][data-fe="MEALS.1.house"]');
-  check('éditeur : case « Préparé par la maison » sur chaque repas, cochée pour le déjeuner léger seulement', !!ck3 && !!ck1 && (await ck3.isChecked()) && !(await ck1.isChecked()) && /Préparé par la maison \(brief maison/.test(await txt(r.page)));
+  check('éditeur : case « Préparé par la maison » sur chaque repas, cochée pour le déjeuner léger seulement', !!ck3 && !!ck1 && (await ck3.isChecked()) && !(await ck1.isChecked()) && /Préparé par la maison jusqu’à 6 personnes \(brief maison\) — à partir de 7, par le prestataire, sauf le goûter/.test(await txt(r.page)));
   await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
   const sv = r.calls.filter((c) => c.kind === 'PATCH').pop(), hm = sv && sv.body.house_facts && sv.body.house_facts.MEALS;
   check('enregistrement : la marque « maison » est gardée (et seulement là)', !!hm && hm.length === 4 && hm[3].house === true && !hm[1].house && !r.errs.length, hm && hm.map((m) => m.house));
