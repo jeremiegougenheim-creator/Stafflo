@@ -1755,7 +1755,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var n = nextStay(c);
     if (!n) return 'Interlocation : aucune arrivée prévue après ce départ';
     var at = String(n.details && n.details.arrival_time || '').trim();
-    return 'Interlocation : prochaine arrivée ' + fmtLongDay(n.a, 'fr') + (at ? ' — ' + teamTxt(at) : '') + (n.a === c.d ? ' (le jour même)' : '');
+    return 'Interlocation : prochaine arrivée ' + fmtLongDay(n.a, 'fr') + whenTeam(at, 'a') + (n.a === c.d ? ' (le jour même)' : '');
   }
   /* Briefs (17/10/2026) : ce que l'équipe lit, sans ce qui ne sert qu'au propriétaire. Une phrase tirée de WhatsApp garde
      ses guillemets mais perd « (WhatsApp, lun. 5 oct. 18:26) » quand elle dit une heure ; quand l'heure est relative
@@ -1765,7 +1765,38 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var s = flat(v || '').replace(/«\s*[-–•*·]\s*/g, '« ').replace(/\s*\.\s*»/g, ' »');
     return s.replace(/\s*\(WhatsApp, ([^)]*)\)/g, function (all, w) { return WA_REL.test(s) ? ' (message du ' + w + ')' : ''; }).trim();
   }
-  function whenTeam(v) { var s = teamTxt(v); return s ? ' — ' + s : ''; }
+  /* L'essentiel pour l'équipe : l'heure, pas la phrase. « nous atterrissons à 16h » → « atterrissage 16h » ;
+     « Notre vol retour est à 9h vendredi. On partira donc très tôt de la villa (6h30) » → « 6h30 (vol 9h) ». Seulement une
+     phrase citée (import WhatsApp) dont chaque morceau a au plus une heure ET un rôle clair (vol / arrivée ou départ) ;
+     sinon — heure relative, rôle douteux, texte écrit par le propriétaire — tout reste tel quel. Rien n'est calculé :
+     l'heure est celle que le client a écrite (16:40 → 16h40, 3 pm → 15h). */
+  var TM_RX = /(?:\b(vers|around|about|approx\.?|environ)\s+)?(?:\b(\d{1,2})(?::(\d{2}))?\s?(am|pm)\b|\b(\d{1,2})\s?(?:h(?!r)|:)\s?(\d{2})?(?!\d))/i;
+  var TM_FLY = /\b(atterri\w*|land(?:ing|s|ed)?|vols?|flights?|avion|plane|d[ée]coll\w*|take ?off|takes off)\b/i;
+  var TM_HOME = { a: /\b(arriv\w*|villa|maison|house|chez vous|there|sur place)\b/i, d: /\b(parti\w*|partons|quitt\w*|leav\w*|check[- ]?out|d[ée]part\w*)\b/i };
+  function tmFmt(x) {
+    var h = +(x[2] || x[5]), mi = x[3] || x[6] || '';
+    if (x[4]) { if (/p/i.test(x[4]) && h < 12) h += 12; if (/a/i.test(x[4]) && h === 12) h = 0; }
+    if (h > 23 || (mi && +mi > 59)) return '';
+    return (x[1] ? 'vers ' : '') + h + 'h' + (mi && mi !== '00' ? mi : '');
+  }
+  function teamTime(v, kind) {
+    var s = String(v || '').trim(), m = /^(?:Vol ([A-Z0-9]{2,3}\d{2,4}) · )?«\s*([^«»]+?)\s*»(?:\s*\(WhatsApp, [^)]*\))?$/.exec(s);
+    if (!m || WA_REL.test(m[2])) return teamTxt(s);
+    var fly = [], home = [];
+    var ok = waClauses(m[2]).every(function (cl) {
+      var all = cl.s.match(new RegExp(TM_RX.source, 'gi')) || [];
+      if (!all.length) return true;
+      var t = all.length === 1 ? tmFmt(TM_RX.exec(cl.s)) : '';
+      if (!t) return false;
+      if (TM_FLY.test(cl.s)) fly.push(t); else if (TM_HOME[kind].test(cl.s)) home.push(t); else return false;
+      return true;
+    });
+    if (!ok || !fly.length && !home.length) return teamTxt(s);
+    var code = m[1] ? 'vol ' + m[1] : '';
+    var f = fly.length ? (kind === 'a' ? (code ? code + ', atterrissage ' : 'atterrissage ') : (code ? code + ' ' : 'vol ')) + fly.join(', ') : code;
+    return home.length ? home.join(', ') + (f ? ' (' + f + ')' : '') : f;
+  }
+  function whenTeam(v, kind) { var s = teamTime(v, kind); return s ? ' — ' + s : ''; }
   function groupTxt(c) {
     var comp = TXT.fr.composition(c.ad, c.ch, c.inf);
     if (!c.pax) return 'nombre à confirmer';
@@ -1788,8 +1819,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function msgKitchen(c) {
     var t = TXT.fr, who = kitchenTeam().map(function (m) { return m.name; }).join(', ') || 'la cuisine';
     var lines = ['Cuisine ' + (c.name || '') + ' — pour ' + who];
-    lines.push('Arrivée : ' + fmtLongDay(c.a, 'fr') + whenTeam(c.details.arrival_time));
-    lines.push('Départ : ' + fmtLongDay(c.d, 'fr') + whenTeam(c.details.departure_time));
+    lines.push('Arrivée : ' + fmtLongDay(c.a, 'fr') + whenTeam(c.details.arrival_time, 'a'));
+    lines.push('Départ : ' + fmtLongDay(c.d, 'fr') + whenTeam(c.details.departure_time, 'd'));
     lines.push(turnLine(c));
     lines.push('Couverts : ' + groupTxt(c));
     lines.push('Repas : ' + (String(c.meals || '').trim() ? flat(c.meals) : 'pas encore reçus'));
@@ -1806,8 +1837,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     lines.push('Brief ' + (c.name || '') + ' — pour ' + team);
     var arrFact = flat(P(F.PRACTICAL.filter(function (p) { return /^Arrivée et départ/.test(p[0]); })[0] || ['', ''], 0));
     var ready = (arrFact.match(/prêtes (à partir de [^.,;]+)/) || [])[1];
-    lines.push('Arrivée : ' + fmtLongDay(c.a, 'fr') + whenTeam(c.details.arrival_time) + (ready ? ' · chambres prêtes ' + ready : ''));
-    lines.push('Départ : ' + fmtLongDay(c.d, 'fr') + whenTeam(c.details.departure_time));
+    lines.push('Arrivée : ' + fmtLongDay(c.a, 'fr') + whenTeam(c.details.arrival_time, 'a') + (ready ? ' · chambres prêtes ' + ready : ''));
+    lines.push('Départ : ' + fmtLongDay(c.d, 'fr') + whenTeam(c.details.departure_time, 'd'));
     lines.push(turnLine(c));
     lines.push('Groupe : ' + groupTxt(c));
     if (c.inf) {

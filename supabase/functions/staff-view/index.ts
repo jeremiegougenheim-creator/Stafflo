@@ -50,6 +50,37 @@ export function teamTxt(v: string): string {
   const s = String(v || "").replace(/«\s*[-–•*·]\s*/g, "« ").replace(/\s*\.\s*»/g, " »");
   return s.replace(/\s*\(WhatsApp, ([^)]*)\)/g, (_all, w) => (REL.test(s) ? " (message du " + w + ")" : "")).trim();
 }
+// L'essentiel (même règle que les briefs de l'Espace, teamTime) : « nous atterrissons à 14h » → « atterrissage 14h » ;
+// « Notre vol retour est à 9h. On partira de la villa (6h30) » → « 6h30 (vol 9h) ». Seulement une phrase citée dont
+// chaque morceau a au plus une heure et un rôle clair ; sinon le texte nettoyé (teamTxt). Rien n'est calculé.
+const TM_RX = /(?:\b(vers|around|about|approx\.?|environ)\s+)?(?:\b(\d{1,2})(?::(\d{2}))?\s?(am|pm)\b|\b(\d{1,2})\s?(?:h(?!r)|:)\s?(\d{2})?(?!\d))/i;
+const TM_FLY = /\b(atterri\w*|land(?:ing|s|ed)?|vols?|flights?|avion|plane|d[ée]coll\w*|take ?off|takes off)\b/i;
+const TM_HOME: Record<string, RegExp> = { a: /\b(arriv\w*|villa|maison|house|chez vous|there|sur place)\b/i, d: /\b(parti\w*|partons|quitt\w*|leav\w*|check[- ]?out|d[ée]part\w*)\b/i };
+function tmFmt(x: RegExpExecArray | null): string {
+  if (!x) return "";
+  let h = +(x[2] || x[5]);
+  const mi = x[3] || x[6] || "";
+  if (x[4]) { if (/p/i.test(x[4]) && h < 12) h += 12; if (/a/i.test(x[4]) && h === 12) h = 0; }
+  if (h > 23 || (mi && +mi > 59)) return "";
+  return (x[1] ? "vers " : "") + h + "h" + (mi && mi !== "00" ? mi : "");
+}
+export function teamTime(v: string, kind: "a" | "d"): string {
+  const s = String(v || "").trim(), m = /^(?:Vol ([A-Z0-9]{2,3}\d{2,4}) · )?«\s*([^«»]+?)\s*»(?:\s*\(WhatsApp, [^)]*\))?$/.exec(s);
+  if (!m || REL.test(m[2])) return teamTxt(s);
+  const fly: string[] = [], home: string[] = [];
+  const ok = (m[2].match(/[^.!?…\n,;]+[.!?…]*/g) || []).map((x) => x.trim()).filter(Boolean).every((cl) => {
+    const all = cl.match(new RegExp(TM_RX.source, "gi")) || [];
+    if (!all.length) return true;
+    const t = all.length === 1 ? tmFmt(TM_RX.exec(cl)) : "";
+    if (!t) return false;
+    if (TM_FLY.test(cl)) fly.push(t); else if (TM_HOME[kind].test(cl)) home.push(t); else return false;
+    return true;
+  });
+  if (!ok || (!fly.length && !home.length)) return teamTxt(s);
+  const code = m[1] ? "vol " + m[1] : "";
+  const f = fly.length ? (kind === "a" ? (code ? code + ", atterrissage " : "atterrissage ") : (code ? code + " " : "vol ")) + fly.join(", ") : code;
+  return home.length ? home.join(", ") + (f ? " (" + f + ")" : "") : f;
+}
 // Même liste que l'Espace (espace.html, FIRM_OUT) : l'équipe voit les séjours que voit le propriétaire.
 const FIRM_OUT = ["inquiry", "lead", "quoted", "declined", "cancelled", "canceled"];
 
@@ -115,7 +146,7 @@ export function staffView(rows: Row[], todayIso: string): StaffStay[] {
       return {
         id: String(c.id || ""), name: shortName(c.name), a: iso(a), d: iso(d), nights: d - a,
         adults, children, infants, pax: pax || null,
-        arrival_time: teamTxt(txt(det.arrival_time, 300)), departure_time: teamTxt(txt(det.departure_time, 300)), beds: txt(det.beds, 300),
+        arrival_time: teamTime(txt(det.arrival_time, 300), "a"), departure_time: teamTime(txt(det.departure_time, 300), "d"), beds: txt(det.beds, 300),
         meals: txt(c.meals, 600), drinks: txt(det.drinks, 600), note: txt(det.staff_note, 600),
         // Extras commandés par le client dans son livret (transfert, massage…) : quoi et combien, jamais le prix.
         extras: extrasLine(det.guest_orders),

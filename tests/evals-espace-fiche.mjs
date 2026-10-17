@@ -923,13 +923,13 @@ await r.ctx.close();
     await r.page.waitForTimeout(250);
     await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
     const bc = await r.page.inputValue('#tx-k1');
-    check('brief maison nettoyé : arrivée avec la phrase du client (sans tiret, point ni « WhatsApp, date »), départ avec son heure, « Groupe : 10 adultes », couchages et repas sans consigne au propriétaire, boissons',
-      /^Arrivée : .+ — « nous atterrissons à 14h à Marrakech »( · chambres prêtes [^\n]+)?$/m.test(bc) && /^Départ : .+ — « Notre vol retour est à 9h vendredi\. On partira donc très tôt de la villa \(6h30\) »$/m.test(bc) &&
+    check('brief maison nettoyé : l’heure seulement — « atterrissage 14h », départ « 6h30 (vol 9h) » —, « Groupe : 10 adultes », couchages et repas sans consigne au propriétaire, boissons',
+      /^Arrivée : .+ — atterrissage 14h( · chambres prêtes [^\n]+)?$/m.test(bc) && /^Départ : .+ — 6h30 \(vol 9h\)$/m.test(bc) &&
       /^Groupe : 10 adultes$/m.test(bc) && /^Couchages : à confirmer$/m.test(bc) && /^Repas : pas encore reçus$/m.test(bc) && /^Boissons : Eau plate \(12 bouteilles\), 12 bières$/m.test(bc) &&
       !/WhatsApp,|nuits|à demander|Heure d’arrivée|TARIFS|850|privé/.test(bc) && /^Contact client : \+33615185187$/m.test(bc), bc);
     await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
     const kc = await r.page.inputValue('#tx-k1');
-    check('brief prestataire nettoyé : mêmes heures, « Couverts : 10 adultes », pas de boissons ni de téléphone', /^Arrivée : .+ — « nous atterrissons à 14h à Marrakech »$/m.test(kc) && /^Départ : .+\(6h30\) »$/m.test(kc) && /^Couverts : 10 adultes$/m.test(kc) && !/Boissons|WhatsApp,|nuits|33615185187|TARIFS/.test(kc) && !r.errs.length, kc);
+    check('brief prestataire nettoyé : mêmes heures, « Couverts : 10 adultes », pas de boissons ni de téléphone', /^Arrivée : .+ — atterrissage 14h$/m.test(kc) && /^Départ : .+ — 6h30 \(vol 9h\)$/m.test(kc) && /^Couverts : 10 adultes$/m.test(kc) && !/Boissons|WhatsApp,|nuits|33615185187|TARIFS/.test(kc) && !r.errs.length, kc);
     await r.ctx.close();
   }
   // Deux séjours qui s'enchaînent : les deux briefs disent de combien de temps dispose l'équipe

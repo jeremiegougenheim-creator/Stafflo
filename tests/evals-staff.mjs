@@ -66,6 +66,16 @@ check('champs équipe lus dans details', f.arrival_time === 'Vol AT801 · 15h20'
 check('heure tirée de WhatsApp nettoyée pour l’équipe : tiret et point retirés, moment du message gardé seulement pour une heure relative',
   M.teamTxt('« - nous atterrissons à 14h à Marrakech. » (WhatsApp, lun. 5 oct. 18:26)') === '« nous atterrissons à 14h à Marrakech »' &&
   M.teamTxt('« hoping to arrive in about 1hr15 » (WhatsApp, sam. 17 oct. 14:05)') === '« hoping to arrive in about 1hr15 » (message du sam. 17 oct. 14:05)' && M.teamTxt('15h30') === '15h30');
+check('l’heure seulement, avec son rôle : atterrissage, départ de la villa (vol) — une heure relative, deux heures dans un morceau ou un texte du propriétaire restent tels quels',
+  M.teamTime('« - nous atterrissons à 14h à Marrakech. » (WhatsApp, lun. 5 oct. 18:26)', 'a') === 'atterrissage 14h' &&
+  M.teamTime('« Notre vol retour est à 9h vendredi. On partira donc très tôt de la villa (6h30) »', 'd') === '6h30 (vol 9h)' &&
+  M.teamTime('Vol AT801 · « flight AT801 landing at 16:40 »', 'a') === 'vol AT801, atterrissage 16h40' &&
+  M.teamTime('Vol AT802 · « Our return flight is AT802 on Sunday at 6:05 pm »', 'd') === 'vol AT802 18h05' &&
+  M.teamTime('« We land at 2pm, and should be at the villa around 3:30pm »', 'a') === 'vers 15h30 (atterrissage 14h)' &&
+  M.teamTime('« hoping to arrive in about 1hr15 » (WhatsApp, sam. 17 oct. 14:05)', 'a') === '« hoping to arrive in about 1hr15 » (message du sam. 17 oct. 14:05)' &&
+  M.teamTime('« we leave the villa at 10am for our 1pm flight »', 'd') === '« we leave the villa at 10am for our 1pm flight »' &&
+  M.teamTime('vol AT801, à la villa vers 16h', 'a') === 'vol AT801, à la villa vers 16h',
+  [M.teamTime('« We land at 2pm, and should be at the villa around 3:30pm »', 'a'), M.teamTime('Vol AT802 · « Our return flight is AT802 on Sunday at 6:05 pm »', 'd')]);
 check('repas nettoyés', f.meals === 'Dîner du 13 : tajine');
 check('extras commandés par le client : quoi et combien, jamais le prix ni les repas (déjà dans « repas »)', M.extrasLine({ items: [{ kind: 'meal', n: ['Dîner'], q: 2, unit: 850 }, { kind: 'extra', n: ['Transfert aéroport', 'Airport transfer'], q: 1, unit: 400, sub: 400 }, { kind: 'extra', n: ['Massage'], q: 2, unit: 600 }] }) === '1 × Transfert aéroport · 2 × Massage' && M.extrasLine(null) === '' && M.extrasLine({ items: 'x' }) === '' && !/400|600|MAD/.test(M.extrasLine({ items: [{ kind: 'extra', n: ['Transfert'], q: 1, unit: 400 }] })));
 check('nuits calculées', f.nights === 3 && V.find((s) => s.name === 'Seán').nights === 7);
