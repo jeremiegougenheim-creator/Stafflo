@@ -42,7 +42,7 @@ for (const f of ['index.html', 'en.html']) {
   check(`${f} : boutons WhatsApp cachés tant qu'aucun numéro n'est posé (un seul endroit)`, /\.js-wa\[hidden\]\{display:none !important\}/.test(h) && (h.match(/var WA = '[^']*';/g) || []).length === 1 && (h.match(/class="btn [^"]*js-wa"[^>]*hidden>/g) || []).length === 3);
   check(`${f} : pas de commission sur les commandes des clients, prix annoncé = celui de la stratégie (79 € / 490 € / 790 €)`, /(Pas de commission|No commission)/.test(h) && /79 €|€79/.test(h) && /490 €|€490/.test(h) && /790 €|€790/.test(h));
 }
-check('accueil : un navigateur en chinois arrive sur zh.html (plus sur en.html)', /zh:'zh\.html'/.test(read('index.html')));
+check('accueil : un navigateur en chinois, arabe ou thaï arrive sur en.html — ar/th/zh (ancien pitch) ne sont plus liées ni indexées (17/10)', /var map=\{fr:'',en:'en\.html'\}/.test(read('index.html')) && !/href="(ar|th|zh)\.html"/.test(read('index.html')) && !/href="(ar|th|zh)\.html"/.test(read('en.html')) && ['ar.html', 'th.html', 'zh.html'].every((f) => /<meta name="robots" content="noindex, nofollow">/.test(read(f))));
 
 // ── Inscription : avis légal sur chaque formulaire ───────────────────────
 {
