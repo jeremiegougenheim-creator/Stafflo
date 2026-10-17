@@ -69,8 +69,10 @@ function digest(lang) {
   if (has(V.host)) li((fr ? 'Hôte : ' : 'Host: ') + V.host + (has(V.hostPhone) ? ' ' + V.hostPhone : ''));
 
   sec(fr ? 'Repas' : 'Meals');
-  A(MEALS).forEach(m => {
+  A(MEALS).forEach((m, k) => {
     const same = pick(m.a, i) === pick(m.b, i);
+    // 17/10/2026 : un repas « maison » (sauf le goûter, MEALS[2]) n'est proposé qu'aux groupes de 1 à 6.
+    if (m && m.house && k !== 2) return li(P(m.n) + ' : ' + P(m.a) + (fr ? ' — groupes de 1 à 6 seulement (à partir de 7 : déjeuner ou dîner du prestataire)' : ' — groups of 1 to 6 only (from 7: lunch or dinner by the meal provider)') + ' — ' + P(m.h));
     li(P(m.n) + ' : ' + (same ? P(m.a) : P(m.a) + (fr ? ' (1–6 pers.) / ' : ' (1–6 guests) / ') + P(m.b) + (fr ? ' (7–10 pers.)' : ' (7–10 guests)')) + ' — ' + P(m.h));
   });
   A(MEAL_NOTES).forEach(n => li(P(n)));

@@ -132,10 +132,14 @@ export function curOf(f: Row): string {
   return "";
 }
 const pairOf = (v: unknown): string[] => Array.isArray(v) ? [String(v[0] ?? ""), String(v[1] ?? "")] : [String(v ?? ""), ""];
+// Deux versions de la carte (17/10/2026) : un repas « maison » (déjeuner léger, brunch…) n'est proposé qu'aux
+// groupes de 1 à 6 ; à partir de 7, c'est le déjeuner ou dîner du prestataire. Le goûter (MEALS[2]) reste proposé.
+export const mealOff = (m: Row, i: number, pax: number): boolean => !!(m && m.house) && i !== 2 && pax >= 7;
 // La carte : repas chiffrés (prix du groupe selon sa taille : 1–6 → a, 7 et plus → b) puis extras.
 export function orderMenu(f: Row, pax: number): Row[] {
   const out: Row[] = [];
   (Array.isArray(f && f.MEALS) ? f.MEALS : []).forEach((m: Row, i: number) => {
+    if (mealOff(m, i, pax)) return;
     const unit = priceOf(pax >= 7 ? (m.b ?? m.a) : m.a) ?? priceOf(m.a);
     if (unit) out.push({ id: "m" + i, kind: "meal", n: pairOf(m.n), unit });
   });
