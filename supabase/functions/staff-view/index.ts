@@ -17,6 +17,13 @@
 // commandés par le client dans son livret (quoi et combien, sans prix).
 // Jamais : prix, versements, notes du propriétaire, téléphone, email,
 // nationalité, code de réservation. Les demandes (leads) n'apparaissent pas.
+//
+// Lisible et en arabe (18/10/2026) : chaque séjour porte aussi `lines` — repas, consigne (une phrase par ligne),
+// boissons, extras (un article par ligne), même règle que les briefs de l'Espace. Quand la page lit en arabe
+// (body.lang = "ar", sinon la langue du lien), `ar` porte les mêmes champs traduits (Mistral UE, un seul appel
+// pour tout ce qui manque, lignes alignées une à une), gardés dans staff_i18n par empreinte du texte français :
+// un texte modifié dans l'Espace est retraduit au passage suivant, un texte inchangé ne repasse jamais par l'IA.
+// Sans clé, en panne ou trop long (12 s) : la page montre le français, comme avant.
 
 const SB_URL = Deno.env.get("SUPABASE_URL") || "";
 const SRK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -37,11 +44,45 @@ function cors(req: Request): Record<string, string> {
 // ── Calcul (pur, testé par tests/evals-staff.mjs) ─────────────────────────
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
+export type Lines = { arrival_time: string[]; departure_time: string[]; beds: string[]; meals: string[]; drinks: string[]; note: string[]; extras: string[] };
 export type StaffStay = {
   id: string; name: string; a: string; d: string; nights: number;
   adults: number | null; children: number | null; infants: number | null; pax: number | null;
   arrival_time: string; departure_time: string; beds: string; meals: string; drinks: string; note: string; extras: string; same_day: boolean;
+  lines: Lines; ar?: Partial<Lines>;
 };
+// ── Lisibilité : une phrase par ligne (repas, consigne), un article par ligne (boissons, extras) — mêmes règles que l'Espace ──
+export function sentences(line: string): string[] { // coupe après « . ! ? » suivis d'une majuscule ou d'un chiffre
+  const out: string[] = []; let last = 0; const rx = /[.!?]\s+(?=[A-ZÀ-ÝÉÈÊ0-9«])/g; let m: RegExpExecArray | null;
+  while ((m = rx.exec(line))) { out.push(line.slice(last, m.index + 1)); last = m.index + m[0].length; }
+  out.push(line.slice(last));
+  return out.map((x) => x.trim()).filter(Boolean);
+}
+export function listItems(line: string): string[] { // « 2 vins rouges (marocains, choisis par nous) » : la virgule entre parenthèses ne coupe pas
+  const out: string[] = []; let cur = "", depth = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "(") depth++; else if (ch === ")") depth = Math.max(0, depth - 1);
+    if (depth === 0 && (ch === "," || ch === ";" || (ch === "·" && /\s/.test(line[i - 1] || "")))) { if (cur.trim()) out.push(cur.trim()); cur = ""; continue; }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+export function bulletsOf(text: string, mode: "list" | "sentences"): string[] {
+  const raw = String(text || "").trim(); if (!raw) return [];
+  const parts: string[] = [];
+  raw.split(/\n+/).forEach((ln) => {
+    const line = ln.replace(/^\s*[-•*·]\s*/, "").trim(); if (!line) return;
+    (mode === "list" ? listItems(line) : sentences(line)).forEach((x) => parts.push(x));
+  });
+  return parts.map((x) => x.slice(0, 400));
+}
+export const LINE_FIELDS: (keyof Lines)[] = ["arrival_time", "departure_time", "beds", "meals", "drinks", "note", "extras"];
+export function linesOf(s: Omit<StaffStay, "lines">): Lines {
+  return { arrival_time: s.arrival_time ? [s.arrival_time] : [], departure_time: s.departure_time ? [s.departure_time] : [], beds: s.beds ? [s.beds] : [],
+    meals: bulletsOf(s.meals, "sentences"), drinks: bulletsOf(s.drinks, "list"), note: bulletsOf(s.note, "sentences"), extras: s.extras ? s.extras.split(" · ").map((x) => x.trim()).filter(Boolean) : [] };
+}
 // Heure tirée de WhatsApp (17/10/2026, même règle que les briefs de l'Espace, teamTxt) : « « - nous atterrissons à
 // 14h. » (WhatsApp, lun. 5 oct. 18:26) » → « « nous atterrissons à 14h » ». Le moment du message ne reste que pour
 // une heure relative (« in about 1hr15 »), qui ne veut rien dire sans lui.
@@ -143,7 +184,7 @@ export function staffView(rows: Row[], todayIso: string): StaffStay[] {
       const det = c.details && typeof c.details === "object" ? c.details : {};
       const adults = int(c.adults), children = int(c.children), infants = int(c.infants);
       const pax = adults != null || children != null ? (adults || 0) + (children || 0) : int(c.guests);
-      return {
+      const base = {
         id: String(c.id || ""), name: shortName(c.name), a: iso(a), d: iso(d), nights: d - a,
         adults, children, infants, pax: pax || null,
         arrival_time: teamTime(txt(det.arrival_time, 300), "a"), departure_time: teamTime(txt(det.departure_time, 300), "d"), beds: txt(det.beds, 300),
@@ -152,14 +193,81 @@ export function staffView(rows: Row[], todayIso: string): StaffStay[] {
         extras: extrasLine(det.guest_orders),
         same_day: departures.has(a),
       };
+      return { ...base, lines: linesOf(base) };
     });
+}
+
+// ── Arabe (18/10/2026) ───────────────────────────────────────────────────
+export const AR_MAX_CHARS = 6000; // au-delà, le reste attend le passage suivant (le français s'affiche entre-temps)
+const SYS_AR = "Tu traduis en arabe, pour le personnel d'une maison d'hôtes au Maroc (arabe standard simple, compris à Marrakech), des lignes écrites en français par le propriétaire : repas, consignes, boissons, heures, couchages. " +
+  "Règles : une ligne traduite par ligne reçue, dans le même ordre ; ne rien ajouter, ne rien résumer, ne rien commenter ; garder les chiffres, les quantités, les heures (écris-les 14:00, 6:30), les prénoms, les marques et les noms de plats (tajine, msemen, pastilla, kefta) tels quels ou translittérés ; une ligne déjà en arabe ou sans texte reste identique. " +
+  "Réponds UNIQUEMENT par un objet JSON {\"lines\": {\"<id>\": \"<traduction>\"}} avec exactement les mêmes id.";
+export async function hashOf(s: string): Promise<string> { return (await sha256hex(s)).slice(0, 16); }
+/** Ce qui manque au cache : une entrée par (séjour, champ) dont le texte a changé ou n'a jamais été traduit. */
+export function missingAr(stays: StaffStay[], cache: Row[], hashes: Record<string, string>): { id: string; field: keyof Lines; lines: string[] }[] {
+  const have = new Map(cache.map((r) => [r.client_id + "|" + r.field, r]));
+  const out: { id: string; field: keyof Lines; lines: string[] }[] = [];
+  for (const s of stays) for (const f of LINE_FIELDS) {
+    const src = s.lines[f]; if (!src.length) continue;
+    const r = have.get(s.id + "|" + f);
+    if (r && r.src_hash === hashes[s.id + "|" + f] && Array.isArray(r.lines) && r.lines.length === src.length) continue;
+    out.push({ id: s.id, field: f, lines: src });
+  }
+  return out;
+}
+/** Un seul appel Mistral pour toutes les lignes manquantes ; lignes alignées par id « <séjour>|<champ>|<n> ». null si rien, en panne, ou pas de clé. */
+export async function translateAr(items: { id: string; field: keyof Lines; lines: string[] }[], call = mistral): Promise<Record<string, string> | null> {
+  const req: Record<string, string> = {}; let chars = 0;
+  for (const it of items) for (let i = 0; i < it.lines.length; i++) { if (chars + it.lines[i].length > AR_MAX_CHARS) break; req[it.id + "|" + it.field + "|" + i] = it.lines[i]; chars += it.lines[i].length; }
+  if (!Object.keys(req).length) return null;
+  const raw = await call(SYS_AR, JSON.stringify({ lines: req })).catch(() => null);
+  if (!raw) return null;
+  let j: Row = {}; try { j = JSON.parse(raw); } catch { return null; }
+  const got = j && typeof j.lines === "object" && j.lines ? j.lines : null; if (!got) return null;
+  const out: Record<string, string> = {};
+  for (const k of Object.keys(req)) { const v = got[k]; if (typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, 500); }
+  return out;
+}
+async function mistral(system: string, user: string): Promise<string | null> {
+  const key = Deno.env.get("MISTRAL_API_KEY"); if (!key) return null;
+  const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const r = await fetch("https://api.mistral.ai/v1/chat/completions", { method: "POST", signal: ctl.signal,
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+      body: JSON.stringify({ model: "mistral-medium-latest", temperature: 0, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j && j.choices && j.choices[0] && j.choices[0].message ? String(j.choices[0].message.content || "") : null;
+  } catch { return null; } finally { clearTimeout(tm); }
+}
+/** Pose `ar` sur chaque séjour : lignes du cache, complétées par la traduction du jour (écrite au cache). Jamais d'erreur : sans traduction, pas de `ar`. */
+export async function withArabic(stays: StaffStay[], owner: string, read: (ids: string[]) => Promise<Row[]>, write: (rows: Row[]) => Promise<void>, call = mistral): Promise<StaffStay[]> {
+  if (!stays.length) return stays;
+  const hashes: Record<string, string> = {};
+  for (const s of stays) for (const f of LINE_FIELDS) if (s.lines[f].length) hashes[s.id + "|" + f] = await hashOf(s.lines[f].join("\n"));
+  const cache = await read(stays.map((s) => s.id)).catch(() => [] as Row[]);
+  const miss = missingAr(stays, cache, hashes);
+  const fresh = miss.length ? await translateAr(miss, call) : null;
+  const rows: Row[] = [];
+  if (fresh) for (const it of miss) {
+    const lines = it.lines.map((_x, i) => fresh[it.id + "|" + it.field + "|" + i]);
+    if (lines.every((x) => typeof x === "string")) rows.push({ owner_id: owner, client_id: it.id, lang: "ar", field: it.field, src_hash: hashes[it.id + "|" + it.field], lines, updated_at: new Date().toISOString() });
+  }
+  if (rows.length) await write(rows).catch(() => {});
+  const all = cache.filter((r) => hashes[r.client_id + "|" + r.field] === r.src_hash).concat(rows);
+  return stays.map((s) => {
+    const ar: Partial<Lines> = {};
+    for (const r of all) if (r.client_id === s.id && LINE_FIELDS.includes(r.field) && Array.isArray(r.lines) && r.lines.length === s.lines[r.field as keyof Lines].length) ar[r.field as keyof Lines] = r.lines;
+    return Object.keys(ar).length ? { ...s, ar } : s;
+  });
 }
 
 // ── Service ───────────────────────────────────────────────────────────────
 async function db(path: string, init: RequestInit = {}) {
   const r = await fetch(SB_URL + "/rest/v1/" + path, { ...init, headers: { ...H, ...(init.headers || {}) } });
   if (!r.ok) throw new Error("db " + r.status);
-  return r.status === 204 ? null : await r.json();
+  const body = await r.text(); // 201/204 avec Prefer: return=minimal → corps vide
+  return body ? JSON.parse(body) : null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -179,7 +287,7 @@ Deno.serve(async (req: Request) => {
     const t = day(todayIso) as number;
     const rows = await db(`crm_clients?select=id,name,arrival,departure,guests,adults,children,infants,booking_status,meals,details` +
       `&user_id=eq.${link.owner_id}&deleted_at=is.null&departure=gte.${iso(t - 1)}&arrival=lte.${iso(t + WINDOW_DAYS)}&order=arrival.asc&limit=200`) || [];
-    const stays = staffView(rows, todayIso);
+    let stays = staffView(rows, todayIso);
     if (body.action === "report") {
       if (limited("r:" + link.id, 30, 60 * 60000)) return out({ error: "rate_limited" }, 429);
       const rep = cleanReport(body, stays.map((s) => s.id));
@@ -194,6 +302,12 @@ Deno.serve(async (req: Request) => {
     }
     // Les retours récents de CE lien (7 jours) : « chambres prêtes » déjà envoyé reste coché.
     const reports = await db(`staff_reports?select=id,kind,client_id,text,created_at&link_id=eq.${link.id}&deleted_at=is.null&created_at=gte.${new Date(Date.now() - 7 * 86400000).toISOString()}&order=created_at.desc&limit=50`).catch(() => []) || [];
+    // Arabe : la langue affichée par la page (body.lang), sinon celle du lien. Cache staff_i18n, un appel Mistral pour ce qui manque.
+    const lang = body.lang === "ar" || body.lang === "fr" ? body.lang : link.lang;
+    if (lang === "ar") {
+      stays = await withArabic(stays, String(link.owner_id), (ids) => db(`staff_i18n?select=client_id,field,src_hash,lines&owner_id=eq.${link.owner_id}&lang=eq.ar&client_id=in.(${ids.map((x) => '"' + encodeURIComponent(x) + '"').join(",")})&limit=500`).then((r: Row[] | null) => r || []),
+        (rws) => db(`staff_i18n?on_conflict=client_id,lang,field`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rws) }).then(() => {})).catch(() => stays);
+    }
     return out({ name: link.name, lang: link.lang, today: todayIso, stays, reports, at: new Date().toISOString() });
   } catch (_e) {
     return out({ error: "unavailable" }, 503);

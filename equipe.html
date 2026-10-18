@@ -65,6 +65,13 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
 .row .k{font-size:12.5px;color:var(--muted);display:block}
 .row .v{white-space:pre-line;overflow-wrap:anywhere}
 .row .v.q{color:var(--wait);font-weight:700}
+.row ul.v{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
+.row ul.v li{padding-inline-start:14px;position:relative}
+.row ul.v li::before{content:'•';position:absolute;inset-inline-start:0;color:var(--gold-ink)}
+.row details.orig{margin-top:4px;font-size:13.5px;color:var(--muted)}
+.row details.orig summary{cursor:pointer;list-style:none;display:inline-block;padding:2px 0}
+.row details.orig summary::-webkit-details-marker{display:none}
+.row details.orig ul{margin-top:4px}
 .empty{color:var(--muted);font-size:15px;margin:4px 4px 0}
 .foot{margin:22px 4px 0;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:stretch}
 .btn{min-height:48px;border-radius:14px;border:1px solid var(--line);background:var(--card);font:600 16px/1 inherit;font-family:inherit;color:var(--gm);display:flex;gap:8px;align-items:center;justify-content:center;cursor:pointer}
@@ -104,7 +111,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       arriveToday: 'Arrivent aujourd’hui', leaveToday: 'Partent aujourd’hui', sameDay: 'Départ et arrivée le même jour',
       arrival: 'Arrivée', departure: 'Départ', adults: 'Adultes', children: 'Enfants', infants: 'Bébés', people: 'Personnes',
       time: 'Heure d’arrivée', depTime: 'Heure de départ', drinks: 'Boissons', beds: 'Couchages', meals: 'Repas', mealsNone: 'Pas encore reçus', note: 'Consigne', extras: 'Commandé par le client',
-      updated: 'Mis à jour à ', refresh: 'Actualiser', personal: 'Ce lien est personnel : ne le transférez pas.', loading: 'Chargement…',
+      updated: 'Mis à jour à ', refresh: 'Actualiser', orig: 'Texte d’origine', personal: 'Ce lien est personnel : ne le transférez pas.', loading: 'Chargement…',
       invalid: 'Ce lien n’est plus valide. Demandez un nouveau lien au propriétaire de la villa.', noLink: 'Ouvrez le lien reçu sur WhatsApp.', unknown: '?', arrow: '→',
       offline: 'Hors connexion — informations du ', server: 'Service momentanément indisponible — informations du ', langBtn: 'العربية',
       roomsReady: 'Chambres prêtes', roomsDone: 'Chambres prêtes · ', issueTitle: 'Signaler un problème', issueHelp: 'Une panne, une casse, quelque chose qui manque : le propriétaire est prévenu tout de suite.',
@@ -119,7 +126,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       arriveToday: 'يصلون اليوم', leaveToday: 'يغادرون اليوم', sameDay: 'مغادرة ووصول في نفس اليوم',
       arrival: 'الوصول', departure: 'المغادرة', adults: 'الكبار', children: 'الأطفال', infants: 'الرضّع', people: 'عدد الأشخاص',
       time: 'ساعة الوصول', depTime: 'ساعة المغادرة', drinks: 'المشروبات', beds: 'توزيع الأسرّة', meals: 'الوجبات', mealsNone: 'لم تصل بعد', note: 'تعليمات', extras: 'طلبات الضيف',
-      updated: 'آخر تحديث ', refresh: 'تحديث', personal: 'هذا الرابط خاص بك، لا تشاركه مع أحد.', loading: 'جارٍ التحميل…',
+      updated: 'آخر تحديث ', refresh: 'تحديث', orig: 'النص الأصلي بالفرنسية', personal: 'هذا الرابط خاص بك، لا تشاركه مع أحد.', loading: 'جارٍ التحميل…',
       invalid: 'هذا الرابط لم يعد صالحا. اطلب رابطا جديدا من صاحب الفيلا.', noLink: 'افتح الرابط الذي وصلك على واتساب.', unknown: '؟', arrow: '←',
       offline: 'لا يوجد اتصال — آخر معلومات بتاريخ ', server: 'الخدمة غير متاحة مؤقتا — آخر معلومات بتاريخ ', langBtn: 'Français',
       roomsReady: 'الغرف جاهزة', roomsDone: 'الغرف جاهزة · ', issueTitle: 'الإبلاغ عن مشكلة', issueHelp: 'عطل، كسر، شيء ناقص: يصل الخبر إلى صاحب الفيلا فورا.',
@@ -163,7 +170,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
   function load() {
     if (!S.k || S.busy) return;
     S.busy = true; S.lastTry = Date.now(); render();
-    fetch(FN, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + ANON }, body: JSON.stringify({ k: S.k }) })
+    fetch(FN, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + ANON }, body: JSON.stringify({ k: S.k, lang: S.lang === 'ar' ? 'ar' : 'fr' }) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, status: r.status, d: d }; }); })
       .then(function (x) {
         if (x.ok && x.d && Array.isArray(x.d.stays)) {
@@ -208,19 +215,26 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
     if (s.infants) cells.push([s.infants, l.infants]);
     if (!cells.length) cells.push([s.pax != null ? s.pax : l.unknown, l.people]);
     h += '<div class="pax">' + cells.map(function (c) { return '<div><b>' + esc(c[0]) + '</b><span>' + esc(c[1]) + '</span></div>'; }).join('') + '</div>';
-    var row = function (icon, k, v, none) {
-      var has = String(v || '').trim() !== '';
-      return '<div class="row"><i class="ti ti-' + icon + '" aria-hidden="true"></i><div><span class="k">' + esc(k) + '</span><span class="v' + (has ? '' : ' q') + '" dir="auto">' + esc(has ? v : (none || l.unknown)) + '</span></div></div>';
+    /* Lisible (18/10) : une ligne par phrase ou par article (`lines`, calculées par le serveur ; ancienne réponse en cache → le texte tel quel).
+       En arabe : les mêmes lignes traduites (`ar`, Mistral UE, gardées en base) ; le français d'origine reste un geste plus bas. */
+    var list = function (arr, dir) { return arr.length === 1 ? '<span class="v" dir="' + dir + '">' + esc(arr[0]) + '</span>' : '<ul class="v" dir="' + dir + '">' + arr.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>'; };
+    var row = function (icon, k, v, none, f) {
+      var fr = s.lines && f && Array.isArray(s.lines[f]) ? s.lines[f] : (String(v || '').trim() ? [String(v).trim()] : []);
+      var ar = S.lang === 'ar' && s.ar && f && Array.isArray(s.ar[f]) && s.ar[f].length === fr.length ? s.ar[f] : null;
+      var body = !fr.length ? '<span class="v q" dir="auto">' + esc(none || l.unknown) + '</span>'
+        : ar ? list(ar, 'rtl') + (/^(meals|drinks|note|extras)$/.test(f) ? '<details class="orig"><summary>' + esc(l.orig) + '</summary>' + list(fr, 'ltr') + '</details>' : '') // l'original replié sous les textes libres seulement (pas sous une heure)
+        : list(fr, 'auto');
+      return '<div class="row"><i class="ti ti-' + icon + '" aria-hidden="true"></i><div>' + '<span class="k">' + esc(k) + '</span>' + body + '</div></div>';
     };
     // Qui part aujourd'hui : plus besoin d'heure, de lits ni de repas.
-    if (a >= t) h += row('clock', l.time, s.arrival_time);
-    if (a >= t) h += row('bed', l.beds, s.beds);
-    if (d > t) h += row('tools-kitchen-2', l.meals, s.meals, l.mealsNone);
-    if (d > t && String(s.drinks || '').trim()) h += row('glass', l.drinks, s.drinks);
-    if (d > t && String(s.extras || '').trim()) h += row('shopping-bag', l.extras, s.extras);
+    if (a >= t) h += row('clock', l.time, s.arrival_time, null, 'arrival_time');
+    if (a >= t) h += row('bed', l.beds, s.beds, null, 'beds');
+    if (d > t) h += row('tools-kitchen-2', l.meals, s.meals, l.mealsNone, 'meals');
+    if (d > t && String(s.drinks || '').trim()) h += row('glass', l.drinks, s.drinks, null, 'drinks');
+    if (d > t && String(s.extras || '').trim()) h += row('shopping-bag', l.extras, s.extras, null, 'extras');
     // Heure de départ (17/10/2026) : seulement si elle est connue — utile le jour du départ et pour l'interlocation.
-    if (d >= t && String(s.departure_time || '').trim()) h += row('door-exit', l.depTime, s.departure_time);
-    if (String(s.note || '').trim()) h += row('note', l.note, s.note);
+    if (d >= t && String(s.departure_time || '').trim()) h += row('door-exit', l.depTime, s.departure_time, null, 'departure_time');
+    if (String(s.note || '').trim()) h += row('note', l.note, s.note, null, 'note');
     // « Chambres prêtes » : pour une arrivée du jour ou à venir ; une fois envoyé, l'heure reste affichée.
     if (a >= t && s.id) {
       var rr = readyReport(s.id);
@@ -285,7 +299,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       report('rooms_ready', rb.getAttribute('data-id')).then(function () { render(); }, function () { rb.disabled = false; alertBand(L().sendErr); });
       return;
     }
-    if (e.target.closest('#langBtn')) { S.lang = S.lang === 'ar' ? 'fr' : 'ar'; store.set(L_KEY, S.lang); render(); }
+    if (e.target.closest('#langBtn')) { S.lang = S.lang === 'ar' ? 'fr' : 'ar'; store.set(L_KEY, S.lang); render(); if (S.lang === 'ar' && S.data && (S.data.stays || []).some(function (x) { return !x.ar && x.lines && Object.keys(x.lines).some(function (f) { return x.lines[f].length; }); })) load(); } // en arabe : chercher les traductions si la réponse n'en a pas
   });
   function alertBand(msg) {
     var app = document.getElementById('app'), b = document.createElement('div');

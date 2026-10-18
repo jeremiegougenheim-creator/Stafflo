@@ -56,7 +56,7 @@ check('séjour terminé hier exclu, départ du jour inclus', !names.includes('Pa
 check('au-delà de 30 jours exclu', !names.includes('Trop L.'), names);
 check('dates incohérentes exclues', !names.includes('Dates F.'), names);
 check('ordre par arrivée', names.join('|') === 'Part A.|Tomas H.|Arnaud D.|Rotation J.|Seán', names.join('|'));
-const KEYS = ['id', 'name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'departure_time', 'beds', 'meals', 'drinks', 'note', 'extras', 'same_day'];
+const KEYS = ['id', 'name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'departure_time', 'beds', 'meals', 'drinks', 'note', 'extras', 'same_day', 'lines'];
 check('champs exactement ceux prévus (aucun prix, note, téléphone, email, code)', V.every((s) => Object.keys(s).join(',') === KEYS.join(',')), Object.keys(V[0]).join(','));
 const flat = JSON.stringify(V);
 for (const bad of ['1298', 'TARIFS', '+44', 'f@x.com', 'Royaume', 'HMX', 'privé', 'Herrera'])
@@ -95,7 +95,7 @@ check('retour « chambres prêtes » : séjour visible obligatoire', JSON.string
 check('retour « problème » : texte obligatoire, ≤ 300, espaces repliés, séjour facultatif', M.cleanReport({ kind: 'issue', text: '  fuite   salle de bain ' }, VIS).text === 'fuite salle de bain' && M.cleanReport({ kind: 'issue', text: 'x'.repeat(900), client_id: 's2' }, VIS).text.length === 300 && M.cleanReport({ kind: 'issue', text: '   ' }, VIS) === null);
 check('genre inconnu refusé (rien d’autre n’est modifiable depuis ce lien)', M.cleanReport({ kind: 'price', text: '1' }, VIS) === null && M.cleanReport({ kind: 'delete', client_id: 's1' }, VIS) === null);
 check('30 retours par heure et par lien, pas plus', (() => { let lim = false; for (let i = 0; i < 35; i++) if (M.limited('r:L1', 30, 3600000)) lim = true; return lim && !M.limited('r:L2', 30, 3600000); })());
-check('fonction : le retour part dans staff_reports avec le propriétaire et le lien, rien d’autre n’est écrit', /staff_reports`, \{ method: "POST"/.test(fnSrc) && /owner_id: link\.owner_id, link_id: link\.id, client_id: rep\.client_id, kind: rep\.kind, text: rep\.text/.test(fnSrc) && (fnSrc.match(/method: "POST"/g) || []).length === 1);
+check('fonction : le retour part dans staff_reports avec le propriétaire et le lien ; la seule autre écriture est le cache des traductions (staff_i18n)', /staff_reports`, \{ method: "POST"/.test(fnSrc) && /owner_id: link\.owner_id, link_id: link\.id, client_id: rep\.client_id, kind: rep\.kind, text: rep\.text/.test(fnSrc) && (fnSrc.match(/method: "POST"/g) || []).length === 3 && /staff_i18n\?on_conflict=client_id,lang,field`, \{ method: "POST"/.test(fnSrc) && /api\.mistral\.ai\/v1\/chat\/completions", \{ method: "POST"/.test(fnSrc));
 check('fonction : les retours récents du lien reviennent avec les séjours (chambres prêtes reste coché)', /staff_reports\?select=id,kind,client_id,text,created_at&link_id=eq\.\$\{link\.id\}&deleted_at=is\.null/.test(fnSrc) && /stays, reports, at:/.test(fnSrc));
 
 // ── Fonction : requêtes ──────────────────────────────────────────────────
@@ -105,7 +105,7 @@ check('lien retiré = plus d’accès (deleted_at)', /staff_links\?select=[^`]*t
 check('jeton jamais stocké : seule l’empreinte est cherchée', !/token_hash=eq\.\$\{body\.k\}/.test(fnSrc) && /sha256hex\(body\.k\)/.test(fnSrc));
 check('séjours du propriétaire du lien seulement', /user_id=eq\.\$\{link\.owner_id\}&deleted_at=is\.null/.test(fnSrc));
 check('réponse jamais en cache', /"Cache-Control": "no-store"/.test(fnSrc));
-check('deux écritures seulement : last_seen_at (PATCH) et le retour de l’équipe (POST staff_reports) — jamais de DELETE', (fnSrc.match(/method: "PATCH"/g) || []).length === 1 && (fnSrc.match(/method: "POST"/g) || []).length === 1 && !/method: "(DELETE|PUT)"/.test(fnSrc) && /last_seen_at: new Date/.test(fnSrc));
+check('écritures : last_seen_at (PATCH), le retour de l’équipe (POST staff_reports), le cache arabe (POST staff_i18n) — jamais de DELETE, jamais crm_clients', (fnSrc.match(/method: "PATCH"/g) || []).length === 1 && !/method: "(DELETE|PUT)"/.test(fnSrc) && /last_seen_at: new Date/.test(fnSrc) && !/crm_clients[^\n]*method: "(POST|PATCH)"/.test(fnSrc));
 check('même exclusion des demandes que l’Espace', (() => {
   const esp = fs.readFileSync(path.join(root, 'espace.html'), 'utf8');
   const a = (fnSrc.match(/FIRM_OUT = \[([^\]]+)\]/) || [])[1], b = (esp.match(/FIRM_OUT = \[([^\]]+)\]/) || [])[1];
@@ -116,7 +116,7 @@ check('même exclusion des demandes que l’Espace', (() => {
 const page = fs.readFileSync(path.join(root, 'equipe.html'), 'utf8');
 const script = page.slice(page.indexOf('<script>'));
 check('page non indexée, sans referrer', page.includes('<meta name="robots" content="noindex, nofollow">') && page.includes('<meta name="referrer" content="no-referrer">'));
-check('jeton lu dans le fragment (#k=), jamais dans l’URL envoyée', /location\.hash/.test(script) && !/location\.search/.test(script) && /body: JSON\.stringify\(\{ k: S\.k \}\)/.test(script));
+check('jeton lu dans le fragment (#k=), jamais dans l’URL envoyée', /location\.hash/.test(script) && !/location\.search/.test(script) && /body: JSON\.stringify\(\{ k: S\.k, lang: S\.lang === 'ar' \? 'ar' : 'fr' \}\)/.test(script));
 check('tout texte échappé', /var esc = function/.test(script) && !/innerHTML = [^;]*s\.(name|meals|note|beds)/.test(script));
 check('arabe : sens de lecture RTL et dates marocaines', /dir = S\.lang === 'ar' \? 'rtl' : 'ltr'/.test(script) && /'ar-MA'/.test(script));
 check('noms latins isolés en arabe (<bdi>)', /<bdi>' \+ esc\(s\.name\)/.test(script));
@@ -127,6 +127,40 @@ check('hors connexion : dernières informations gardées', /C_KEY/.test(script) 
 check('lien invalide : message clair, cache effacé', /x\.status === 404/.test(script) && /store\.set\(C_KEY, null\)/.test(script));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
 check('sw.js ne met pas equipe.html en cache', sw.includes("url.includes('equipe.html')"));
+
+// ── Lisible et en arabe (18/10/2026) ──────────────────────────────────────
+{
+  const st = M.staffView([{ id: 'c1', name: 'Thibaut Vauclare', arrival: '2026-10-19', departure: '2026-10-23', adults: 10, booking_status: 'confirmed',
+    meals: 'Mercredi 21, dîner vers 19h30 : tajine de kefta, semoule ; dessert : pâtisseries. Jeudi 22, déjeuner : kebabs. Pas d’allergie.',
+    details: { arrival_time: '« nous atterrissons à 14h »', drinks: '12 eaux plates, 2 vins rouges (vins marocains, choisis par nous)', staff_note: 'Départ à 6h30 : petit-déjeuner préparé la veille. Pas de transfert.',
+      guest_orders: { items: [{ kind: 'extra', n: ['Transfert aéroport', 'Airport transfer'], q: 1 }, { kind: 'extra', n: ['Massage', 'Massage'], q: 2 }] } } }], '2026-10-17');
+  const L = st[0].lines;
+  check('lines : repas une phrase par ligne, boissons un article par ligne (parenthèses respectées), consigne par phrase, extras un par ligne, heure nettoyée',
+    L.meals.length === 3 && L.meals[0] === 'Mercredi 21, dîner vers 19h30 : tajine de kefta, semoule ; dessert : pâtisseries.' && L.drinks.join('|') === '12 eaux plates|2 vins rouges (vins marocains, choisis par nous)' &&
+    L.note.length === 2 && L.extras.join('|') === '1 × Transfert aéroport|2 × Massage' && L.arrival_time.join('|') === 'atterrissage 14h' && L.beds.length === 0 && L.departure_time.length === 0, JSON.stringify(L));
+  check('bulletsOf : lignes à puces déjà écrites gardées une par une, 400 caractères au plus', M.bulletsOf('- un\n• deux\n' + 'x'.repeat(500), 'sentences').length === 3 && M.bulletsOf('- un\n• deux', 'sentences').join('|') === 'un|deux' && M.bulletsOf('', 'list').length === 0);
+  // Traduction : un seul appel pour tout ce qui manque, lignes alignées, cache par empreinte
+  const calls = [], writes = [];
+  const fake = async (_sys, user) => { calls.push(JSON.parse(user)); const req = JSON.parse(user).lines; const o = {}; for (const k of Object.keys(req)) o[k] = 'AR[' + req[k] + ']'; return JSON.stringify({ lines: o }); };
+  let out = await M.withArabic(st, 'o1', async () => [], async (rows) => { writes.push(...rows); }, fake);
+  check('cache vide : un seul appel Mistral pour tous les champs, chaque ligne traduite et alignée', calls.length === 1 && Object.keys(calls[0].lines).length === 3 + 2 + 2 + 2 + 1 && out[0].ar && out[0].ar.meals.length === 3 && out[0].ar.meals[1] === 'AR[Jeudi 22, déjeuner : kebabs.]' && out[0].ar.drinks[1] === 'AR[2 vins rouges (vins marocains, choisis par nous)]' && out[0].ar.arrival_time[0] === 'AR[atterrissage 14h]', JSON.stringify(out[0].ar));
+  check('cache écrit : une ligne par (séjour, champ), lang ar, empreinte du français, propriétaire', writes.length === 5 && writes.every((w) => w.owner_id === 'o1' && w.client_id === 'c1' && w.lang === 'ar' && /^[0-9a-f]{16}$/.test(w.src_hash) && Array.isArray(w.lines)) && writes.map((w) => w.field).sort().join() === 'arrival_time,drinks,extras,meals,note', JSON.stringify(writes.map((w) => w.field)));
+  check('la demande à Mistral ne contient ni nom de client, ni prix, ni téléphone', !/Thibaut|Vauclare|MAD|€|\+44/.test(JSON.stringify(calls[0])));
+  const cache = writes.map((w) => ({ client_id: w.client_id, field: w.field, src_hash: w.src_hash, lines: w.lines }));
+  calls.length = 0; writes.length = 0;
+  out = await M.withArabic(st, 'o1', async () => cache, async (rows) => { writes.push(...rows); }, fake);
+  check('cache complet : aucun appel, rien d’écrit, les traductions viennent du cache', calls.length === 0 && writes.length === 0 && out[0].ar.meals[2] === 'AR[Pas d’allergie.]');
+  const st2 = M.staffView([{ id: 'c1', name: 'Thibaut Vauclare', arrival: '2026-10-19', departure: '2026-10-23', adults: 10, booking_status: 'confirmed', meals: 'Nouveau menu.', details: { arrival_time: '« nous atterrissons à 14h »', drinks: '12 eaux plates, 2 vins rouges (vins marocains, choisis par nous)', staff_note: 'Départ à 6h30 : petit-déjeuner préparé la veille. Pas de transfert.' } }], '2026-10-17');
+  calls.length = 0; writes.length = 0;
+  out = await M.withArabic(st2, 'o1', async () => cache, async (rows) => { writes.push(...rows); }, fake);
+  check('repas modifié dans l’Espace : seul ce champ repasse par Mistral et est réécrit ; les autres restent du cache ; l’extra disparu n’est pas traduit', calls.length === 1 && Object.keys(calls[0].lines).join() === 'c1|meals|0' && writes.length === 1 && writes[0].field === 'meals' && out[0].ar.meals[0] === 'AR[Nouveau menu.]' && out[0].ar.drinks.length === 2 && !out[0].ar.extras, JSON.stringify({ calls, w: writes.map((w) => w.field), ar: out[0].ar }));
+  out = await M.withArabic(st2, 'o1', async () => [], async () => {}, async () => null);
+  check('Mistral en panne ou sans clé : pas de `ar`, le français reste, aucune erreur', !out[0].ar && out[0].lines.meals[0] === 'Nouveau menu.');
+  out = await M.withArabic(st2, 'o1', async () => [], async () => {}, async () => '{"lines":{"c1|meals|0":"ok"}}');
+  check('réponse partielle : seuls les champs entièrement traduits sont gardés (lignes alignées une à une)', out[0].ar && out[0].ar.meals[0] === 'ok' && !out[0].ar.drinks && !out[0].ar.note);
+  const tr = await M.translateAr([{ id: 'c9', field: 'note', lines: Array.from({ length: 30 }, (_x, i) => 'Phrase numéro ' + i + ' ' + 'a'.repeat(300) + '.') }], fake);
+  check('plus de 6 000 caractères : le reste attend le passage suivant (coupe nette, jamais une ligne tronquée)', Object.keys(tr).length < 30 && Object.keys(tr).length > 10 && Object.values(tr).every((v) => /^AR\[Phrase numéro \d+ a+\.\]$/.test(v)));
+}
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

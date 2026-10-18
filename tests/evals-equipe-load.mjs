@@ -30,11 +30,12 @@ const DATA = { name: 'Saïd', lang: 'fr', today: iso(0), at: new Date().toISOStr
 
 async function open({ lang = 'fr', data = DATA, report = null } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR' });
-  const posts = [], stored = [...(data.reports || [])]; // le serveur relit les retours du lien avec les séjours
+  const posts = [], views = [], stored = [...(data.reports || [])]; // le serveur relit les retours du lien avec les séjours
   await ctx.route('**/*', (route) => {
     const req = route.request(), u = req.url();
     if (u.includes('/functions/v1/staff-view')) {
       const body = JSON.parse(req.postData() || '{}');
+      if (!body.action) views.push(body);
       if (body.action === 'report') {
         posts.push(body);
         const rec = { id: 'r' + (stored.length + 1), kind: body.kind, client_id: body.client_id, text: body.text, created_at: new Date().toISOString() };
@@ -52,7 +53,7 @@ async function open({ lang = 'fr', data = DATA, report = null } = {}) {
   await page.goto(`http://127.0.0.1:${PORT}/equipe.html#k=${K}`);
   await page.waitForSelector('article.card', { timeout: 8000 });
   await page.waitForTimeout(150);
-  return { page, ctx, posts, errs };
+  return { page, ctx, posts, views, errs };
 }
 
 let r = await open();
@@ -87,6 +88,38 @@ await r.ctx.close();
 
 r = await open({ data: { ...DATA, reports: [{ id: 'r0', kind: 'rooms_ready', client_id: 's-next', text: null, created_at: new Date().toISOString() }] } });
 check('retour déjà envoyé depuis un autre appareil → coché au chargement', /Chambres prêtes · \d{2}:\d{2}/.test(await r.page.evaluate(() => document.getElementById('app').innerText)) && !(await r.page.$('[data-a="ready"]')));
+await r.ctx.close();
+
+// ── Lisible et en arabe (18/10) : `lines` → une puce par phrase / article ; `ar` → les mêmes lignes en arabe, le français replié dessous ──
+const LINED = { ...DATA, stays: [{ id: 's-next', name: 'Thibaut V.', a: iso(4), d: iso(8), nights: 4, adults: 10, children: null, infants: null, pax: 10, arrival_time: 'atterrissage 14h', departure_time: '6h30 (vol 9h)', beds: '',
+  meals: 'Mercredi 21, dîner vers 19h30 : tajine de kefta. Jeudi 22, déjeuner : kebabs. Pas d’allergie.', drinks: '12 eaux plates, 2 vins rouges (vins marocains, choisis par nous)', note: 'Départ à 6h30 : petit-déjeuner préparé la veille. Pas de transfert.', extras: '', same_day: false,
+  lines: { arrival_time: ['atterrissage 14h'], departure_time: ['6h30 (vol 9h)'], beds: [], meals: ['Mercredi 21, dîner vers 19h30 : tajine de kefta.', 'Jeudi 22, déjeuner : kebabs.', 'Pas d’allergie.'], drinks: ['12 eaux plates', '2 vins rouges (vins marocains, choisis par nous)'], note: ['Départ à 6h30 : petit-déjeuner préparé la veille.', 'Pas de transfert.'], extras: [] },
+  ar: { arrival_time: ['الهبوط 14:00'], departure_time: ['6:30 (الرحلة 9:00)'], meals: ['الأربعاء 21، عشاء حوالي 19:30: طاجين كفتة.', 'الخميس 22، غداء: كباب.', 'لا حساسية.'], drinks: ['12 ماء عادي', '2 نبيذ أحمر (مغربي، نختاره نحن)'], note: ['المغادرة 6:30: الفطور يُحضّر في الليلة السابقة.', 'لا نقل.'] } }] };
+r = await open({ data: LINED });
+check('la page dit au serveur la langue affichée ({ k, lang })', r.views.length === 1 && r.views[0].lang === 'fr' && r.views[0].k === K, r.views);
+const li = await r.page.$$eval('article.card .row ul.v li', (xs) => xs.map((x) => x.innerText));
+check('français : repas 3 puces, boissons 2 (parenthèses gardées), consigne 2 ; l’heure sur une ligne simple', li.length === 7 && li[0] === 'Mercredi 21, dîner vers 19h30 : tajine de kefta.' && li[4] === '2 vins rouges (vins marocains, choisis par nous)' && (await r.page.$$('article.card .row span.v')).length >= 2, li);
+check('français : pas de bloc « texte d’origine »', !(await r.page.$('details.orig')));
+await r.ctx.close();
+r = await open({ data: LINED, lang: 'ar' });
+const ali = await r.page.$$eval('article.card .row > div > ul.v', (xs) => xs.map((x) => x.getAttribute('dir') + ':' + [].map.call(x.querySelectorAll('li'), (li) => li.innerText).join('|')));
+check('arabe : les mêmes puces, traduites, en RTL', r.views[0].lang === 'ar' && ali.length === 3 && ali[0] === 'rtl:الأربعاء 21، عشاء حوالي 19:30: طاجين كفتة.|الخميس 22، غداء: كباب.|لا حساسية.' && ali[1].startsWith('rtl:12 ماء عادي|'), ali);
+check('arabe : l’heure d’arrivée traduite sur sa ligne ; le français d’origine replié sous les textes libres seulement (repas, boissons, consigne — pas sous une heure)', /الهبوط 14:00/.test(await r.page.evaluate(() => document.getElementById('app').innerText)) && (await r.page.$$('details.orig')).length === 3 && (await r.page.$$eval('details.orig', (xs) => xs.every((x) => !x.open && /النص الأصلي بالفرنسية/.test(x.querySelector('summary').innerText)))));
+await (await r.page.$$('details.orig summary'))[0].click(); await r.page.waitForTimeout(100);
+check('un geste ouvre le français d’origine, tel quel', (await r.page.$$eval('details.orig', (xs) => xs[0].open && !xs[1].open && xs[0].innerText.includes('Mercredi 21, dîner vers 19h30 : tajine de kefta.'))));
+await r.ctx.close();
+// Réponse sans `ar` (Mistral en panne, ou ancienne version) : le français, à puces ; passer en arabe redemande au serveur une fois
+const NOAR = { ...LINED, stays: [{ ...LINED.stays[0], ar: undefined }] };
+r = await open({ data: NOAR, lang: 'ar' });
+check('arabe sans traduction : le français reste, à puces, sans bloc d’origine', (await r.page.$$('article.card .row ul.v li')).length === 7 && !(await r.page.$('details.orig')) && !r.errs.length, r.errs);
+await r.ctx.close();
+r = await open({ data: NOAR, lang: 'fr' });
+await r.page.click('#langBtn'); await r.page.waitForTimeout(400);
+check('bascule FR → AR sans traductions en main : une nouvelle lecture avec lang = ar', r.views.length === 2 && r.views[1].lang === 'ar', r.views);
+await r.ctx.close();
+// Ancienne réponse (sans `lines`, en cache) : le texte tel quel, comme avant
+r = await open({ data: DATA });
+check('réponse sans `lines` (ancienne) : texte tel quel', /Heure de départ\s*vol retour 9h, départ de la villa 6h30/.test(await r.page.evaluate(() => document.getElementById('app').innerText)) && !(await r.page.$('article.card .row ul.v')));
 await r.ctx.close();
 
 await browser.close(); server.close();
