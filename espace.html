@@ -352,7 +352,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       nudge: 'Soyez prévenu des demandes Airbnb (24 h pour répondre) sans ouvrir l’app.', nudgeHow: 'Voir comment', later: 'Plus tard',
       wb: { title: 'WhatsApp Business', off: 'Les messages de vos clients arrivent seuls sur leur séjour ; vous gardez l’app sur votre téléphone. Un QR code à scanner depuis WhatsApp Business.', on: function (p) { return 'Relié : ' + p; }, connect: 'Relier', busy: 'Connexion…',
         hist: { pending: 'historique demandé', syncing: function (p) { return 'historique ' + p + ' %'; }, done: 'historique importé', declined: 'historique refusé dans l’app', disconnected: 'déconnecté' },
-        done: function (p) { return 'WhatsApp Business relié' + (p ? ' : ' + p : ''); }, taken: 'Ce numéro est déjà relié à un autre compte Stafflo.', err: 'Connexion impossible — réessayez.' },
+        done: function (p) { return 'WhatsApp Business relié' + (p ? ' : ' + p : ''); }, taken: 'Ce numéro est déjà relié à un autre compte Stafflo.', err: 'Connexion impossible — réessayez.',
+        prep: 'Préparation…', open: 'Ouvrir la fenêtre Meta', cancel: 'Annuler',
+        wait: 'Suivez la fenêtre de Meta jusqu’au QR code. Rien ne s’est ouvert ? Autorisez les fenêtres pour stafflo.app, puis Annuler et réessayez.',
+        blocked: 'Le script de Meta ne s’est pas chargé : un bloqueur de contenu le retient sans doute. Désactivez-le pour stafflo.app, ou essayez dans Chrome.',
+        meta: function (m) { return 'Meta refuse la connexion' + (m ? ' : « ' + m + ' »' : '.'); } },
       wl: { count: function (n) { return n + (n > 1 ? ' messages' : ' message'); }, last: 'dernier', see: 'Voir la conversation', fill: 'Remplir depuis ces messages', thread: 'Conversation WhatsApp', you: 'Vous', guest: 'Client',
         readOnly: 'Lecture seule : vous répondez depuis WhatsApp Business, comme d’habitude.', freeTitle: 'WhatsApp sans séjour', freeHelp: 'Conversations récentes dont le numéro n’est sur aucun séjour. Reliez-les : le numéro est noté sur le séjour, les prochains messages s’y rangent seuls.',
         linkTo: 'Relier à…', link: 'Relier', hide: 'Masquer', hidden: 'Masqué', linked: function (n) { return 'Relié à ' + n; },
@@ -507,7 +511,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       nudge: 'Be told about Airbnb enquiries (24 h to reply) without opening the app.', nudgeHow: 'Show me how', later: 'Later',
       wb: { title: 'WhatsApp Business', off: 'Your guests’ messages land on their stay on their own; you keep the app on your phone. One QR code to scan from WhatsApp Business.', on: function (p) { return 'Connected: ' + p; }, connect: 'Connect', busy: 'Connecting…',
         hist: { pending: 'history requested', syncing: function (p) { return 'history ' + p + '%'; }, done: 'history imported', declined: 'history declined in the app', disconnected: 'disconnected' },
-        done: function (p) { return 'WhatsApp Business connected' + (p ? ': ' + p : ''); }, taken: 'This number is already connected to another Stafflo account.', err: 'Could not connect — try again.' },
+        done: function (p) { return 'WhatsApp Business connected' + (p ? ': ' + p : ''); }, taken: 'This number is already connected to another Stafflo account.', err: 'Could not connect — try again.',
+        prep: 'Preparing…', open: 'Open the Meta window', cancel: 'Cancel',
+        wait: 'Follow the Meta window to the QR code. Nothing opened? Allow pop-ups for stafflo.app, then Cancel and try again.',
+        blocked: 'Meta’s script did not load: a content blocker is probably holding it back. Turn it off for stafflo.app, or try in Chrome.',
+        meta: function (m) { return 'Meta refused the connection' + (m ? ': “' + m + '”' : '.'); } },
       wl: { count: function (n) { return n + (n > 1 ? ' messages' : ' message'); }, last: 'last', see: 'See the conversation', fill: 'Fill in from these messages', thread: 'WhatsApp conversation', you: 'You', guest: 'Guest',
         readOnly: 'Read only: you reply from WhatsApp Business, as usual.', freeTitle: 'WhatsApp without a stay', freeHelp: 'Recent conversations whose number is on no stay. Link them: the number is saved on the stay and the next messages land there on their own.',
         linkTo: 'Link to…', link: 'Link', hide: 'Hide', hidden: 'Hidden', linked: function (n) { return 'Linked to ' + n; },
@@ -3382,14 +3390,25 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var WA_META = { appId: '4788920158094935', configId: '2570136620077692', v: 'v25.0', trial: false };
   try { var wmo = JSON.parse(localStorage.getItem('stafflo_wa_meta') || 'null'); if (wmo && /^\d{5,25}$/.test(String(wmo.appId)) && /^\d{5,25}$/.test(String(wmo.configId))) { WA_META.appId = String(wmo.appId); WA_META.configId = String(wmo.configId); WA_META.trial = true; } } catch (e) {}
   var waOpen = function () { return !!(WA_META.appId && WA_META.configId && (WA_META.trial || (D.villa && D.villa.wa_connect_enabled === true))); };
-  var WAC = { busy: false, err: '', ids: null };
+  /* 18/10/2026 : le bouton restait sur « Connexion… » sans issue (Orion/Safari, Mac). Trois causes possibles, toutes
+     couvertes : (1) le script de Meta chargé APRÈS le clic → la fenêtre ouverte par FB.login ne compte plus comme un
+     clic et Safari/WebKit la bloque sans rien dire ; (2) un bloqueur de contenu retient connect.facebook.net sans
+     erreur ; (3) la fenêtre de Meta refuse (« can't onboard customers ») et ne renvoie rien. Donc : 1er clic = charger
+     le script (12 s max), 2e clic = FB.login, synchrone dans le clic (même règle que gmConnect) ; « Annuler » pendant
+     l'attente ; le refus de Meta (message CANCEL/ERROR avec error_message) est affiché tel quel. */
+  var WAC = { busy: false, err: '', ids: null, sdk: '', n: 0 };
+  var waSdkP = null;
   function waSdk() {
-    return new Promise(function (res, rej) {
+    if (waSdkP) return waSdkP;
+    waSdkP = new Promise(function (res, rej) {
       if (window.FB && window.FB.login) return res(window.FB);
-      window.fbAsyncInit = function () { window.FB.init({ appId: WA_META.appId, autoLogAppEvents: true, xfbml: false, version: WA_META.v }); res(window.FB); };
-      var sc = document.createElement('script'); sc.async = true; sc.defer = true; sc.crossOrigin = 'anonymous'; sc.src = 'https://connect.facebook.net/en_US/sdk.js'; sc.onerror = rej;
+      var t = setTimeout(function () { rej(new Error('fb_sdk_timeout')); }, 12000);
+      window.fbAsyncInit = function () { clearTimeout(t); try { window.FB.init({ appId: WA_META.appId, autoLogAppEvents: true, xfbml: false, version: WA_META.v }); res(window.FB); } catch (x) { rej(x); } };
+      var sc = document.createElement('script'); sc.async = true; sc.defer = true; sc.crossOrigin = 'anonymous'; sc.src = 'https://connect.facebook.net/en_US/sdk.js'; sc.onerror = function (x) { clearTimeout(t); rej(x); };
       document.head.appendChild(sc);
     });
+    waSdkP.catch(function () { waSdkP = null; });
+    return waSdkP;
   }
   window.addEventListener('message', function (e) {
     var host = ''; try { host = new URL(e.origin).hostname; } catch (x) { return; }
@@ -3397,16 +3416,32 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (x) { return; }
     if (!d || d.type !== 'WA_EMBEDDED_SIGNUP') return;
     if (/^FINISH/.test(String(d.event)) && d.data) WAC.ids = { waba_id: d.data.waba_id, phone_number_id: d.data.phone_number_id };
-    else if (d.event === 'CANCEL') { WAC.busy = false; render(); }
+    else if (d.event === 'CANCEL' || d.event === 'ERROR') {
+      var em = d.data && d.data.error_message ? String(d.data.error_message).replace(/\s+/g, ' ').trim().slice(0, 240) : '';
+      WAC.busy = false; WAC.n++; if (em || d.event === 'ERROR') WAC.err = L().wb.meta(em); render();
+    }
   });
+  function waCancel() { WAC.busy = false; WAC.n++; render(); }
   function waConnect() {
     if (!waOpen() || WAC.busy) return;
     var k = L().wb;
-    WAC.busy = true; WAC.err = ''; WAC.ids = null; render();
-    waSdk().then(function (FB) {
+    WAC.err = '';
+    if (WAC.sdk !== 'ready' || !(window.FB && window.FB.login)) {
+      if (WAC.sdk === 'loading') return;
+      WAC.sdk = 'loading'; render();
+      waSdk().then(function () { WAC.sdk = 'ready'; render(); })
+        .catch(function () { WAC.sdk = ''; WAC.err = k.blocked; render(); });
+      return;
+    }
+    waLogin(window.FB, k);
+  }
+  function waLogin(FB, k) {
+    WAC.busy = true; WAC.ids = null; var n = ++WAC.n; render();
+    try {
       FB.login(function (resp) {
         var code = resp && resp.authResponse && resp.authResponse.code;
-        if (!code) { WAC.busy = false; render(); return; }
+        if (!code) { if (WAC.n === n) { WAC.busy = false; render(); } return; }
+        WAC.busy = true; render();
         var tries = 0;
         (function go() { // l'identifiant du compte arrive par message, parfois juste après le code (valable 30 s)
           if (!WAC.ids && tries++ < 20) return setTimeout(go, 150);
@@ -3420,18 +3455,26 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
             .finally(function () { WAC.busy = false; render(); });
         })();
       }, { config_id: WA_META.configId, response_type: 'code', override_default_response_type: true, extras: { setup: {}, featureType: 'whatsapp_business_app_onboarding', sessionInfoVersion: '3' } });
-    }).catch(function () { WAC.busy = false; WAC.err = k.err; render(); });
+    } catch (x) { WAC.busy = false; WAC.err = k.err; render(); }
+  }
+  // Bouton selon l'état : Relier → Préparation… → Ouvrir la fenêtre Meta → Connexion… + Annuler (jamais coincé)
+  function waBtn(k) {
+    if (WAC.busy) return '<span style="display:flex;gap:6px;flex:none"><button type="button" class="btn gold" disabled>' + esc(k.busy) + '</button><button type="button" class="btn" data-a="wacancel">' + esc(k.cancel) + '</button></span>';
+    if (WAC.sdk === 'loading') return '<button type="button" class="btn gold" data-a="waconnect" disabled>' + esc(k.prep) + '</button>';
+    return '<button type="button" class="btn gold" data-a="waconnect">' + esc(WAC.sdk === 'ready' ? k.open : k.connect) + '</button>';
+  }
+  function waNote(k) {
+    return (WAC.busy ? '<p class="sub" style="margin:4px 0 0">' + esc(k.wait) + '</p>' : '') + (WAC.err ? '<span class="err">' + esc(WAC.err) + '</span>' : '');
   }
   function waRow(row) {
     var k = L().wb, wn = D.waNum;
     if (wn) {
       var hs = wn.history_status, st = hs === 'syncing' ? k.hist.syncing(wn.history_progress || 0) : k.hist[hs] || '';
-      var again = (hs === 'disconnected') && waOpen() ? '<button type="button" class="btn gold" data-a="waconnect"' + (WAC.busy ? ' disabled' : '') + '>' + esc(WAC.busy ? k.busy : k.connect) + '</button>' : '';
-      return row('brand-whatsapp', k.title, k.on(wn.display_phone || '') + (st ? ' · ' + st : ''), again, hs === 'declined' || hs === 'disconnected') + (WAC.err ? '<span class="err">' + esc(WAC.err) + '</span>' : '');
+      var again = (hs === 'disconnected') && waOpen() ? waBtn(k) : '';
+      return row('brand-whatsapp', k.title, k.on(wn.display_phone || '') + (st ? ' · ' + st : ''), again, hs === 'declined' || hs === 'disconnected') + waNote(k);
     }
     if (!waOpen()) return '';
-    return row('brand-whatsapp', k.title, k.off, '<button type="button" class="btn gold" data-a="waconnect"' + (WAC.busy ? ' disabled' : '') + '>' + esc(WAC.busy ? k.busy : k.connect) + '</button>') +
-      (WAC.err ? '<span class="err">' + esc(WAC.err) + '</span>' : '');
+    return row('brand-whatsapp', k.title, k.off, waBtn(k)) + waNote(k);
   }
   /* Relier Gmail ICI (16/10/2026) : fenêtre de consentement Google (lecture seule, gmail.readonly), retour
      sur la page déjà déclarée chez Google (app.html?oauth_callback=1 — même origine : elle passe le code à
@@ -3750,7 +3793,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'bfdl' && c) bfDownload(c, v || '');
     else if (a === 'bfpdfsave' && c) bfPdfSave(c);
     else if (a === 'wlfill' && c) wlFill(c);
-    else if (a === 'waconnect') waConnect();
+    else if (a === 'waconnect') waConnect(); // FB.login part d'ici, synchrone dans le clic (fenêtre de Meta non bloquée)
+    else if (a === 'wacancel') waCancel();
     else if (a === 'gmconnect') gmConnect(); // synchrone dans le clic : sinon la fenêtre Google est bloquée
     else if (a === 'wllink' && v) wlLink(v);
     else if (a === 'wlhide' && v) wlHide(v);

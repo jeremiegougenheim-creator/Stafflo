@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [] } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [] } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -65,9 +65,10 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/wa_numbers')) return json(waNum);
     if (u.startsWith('https://connect.facebook.net/')) {
       reads.push({ kind: 'fbsdk', url: u });
+      if (fbMode === 'block') return route.abort('blockedbyclient');
       const ev = (origin, data) => `window.dispatchEvent(new MessageEvent('message', { origin: ${JSON.stringify(origin)}, data: ${JSON.stringify(JSON.stringify(data))} }));`;
       const fin = { type: 'WA_EMBEDDED_SIGNUP', event: 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING', data: { waba_id: '5550001', phone_number_id: '106540352242922' } };
-      return route.fulfill({ status: 200, contentType: 'text/javascript', body: `window.FB = { init: function (o) { window.__fbInit = o; }, login: function (cb, o) { window.__fbLogin = o; ${fbEvil ? ev('https://evil.example.com', fin) : ev('https://www.facebook.com', fin)} cb({ authResponse: { code: 'CODE1' } }); } }; window.fbAsyncInit && window.fbAsyncInit();` });
+      return route.fulfill({ status: 200, contentType: 'text/javascript', body: `window.FB = { init: function (o) { window.__fbInit = o; }, login: function (cb, o) { window.__fbLogin = o; window.__fbInClick = !!(window.event && window.event.type === 'click'); ${fbMode === 'hang' ? '' : fbMode === 'refuse' ? ev('https://www.facebook.com', { type: 'WA_EMBEDDED_SIGNUP', event: 'CANCEL', data: { error_message: "Stafflo can't onboard customers at the moment.", error_id: '1', session_id: 's' } }) : (fbEvil ? ev('https://evil.example.com', fin) : ev('https://www.facebook.com', fin)) + " cb({ authResponse: { code: 'CODE1' } });"} } }; window.fbAsyncInit && window.fbAsyncInit();` });
     }
     if (u.includes('/functions/v1/gmail-connect')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'gmconnect', body: b, auth: req.headers().authorization }); return b.code === 'GSCOPE' ? json({ error: 'scope_missing' }, 400) : json({ ok: true, email: 'riad.neuf@example.com' }); }
     if (u.includes('/functions/v1/wa-connect')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'waconnect', body: b, auth: req.headers().authorization }); return b.waba_id ? json({ ok: true, display_phone: '+212 600-000111', on_biz_app: true }) : json({ error: 'bad_request' }, 400); }
@@ -871,17 +872,45 @@ await r.ctx.close();
   r = await open({ villa: V, waMeta: { appId: '123456', configId: '654321' } });
   await r.page.waitForTimeout(200);
   check('identifiants présents : « Relier » dans Réglages ; le SDK de Meta n’est PAS chargé avant le clic', !!(await r.page.$('#settings [data-a="waconnect"]')) && !r.reads.some((x) => x.kind === 'fbsdk'));
+  // 18/10 : le script de Meta se charge au 1er clic, la fenêtre s'ouvre au 2e — FB.login DANS le clic (Safari/Orion bloquaient la fenêtre, bouton coincé sur « Connexion… »)
+  await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(600);
+  const lo1 = await r.page.evaluate(() => ({ init: window.__fbInit, login: window.__fbLogin }));
+  check('1er clic : script de Meta chargé et initialisé (app, v25.0), aucune fenêtre ouverte ; le bouton dit « Ouvrir la fenêtre Meta »', r.reads.some((x) => x.kind === 'fbsdk') && lo1.init && lo1.init.appId === '123456' && lo1.init.version === 'v25.0' && !lo1.login && /Ouvrir la fenêtre Meta/.test(await r.page.innerText('#settings')), lo1);
   await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(1200);
   const wc = r.calls.filter((x) => x.kind === 'waconnect').pop();
-  const lo = await r.page.evaluate(() => ({ init: window.__fbInit, login: window.__fbLogin }));
-  check('clic : SDK chargé, FB.init (app, v25.0), FB.login (configuration, code, coexistence)', r.reads.some((x) => x.kind === 'fbsdk') && lo.init && lo.init.appId === '123456' && lo.init.version === 'v25.0' && lo.login.config_id === '654321' && lo.login.response_type === 'code' && lo.login.extras.featureType === 'whatsapp_business_app_onboarding', lo);
+  const lo = await r.page.evaluate(() => ({ init: window.__fbInit, login: window.__fbLogin, inClick: window.__fbInClick }));
+  check('2e clic : FB.login appelé pendant le clic lui-même (fenêtre de Meta non bloquée) — configuration, code, coexistence', lo.inClick === true && lo.login && lo.login.config_id === '654321' && lo.login.response_type === 'code' && lo.login.extras.featureType === 'whatsapp_business_app_onboarding', lo);
   check('code et identifiants du compte (message de facebook.com) envoyés à wa-connect avec la session ; « relié » affiché', !!wc && wc.body.code === 'CODE1' && wc.body.waba_id === '5550001' && wc.body.phone_number_id === '106540352242922' && wc.auth === 'Bearer tok' && /WhatsApp Business relié : \+212 600-000111/.test(await r.page.innerText('#toastHost')) && !r.errs.length, { wc, e: r.errs });
   await r.ctx.close();
   r = await open({ villa: V, waMeta: { appId: '123456', configId: '654321' }, fbEvil: true });
   await r.page.waitForTimeout(200);
+  await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(600);
   await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(4000);
   const we = r.calls.filter((x) => x.kind === 'waconnect').pop();
   check('un message qui ne vient pas de facebook.com est ignoré (pas d’identifiants volés), erreur affichée', !!we && !we.body.waba_id && /Connexion impossible/.test(await r.page.innerText('#settings')));
+  await r.ctx.close();
+  r = await open({ villa: V, waMeta: { appId: '123456', configId: '654321' }, fbMode: 'block' });
+  await r.page.waitForTimeout(200);
+  await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(800);
+  const bk = await r.page.innerText('#settings');
+  check('script de Meta bloqué (bloqueur de contenu) : message clair, bouton revenu à « Relier », jamais coincé', /bloqueur de contenu/.test(bk) && /Relier/.test(bk) && !/Préparation…|Connexion…/.test(bk) && !(await r.page.$('[data-a="waconnect"][disabled]')), bk.slice(0, 400));
+  await r.ctx.close();
+  r = await open({ villa: V, waMeta: { appId: '123456', configId: '654321' }, fbMode: 'refuse' });
+  await r.page.waitForTimeout(200);
+  await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(600);
+  await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(400);
+  const rf = await r.page.innerText('#settings');
+  check('Meta refuse (CANCEL + error_message de facebook.com) : le refus de Meta affiché tel quel, bouton libéré, rien envoyé à wa-connect', /Meta refuse la connexion : « Stafflo can't onboard customers at the moment\. »/.test(rf) && !/Connexion…/.test(rf) && !(await r.page.$('[data-a="wacancel"]')) && !r.calls.some((x) => x.kind === 'waconnect'), rf.slice(0, 500));
+  await r.ctx.close();
+  r = await open({ villa: V, waMeta: { appId: '123456', configId: '654321' }, fbMode: 'hang' });
+  await r.page.waitForTimeout(200);
+  await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(600);
+  await r.page.click('[data-a="waconnect"]'); await r.page.waitForTimeout(300);
+  const hg = await r.page.innerText('#settings');
+  check('fenêtre de Meta sans réponse : « Connexion… » + « Annuler » + que faire si rien ne s’est ouvert', /Connexion…/.test(hg) && !!(await r.page.$('[data-a="wacancel"]')) && /Autorisez les fenêtres pour stafflo\.app/.test(hg), hg.slice(0, 500));
+  await r.page.click('[data-a="wacancel"]'); await r.page.waitForTimeout(200);
+  const hc = await r.page.innerText('#settings');
+  check('« Annuler » : bouton libéré (« Ouvrir la fenêtre Meta »), plus de « Connexion… »', /Ouvrir la fenêtre Meta/.test(hc) && !/Connexion…/.test(hc) && !(await r.page.$('[data-a="waconnect"][disabled]')) && !r.errs.length, { hc: hc.slice(0, 300), e: r.errs });
   await r.ctx.close();
   r = await open({ villa: V, waNum: [{ display_phone: '+212 600-000111', history_status: 'syncing', history_progress: 55 }] });
   await r.page.waitForTimeout(200);
