@@ -959,6 +959,28 @@ const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + titl
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   check('Léa n’a pas de lien → le brief prestataire n’en parle pas', !/lien Stafflo/.test(await r.page.inputValue('#tx-k1')));
   await r.ctx.close();
+  // 18/10 — brief en arabe : un geste « العربية » (ai-proxy write_staff), le texte arabe remplace le français dans la zone (c'est lui qu'on envoie), « Français » y revient
+  const AR_TXT = '*ملخص البيت — Felipe Villalobos*\nإلى سعيد، بشرى\n\n👥 *المجموعة* : 7 أشخاص';
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, stays: ST,
+    ai: (b) => (b.task === 'write_staff' && /Brief maison — Felipe/.test(b.user) ? { text: AR_TXT } : { text: '' }) });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+  const frTxt = await r.page.inputValue('#tx-k1');
+  check('brief maison : bouton « العربية » ; rien n’est traduit sans geste', !!(await r.page.$('#st-k1 [data-a="briefar"][data-v="brief"]')) && !r.calls.some((x) => x.kind === 'ai'));
+  await r.page.click('#st-k1 [data-a="briefar"]'); await r.page.waitForTimeout(400);
+  const aiq = r.calls.filter((x) => x.kind === 'ai').pop();
+  check('un geste → ai-proxy write_staff avec le brief français tel quel (mise en page gardée dans la consigne) ; zone en arabe (RTL), titre « · arabe », bouton « Français »',
+    !!aiq && aiq.body.task === 'write_staff' && aiq.body.user === frTxt && /astérisques|puces/.test(aiq.body.system) && (await r.page.inputValue('#tx-k1')) === AR_TXT && (await r.page.getAttribute('#tx-k1', 'dir')) === 'rtl' &&
+    /BRIEF MAISON · ARABE/i.test(await r.page.innerText('#st-k1 .panel .ttl')) && !!(await r.page.$('#st-k1 [data-a="briefpfr"]')), { aiq: aiq && aiq.body.task, v: (await r.page.inputValue('#tx-k1')).slice(0, 60) });
+  await r.page.click('#st-k1 [data-a="briefpfr"]'); await r.page.waitForTimeout(150);
+  check('« Français » : le brief français revient, sans nouvel appel ; « العربية » à nouveau sans appel (gardé en mémoire)', (await r.page.inputValue('#tx-k1')) === frTxt && r.calls.filter((x) => x.kind === 'ai').length === 1 && !(await r.page.getAttribute('#tx-k1', 'dir')));
+  await r.page.click('#st-k1 [data-a="briefar"]'); await r.page.waitForTimeout(200);
+  check('retour à l’arabe : depuis la mémoire, aucun nouvel appel', (await r.page.inputValue('#tx-k1')) === AR_TXT && r.calls.filter((x) => x.kind === 'ai').length === 1);
+  await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+  check('brief prestataire : son propre bouton ; l’IA ne répond pas → le français reste, un mot d’erreur', !!(await r.page.$('#st-k1 [data-a="briefar"][data-v="chef"]')) && /Brief prestataire — Felipe/.test(await r.page.inputValue('#tx-k1')));
+  await r.page.click('#st-k1 [data-a="briefar"][data-v="chef"]'); await r.page.waitForTimeout(400);
+  check('traduction impossible → brief prestataire inchangé, en français, bouton toujours là', /^\*Brief prestataire — Felipe/.test(await r.page.inputValue('#tx-k1')) && /Traduction impossible/.test(await r.page.innerText('#toastHost')) && !!(await r.page.$('#st-k1 [data-a="briefar"][data-v="chef"]')));
+  await r.ctx.close();
   // 17/10/2026 — briefs nettoyés (brief de Thibaut) : l'heure dite par le client sur la ligne Arrivée, sans « (WhatsApp, date) »
   // ni tiret ; départ et boissons ; « 10 adultes » ; pas de nuits, pas de « à demander au client », jamais les notes privées.
   {
