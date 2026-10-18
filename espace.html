@@ -293,7 +293,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       stLate: 'En retard :', stMissing: 'Il manque :', stReady: 'Prêt — rien ne manque',
       guestAns: 'Réponse du client', gaArrival: 'arrivée', gaMeals: 'repas', gaCouples: function (n) { return n + (n > 1 ? ' couples' : ' couple'); }, gaSingles: function (n) { return n + (n > 1 ? ' personnes seules' : ' personne seule'); },
       ckLate: 'en retard', ckDue: function (d) { return 'avant ' + d; }, more: '… voir la suite',
-      setup: { title: 'Mise en route', facts: 'Remplir la fiche maison', factsSub: 'Adresse, wifi, horaires, repas et prix : c’est le livret que reçoit chaque client.', gmail: 'Connecter votre boîte Gmail', gmailSub: 'Les réservations et messages Airbnb arrivent seuls, toutes les 10 minutes.', stay: 'Ajouter votre premier séjour', staySub: 'Ou laissez Gmail le créer à la prochaine réservation Airbnb.', team: 'Ajouter votre équipe', teamSub: 'Pour envoyer le brief et donner un accès en lecture.', push: 'Activer les alertes sur ce téléphone', pushSub: 'Demandes, messages et réservations, en direct.', done: 'Fait' },
+      setup: { title: 'Mise en route', facts: 'Remplir la fiche maison', factsSub: 'Adresse, wifi, horaires, repas et prix : c’est le livret que reçoit chaque client.', gmail: 'Connecter votre boîte Gmail', gmailSub: 'Les réservations et messages Airbnb arrivent seuls, toutes les 10 minutes.', stay: 'Ajouter votre premier séjour', staySub: 'Ou laissez Gmail le créer à la prochaine réservation Airbnb.', team: 'Ajouter votre équipe', teamSub: 'Pour envoyer le brief et donner un accès en lecture.', push: 'Activer les alertes sur ce téléphone', pushSub: 'Demandes, messages et réservations, en direct.', done: 'Fait', gmailOr: 'Ou un calendrier iCal (Réglages), si vous ne passez pas par Gmail.', hide: 'Masquer la mise en route', hidden: 'Mise en route masquée — Réglages reste là pour Gmail, iCal et les alertes.' },
       todo: { title: 'À faire', none: 'Rien d’urgent pour les 3 prochains jours.', msg: 'Répondre au message', phone: 'Demander son téléphone', livret: 'Envoyer le livret', meals: 'Obtenir les choix de repas', team: 'Heure d’arrivée et couchages pour l’équipe', brief: 'Briefer l’équipe', reg: 'Déclarer les voyageurs' },
       arrivesToday: 'arrive aujourd’hui',
       todo2: { depart: 'Envoyer le message de départ', review: 'Laisser l’avis Airbnb', order: 'Confirmer la commande du client' },
@@ -448,7 +448,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       stLate: 'Late:', stMissing: 'Missing:', stReady: 'Ready — nothing missing',
       guestAns: 'Guest’s answer', gaArrival: 'arrival', gaMeals: 'meals', gaCouples: function (n) { return n + (n > 1 ? ' couples' : ' couple'); }, gaSingles: function (n) { return n + (n > 1 ? ' singles' : ' single'); },
       ckLate: 'late', ckDue: function (d) { return 'by ' + d; }, more: '… see more',
-      setup: { title: 'Getting started', facts: 'Fill in the house sheet', factsSub: 'Address, wifi, hours, meals and prices: it is the booklet every guest receives.', gmail: 'Connect your Gmail inbox', gmailSub: 'Airbnb bookings and messages arrive on their own, every 10 minutes.', stay: 'Add your first stay', staySub: 'Or let Gmail create it with the next Airbnb booking.', team: 'Add your team', teamSub: 'To send the brief and give read-only access.', push: 'Turn on alerts on this phone', pushSub: 'Enquiries, messages and bookings, live.', done: 'Done' },
+      setup: { title: 'Getting started', facts: 'Fill in the house sheet', factsSub: 'Address, wifi, hours, meals and prices: it is the booklet every guest receives.', gmail: 'Connect your Gmail inbox', gmailSub: 'Airbnb bookings and messages arrive on their own, every 10 minutes.', stay: 'Add your first stay', staySub: 'Or let Gmail create it with the next Airbnb booking.', team: 'Add your team', teamSub: 'To send the brief and give read-only access.', push: 'Turn on alerts on this phone', pushSub: 'Enquiries, messages and bookings, live.', done: 'Done', gmailOr: 'Or an iCal calendar (Settings), if you do not use Gmail.', hide: 'Hide getting started', hidden: 'Getting started hidden — Settings still has Gmail, iCal and alerts.' },
       todo: { title: 'To do', none: 'Nothing urgent for the next 3 days.', msg: 'Reply to the message', phone: 'Ask for their phone', livret: 'Send the guide', meals: 'Get meal choices', team: 'Arrival time and beds for the team', brief: 'Brief the team', reg: 'Register the guests' },
       arrivesToday: 'arrives today',
       todo2: { depart: 'Send the departure message', review: 'Leave the Airbnb review', order: 'Confirm the guest’s order' },
@@ -2200,10 +2200,14 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   /* v10 — Mise en route d'un compte neuf : tant que Gmail, un premier séjour ou l'équipe
      manquent. Chaque étape est cochée d'après les vraies données (synchro serveur, séjours,
      équipe, alertes de CE téléphone) ; la carte disparaît d'elle-même une fois le compte prêt. */
+  var SETUP_HIDE = 'stafflo_setup_hidden';
+  function setupHidden() { try { return localStorage.getItem(SETUP_HIDE) === '1'; } catch (e) { return false; } }
   function setupCard() {
     var l = L(), s = l.setup;
-    var gmail = !!D.sync, stay = (D.stays.length + (D.past || []).length) > 0, team = teamList().length > 0;
+    // Gmail OU un calendrier iCal relié (18/10) : un propriétaire en direct / iCal n'a pas à « connecter Gmail » pour finir
+    var gmail = !!D.sync || ((D.villa && D.villa.ical_feeds) || []).length > 0, stay = (D.stays.length + (D.past || []).length) > 0, team = teamList().length > 0;
     if (gmail && stay && team && HAS_FACTS) return '';
+    if (setupHidden()) return '';
     var steps = [
       { k: 'facts', done: HAS_FACTS, icon: 'file-text', act: 'feopen' }, // 17/10 : la fiche maison d'abord — c'est le livret, ce qu'on vend
       { k: 'gmail', done: gmail, icon: 'brand-gmail', act: 'gmconnect' }, // la fenêtre Google s'ouvre d'ici (16/10)
@@ -2213,12 +2217,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (PUSH.state !== 'unsupported') steps.push({ k: 'push', done: PUSH.state === 'on', icon: 'bell', tab: 'maison' });
     var n = steps.filter(function (x) { return x.done; }).length;
     var body = steps.map(function (x) {
-      var inner = '<i class="ti ti-' + (x.done ? 'check' : x.icon) + '" aria-hidden="true"></i><span class="tx"><b>' + esc(s[x.k]) + '</b><span class="sub">' + esc(s[x.k + 'Sub']) + '</span></span>' +
+      var inner = '<i class="ti ti-' + (x.done ? 'check' : x.icon) + '" aria-hidden="true"></i><span class="tx"><b>' + esc(s[x.k]) + '</b><span class="sub">' + esc(s[x.k + 'Sub']) + (x.k === 'gmail' && !x.done ? ' ' + esc(s.gmailOr) : '') + '</span></span>' +
         (x.done ? '<span class="pill t-go">' + esc(s.done) + '</span>' : '<i class="ti ti-chevron-right" aria-hidden="true"></i>');
       if (x.done) return '<div class="todo setup done">' + inner + '</div>';
       if (x.act) return '<button type="button" class="todo setup" data-a="' + x.act + '"' + (x.v ? ' data-v="' + x.v + '"' : '') + '>' + inner + '</button>';
       return x.tab ? '<button type="button" class="todo setup" data-a="tab" data-v="' + x.tab + '">' + inner + '</button>' : '<a class="todo setup" href="' + x.href + '">' + inner + '</a>';
     }).join('');
+    if (HAS_FACTS && stay) body += '<button type="button" class="btn ghost full" style="margin-top:8px" data-a="setuphide"><i class="ti ti-eye-off" aria-hidden="true"></i>' + esc(s.hide) + '</button>'; // la fiche et un séjour : le reste peut attendre (18/10)
     return card('rocket', s.title, body, n + '/' + steps.length);
   }
   function todoCard() {
@@ -3726,6 +3731,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'archive') { var m2 = D.msgs.filter(function (x) { return x.id === v; })[0]; if (m2) archiveMsg(m2); }
     else if (a === 'copydraft') { var dt = document.getElementById('dr-' + v); if (dt) copyText(dt.value); }
     else if (a === 'sendchef' && c) { var tx4 = document.getElementById('tx-' + c.id); window.open('https://wa.me/' + kitchenWa() + '?text=' + encodeURIComponent(tx4 ? tx4.value : msgKitchen(c)), '_blank', 'noopener'); }
+    else if (a === 'setuphide') { try { localStorage.setItem(SETUP_HIDE, '1'); } catch (er) {} toast(L().setup.hidden); render(); }
     else if (a === 'briefar' && c) { briefAr(c, v === 'chef' ? 'chef' : 'brief'); }
     else if (a === 'briefpfr' && c) { var tk0 = TR[trKey(c, v === 'chef' ? 'chef' : 'brief')]; if (tk0) tk0.on = false; render(); }
     else if (a === 'sendsaid' && c) { var tx3 = document.getElementById('tx-' + c.id); window.open('https://wa.me/' + saidWa() + '?text=' + encodeURIComponent(tx3 ? tx3.value : msgBrief(c)), '_blank', 'noopener'); }

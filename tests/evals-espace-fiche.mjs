@@ -1224,6 +1224,27 @@ const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + titl
   await r.ctx.close();
 }
 
+// ── 18/10 — Mise en route : un calendrier iCal vaut Gmail ; « Masquer » une fois la fiche et un séjour en place ──
+{
+  const VF = { villa_name: 'Riad Zina', owner_name: 'Nadia', city: 'Marrakech', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina' }, TEAM: [{ name: 'Omar', brief: true, role: ['gardien', 'caretaker'] }] }, ical_feeds: [] };
+  const ST1 = [{ id: 's1', name: 'Ana Ruiz', arrival: iso(5), departure: iso(8), adults: 2, booking_status: 'confirmed', source: 'direct', details: {} }];
+  r = await open({ tab: 'jour', villa: VF, stays: ST1 });
+  await r.page.waitForTimeout(200);
+  let tj = await txt(r.page);
+  check('fiche + séjour + équipe, pas de Gmail : la mise en route reste (Gmail à faire, « ou un calendrier iCal »), avec « Masquer la mise en route »', /MISE EN ROUTE/.test(tj) && /Ou un calendrier iCal/.test(tj) && !!(await r.page.$('[data-a="setuphide"]')));
+  await r.page.click('[data-a="setuphide"]'); await r.page.waitForTimeout(200);
+  check('masquée : plus de carte, un mot qui dit où retrouver Gmail, iCal, alertes ; gardé sur l’appareil', !/MISE EN ROUTE/.test(await txt(r.page)) && /Réglages reste là/.test(await r.page.innerText('#toastHost')) && (await r.page.evaluate(() => localStorage.getItem('stafflo_setup_hidden'))) === '1');
+  await r.ctx.close();
+  r = await open({ tab: 'jour', villa: { ...VF, ical_feeds: [{ id: 'f1', label: 'Airbnb', url: 'https://www.airbnb.com/calendar/ical/1.ics?s=abc', added_at: '2026-10-17T10:00:00Z' }] }, stays: ST1 });
+  await r.page.waitForTimeout(200);
+  check('un calendrier iCal relié vaut Gmail : tout est fait, la carte disparaît', !/MISE EN ROUTE/.test(await txt(r.page)));
+  await r.ctx.close();
+  r = await open({ tab: 'jour', villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null } });
+  await r.page.waitForTimeout(200);
+  check('compte neuf (ni fiche ni séjour) : pas de « Masquer » — la mise en route reste devant', /MISE EN ROUTE/.test(await txt(r.page)) && !(await r.page.$('[data-a="setuphide"]')));
+  await r.ctx.close();
+}
+
 // ── 18/10 — Accès équipe sans équipe : pas de « Créer le lien » pour personne, d'abord l'équipe (fiche maison) ──
 {
   const V0 = { villa_name: 'Riad Zina', owner_name: 'Nadia', city: 'Marrakech', house_facts_ref: null, house_facts: null, staff_members: null };
