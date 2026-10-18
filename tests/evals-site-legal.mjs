@@ -67,5 +67,11 @@ for (const f of ['index.html', 'en.html', 'ar.html', 'th.html', 'zh.html']) {
   check(`${f} : barre du haut et carte tarif tiennent sur un téléphone`, /@media\(max-width:560px\)\{\.lang a\{padding:5px 6px\}/.test(h) && /@media\(max-width:430px\)\{\.nav-right \.btn-gold\.btn-sm\{display:none\}\}/.test(h) && /\.plans\{grid-template-columns:minmax\(0,1fr\)\}\.plan\{min-width:0\}/.test(h));
 }
 
+// 18/10 — aperçu de partage (WhatsApp, LinkedIn, iMessage) : une image 1200 × 630 par langue, en absolu, et la carte Twitter
+for (const [f, lang] of [['index.html', 'fr'], ['en.html', 'en']]) {
+  const h = read(f), img = 'https://stafflo.app/assets/og-' + lang + '.jpg';
+  check(f + ' : og:image absolue (' + lang + '), 1200 × 630, alt, twitter:card summary_large_image ; le fichier existe', h.includes('<meta property="og:image" content="' + img + '">') && /og:image:width" content="1200"/.test(h) && /og:image:height" content="630"/.test(h) && /og:image:alt" content="[^"]{10,}"/.test(h) && /twitter:card" content="summary_large_image"/.test(h) && h.includes('<meta name="twitter:image" content="' + img + '">') && fs.statSync(path.join(root, 'assets/og-' + lang + '.jpg')).size > 50000);
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
