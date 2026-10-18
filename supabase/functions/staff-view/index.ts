@@ -220,32 +220,56 @@ export async function translateAr(items: { id: string; field: keyof Lines; lines
   const req: Record<string, string> = {}; let chars = 0;
   for (const it of items) for (let i = 0; i < it.lines.length; i++) { if (chars + it.lines[i].length > AR_MAX_CHARS) break; req[it.id + "|" + it.field + "|" + i] = it.lines[i]; chars += it.lines[i].length; }
   if (!Object.keys(req).length) return null;
-  const raw = await call(SYS_AR, JSON.stringify({ lines: req })).catch(() => null);
+  const raw = await call(SYS_AR, JSON.stringify({ lines: req })).catch((e) => { console.error("[staff-view] ar call", String(e).slice(0, 120)); return null; });
   if (!raw) return null;
-  let j: Row = {}; try { j = JSON.parse(raw); } catch { return null; }
-  const got = j && typeof j.lines === "object" && j.lines ? j.lines : null; if (!got) return null;
+  let j: Row = {}; try { j = JSON.parse(raw); } catch { console.error("[staff-view] ar json", raw.slice(0, 160)); return null; }
+  const got = j && typeof j.lines === "object" && j.lines ? j.lines : null; if (!got) { console.error("[staff-view] ar shape", raw.slice(0, 160)); return null; }
   const out: Record<string, string> = {};
   for (const k of Object.keys(req)) { const v = got[k]; if (typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, 500); }
+  console.log("[staff-view] ar", Object.keys(req).length, "demandées,", Object.keys(out).length, "reçues");
   return out;
 }
+// Comme ai-proxy : plusieurs modèles. Deux passes : chaque modèle une fois (un 429 — limite de débit du compte Mistral —
+// passe tout de suite au suivant), puis, si rien n'a répondu, une pause et une seconde passe. Un modèle refusé (403) est sauté.
+// Vu le 18/10 : medium et small en 429 persistant sur ce compte, ministral-14b répond — d'où la seconde passe plutôt que des attentes.
+export const AR_MODELS = ["mistral-medium-latest", "mistral-small-latest", "ministral-14b-2512"];
+const AR_BUDGET_MS = 14000;
 async function mistral(system: string, user: string): Promise<string | null> {
-  const key = Deno.env.get("MISTRAL_API_KEY"); if (!key) return null;
-  const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 12000);
-  try {
-    const r = await fetch("https://api.mistral.ai/v1/chat/completions", { method: "POST", signal: ctl.signal,
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
-      body: JSON.stringify({ model: "mistral-medium-latest", temperature: 0, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
-    if (!r.ok) return null;
-    const j = await r.json();
-    return j && j.choices && j.choices[0] && j.choices[0].message ? String(j.choices[0].message.content || "") : null;
-  } catch { return null; } finally { clearTimeout(tm); }
+  const key = Deno.env.get("MISTRAL_API_KEY"); if (!key) { console.error("[staff-view] ar: MISTRAL_API_KEY absente"); return null; }
+  const t0 = Date.now(), tries: string[] = [], skip = new Set<string>();
+  for (let pass = 0; pass < 2; pass++) {
+    if (pass) await new Promise((ok) => setTimeout(ok, 1500));
+    for (const model of AR_MODELS) {
+      if (skip.has(model)) continue;
+      const left = AR_BUDGET_MS - (Date.now() - t0); if (left < 2500) break;
+      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), Math.min(left, 10000));
+      try {
+        const r = await fetch("https://api.mistral.ai/v1/chat/completions", { method: "POST", signal: ctl.signal,
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + key },
+          body: JSON.stringify({ model, temperature: 0, max_tokens: 4000, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
+        if (r.ok) {
+          const j = await r.json();
+          const txt = j && j.choices && j.choices[0] && j.choices[0].message ? String(j.choices[0].message.content || "") : "";
+          if (txt) { if (tries.length) console.log("[staff-view] ar ok", model, "après", tries.join(", ")); return txt; }
+          tries.push(model + " vide");
+        } else {
+          const err = (await r.text().catch(() => "")).slice(0, 120);
+          tries.push(model + " " + r.status);
+          if (r.status === 403 || r.status === 404 || r.status === 400) { skip.add(model); console.error("[staff-view] ar mistral", model, r.status, err); }
+          else if (r.status !== 429) console.error("[staff-view] ar mistral", model, r.status, err);
+        }
+      } catch (e) { tries.push(model + " " + String(e).slice(0, 40)); } finally { clearTimeout(tm); }
+    }
+  }
+  console.error("[staff-view] ar: aucune réponse —", tries.join(", "));
+  return null;
 }
 /** Pose `ar` sur chaque séjour : lignes du cache, complétées par la traduction du jour (écrite au cache). Jamais d'erreur : sans traduction, pas de `ar`. */
 export async function withArabic(stays: StaffStay[], owner: string, read: (ids: string[]) => Promise<Row[]>, write: (rows: Row[]) => Promise<void>, call = mistral): Promise<StaffStay[]> {
   if (!stays.length) return stays;
   const hashes: Record<string, string> = {};
   for (const s of stays) for (const f of LINE_FIELDS) if (s.lines[f].length) hashes[s.id + "|" + f] = await hashOf(s.lines[f].join("\n"));
-  const cache = await read(stays.map((s) => s.id)).catch(() => [] as Row[]);
+  const cache = await read(stays.map((s) => s.id)).catch((e) => { console.error("[staff-view] ar read", String(e).slice(0, 120)); return [] as Row[]; });
   const miss = missingAr(stays, cache, hashes);
   const fresh = miss.length ? await translateAr(miss, call) : null;
   const rows: Row[] = [];
@@ -253,7 +277,7 @@ export async function withArabic(stays: StaffStay[], owner: string, read: (ids: 
     const lines = it.lines.map((_x, i) => fresh[it.id + "|" + it.field + "|" + i]);
     if (lines.every((x) => typeof x === "string")) rows.push({ owner_id: owner, client_id: it.id, lang: "ar", field: it.field, src_hash: hashes[it.id + "|" + it.field], lines, updated_at: new Date().toISOString() });
   }
-  if (rows.length) await write(rows).catch(() => {});
+  if (rows.length) await write(rows).catch((e) => console.error("[staff-view] ar write", String(e).slice(0, 120)));
   const all = cache.filter((r) => hashes[r.client_id + "|" + r.field] === r.src_hash).concat(rows);
   return stays.map((s) => {
     const ar: Partial<Lines> = {};
