@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [] } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [] } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -59,6 +59,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/inbound_addresses')) return json(inbound);
     if (u.includes('/rest/v1/rpc/inbound_address')) { calls.push({ kind: 'inaddr' }); return json('in-abcdefghij12@stafflo.app'); }
     if (u.includes('/rest/v1/email_inbox') && u.includes('source=eq.email_in')) return json(inMails);
+    if (u.includes('/rest/v1/email_inbox') && decodeURIComponent(u).includes('/hosting/reviews/')) { reads.push({ kind: 'rvreq', url: decodeURIComponent(u) }); return json(rvReq); }
     if (u.includes('/rest/v1/email_inbox') && u.includes('client_id=eq.')) { reads.push({ kind: 'rvmails', url: decodeURIComponent(u) }); return json(rvMails); }
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
     if (u.includes('/rest/v1/rpc/billing_status')) return json(bill || []);
@@ -1153,7 +1154,10 @@ const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + titl
     { received_at: iso(-2) + 'T09:00:00Z', extracted: { airbnb: { type: 'payout' } } }];
   const WAM = [{ id: 'wm1', guest_wa: '447700900123', guest_name: 'Anna', direction: 'in', type: 'text', body: 'Thank you so much, we left the keys on the table as asked.', sent_at: iso(-3) + 'T10:30:00Z', client_id: null }];
   const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: PILOT };
-  r = await open({ tab: 'sejours', villa: V, stays: ST(), rvMails: MAILS, waMsgs: WAM, ai: () => ({ text: 'Here is a draft:\n\n**Anna and Tom** were *lovely* guests.' }) });
+  const RVQ = [{ subject: 'Write a review for Felipe’s group', body: 'Leave a review https://www.airbnb.co.uk/hosting/reviews/1111111111111111111/edit?c=x' },
+    { subject: 'Write a review for Anna’s group', body: 'Tell other hosts about Anna.\nWrite a review [https://www.airbnb.co.uk/hosting/reviews/1797697914543417560/edit?c=.pi80.pkaG9&euid=fc40]' },
+    { subject: 'Anna is waiting for your review', body: 'Write a review https://www.airbnb.co.uk/hosting/reviews/1797697914543417560/edit?euid=ab' }];
+  r = await open({ tab: 'sejours', villa: V, stays: ST(), rvMails: MAILS, waMsgs: WAM, rvReq: RVQ, ai: () => ({ text: 'Here is a draft:\n\n**Anna and Tom** were *lovely* guests.' }) });
   await r.page.waitForTimeout(250);
   await r.page.click('#pa-r1 [data-a="rv"][data-v="host"]');
   await r.page.waitForFunction(() => { const t = document.getElementById('tx-r1'); return t && t.value; }, null, { timeout: 5000 });
@@ -1166,13 +1170,19 @@ const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + titl
   check('avis hôte : ce qu’ARIA a lu est affiché ; WhatsApp déjà là → pas d’import proposé ; « Réécrire »', /ARIA a lu 2 messages Airbnb et 1 message WhatsApp de ce séjour\./.test(pa) && !(await r.page.$('#pa-r1 input[data-file="rvwa"]')) && !!(await r.page.$('#pa-r1 [data-a="rvre"]')) && !r.errs.length, { pa, errs: r.errs });
   await r.page.click('#pa-r1 [data-a="rvre"]'); await r.page.waitForTimeout(300);
   check('« Réécrire » : un nouvel appel, même conversation', r.calls.filter((x) => x.kind === 'ai').length === 2);
+  // 18/10 : airbnb.com/hosting/reviews est une page 404 chez Airbnb — le lien est le formulaire de CET avis, lu dans l'email d'Airbnb
+  const rq = r.reads.find((x) => x.kind === 'rvreq'), rvA = await r.page.$eval('#pa-r1 a[href*="airbnb"][href*="review"]', (a) => ({ href: a.href, t: a.innerText })).catch(() => null);
+  check('avis hôte : « Écrire l’avis sur Airbnb » ouvre le formulaire de cet avis (email au prénom du séjour, sans le pistage), jamais /hosting/reviews seul', !!rvA && rvA.href === 'https://www.airbnb.co.uk/hosting/reviews/1797697914543417560/edit' && /Écrire l’avis sur Airbnb/.test(rvA.t) &&
+    !!rq && /received_at\.gte\.[0-9-]+T/.test(rq.url) && /received_at\.lte\./.test(rq.url) && !/airbnb\.com\/hosting\/reviews"/.test(await r.page.innerHTML('#pa-r1')), { rvA, rq });
   await r.ctx.close();
   // WhatsApp privé : l'export s'ajoute dans le panneau de l'avis, lu sur l'appareil, et l'avis est réécrit avec
   const EXP = [`[${dmy(-8)}, 18:29:01] Anna Berg: Hi Nadia, sending you on here so you have my number`, `[${dmy(-8)}, 18:40:12] Nadia: Welcome Anna!`, `[${dmy(-3)}, 10:31:00] Anna Berg: We left the keys on the table, thank you for everything`].join('\n');
-  r = await open({ tab: 'sejours', villa: V, stays: ST(), rvMails: MAILS, ai: (bb) => ({ text: /left the keys on the table, thank you/.test(bb.user) ? 'Anna and Tom were great guests and left everything tidy.' : 'Anna and Tom were lovely guests.' }) });
+  r = await open({ tab: 'sejours', villa: V, stays: ST(), rvMails: MAILS, rvReq: [{ subject: 'Write a review for Anna’s group', body: 'https://www.airbnb.co.uk/hosting/reviews/1797697914543417560/edit' }, { subject: 'Write a review for Anna', body: 'https://www.airbnb.co.uk/hosting/reviews/1797697914543417999/edit' }], ai: (bb) => ({ text: /left the keys on the table, thank you/.test(bb.user) ? 'Anna and Tom were great guests and left everything tidy.' : 'Anna and Tom were lovely guests.' }) });
   await r.page.waitForTimeout(250);
   await r.page.click('#pa-r1 [data-a="rv"][data-v="host"]');
   await r.page.waitForSelector('#pa-r1 input[data-file="rvwa"]', { timeout: 5000 });
+  const rvB = await r.page.$eval('#pa-r1 a[href*="airbnb"][href*="review"]', (a) => ({ href: a.href, t: a.innerText })).catch(() => null);
+  check('deux avis possibles pour ce prénom : aucun deviné — « Ouvrir les avis Airbnb » (page des avis du compte, pas la 404)', !!rvB && rvB.href === 'https://www.airbnb.com/users/reviews' && /Ouvrir les avis Airbnb/.test(rvB.t), rvB);
   check('sans WhatsApp enregistré : « Ajouter la discussion WhatsApp », lue sur cet appareil', /ARIA a lu 2 messages Airbnb et 0 message WhatsApp/.test(await r.page.innerText('#pa-r1')) && /Ajouter la discussion WhatsApp/.test(await r.page.innerText('#pa-r1')));
   await r.page.setInputFiles('#pa-r1 input[data-file="rvwa"]', { name: 'WhatsApp Chat with Anna Berg.txt', mimeType: 'text/plain', buffer: Buffer.from(EXP) });
   await r.page.waitForFunction(() => { const t = document.getElementById('tx-r1'); return t && /left everything tidy/.test(t.value); }, null, { timeout: 5000 }).catch(() => {});

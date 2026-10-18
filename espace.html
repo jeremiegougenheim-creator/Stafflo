@@ -299,7 +299,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       todo2: { depart: 'Envoyer le message de départ', review: 'Laisser l’avis Airbnb', order: 'Confirmer la commande du client' },
       ordLine: 'Commande du client', ordConfirm: 'Marquer la commande confirmée au client', ordConfirmed: 'Confirmée le ', ordKpi: 'Extras commandés par vos clients', ordStays: function (n) { return n + (n > 1 ? ' séjours' : ' séjour'); },
       actDepart: 'Msg départ', departDone: 'Message de départ envoyé', departDoneOn: 'Message de départ envoyé le ',
-      rvAsk: 'Demander un avis', rvHost: 'Avis hôte (ARIA)', rvDone: 'Avis laissé', rvDoneOn: 'Avis laissé le ', rvOpen: 'Ouvrir les avis Airbnb', rvThread: 'Ouvrir le fil Airbnb',
+      rvAsk: 'Demander un avis', rvHost: 'Avis hôte (ARIA)', rvDone: 'Avis laissé', rvDoneOn: 'Avis laissé le ', rvOpen: 'Ouvrir les avis Airbnb', rvWrite: 'Écrire l’avis sur Airbnb', rvThread: 'Ouvrir le fil Airbnb',
       rvUntil: function (d) { return 'avis possible jusqu’au ' + d; },
       rvRead: function (a, w) { return 'ARIA a lu ' + a + ' message' + (a > 1 ? 's' : '') + ' Airbnb et ' + w + ' message' + (w > 1 ? 's' : '') + ' WhatsApp de ce séjour.'; },
       rvAddWa: 'Ajouter la discussion WhatsApp (export .zip ou .txt) — lue sur cet appareil, envoyée à ARIA pour l’avis, jamais gardée',
@@ -458,7 +458,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       todo2: { depart: 'Send the departure message', review: 'Leave the Airbnb review', order: 'Confirm the guest’s order' },
       ordLine: 'Guest’s order', ordConfirm: 'Mark the order as confirmed to the guest', ordConfirmed: 'Confirmed on ', ordKpi: 'Extras ordered by your guests', ordStays: function (n) { return n + (n > 1 ? ' stays' : ' stay'); },
       actDepart: 'Departure msg', departDone: 'Departure message sent', departDoneOn: 'Departure message sent on ',
-      rvAsk: 'Ask for a review', rvHost: 'Host review (ARIA)', rvDone: 'Review left', rvDoneOn: 'Review left on ', rvOpen: 'Open Airbnb reviews', rvThread: 'Open the Airbnb thread',
+      rvAsk: 'Ask for a review', rvHost: 'Host review (ARIA)', rvDone: 'Review left', rvDoneOn: 'Review left on ', rvOpen: 'Open Airbnb reviews', rvWrite: 'Write the review on Airbnb', rvThread: 'Open the Airbnb thread',
       rvUntil: function (d) { return 'review possible until ' + d; },
       rvRead: function (a, w) { return 'ARIA read ' + a + ' Airbnb message' + (a === 1 ? '' : 's') + ' and ' + w + ' WhatsApp message' + (w === 1 ? '' : 's') + ' from this stay.'; },
       rvAddWa: 'Add the WhatsApp chat (.zip or .txt export) — read on this device, sent to ARIA for the review, never kept',
@@ -1701,6 +1701,30 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function orderText(o) { return o.items.map(function (x) { return orderLine(x, U.lang); }).join(' · ') + ' — ' + money(o.total, o.cur); }
   function reviewWindowEnd(c) { return c.d + 14; } /* Airbnb : 14 jours après le départ */
   function reviewOpen(c) { var t = todayNum(); return /airbnb/i.test(String(c.source || '')) && !c.is_comp && !c.details.reviewDoneAt && t > c.d && t <= reviewWindowEnd(c); }
+  /* 18/10/2026 : « Ouvrir les avis Airbnb » menait à airbnb.com/hosting/reviews — une page 404 chez Airbnb. Le bon lien est
+     dans l'email d'Airbnb « Write a review for Felipe’s group » / « Felipe is waiting for your review » :
+     /hosting/reviews/<id>/edit, le formulaire de CET avis. On le lit dans les emails reçus entre la veille du départ et la
+     fin des 14 jours, dont l'objet porte le prénom du séjour ; un seul avis possible, sinon aucun (jamais deviné).
+     Repli : /users/reviews (la page des avis du compte, celle des emails « X has left a review »). */
+  var RVL = {}, RV_ALL = 'https://www.airbnb.com/users/reviews';
+  function reviewLink(c) {
+    if (Object.prototype.hasOwnProperty.call(RVL, c.id)) return;
+    RVL[c.id] = '';
+    var first = fold(String(c.name || '').split(/[\s,&/]+/)[0]).replace(/[^a-z'-]/g, '');
+    if (first.length < 2) return;
+    var iso = function (n) { return new Date(n * 86400000).toISOString(); };
+    api('email_inbox?select=subject,body&from_email=ilike.*airbnb.com&body=like.' + encodeURIComponent('*/hosting/reviews/*') +
+      '&and=(received_at.gte.' + encodeURIComponent(iso(c.d - 1)) + ',received_at.lte.' + encodeURIComponent(iso(reviewWindowEnd(c) + 1)) + ')&order=received_at.desc&limit=20')
+      .catch(function () { return []; }).then(function (rows) {
+        var ids = {}, url = '', re = new RegExp('(^|[^a-z])' + first.replace(/[-']/g, '\\$&') + '([^a-z]|$)');
+        (rows || []).forEach(function (r) {
+          if (!re.test(fold(r.subject))) return;
+          var m = /https:\/\/www\.airbnb\.[a-z]{2,3}(?:\.[a-z]{2})?\/hosting\/reviews\/(\d{6,25})\/edit/.exec(r.body || '');
+          if (m) { ids[m[1]] = 1; url = url || m[0]; }
+        });
+        if (Object.keys(ids).length === 1) { RVL[c.id] = url; render(); }
+      });
+  }
   /* Avis hôte (17/10/2026) : l'avis PUBLIC de l'hôte sur ses voyageurs — les futurs hôtes le lisent sur leur profil.
      ARIA lit toute la conversation du séjour : messages Airbnb (email_inbox, archivés compris, et le message de
      réservation), WhatsApp Business relié, export WhatsApp ajouté sur cet appareil (jamais gardé). Les notes passent
@@ -2418,7 +2442,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (pv === 'host') h += '<div class="panel">' + (dr && dr.busy || wst.busy ? '<span class="sub">' + esc(wst.busy ? l.wa.reading : l.drafting) + '</span>' : '<textarea class="t" id="tx-' + id + '">' + esc(dr && dr.text || '') + '</textarea>' +
         (dr && dr.a != null ? '<span class="sub">' + esc(l.rvRead(dr.a, dr.w)) + '</span>' : '')) +
       '<div class="row2"><button type="button" class="btn gold" data-a="copy" data-id="' + id + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
-      '<a class="btn ghost" href="https://www.airbnb.com/hosting/reviews" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.rvOpen) + '</a></div>' +
+      '<a class="btn ghost" href="' + esc(RVL[c.id] || RV_ALL) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(RVL[c.id] ? l.rvWrite : l.rvOpen) + '</a></div>' +
       (dr && !dr.busy && !wst.busy && !dr.w ? '<label class="drop" data-drop="rvwa" data-id="' + id + '"><input type="file" accept=".zip,.txt,text/plain,application/zip" data-file="rvwa" data-id="' + id + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i><span>' + esc(l.rvAddWa) + '</span></label>' : '') +
       (wst.err ? '<span class="err">' + esc(wst.err) + '</span>' : '') +
       (dr && !dr.busy && !wst.busy ? '<button type="button" class="btn ghost" data-a="rvre" data-id="' + id + '"><i class="ti ti-refresh" aria-hidden="true"></i>' + esc(l.rvRedo) + '</button>' : '') +
@@ -3742,7 +3766,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     }
     else if (a === 'departdone' && c && !c.details.departMsgAt) { setDetail(c, 'departMsgAt', new Date().toISOString()); }
     else if (a === 'ordok' && c && orderOpen(c)) { setDetail(c, 'orderConfirmedAt', new Date().toISOString()); }
-    else if (a === 'rv') { var cr = byId(id) || pastById(id); if (cr) { RV[cr.id] = RV[cr.id] === v ? '' : v; if (v === 'host' && !(DR['rv-' + cr.id] && DR['rv-' + cr.id].text)) reviewDraft(cr); render(); } }
+    else if (a === 'rv') { var cr = byId(id) || pastById(id); if (cr) { RV[cr.id] = RV[cr.id] === v ? '' : v; if (v === 'host') reviewLink(cr); if (v === 'host' && !(DR['rv-' + cr.id] && DR['rv-' + cr.id].text)) reviewDraft(cr); render(); } }
     else if (a === 'rvre') { var cre = byId(id) || pastById(id) || allById(id); if (cre) reviewDraft(cre); }
     else if (a === 'rvdone') { var cd = byId(id) || pastById(id); if (cd && !cd.details.reviewDoneAt) { RV[cd.id] = ''; setDetail(cd, 'reviewDoneAt', new Date().toISOString()); } }
     else if (a === 'panel' && c) { U.panel[c.id] = U.panel[c.id] === v ? '' : v; render(); }
