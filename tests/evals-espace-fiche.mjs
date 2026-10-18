@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [] } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], share = false } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -54,7 +54,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     }
     if (u.includes('/rest/v1/staff?')) return json(staff);
     if (u.includes('/rest/v1/livret_links')) return json(links);
-    if (u.includes('/rest/v1/staff_links')) return json(teamLinks);
+    if (u.includes('/rest/v1/staff_links')) { if (m === 'POST') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'eqcreate', body: b }); return json([{ id: 'nl1', ...b, created_at: new Date().toISOString() }], 201); } return json(teamLinks); }
     if (u.includes('/rest/v1/staff_link_opens')) { reads.push({ kind: 'opens', url: decodeURIComponent(u) }); return json(opens); }
     if (u.includes('/rest/v1/guest_registrations')) return json(regs);
     if (u.includes('/rest/v1/inbound_addresses')) return json(inbound);
@@ -113,7 +113,9 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
   });
   const page = await ctx.newPage(); const errs = [];
   page.on('pageerror', (e) => errs.push(String(e)));
-  await page.addInitScript(([s, on, one, wm]) => { if (one) { if (sessionStorage.getItem('__init')) return; sessionStorage.setItem('__init', '1'); } localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); if (on) localStorage.setItem('stafflo_email_in', 'on'); if (wm) localStorage.setItem('stafflo_wa_meta', JSON.stringify(wm)); }, [SESSION, emailIn, once, waMeta]);
+  await page.addInitScript(([s, on, one, wm, sh]) => { if (one) { if (sessionStorage.getItem('__init')) return; sessionStorage.setItem('__init', '1'); } localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); if (on) localStorage.setItem('stafflo_email_in', 'on'); if (wm) localStorage.setItem('stafflo_wa_meta', JSON.stringify(wm));
+    // share : un téléphone qui propose la feuille de partage (navigator.share, fichiers compris) ; ce qui est partagé est noté dans window.__shared
+    if (sh) { window.__shared = []; navigator.share = function (d) { window.__shared.push({ text: d.text || '', title: d.title || '', files: (d.files || []).map(function (f) { return { name: f.name, type: f.type, size: f.size }; }) }); return Promise.resolve(); }; navigator.canShare = function () { return true; }; } }, [SESSION, emailIn, once, waMeta, share]);
   await page.goto(`http://127.0.0.1:${PORT}/espace.html#${tab}`);
   await page.waitForSelector(tab === 'maison' ? '[data-a="feopen"]:not([data-v])' : 'article, .card', { timeout: 8000 });
   return { page, ctx, calls, errs, reads };
@@ -778,6 +780,51 @@ await r.ctx.close();
   const pdf2 = dl2[1], doc2 = pdf2 ? await PDFLib.PDFDocument.load(fs.readFileSync(await pdf2.path())) : null;
   check('préparation longue : « Préparation du PDF… », puis « Enregistrer le PDF » ; deux photos JPEG + un PDF = 3 pages', busy && !!saveBtn && nBefore === 1 && dl2.length === 2 && /\.pdf$/.test(pdf2.suggestedFilename()) && !!doc2 && doc2.getPageCount() === 3 &&
     !(await r.page.$('#st-b1 [data-a="bfpdfsave"]')) && !r.errs.length, { busy, save: !!saveBtn, n: dl2.length, pages: doc2 && doc2.getPageCount(), errs: r.errs });
+  await r.ctx.close();
+  // Partage natif (18/10) : sur un téléphone, « Partager en PDF (WhatsApp, Mail…) » → un seul fichier dans la feuille de partage, rien n'est téléchargé
+  r = await open({ tab: 'sejours', share: true, villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT }, files: F2.slice(0, 2),
+    stays: [{ id: 'b1', name: 'Ana Ruiz', arrival: iso(-2), departure: iso(1), adults: 6, booking_status: 'confirmed', source: 'Airbnb', details: {} }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="b1"]'); await r.page.click('[data-a="panel"][data-id="b1"][data-v="bill"]'); await r.page.waitForTimeout(300);
+  const dl3 = []; r.page.on('download', (d) => dl3.push(d));
+  check('partage : bouton « Partager en PDF (WhatsApp, Mail…) » quand le navigateur partage des fichiers ; « Tout en un seul PDF » reste', /Partager en PDF \(WhatsApp, Mail…\)/.test(await r.page.innerText('#st-b1')) && /Tout en un seul PDF \(2 pièces\)/.test(await r.page.innerText('#st-b1')) && /un seul PDF, directement dans l’application choisie/.test(await r.page.innerText('#st-b1')));
+  await r.page.click('#st-b1 [data-a="bfshare"]'); await r.page.waitForTimeout(2500);
+  const shared = await r.page.evaluate(() => window.__shared);
+  check('partage : navigator.share reçoit UN fichier PDF nommé d’après le séjour, 2 pages — aucun téléchargement', shared.length === 1 && shared[0].files.length === 1 && shared[0].files[0].name === 'Justificatifs - Ana Ruiz - ' + iso(-2).slice(0, 10) + '.pdf' && shared[0].files[0].type === 'application/pdf' && shared[0].files[0].size > 500 && dl3.length === 0 && !r.errs.length, { shared, dl: dl3.length, errs: r.errs });
+  await r.ctx.close();
+  // Sans feuille de partage (ordinateur, Firefox) : pas de bouton, le téléchargement comme avant
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: PILOT }, files: F2.slice(0, 2),
+    stays: [{ id: 'b1', name: 'Ana Ruiz', arrival: iso(-2), departure: iso(1), adults: 6, booking_status: 'confirmed', source: 'Airbnb', details: {} }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="b1"]'); await r.page.click('[data-a="panel"][data-id="b1"][data-v="bill"]'); await r.page.waitForTimeout(300);
+  check('sans partage natif : ni « Partager en PDF » ni « Partager », « Un seul fichier à joindre dans WhatsApp » comme avant', !(await r.page.$('#st-b1 [data-a="bfshare"]')) && !(await r.page.$('[data-a="share"]')) && /Un seul fichier à joindre dans WhatsApp/.test(await r.page.innerText('#st-b1')) && !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
+// ── Partager (18/10) : la feuille de partage du téléphone pour tout message affiché ; QR du lien de l'équipe ──
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' }, TEAM: [{ name: 'Omar', role: ['gardien', ''], phone: '+212600000000', brief: true }] } };
+  const S = [{ id: 'p1', name: 'Ana Ruiz', arrival: iso(3), departure: iso(6), adults: 2, booking_status: 'confirmed', source: 'Airbnb', phone: '+33600000000', details: {} }];
+  r = await open({ tab: 'sejours', share: true, villa: V, stays: S.slice(), links: [{ client_id: 'p1', token_hash: 'h', created_at: iso(-1) }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="p1"]'); await r.page.click('[data-a="panel"][data-id="p1"][data-v="brief"]'); await r.page.waitForTimeout(300);
+  const brief = await r.page.inputValue('#tx-p1');
+  check('brief : « Copier » puis « Partager » côte à côte quand le téléphone propose la feuille de partage', !!(await r.page.$('#st-p1 [data-a="copy"][data-id="p1"]')) && !!(await r.page.$('#st-p1 [data-a="share"][data-id="p1"]')) && brief.length > 20);
+  await r.page.click('#st-p1 [data-a="share"][data-id="p1"]'); await r.page.waitForTimeout(200);
+  const sh = await r.page.evaluate(() => window.__shared);
+  check('partager : navigator.share reçoit exactement le texte affiché (le brief), rien d’autre, sans erreur', sh.length === 1 && sh[0].text === brief && !sh[0].files.length && !r.errs.length, { sh, errs: r.errs });
+  await r.ctx.close();
+  // Lien de l'équipe : QR calculé sur l'appareil (moteur servi par le site), montré une seule fois avec le lien ; « Partager » aussi
+  r = await open({ tab: 'maison', share: true, villa: V });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="eqcreate"]'); await r.page.waitForSelector('#eq-qr svg', { timeout: 8000 }).catch(() => {});
+  const eq = await r.page.evaluate(() => { const q = document.getElementById('eq-qr'), m = document.getElementById('eq-msg'); return { qr: !!(q && q.querySelector('svg')), cap: q ? q.innerText : '', lib: typeof window.qrcode === 'function', url: (m && (m.value.match(/https?:\/\/\S+/) || [])[0]) || '', share: !!document.querySelector('[data-a="eqshare"]') }; });
+  const made = r.calls.find((x) => x.kind === 'eqcreate');
+  check('lien équipe : QR du lien sous le message (moteur chargé à la demande), légende « À scanner avec l’appareil photo du téléphone de Omar », bouton Partager', eq.qr && eq.lib && /appareil photo du téléphone de Omar/.test(eq.cap) && /montré qu’ici/.test(eq.cap) && /equipe\.html#k=/.test(eq.url) && eq.share && !r.errs.length, { ...eq, errs: r.errs });
+  check('lien équipe : la base reçoit l’empreinte (sha-256), jamais le jeton du lien', !!made && /^[0-9a-f]{64}$/.test(made.body.token_hash) && made.body.name === 'Omar' && eq.url.indexOf(made.body.token_hash) < 0 && !JSON.stringify(made.body).includes(eq.url.split('#k=')[1] || '§'), made && made.body);
+  await r.page.click('[data-a="eqshare"]'); await r.page.waitForTimeout(200);
+  const sh2 = await r.page.evaluate(() => window.__shared);
+  check('lien équipe : « Partager » envoie le message avec le lien, tel qu’affiché', sh2.length === 1 && sh2[0].text.indexOf(eq.url) > -1 && /Omar/.test(sh2[0].text), sh2);
   await r.ctx.close();
 }
 

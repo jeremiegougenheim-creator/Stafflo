@@ -23,6 +23,9 @@
 <!-- Fiche maison : moteur sans données (house-facts.js) ; la fiche du compte vient de la base. -->
 <script src="house-facts.js"></script>
 <style>
+/* QR du lien de l'équipe (18/10) : calculé sur l'appareil, montré une fois à la création */
+.eq-qr{display:flex;flex-direction:column;align-items:center;gap:8px;margin:12px 0 4px;text-align:center}
+.eq-qr svg{width:168px;height:168px;background:#fff;padding:10px;box-sizing:border-box;border-radius:10px;border:1px solid var(--line)}
 :root{color-scheme:light;
   --paper:#F4EFE3;--cream:#FAF6EE;--card:#FFFDF8;--gd:#0F2318;--gm:#1d4d3a;--gold:#C9963A;--gold-ink:#8e6414;
   --ink:#1A1208;--muted:#706B5D;--line:rgba(26,18,8,.10);--line2:rgba(26,18,8,.06);
@@ -307,7 +310,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       bSessions: 'Sessions de courses', bAdvance: 'Avance déjà reçue (MAD)', bRate: 'Taux : 1 € = … MAD (facultatif)', bRest: 'Reste à payer',
       mPlanning: 'Planning équipe', mPlanningTxt: 'Les plannings à envoyer à Saïd et à Léa (arrivées, groupes, repas), générés depuis les séjours.', mPlanningBtn: 'Ouvrir le planning équipe',
       act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief maison', chef: 'Brief prestataire', phone: 'Téléphone', reg: 'Fiches voyageurs' },
-      copy: 'Copier', copied: 'Copié', openWa: 'Ouvrir WhatsApp', close: 'Fermer',
+      copy: 'Copier', copied: 'Copié', openWa: 'Ouvrir WhatsApp', close: 'Fermer', share: 'Partager', shareErr: 'Partage impossible ici. Copiez le texte.',
       markLivret: 'Marquer le livret envoyé', seeLivret: 'Voir le livret', seeMyLivret: 'Voir mon livret',
       cal: { title: 'Calendrier', prev: 'Mois précédent', next: 'Mois suivant', arr: 'arrivée', dep: 'départ', occ: 'séjour', ext: 'calendrier relié', extRes: 'réservé', extBlk: 'bloqué', today: 'aujourd’hui', free: function (n) { return n ? n + (n > 1 ? ' nuits libres' : ' nuit libre') + ' ce mois-ci' : 'Plus aucune nuit libre ce mois-ci'; }, wd: ['L', 'M', 'M', 'J', 'V', 'S', 'D'] },
       ns: { btn: 'Nouveau séjour', title: 'Nouveau séjour', name: 'Nom du client', arr: 'Arrivée', dep: 'Départ', adults: 'Adultes', children: 'Enfants', source: 'Réservé via', net: 'Ce que vous recevez (net)', paid: 'Payé par le client (si différent)', cur: 'Devise', phone: 'Téléphone (WhatsApp)', notes: 'Notes', save: 'Créer le séjour', cancel: 'Annuler', errName: 'Le nom du client est requis.', errDates: 'Dates invalides : le départ doit suivre l’arrivée.', errOverlap: function (n) { return 'Ces dates chevauchent le séjour de ' + n + '.'; }, done: 'Séjour créé', direct: 'Direct', other: 'Autre' },
@@ -367,7 +370,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         dlDone: function (n) { return n > 1 ? n + ' fichiers dans Téléchargements' : 'Fichier dans Téléchargements'; }, dlErr: 'Téléchargement impossible. Réessayez.',
         pdfAll: function (n) { return 'Tout en un seul PDF (' + n + ' pièces)'; }, pdfBusy: function (i, n) { return 'Préparation du PDF… (' + i + '/' + n + ')'; },
         pdfDone: 'PDF dans Téléchargements', pdfPart: function (n) { return 'PDF prêt, sans ' + n + (n > 1 ? ' pièces illisibles' : ' pièce illisible'); },
-        pdfSave: 'Enregistrer le PDF', pdfName: 'Justificatifs', pdfHint: 'Un seul fichier à joindre dans WhatsApp.' },
+        pdfSave: 'Enregistrer le PDF', pdfName: 'Justificatifs', pdfHint: 'Un seul fichier à joindre dans WhatsApp.',
+        share: 'Partager en PDF (WhatsApp, Mail…)', shareReady: 'Partager le PDF', shareHint: 'Les pièces partent en un seul PDF, directement dans l’application choisie.' },
       wa: { title: 'WhatsApp', fromWa: 'Remplir depuis WhatsApp', write: 'Écrire au client', fill: 'Remplir le séjour depuis la conversation',
         steps: ['Dans WhatsApp, ouvrez la conversation avec le client, touchez son nom, puis « Exporter la discussion » › « Sans médias ».', 'Enregistrez le fichier (iPhone : « Enregistrer dans Fichiers ») et choisissez-le ici — ou glissez-le sur ordinateur.', 'Ou copiez quelques messages et collez-les ci-dessous.'],
         drop: 'Choisir ou déposer l’export (.zip ou .txt)', paste: 'Ou collez des messages', pastePh: 'Collez ici les messages du client…', read: 'Lire les messages', reading: 'Lecture de la conversation…',
@@ -402,7 +406,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       staffSees: 'L’équipe voit ces champs et les repas dans sa vue (Maison › Accès équipe). Jamais les notes ni les prix.',
       eqTitle: 'Accès équipe', eqTxt: 'Un lien personnel par personne : arrivées, départs, groupes, heures d’arrivée et de départ, couchages, repas, boissons et consigne. Jamais de prix, de téléphone ni vos notes. Lecture seule, en français ou en arabe.',
       eqWho: 'Pour', eqLang: 'Langue', eqCreate: 'Créer le lien', eqNoTeam: 'Ajoutez d’abord votre équipe (prénoms, rôles, WhatsApp) : chaque personne aura ensuite son lien.', eqNone: 'Aucun lien pour l’instant.', eqOnce: 'Ce lien ne s’affiche qu’une fois : envoyez-le maintenant. Pour le renvoyer plus tard, créez-en un nouveau.',
-      eqSend: 'Envoyer sur WhatsApp', eqRevoke: 'Retirer', eqRevoked: 'Accès retiré', eqSeen: 'ouvert ', eqWeek: function (n, at) { return n + (n > 1 ? ' ouvertures' : ' ouverture') + ' ces 7 jours' + (at ? ' : ' + at : ''); }, eqNever: 'jamais ouvert', eqErr: 'Création impossible. Réessayez.', eqPreview: 'Voir la vue équipe',
+      eqSend: 'Envoyer sur WhatsApp', eqRevoke: 'Retirer', eqRevoked: 'Accès retiré', eqSeen: 'ouvert ', eqWeek: function (n, at) { return n + (n > 1 ? ' ouvertures' : ' ouverture') + ' ces 7 jours' + (at ? ' : ' + at : ''); }, eqNever: 'jamais ouvert', eqErr: 'Création impossible. Réessayez.', eqPreview: 'Voir la vue équipe', eqQr: 'À scanner avec l’appareil photo du téléphone de ', eqQrOnce: 'Le QR ouvre le lien ; il n’est montré qu’ici, maintenant.',
       arrTime: 'Heure d’arrivée', depTime: 'Heure de départ', drinksTxt: 'Boissons', beds: 'Couchages', staffNote: 'Consigne équipe',
       billTitle: 'Décompte de fin de séjour', bServices: 'Brunchs, déjeuners, dîners servis', bServed: function (n) { return n + ' — nombre servi'; }, bHoliday: 'dont un jour férié (tarif double)', bGouters: 'Goûters servis',
       bCourses: 'Courses et boissons (MAD, au ticket)', bOther: 'Autres (MAD)', bOtherLbl: 'Détail des autres (transfert, massage…)',
@@ -466,7 +470,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       bSessions: 'Shopping runs', bAdvance: 'Advance already received (MAD)', bRate: 'Rate: €1 = … MAD (optional)', bRest: 'Balance due',
       mPlanning: 'Team planning', mPlanningTxt: 'The schedules to send to Saïd and Léa (arrivals, groups, meals), built from the stays.', mPlanningBtn: 'Open the team planning',
       act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'House brief', chef: 'Provider brief', phone: 'Phone', reg: 'Guest forms' },
-      copy: 'Copy', copied: 'Copied', openWa: 'Open WhatsApp', close: 'Close',
+      copy: 'Copy', copied: 'Copied', openWa: 'Open WhatsApp', close: 'Close', share: 'Share', shareErr: 'Sharing is not available here. Copy the text.',
       markLivret: 'Mark guide as sent', seeLivret: 'Open the guide', seeMyLivret: 'See my booklet',
       cal: { title: 'Calendar', prev: 'Previous month', next: 'Next month', arr: 'arrival', dep: 'departure', occ: 'stay', ext: 'connected calendar', extRes: 'booked', extBlk: 'blocked', today: 'today', free: function (n) { return n ? n + ' free night' + (n > 1 ? 's' : '') + ' this month' : 'No free night left this month'; }, wd: ['M', 'T', 'W', 'T', 'F', 'S', 'S'] },
       ns: { btn: 'New stay', title: 'New stay', name: 'Guest name', arr: 'Arrival', dep: 'Departure', adults: 'Adults', children: 'Children', source: 'Booked via', net: 'What you receive (net)', paid: 'Paid by the guest (if different)', cur: 'Currency', phone: 'Phone (WhatsApp)', notes: 'Notes', save: 'Create the stay', cancel: 'Cancel', errName: 'The guest name is required.', errDates: 'Invalid dates: departure must be after arrival.', errOverlap: function (n) { return 'These dates overlap ' + n + '’s stay.'; }, done: 'Stay created', direct: 'Direct', other: 'Other' },
@@ -526,7 +530,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         dlDone: function (n) { return n > 1 ? n + ' files in Downloads' : 'File in Downloads'; }, dlErr: 'Download failed. Try again.',
         pdfAll: function (n) { return 'All in one PDF (' + n + ' items)'; }, pdfBusy: function (i, n) { return 'Preparing the PDF… (' + i + '/' + n + ')'; },
         pdfDone: 'PDF in Downloads', pdfPart: function (n) { return 'PDF ready, without ' + n + (n > 1 ? ' unreadable items' : ' unreadable item'); },
-        pdfSave: 'Save the PDF', pdfName: 'Receipts', pdfHint: 'One single file to attach in WhatsApp.' },
+        pdfSave: 'Save the PDF', pdfName: 'Receipts', pdfHint: 'One single file to attach in WhatsApp.',
+        share: 'Share as PDF (WhatsApp, Mail…)', shareReady: 'Share the PDF', shareHint: 'The items go as one PDF, straight into the app you choose.' },
       wa: { title: 'WhatsApp', fromWa: 'Fill in from WhatsApp', write: 'Message the guest', fill: 'Fill in the stay from the conversation',
         steps: ['In WhatsApp, open the chat with the guest, tap their name, then “Export chat” › “Without media”.', 'Save the file (iPhone: “Save to Files”) and choose it here — or drag it in on a computer.', 'Or copy a few messages and paste them below.'],
         drop: 'Choose or drop the export (.zip or .txt)', paste: 'Or paste messages', pastePh: 'Paste the guest’s messages here…', read: 'Read the messages', reading: 'Reading the chat…',
@@ -561,7 +566,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       staffSees: 'The team sees these fields and the meals in its view (House › Team access). Never your notes or prices.',
       eqTitle: 'Team access', eqTxt: 'One personal link per person: arrivals, departures, groups, arrival and departure times, beds, meals, drinks and note. Never prices, phone numbers or your notes. Read-only, in French or Arabic.',
       eqWho: 'For', eqLang: 'Language', eqCreate: 'Create the link', eqNoTeam: 'Add your team first (first names, roles, WhatsApp): each person then gets their own link.', eqNone: 'No link yet.', eqOnce: 'This link is shown only once: send it now. To resend it later, create a new one.',
-      eqSend: 'Send on WhatsApp', eqRevoke: 'Remove', eqRevoked: 'Access removed', eqSeen: 'opened ', eqWeek: function (n, at) { return n + (n > 1 ? ' opens' : ' open') + ' in the last 7 days' + (at ? ': ' + at : ''); }, eqNever: 'never opened', eqErr: 'Could not create the link. Try again.', eqPreview: 'Open the team view',
+      eqSend: 'Send on WhatsApp', eqRevoke: 'Remove', eqRevoked: 'Access removed', eqSeen: 'opened ', eqWeek: function (n, at) { return n + (n > 1 ? ' opens' : ' open') + ' in the last 7 days' + (at ? ': ' + at : ''); }, eqNever: 'never opened', eqErr: 'Could not create the link. Try again.', eqPreview: 'Open the team view', eqQr: 'Scan with the camera of the phone of ', eqQrOnce: 'The QR opens the link; it is shown only here, now.',
       arrTime: 'Arrival time', depTime: 'Departure time', drinksTxt: 'Drinks', beds: 'Beds', staffNote: 'Team note',
       billTitle: 'End-of-stay bill', bServices: 'Brunches, lunches, dinners served', bServed: function (n) { return n + ' — number served'; }, bHoliday: 'of which on a public holiday (double rate)', bGouters: 'Afternoon teas served',
       bCourses: 'Groceries and drinks (MAD, at cost)', bOther: 'Other (MAD)', bOtherLbl: 'Other items (transfer, massage…)',
@@ -1312,10 +1317,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var n = String(c.name || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
     return L().bf.pdfName + (n ? ' - ' + n : '') + (c.arrival ? ' - ' + String(c.arrival).slice(0, 10) : '') + '.pdf';
   }
-  function bfPdf(c) {
+  /* Partage natif du PDF (18/10) : un seul fichier dans la feuille de partage (WhatsApp, Mail…) — doit partir pendant le clic. */
+  function bfShare(pdf) {
+    var k = L().bf, f = new File([pdf.blob], pdf.name, { type: 'application/pdf' });
+    return navigator.share({ files: [f], title: pdf.name.replace(/\.pdf$/, '') }).then(function () { if (pdf.skipped) toast(k.pdfPart(pdf.skipped), true); }, function (e) { if (!e || e.name !== 'AbortError') toast(L().shareErr, true); });
+  }
+  function bfPdf(c, mode) {
     var st = BF[c.id], k = L().bf; if (!st || !st.rows || !st.rows.length || st.dl) return;
-    var rows = st.rows.slice(), t0 = Date.now(), skipped = 0;
-    st.dl = { i: 0, n: rows.length }; st.pdf = null; render();
+    var rows = st.rows.slice(), t0 = Date.now(), skipped = 0, share = mode === 'share' && CAN_SHARE_FILES;
+    st.dl = { i: 0, n: rows.length, share: share }; st.pdf = null; render();
     Promise.all([bfLib(), bfSign(st, rows)]).then(function (res) {
       var P = res[0];
       return P.PDFDocument.create().then(function (doc) {
@@ -1334,16 +1344,18 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         });
       });
     }).then(function (bytes) {
-      var pdf = { blob: new Blob([bytes], { type: 'application/pdf' }), name: bfPdfName(c), skipped: skipped };
-      // Après plus de 4 s le navigateur ne compte plus le clic : un bouton « Enregistrer le PDF » le refait
-      if (Date.now() - t0 < 4000) { bfSave(pdf.blob, pdf.name); toast(skipped ? k.pdfPart(skipped) : k.pdfDone, !!skipped); }
+      var pdf = { blob: new Blob([bytes], { type: 'application/pdf' }), name: bfPdfName(c), skipped: skipped, share: share };
+      // Après plus de 4 s le navigateur ne compte plus le clic : un bouton « Enregistrer / Partager le PDF » le refait
+      if (Date.now() - t0 < 4000) { if (share) bfShare(pdf); else { bfSave(pdf.blob, pdf.name); toast(skipped ? k.pdfPart(skipped) : k.pdfDone, !!skipped); } }
       else st.pdf = pdf;
     }).catch(function () { toast(k.dlErr, true); })
       .finally(function () { st.dl = null; render(); });
   }
   function bfPdfSave(c) {
     var st = BF[c.id], k = L().bf; if (!st || !st.pdf) return;
-    var pdf = st.pdf; st.pdf = null; bfSave(pdf.blob, pdf.name); toast(pdf.skipped ? k.pdfPart(pdf.skipped) : k.pdfDone, !!pdf.skipped); render();
+    var pdf = st.pdf; st.pdf = null; render();
+    if (pdf.share && CAN_SHARE_FILES) return bfShare(pdf);
+    bfSave(pdf.blob, pdf.name); toast(pdf.skipped ? k.pdfPart(pdf.skipped) : k.pdfDone, !!pdf.skipped);
   }
   function bfDownload(c, fid) { if (fid) bfOne(c, fid); else if (BF[c.id] && BF[c.id].rows && BF[c.id].rows.length > 1) bfPdf(c); else if (BF[c.id] && BF[c.id].rows && BF[c.id].rows[0]) bfOne(c, BF[c.id].rows[0].id); }
   function billFilesBlock(c) {
@@ -1358,10 +1370,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         (url ? '</a>' : '</span>') + '<button type="button" class="bf-d" data-a="bfdl" data-id="' + id + '" data-v="' + esc(r.id) + '" aria-label="' + esc(k.dl + ' ' + r.name) + '" title="' + esc(k.dl) + '"' + (st.dl ? ' disabled' : '') + '><i class="ti ti-download" aria-hidden="true"></i></button>' +
         '<button type="button" class="bf-x" data-a="bfdel" data-id="' + id + '" data-v="' + esc(r.id) + '" aria-label="' + esc(k.remove + ' ' + r.name) + '">×</button></div>';
     }).join('') + '</div>' +
-      (st.pdf ? '<button type="button" class="btn gold full" data-a="bfpdfsave" data-id="' + id + '"><i class="ti ti-file-type-pdf" aria-hidden="true"></i>' + esc(k.pdfSave) + '</button>' :
+      (st.pdf ? '<button type="button" class="btn gold full" data-a="bfpdfsave" data-id="' + id + '"><i class="ti ti-' + (st.pdf.share ? 'share' : 'file-type-pdf') + '" aria-hidden="true"></i>' + esc(st.pdf.share ? k.shareReady : k.pdfSave) + '</button>' :
+      (CAN_SHARE_FILES ? '<button type="button" class="btn green full" data-a="bfshare" data-id="' + id + '"' + (st.dl ? ' disabled' : '') + '><i class="ti ti-share" aria-hidden="true"></i>' + esc(st.dl && st.dl.share ? k.pdfBusy(st.dl.i, st.dl.n) : k.share) + '</button>' : '') +
       '<button type="button" class="btn ghost full" data-a="bfdl" data-id="' + id + '" data-v=""' + (st.dl ? ' disabled' : '') + '><i class="ti ti-' + (rows.length > 1 ? 'file-type-pdf' : 'download') + '" aria-hidden="true"></i>' +
-      esc(st.dl ? k.pdfBusy(st.dl.i, st.dl.n) : rows.length > 1 ? k.pdfAll(rows.length) : k.dl) + '</button>') +
-      (rows.length > 1 ? '<span class="sub">' + esc(k.pdfHint) + '</span>' : '');
+      esc(st.dl && !st.dl.share ? k.pdfBusy(st.dl.i, st.dl.n) : rows.length > 1 ? k.pdfAll(rows.length) : k.dl) + '</button>') +
+      (CAN_SHARE_FILES ? '<span class="sub">' + esc(k.shareHint) + '</span>' : rows.length > 1 ? '<span class="sub">' + esc(k.pdfHint) + '</span>' : '');
     else if (st && st.loading) h += '<span class="sub">' + esc(L().loading) + '</span>';
     h += '<label class="drop" data-drop="bill" data-id="' + id + '"><input type="file" multiple accept="image/*,application/pdf" data-file="bill" data-id="' + id + '"><i class="ti ti-camera-plus" aria-hidden="true"></i><span>' +
       esc(st && st.busy ? k.sending(st.busy) : k.drop) + '</span></label>';
@@ -1386,7 +1399,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     h += '<div class="line" style="font-size:16px"><span>' + esc(l.bRest) + '</span><b id="br-' + id + '">' + esc(mad(x.rest) + (x.rate ? ' · ≈ ' + Math.round(x.rest / x.rate).toLocaleString(U.lang === 'en' ? 'en-GB' : 'fr-FR') + ' €' : '')) + '</b></div>';
     h += '<span class="ttl">' + esc(l.bMsg) + ' · ' + guestLang(c).toUpperCase() + '</span><textarea class="t" id="tx-' + id + '">' + esc(msgBill(c)) + '</textarea>';
     var wa = waDigits(c.phone);
-    h += '<div class="row2"><button type="button" class="btn gold" data-a="copy" data-id="' + id + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
+    h += '<div class="row2"><button type="button" class="btn gold" data-a="copy" data-id="' + id + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' + shareBtn(id) +
       (wa ? '<button type="button" class="btn ghost" data-a="sendwa" data-id="' + id + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.openWa) + '</button>' : '') +
       '<button type="button" class="btn green" data-a="billsave" data-id="' + id + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' + esc(l.bSave) + '</button></div>';
     if (saved && saved.at) h += '<span class="sub">' + esc(l.bSaved + fmtDay(dayNum(String(saved.at).slice(0, 10))) + ' · ' + mad(saved.total)) + '</span>';
@@ -2174,12 +2187,14 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (!name || EQ.busy) return;
     var tok = b64u(crypto.getRandomValues(new Uint8Array(32))), lang = EQ.lang === 'ar' ? 'ar' : 'fr';
     EQ.busy = true; EQ.link = null; render();
+    var qrReady = qrLib().catch(function () { return null; }); // QR du lien (18/10) : sans le moteur, le lien seul, pas d'erreur
     sha256hex(tok).then(function (h) {
       return api('staff_links', { method: 'POST', headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' }, body: JSON.stringify({ name: name, lang: lang, token_hash: h }) });
     }).then(function (rows) {
       var row = rows && rows[0]; if (!row) throw new Error('no_row');
       D.links = [row].concat(D.links || []);
-      EQ.link = { id: row.id, name: name, lang: lang, url: equipeUrl(tok) };
+      EQ.link = { id: row.id, name: name, lang: lang, url: equipeUrl(tok), qr: '' };
+      return qrReady.then(function () { EQ.link.qr = qrSvg(EQ.link.url); });
     }).catch(function () { toast(L().eqErr, true); }).then(function () { EQ.busy = false; render(); });
   }
   function revokeLink(id) {
@@ -2205,7 +2220,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       h += '<div class="panel"><span class="ttl">' + esc(EQ.link.name) + ' · ' + (EQ.link.lang === 'ar' ? 'العربية' : 'FR') + '</span><span class="sub" style="color:var(--wait)">' + esc(l.eqOnce) + '</span>' +
         '<textarea class="t" id="eq-msg" dir="auto">' + esc(msg) + '</textarea><div class="row2">' +
         '<button type="button" class="btn gold" data-a="eqcopy"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
+        (CAN_SHARE ? '<button type="button" class="btn ghost" data-a="eqshare"><i class="ti ti-share" aria-hidden="true"></i>' + esc(l.share) + '</button>' : '') +
         '<a class="btn green" href="https://wa.me/' + teamPhone(EQ.link.name) + '?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.eqSend) + '</a></div>' +
+        (EQ.link.qr ? '<div class="eq-qr" id="eq-qr">' + EQ.link.qr + '<span class="sub">' + esc(l.eqQr + EQ.link.name) + '<br>' + esc(l.eqQrOnce) + '</span></div>' : '') +
         '<a class="btn ghost" href="' + esc(EQ.link.url) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.eqPreview) + '</a></div>';
     }
     if (!names.length) { // sans équipe dans la fiche : pas de lien pour personne — d'abord l'équipe (18/10)
@@ -2390,7 +2407,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       if (arOn) txt = trq.text;
       h += '<div class="panel"><span class="ttl">' + esc(pn === 'depart' ? l.actDepart : l.act[pn]) + (team ? (arOn ? esc(l.briefArTtl) : '') : ' · ' + guestLang(c).toUpperCase()) + '</span>' +
         '<textarea class="t" id="tx-' + esc(c.id) + '"' + (arOn ? ' dir="rtl" lang="ar"' : '') + '>' + esc(txt) + '</textarea><div class="row2">' +
-        '<button type="button" class="btn gold" data-a="copy" data-id="' + esc(c.id) + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
+        '<button type="button" class="btn gold" data-a="copy" data-id="' + esc(c.id) + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' + shareBtn(c.id) +
         (wa && !team ? '<button type="button" class="btn ghost" data-a="sendwa" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.openWa) + '</button>' : '') +
         (pn === 'livret' ? '<a class="btn ghost" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.seeLivret) + '</a>' : '') +
         (pn === 'chef' && kitchenWa() ? '<button type="button" class="btn ghost" data-a="sendchef" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(kitchenName())) + '</button>' : '') +
@@ -2447,14 +2464,14 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       '<button type="button" class="act" data-a="rv" data-id="' + id + '" data-v="host" aria-pressed="' + (pv === 'host') + '"><i class="ti ti-sparkles" aria-hidden="true"></i>' + esc(l.rvHost) + '</button>' +
       '<button type="button" class="act" data-a="rvdone" data-id="' + id + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' + esc(l.rvDone) + '</button></div>';
     if (pv === 'ask') h += '<div class="panel"><textarea class="t" id="tx-' + id + '">' + esc(msgReviewAsk(c)) + '</textarea><div class="row2">' +
-      '<button type="button" class="btn gold" data-a="copy" data-id="' + id + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
+      '<button type="button" class="btn gold" data-a="copy" data-id="' + id + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' + shareBtn(id) +
       (thread ? '<a class="btn ghost" href="https://www.airbnb.com/hosting/thread/' + esc(thread) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.rvThread) + '</a>' : '') + '</div></div>';
     // 17/10/2026 : ce qu'ARIA a lu (messages Airbnb, WhatsApp) ; sans WhatsApp enregistré, l'export de la discussion
     // privée s'ajoute ici (lu sur l'appareil, jamais gardé) et l'avis est réécrit avec.
     var wst = WA[c.id] || {};
     if (pv === 'host') h += '<div class="panel">' + (dr && dr.busy || wst.busy ? '<span class="sub">' + esc(wst.busy ? l.wa.reading : l.drafting) + '</span>' : '<textarea class="t" id="tx-' + id + '">' + esc(dr && dr.text || '') + '</textarea>' +
         (dr && dr.a != null ? '<span class="sub">' + esc(l.rvRead(dr.a, dr.w)) + '</span>' : '')) +
-      '<div class="row2"><button type="button" class="btn gold" data-a="copy" data-id="' + id + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
+      '<div class="row2"><button type="button" class="btn gold" data-a="copy" data-id="' + id + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' + shareBtn(id) +
       '<a class="btn ghost" href="' + esc(RVL[c.id] || RV_ALL) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(RVL[c.id] ? l.rvWrite : l.rvOpen) + '</a></div>' +
       (dr && !dr.busy && !wst.busy && !dr.w ? '<label class="drop" data-drop="rvwa" data-id="' + id + '"><input type="file" accept=".zip,.txt,text/plain,application/zip" data-file="rvwa" data-id="' + id + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i><span>' + esc(l.rvAddWa) + '</span></label>' : '') +
       (wst.err ? '<span class="err">' + esc(wst.err) + '</span>' : '') +
@@ -3755,6 +3772,35 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var byId = function (id) { return D.stays.filter(function (c) { return String(c.id) === String(id); })[0]; };
   var allById = function (id) { return (D.all || []).filter(function (c) { return String(c.id) === String(id); })[0]; };
   var pastById = function (id) { return (D.past || []).filter(function (c) { return String(c.id) === String(id); })[0]; };
+  /* ═══ Partage natif et QR (18/10/2026) ═══
+     « Partager » : la feuille de partage du téléphone (WhatsApp, iMessage, Mail, Airbnb…) avec le texte affiché — là où le
+     navigateur la propose (navigator.share) ; ailleurs le bouton n'existe pas, « Copier » reste. Le partage de fichiers
+     (PDF des justificatifs) suit la même règle (navigator.canShare avec un fichier). Rien ne passe par le serveur.
+     QR du lien de l'équipe : calculé sur l'appareil (qrcode-generator, MIT, assets/vendor/), chargé au premier besoin. */
+  var CAN_SHARE = !!(navigator.share), CAN_SHARE_FILES = (function () { try { return !!(navigator.canShare && navigator.canShare({ files: [new File([''], 'x.pdf', { type: 'application/pdf' })] })); } catch (e) { return false; } })();
+  function shareBtn(id) { return CAN_SHARE ? '<button type="button" class="btn ghost" data-a="share" data-id="' + esc(id) + '"><i class="ti ti-share" aria-hidden="true"></i>' + esc(L().share) + '</button>' : ''; }
+  function shareText(txt) {
+    if (!CAN_SHARE || !txt) return;
+    navigator.share({ text: txt }).catch(function (e) { if (!e || e.name !== 'AbortError') toast(L().shareErr, true); });
+  }
+  var QR_LIB = null;
+  function qrLib() {
+    if (window.qrcode) return Promise.resolve(window.qrcode);
+    return QR_LIB || (QR_LIB = new Promise(function (ok, ko) {
+      var sc = document.createElement('script'); sc.src = 'assets/vendor/qrcode-generator-1.4.4.min.js'; sc.async = true;
+      sc.onload = function () { window.qrcode ? ok(window.qrcode) : ko(new Error('lib')); };
+      sc.onerror = function () { QR_LIB = null; ko(new Error('lib')); };
+      document.head.appendChild(sc);
+    }));
+  }
+  function qrSvg(text) {
+    if (!text || typeof window.qrcode !== 'function') return '';
+    try {
+      if (window.qrcode.stringToBytesFuncs && window.qrcode.stringToBytesFuncs['UTF-8']) window.qrcode.stringToBytes = window.qrcode.stringToBytesFuncs['UTF-8'];
+      var q = window.qrcode(0, 'M'); q.addData(text, 'Byte'); q.make();
+      return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+    } catch (e) { return ''; }
+  }
   function copyText(txt) {
     var done = function () { toast(L().copied); };
     if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(txt).then(done, function () { fallbackCopy(txt); done(); });
@@ -3829,6 +3875,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'bfdel' && c && v) bfRemove(c, v);
     else if (a === 'bfdl' && c) bfDownload(c, v || '');
     else if (a === 'bfpdfsave' && c) bfPdfSave(c);
+    else if (a === 'bfshare' && c) bfPdf(c, 'share');
     else if (a === 'wlfill' && c) wlFill(c);
     else if (a === 'waconnect') waConnect(); // FB.login part d'ici, synchrone dans le clic (fenêtre de Meta non bloquée)
     else if (a === 'wacancel') waCancel();
@@ -3850,6 +3897,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'eqcreate') createLink();
     else if (a === 'eqrevoke' && v) revokeLink(v);
     else if (a === 'eqcopy') { var em = document.getElementById('eq-msg'); if (em) copyText(em.value); }
+    else if (a === 'eqshare') { var em2 = document.getElementById('eq-msg'); if (em2) shareText(em2.value); }
+    else if (a === 'share' && (c || pastById(id))) { var tx3 = document.getElementById('tx-' + id); if (tx3) shareText(tx3.value); }
     else if (a === 'feopen') feOpen(v);
     else if (a === 'fecancel') { FE.on = false; FE.data = null; render(); window.scrollTo(0, 0); }
     else if (a === 'fesave') feSave();
