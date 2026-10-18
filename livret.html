@@ -263,7 +263,7 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
   function fail(r) { var e = new Error('http_' + r.status); e.status = r.status; throw e; }
   function view(qs) {
     return fetch(SB_URL + '/functions/v1/livret-view?' + qs, { cache: 'no-store' }).then(function (r) {
-      return r.ok ? r.json().then(function (b) { if (b && b.answers) window.LIVRET_CTX.answers = b.answers; if (b && b.orders) window.LIVRET_CTX.orders = b.orders; if (b && b.reg) window.LIVRET_CTX.reg = b.reg; if (b && b.days) window.LIVRET_CTX.days = b.days; return b && b.facts; }) : fail(r);
+      return r.ok ? r.json().then(function (b) { if (b && b.answers) window.LIVRET_CTX.answers = b.answers; if (b && b.orders) window.LIVRET_CTX.orders = b.orders; if (b && b.reg) window.LIVRET_CTX.reg = b.reg; if (b && b.days) window.LIVRET_CTX.days = b.days; if (b && b.stay) window.LIVRET_CTX.stay = b.stay; return b && b.facts; }) : fail(r);
     });
   }
   /* Contexte du séjour pour le bloc « Votre arrivée » : le jeton (s'il y en a un) et ce que le client a déjà répondu. */
@@ -945,6 +945,15 @@ function render(){
     if (v !== null && v !== '') document.getElementById(id).value = v;
   };
   set('g','guest'); set('d','dates'); set('p','pax'); set('tr','tarifs');
+  /* Lien court (jeton seul, 18/10) : prénom, dates et nombre viennent du séjour (livret-view), plus de l'adresse.
+     Un paramètre présent dans l'adresse garde la main (anciens liens, propriétaire qui essaie). */
+  const C = window.LIVRET_CTX || {}, st = C.stay || {}, dy = C.days || {};
+  if (!q.get('guest') && st.name) document.getElementById('g').value = st.name;
+  if (!q.get('pax') && st.pax > 0) document.getElementById('p').value = String(st.pax);
+  if (!q.get('dates') && /^\d{4}-\d{2}-\d{2}$/.test(dy.from || '') && /^\d{4}-\d{2}-\d{2}$/.test(dy.to || '')) {
+    const M = ['JAN','FEV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DEC'], a = new Date(dy.from + 'T12:00:00'), d = new Date(dy.to + 'T12:00:00');
+    if (!isNaN(a) && !isNaN(d)) document.getElementById('d').value = a.getDate() + ' ' + M[a.getMonth()] + ' – ' + d.getDate() + ' ' + M[d.getMonth()] + ' ' + String(d.getFullYear()).slice(-2);
+  }
   const gr = (q.get('groupe') || q.get('group') || '').toLowerCase();
   const GR = {famille:'famille', family:'famille', amis:'amis', friends:'amis'};
   if (GR[gr]) document.getElementById('grp').value = GR[gr];

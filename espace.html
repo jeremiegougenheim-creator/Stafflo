@@ -741,7 +741,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var grp = detectLivretGroup({ message: firstLivretMessageText(c.messages), guestMessage: c.details && c.details.guest_message, notes: c.notes });
     if (grp && (!pax || pax >= 3)) p.set('groupe', grp);
     var tk = LINKS ? LINKS.get(c.id) : ''; // lien personnel du séjour : c'est lui qui ouvre la fiche (livret-view)
-    if (tk) p.set('t', tk);
+    if (tk) { // lien court (18/10) : le jeton suffit — prénom, dates et nombre viennent du séjour ; ni nom ni dates dans l'adresse envoyée au client
+      var ps = new URLSearchParams(); ps.set('t', tk); ps.set('lang', p.get('lang')); if (grp && (!pax || pax >= 3)) ps.set('groupe', grp);
+      return 'livret.html?' + ps.toString();
+    }
     return 'livret.html?' + p.toString();
   }
   /* Langue des messages au client : celle du livret, bilingue → anglais. */
@@ -1896,6 +1899,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var sn = String(c.details.staff_note || '').trim();
     return sn ? section('📝 ' + B('Consigne'), bulletsOf(sn.slice(0, 1200), 'sentences')) : '';
   }
+  /* Le destinataire a un lien personnel actif (staff_links, par nom) → le brief le rappelle à la fin : le détail du séjour y reste à jour,
+     dans sa langue (français ou arabe). L'adresse elle-même ne peut pas être recopiée : le jeton n'est jamais stocké (empreinte seule). 18/10 */
+  function linkLine(name) {
+    var has = !!name && (D.links || []).some(function (k) { return k && String(k.name || '').trim().toLowerCase() === String(name).trim().toLowerCase(); });
+    return has ? '🔗 ' + B('Détail à jour') + ' : sur votre lien Stafflo (arrivées, repas, chambres prêtes)' : '';
+  }
   function msgKitchen(c) {
     var who = kitchenTeam().map(function (m) { return m.name; }).join(', ') || 'la cuisine';
     var os = orderSplit(c);
@@ -1908,7 +1917,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       mealsSection(c),
       section('🧺 ' + B('Commande du livret'), os.kitchen),
       section('🏠 ' + B('Préparé par la maison, pas par vous'), os.house),
-      noteSection(c)
+      noteSection(c),
+      linkLine(kitchenName())
     ].filter(Boolean).join('\n\n');
   }
   function msgBrief(c) {
@@ -1931,7 +1941,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       section('🏠 ' + B('À préparer par la maison'), oh),
       section('🥤 ' + B('Boissons'), bulletsOf(c.details.drinks, 'list')),
       noteSection(c),
-      '📞 ' + B('Client') + ' : ' + (String(c.phone || '').trim() || 'pas encore de numéro')
+      '📞 ' + B('Client') + ' : ' + (String(c.phone || '').trim() || 'pas encore de numéro'),
+      linkLine(saidName())
     ].filter(Boolean).join('\n\n');
   }
   var waDigits = function (raw) { return String(raw || '').replace(/\(0\)/g, '').replace(/\D/g, ''); };

@@ -33,7 +33,8 @@
 //   (AES-256-GCM, clé dans Vault, jamais dans la page), rangées dans guest_registrations (la dernière
 //   remplace la précédente), JAMAIS renvoyées au lien : un lien transféré ne montre pas les passeports.
 //   Le propriétaire les lit par la fonction guest-registrations. Effacées un an après le départ.
-// Rien d'autre n'est renvoyé (ni nom, ni prix ; du séjour, seulement ses dates). Limite par adresse IP.
+// Lien court (18/10/2026) : GET ?t= renvoie aussi stay: { name, pax } — l'en-tête du livret (prénom, nombre), qui
+//   voyageait jusque-là dans l'adresse du lien (guest=, dates=, pax=). Rien d'autre (ni prix, ni téléphone). Limite par adresse IP.
 // verify_jwt : off (le client n'a pas de compte) — l'accès, c'est le jeton.
 
 const SB_URL = Deno.env.get("SUPABASE_URL") || "";
@@ -157,6 +158,8 @@ export function paxOf(stay: Row): number {
   const ad = parseInt(stay && stay.adults, 10) || 0, ch = parseInt(stay && stay.children, 10) || 0;
   return (ad + ch) || parseInt(stay && stay.guests, 10) || 0;
 }
+// En-tête du livret (prénom, nombre) : lu du séjour par le jeton — plus dans l'adresse du lien (lien court, 18/10). Les dates : `days`.
+export const stayHead = (stay: Row): Row => ({ name: String((stay && stay.name) || "").trim().slice(0, 80), pax: paxOf(stay) || null });
 // Services d'une ligne de repas, lus dans son nom : « Déjeuner ou dîner » → midi / soir ; une ligne d'un seul service → [""].
 export function svcOf(m: Row): string[] {
   const n = ([] as unknown[]).concat((m && m.n) || []).join(" "), s: string[] = [];
@@ -340,7 +343,7 @@ Deno.serve(async (req: Request) => {
       if (r.err || !r.stay) return out({ error: r.err === 410 ? "expired" : "not_found" }, r.err || 404);
       const f = await factsOf(String(r.owner));
       if (!f) return out({ error: "not_found" }, 404);
-      return out({ facts: f, answers: answersOf(r.stay), orders: ordersOf(r.stay), days: daysOf(r.stay), ...(regOn(f) ? { reg: await regOf(String(r.owner), String(r.stay.id)).catch(() => null) } : {}) }); // une panne ici ne bloque jamais le livret
+      return out({ facts: f, stay: stayHead(r.stay), answers: answersOf(r.stay), orders: ordersOf(r.stay), days: daysOf(r.stay), ...(regOn(f) ? { reg: await regOf(String(r.owner), String(r.stay.id)).catch(() => null) } : {}) }); // une panne ici ne bloque jamais le livret
     }
     const guest = q.get("guest") || "", dates = q.get("dates") || "";
     if (!guest || !dates) return out({ error: "not_found" }, 404);

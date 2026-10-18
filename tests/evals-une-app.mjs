@@ -36,7 +36,7 @@ async function visit(qs, { session = true, onboarded = true, off = false } = {},
     localStorage.setItem('stafflo_cfg', JSON.stringify({ onboarded: on }));
     if (o) localStorage.setItem('stafflo_espace_home', 'off');
   }, [session ? SESSION : '', onboarded, off]);
-  const page = await ctx.newPage();
+  const page = await ctx.newPage(); page.setDefaultTimeout(90000); // app.html (44 000 lignes) sous la charge de tous les garde-fous en parallèle : 30 s ne suffisent pas toujours
   await page.goto(`http://127.0.0.1:${PORT}/app.html${qs}`, { waitUntil: 'commit' });
   await page.waitForTimeout(700);
   const out = { url: page.url(), lang: await page.evaluate(() => localStorage.getItem('stafflo_espace_lang')).catch(() => null) };
@@ -79,7 +79,7 @@ async function authFlow(qs, act) {
     if (/\/auth\/v1\/user/.test(u)) return j(SESS.user);
     return route.fulfill({ status: 204, body: '' });
   });
-  const page = await ctx.newPage();
+  const page = await ctx.newPage(); page.setDefaultTimeout(90000); // app.html (44 000 lignes) sous la charge de tous les garde-fous en parallèle : 30 s ne suffisent pas toujours
   await page.goto(`http://127.0.0.1:${PORT}/app.html${qs}`, { waitUntil: 'load' });
   await page.waitForTimeout(900);
   if (act) await act(page);
@@ -113,7 +113,7 @@ async function pullCfg(baseEc, localEc) {
     localStorage.setItem('stafflo_session', s);
     localStorage.setItem('stafflo_cfg', JSON.stringify({ onboarded: true, onboardedAt: new Date().toISOString(), villa: 'Ancien nom', owner: 'Nadia', city: 'Paris', bedrooms: 3, maxGuests: 6, email_connection: lec }));
   }, [SESSION, localEc]);
-  const page = await ctx.newPage();
+  const page = await ctx.newPage(); page.setDefaultTimeout(90000); // app.html (44 000 lignes) sous la charge de tous les garde-fous en parallèle : 30 s ne suffisent pas toujours
   await page.goto(`http://127.0.0.1:${PORT}/app.html?app=1`, { waitUntil: 'domcontentloaded' });
   let cfg = null;
   for (let i = 0; i < 20 && !(cfg && cfg.villa === 'Riad Neuf'); i++) { await page.waitForTimeout(250); cfg = await page.evaluate(() => JSON.parse(localStorage.getItem('stafflo_cfg') || 'null')).catch(() => null); }

@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, rvMails = [], ical = [], icalRun = [], icalFn = null } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [] } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -54,6 +54,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     }
     if (u.includes('/rest/v1/staff?')) return json(staff);
     if (u.includes('/rest/v1/livret_links')) return json(links);
+    if (u.includes('/rest/v1/staff_links')) return json(teamLinks);
     if (u.includes('/rest/v1/guest_registrations')) return json(regs);
     if (u.includes('/rest/v1/inbound_addresses')) return json(inbound);
     if (u.includes('/rest/v1/rpc/inbound_address')) { calls.push({ kind: 'inaddr' }); return json('in-abcdefghij12@stafflo.app'); }
@@ -944,8 +945,19 @@ const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + titl
   check('brief maison : pour le majordome et le ménage, jamais le prestataire repas ; couchages et contact client gardés',
     /^\*Brief maison — Felipe Villalobos\*\npour Saïd, Bouchra$/m.test(bt) && !/Léa/.test(bt) && /\*Client\* : \+44 7700 900123/.test(bt) && /\*Couchages\* : à confirmer$/m.test(bt) &&
     /Envoyer à Saïd/.test(await r.page.innerText('#st-k1')), bt);
+  check('sans lien personnel actif pour Saïd : le brief ne parle pas de lien', !/lien Stafflo/.test(bt) && !/lien Stafflo/.test(kt));
   const fit = await r.page.$eval('#tx-k1', (x) => ({ h: x.getBoundingClientRect().height, s: x.scrollHeight, cap: Math.round(window.innerHeight * 0.7) }));
   check('le brief se lit en entier : la zone prend la taille du texte (au plus 70 % de l’écran), pas une boîte de 150 px à faire défiler (18/10)', fit.h > 200 && (fit.h >= fit.s || fit.h >= fit.cap - 2), fit);
+  await r.ctx.close();
+  // 18/10 — le destinataire a un lien personnel actif (Accès équipe) : le brief finit par le rappel de son lien, jamais l'adresse (jeton non stocké)
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, stays: ST,
+    teamLinks: [{ id: 'l1', name: 'saïd', lang: 'ar', created_at: iso(-3) }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+  const bl = await r.page.inputValue('#tx-k1');
+  check('Saïd a un lien (casse ignorée) → dernière ligne « 🔗 *Détail à jour* : sur votre lien Stafflo … », sans adresse', /\n\n🔗 \*Détail à jour\* : sur votre lien Stafflo \(arrivées, repas, chambres prêtes\)$/.test(bl) && !/equipe\.html|#k=/.test(bl), bl.slice(-200));
+  await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+  check('Léa n’a pas de lien → le brief prestataire n’en parle pas', !/lien Stafflo/.test(await r.page.inputValue('#tx-k1')));
   await r.ctx.close();
   // 17/10/2026 — briefs nettoyés (brief de Thibaut) : l'heure dite par le client sur la ligne Arrivée, sans « (WhatsApp, date) »
   // ni tiret ; départ et boissons ; « 10 adultes » ; pas de nuits, pas de « à demander au client », jamais les notes privées.

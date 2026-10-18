@@ -229,6 +229,13 @@ for (const [qs, h] of [['guest=Felipe%20Villalobos&dates=13%20OCT%20%E2%80%93%20
   check('signature « Livret préparé avec Stafflo » au pied', /stafflo\.app/.test(await r.page.evaluate(() => (document.querySelector('.foot-stafflo') || {}).innerHTML || '')));
   await r.ctx.close();
 }
+// 1 bis. Lien court (18/10) : le jeton seul (+ langue, groupe) — prénom, dates et nombre viennent de livret-view (`stay`, `days`) : rendu identique au lien long.
+r = await open('t=' + TOK + '&lang=bi&groupe=famille', { view: () => ({ status: 200, body: '{"facts":' + FACTS + ',"stay":{"name":"Felipe Villalobos","pax":7},"days":{"from":"2026-10-13","to":"2026-10-16"}}' }) });
+check('lien court : même livret au caractère près que « guest=Felipe…&dates=13 OCT – 16 OCT 26&pax=7 »', (await sheetHash(r.page)) === '7862274952945c90' && !r.errs.length, await sheetHash(r.page));
+await r.ctx.close();
+r = await open('t=' + TOK + '&guest=Hugo&dates=1%20JAN%20%E2%80%93%205%20JAN%2027&pax=2&lang=fr', { view: () => ({ status: 200, body: '{"facts":' + FACTS + ',"stay":{"name":"Felipe Villalobos","pax":7},"days":{"from":"2026-10-13","to":"2026-10-16"}}' }) });
+check('lien court : un paramètre présent dans l’adresse garde la main (ancien lien)', (await r.page.evaluate(() => [document.getElementById('g').value, document.getElementById('d').value, document.getElementById('p').value].join('|'))) === 'Hugo|1 JAN – 5 JAN 27|2');
+await r.ctx.close();
 // 2. Fiche minimale d'une autre villa (remplie dans l'Espace, français seulement) : un livret
 //    complet et propre — rien du pilote, pas de section vide, pas de blanc là où l'anglais manque.
 const MINI = JSON.stringify({ VILLA: { name: 'Riad Zina', host: 'Nadia', hostPhone: '+33 6 00 00 00 00', address: 'Derb Sidi Bouloukat, Marrakech', staff: 'Omar', said: '+212 600 000 000' },

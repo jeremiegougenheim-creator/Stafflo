@@ -69,7 +69,7 @@ check('dates des anciens liens : identiques à fmtStayDates de l’app (730 jour
 check('jeton : 32 à 64 caractères base64url seulement', M.validToken('A'.repeat(43)) && !M.validToken('short') && !M.validToken("A'or'1'='1".padEnd(40, 'x')));
 let r = await get('t=' + 'A'.repeat(43));
 let b = await r.json();
-check('lien personnel valide → la fiche, les réponses du client et les dates du séjour (pour dater les repas), rien d’autre (ni nom, ni prix)', r.status === 200 && b.facts && b.facts.VILLA.name === 'Villa Test' && Object.keys(b).sort().join() === 'answers,days,facts,orders' && b.answers === null && b.orders === null && b.days.from === iso(2) && b.days.to === iso(5) && !JSON.stringify(b).includes('Ana'), b.days);
+check('lien personnel valide → la fiche, les réponses du client, les dates du séjour (pour dater les repas) et l’en-tête du livret (nom, nombre — lien court, 18/10), rien d’autre (ni prix, ni téléphone)', r.status === 200 && b.facts && b.facts.VILLA.name === 'Villa Test' && Object.keys(b).sort().join() === 'answers,days,facts,orders,stay' && b.answers === null && b.orders === null && b.days.from === iso(2) && b.days.to === iso(5) && b.stay.name === 'Ana Ruiz' && b.stay.pax === null && Object.keys(b.stay).sort().join() === 'name,pax', b);
 r = await get('t=' + 'Z'.repeat(43));
 check('jeton inconnu → 404', r.status === 404);
 r = await get('t=' + 'B'.repeat(43));
@@ -184,6 +184,7 @@ check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
     check('par la fonction : jours du séjour seulement (arrivée → départ), quantité recalculée, écrite avec ses jours', r.status === 200 && b.orders.items.length === 1 && b.orders.items[0].q === 2 && b.orders.total === 1700 && pd.body.details.guest_orders.items[0].when.map((w) => w.d).join() === iso(5) + ',' + iso(6), b.orders);
     r = await get('t=' + 'C'.repeat(43), '4.4.6.2'); b = await r.json();
     check('GET : les dates du séjour pour proposer les jours', b.days && b.days.from === iso(4) && b.days.to === iso(9), b.days);
+    check('GET : en-tête du livret — nom et nombre (adultes + enfants), pour le lien court', b.stay && b.stay.name === 'Big Group' && b.stay.pax === 9, b.stay);
     s2.details = {};
   }
   {
