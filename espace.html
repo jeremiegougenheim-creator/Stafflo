@@ -402,7 +402,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       staffSees: 'L’équipe voit ces champs et les repas dans sa vue (Maison › Accès équipe). Jamais les notes ni les prix.',
       eqTitle: 'Accès équipe', eqTxt: 'Un lien personnel par personne : arrivées, départs, groupes, heures d’arrivée et de départ, couchages, repas, boissons et consigne. Jamais de prix, de téléphone ni vos notes. Lecture seule, en français ou en arabe.',
       eqWho: 'Pour', eqLang: 'Langue', eqCreate: 'Créer le lien', eqNoTeam: 'Ajoutez d’abord votre équipe (prénoms, rôles, WhatsApp) : chaque personne aura ensuite son lien.', eqNone: 'Aucun lien pour l’instant.', eqOnce: 'Ce lien ne s’affiche qu’une fois : envoyez-le maintenant. Pour le renvoyer plus tard, créez-en un nouveau.',
-      eqSend: 'Envoyer sur WhatsApp', eqRevoke: 'Retirer', eqRevoked: 'Accès retiré', eqSeen: 'ouvert ', eqNever: 'jamais ouvert', eqErr: 'Création impossible. Réessayez.', eqPreview: 'Voir la vue équipe',
+      eqSend: 'Envoyer sur WhatsApp', eqRevoke: 'Retirer', eqRevoked: 'Accès retiré', eqSeen: 'ouvert ', eqWeek: function (n, at) { return n + (n > 1 ? ' ouvertures' : ' ouverture') + ' ces 7 jours' + (at ? ' : ' + at : ''); }, eqNever: 'jamais ouvert', eqErr: 'Création impossible. Réessayez.', eqPreview: 'Voir la vue équipe',
       arrTime: 'Heure d’arrivée', depTime: 'Heure de départ', drinksTxt: 'Boissons', beds: 'Couchages', staffNote: 'Consigne équipe',
       billTitle: 'Décompte de fin de séjour', bServices: 'Brunchs, déjeuners, dîners servis', bServed: function (n) { return n + ' — nombre servi'; }, bHoliday: 'dont un jour férié (tarif double)', bGouters: 'Goûters servis',
       bCourses: 'Courses et boissons (MAD, au ticket)', bOther: 'Autres (MAD)', bOtherLbl: 'Détail des autres (transfert, massage…)',
@@ -561,7 +561,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       staffSees: 'The team sees these fields and the meals in its view (House › Team access). Never your notes or prices.',
       eqTitle: 'Team access', eqTxt: 'One personal link per person: arrivals, departures, groups, arrival and departure times, beds, meals, drinks and note. Never prices, phone numbers or your notes. Read-only, in French or Arabic.',
       eqWho: 'For', eqLang: 'Language', eqCreate: 'Create the link', eqNoTeam: 'Add your team first (first names, roles, WhatsApp): each person then gets their own link.', eqNone: 'No link yet.', eqOnce: 'This link is shown only once: send it now. To resend it later, create a new one.',
-      eqSend: 'Send on WhatsApp', eqRevoke: 'Remove', eqRevoked: 'Access removed', eqSeen: 'opened ', eqNever: 'never opened', eqErr: 'Could not create the link. Try again.', eqPreview: 'Open the team view',
+      eqSend: 'Send on WhatsApp', eqRevoke: 'Remove', eqRevoked: 'Access removed', eqSeen: 'opened ', eqWeek: function (n, at) { return n + (n > 1 ? ' opens' : ' open') + ' in the last 7 days' + (at ? ': ' + at : ''); }, eqNever: 'never opened', eqErr: 'Could not create the link. Try again.', eqPreview: 'Open the team view',
       arrTime: 'Arrival time', depTime: 'Departure time', drinksTxt: 'Drinks', beds: 'Beds', staffNote: 'Team note',
       billTitle: 'End-of-stay bill', bServices: 'Brunches, lunches, dinners served', bServed: function (n) { return n + ' — number served'; }, bHoliday: 'of which on a public holiday (double rate)', bGouters: 'Afternoon teas served',
       bCourses: 'Groceries and drinks (MAD, at cost)', bOther: 'Other (MAD)', bOtherLbl: 'Other items (transfer, massage…)',
@@ -611,6 +611,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var d = new Date(n * 86400000), o = { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' };
     if (d.getUTCFullYear() !== new Date().getFullYear()) o.year = 'numeric'; // « 10 juin » seul serait ambigu pour 2027
     return d.toLocaleDateString((lng || U.lang) === 'en' ? 'en-GB' : 'fr-FR', o);
+  }
+  function seenAt(iso, lng, short) {
+    var d = new Date(iso); if (isNaN(d.getTime())) return '';
+    var en = (lng || U.lang) === 'en', p2 = function (x) { return (x < 10 ? '0' : '') + x; }, hm = p2(d.getHours()) + ':' + p2(d.getMinutes());
+    var now = new Date(), dn = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000, tn = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000;
+    var day = dn === tn ? (en ? 'today' : 'aujourd’hui') : dn === tn - 1 ? (en ? 'yesterday' : 'hier') : fmtDay(dn, lng);
+    return day + (short ? ' ' : en ? ' at ' : ' à ') + hm;
   }
   function fmtLongDay(n, lng) {
     var d = new Date(n * 86400000);
@@ -848,8 +855,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       api('wa_messages?select=id,guest_wa,guest_name,direction,type,body,sent_at,client_id&deleted_at=is.null&sent_at=gte.' + encodeURIComponent(new Date(Date.now() - 400 * 86400000).toISOString()) + '&order=sent_at.desc&limit=5000').catch(function () { return []; }),
       // Calendriers iCal lus par le serveur (ical-sync) : dates seulement, et le dernier passage.
       api('ical_events?select=id,feed_id,start_date,end_date,kind,code,label,hidden_at&gone_at=is.null&end_date=gte.' + new Date((todayNum() - 45) * 86400000).toISOString().slice(0, 10) + '&order=start_date.asc&limit=1000').catch(function () { return []; }),
-      api('sync_runs?select=finished_at,ok,stats&source=eq.ical&order=id.desc&limit=1').catch(function () { return []; })
+      api('sync_runs?select=finished_at,ok,stats&source=eq.ical&order=id.desc&limit=1').catch(function () { return []; }),
+      // Ouvertures des liens de l'équipe, 7 jours (staff_link_opens, écrites par staff-view, jamais celles du propriétaire).
+      api('staff_link_opens?select=link_id,opened_at&opened_at=gte.' + encodeURIComponent(new Date(Date.now() - 7 * 86400000).toISOString()) + '&order=opened_at.desc&limit=300').catch(function () { return []; })
     ]).then(function (res) {
+      D.opens = Array.isArray(res[15]) ? res[15] : [];
       D.ical = Array.isArray(res[13]) ? res[13] : [];
       D.icalRun = (res[14] || [])[0] || null;
       D.waNum = (res[11] || [])[0] || null;
@@ -2183,8 +2193,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (names.indexOf(EQ.name) < 0) EQ.name = names[0] || '';
     var h = '<p style="margin:0;font-size:14px">' + esc(l.eqTxt) + '</p>';
     h += (D.links || []).length ? (D.links || []).map(function (k) {
-      var seen = k.last_seen_at ? l.eqSeen + l.ago((Date.now() - Date.parse(k.last_seen_at)) / 3600000) : l.eqNever;
-      return '<div class="line" style="align-items:center"><span><b>' + esc(k.name) + '</b> · ' + (k.lang === 'ar' ? '<span lang="ar">العربية</span>' : 'FR') + '<br><span class="sub">' + esc(seen) + '</span></span>' +
+      // 18/10 : l'heure exacte de la dernière ouverture, et les ouvertures des 7 derniers jours (5 plus récentes affichées).
+      var seen = k.last_seen_at ? l.eqSeen + seenAt(k.last_seen_at) : l.eqNever;
+      var op = (D.opens || []).filter(function (o) { return o.link_id === k.id; });
+      var wk = op.length ? l.eqWeek(op.length, op.slice(0, 5).map(function (o) { return seenAt(o.opened_at, null, true); }).join(', ') + (op.length > 5 ? '…' : '')) : '';
+      return '<div class="line" style="align-items:center"><span><b>' + esc(k.name) + '</b> · ' + (k.lang === 'ar' ? '<span lang="ar">العربية</span>' : 'FR') + '<br><span class="sub">' + esc(seen) + '</span>' + (wk ? '<span class="sub" style="display:block">' + esc(wk) + '</span>' : '') + '</span>' +
         '<button type="button" class="btn ghost" style="min-height:38px" data-a="eqrevoke" data-v="' + esc(k.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-link-off" aria-hidden="true"></i>' + esc(l.eqRevoke) + '</button></div>';
     }).join('') : '<p class="empty">' + esc(l.eqNone) + '</p>';
     if (EQ.link) {

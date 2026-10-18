@@ -321,8 +321,12 @@ Deno.serve(async (req: Request) => {
       const row = Array.isArray(ins) ? ins[0] : ins;
       return out({ ok: true, report: { id: row?.id, kind: rep.kind, client_id: rep.client_id, text: rep.text, created_at: row?.created_at } });
     }
-    if (!link.last_seen_at || Date.now() - Date.parse(link.last_seen_at) > 30 * 60000) {
+    // « Ouvert » (18/10/2026) : last_seen_at + une ligne staff_link_opens, au plus toutes les 30 min. Le propriétaire qui
+    // ouvre le lien sur un appareil où il est connecté à Stafflo (body.owner, envoyé par equipe.html) ne compte pas :
+    // la question est « quand la personne de l'équipe regarde sa page », pas « quand j'ai vérifié le lien ».
+    if (body.owner !== true && (!link.last_seen_at || Date.now() - Date.parse(link.last_seen_at) > 30 * 60000)) {
       await db(`staff_links?id=eq.${link.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ last_seen_at: new Date().toISOString() }) }).catch(() => {});
+      await db(`staff_link_opens`, { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ owner_id: link.owner_id, link_id: link.id }) }).catch(() => {});
     }
     // Les retours récents de CE lien (7 jours) : « chambres prêtes » déjà envoyé reste coché.
     const reports = await db(`staff_reports?select=id,kind,client_id,text,created_at&link_id=eq.${link.id}&deleted_at=is.null&created_at=gte.${new Date(Date.now() - 7 * 86400000).toISOString()}&order=created_at.desc&limit=50`).catch(() => []) || [];

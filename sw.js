@@ -1,5 +1,5 @@
 // Stafflo Service Worker — v545 (17/10 : entrée pro — connexion, inscription et lien par email vers l'Espace)
-const CACHE = 'stafflo-v547';
+const CACHE = 'stafflo-v548';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

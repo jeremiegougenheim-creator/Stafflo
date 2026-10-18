@@ -167,10 +167,13 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
     return store.get(K_KEY);
   }
 
+  function ownerHere() { try { var o = JSON.parse(localStorage.getItem('stafflo_session') || 'null'); return !!(o && o.access_token); } catch (e) { return false; } }
   function load() {
     if (!S.k || S.busy) return;
     S.busy = true; S.lastTry = Date.now(); render();
-    fetch(FN, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + ANON }, body: JSON.stringify({ k: S.k, lang: S.lang === 'ar' ? 'ar' : 'fr' }) })
+    // owner : le propriétaire, connecté à Stafflo sur cet appareil (même site, stafflo_session), vérifie le lien →
+    // ce n'est pas une ouverture de l'équipe (« Ouvert » dans l'Espace, 18/10/2026).
+    fetch(FN, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + ANON }, body: JSON.stringify({ k: S.k, lang: S.lang === 'ar' ? 'ar' : 'fr', owner: ownerHere() }) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, status: r.status, d: d }; }); })
       .then(function (x) {
         if (x.ok && x.d && Array.isArray(x.d.stays)) {

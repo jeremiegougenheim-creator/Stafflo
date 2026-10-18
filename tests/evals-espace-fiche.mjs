@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [] } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [] } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -55,6 +55,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/staff?')) return json(staff);
     if (u.includes('/rest/v1/livret_links')) return json(links);
     if (u.includes('/rest/v1/staff_links')) return json(teamLinks);
+    if (u.includes('/rest/v1/staff_link_opens')) { reads.push({ kind: 'opens', url: decodeURIComponent(u) }); return json(opens); }
     if (u.includes('/rest/v1/guest_registrations')) return json(regs);
     if (u.includes('/rest/v1/inbound_addresses')) return json(inbound);
     if (u.includes('/rest/v1/rpc/inbound_address')) { calls.push({ kind: 'inaddr' }); return json('in-abcdefghij12@stafflo.app'); }
@@ -1139,6 +1140,22 @@ const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + titl
   check('sans prestataire repas : pas de « Brief prestataire », le brief maison part chez le seul contact', !(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !/Brief prestataire/.test(await r.page.innerText('#st-k1')));
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   check('brief maison : le seul membre de l’équipe est le destinataire', /^pour Omar$/m.test(await r.page.inputValue('#tx-k1')) && /Envoyer à Omar/.test(await r.page.innerText('#st-k1')) && !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
+// ── Accès équipe (18/10/2026) : quand la personne ouvre son lien — heure exacte et ouvertures des 7 derniers jours ──
+{
+  const now = Date.now(), at = (h) => new Date(now - h * 3600000).toISOString();
+  r = await open({ villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null },
+    teamLinks: [{ id: 'l1', name: 'Omar', lang: 'ar', created_at: at(72), last_seen_at: at(0.2) }, { id: 'l2', name: 'Aya', lang: 'fr', created_at: at(5) }],
+    opens: [{ link_id: 'l1', opened_at: at(0.2) }, { link_id: 'l1', opened_at: at(30) }, { link_id: 'l9', opened_at: at(1) }] });
+  await r.page.waitForTimeout(250);
+  const tx = await r.page.innerText('body');
+  const hm = await r.page.evaluate((iso) => { const d = new Date(iso); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }, at(0.2));
+  const oq = r.reads.find((x) => x.kind === 'opens');
+  check('accès équipe : « ouvert aujourd’hui à HH:MM » — l’heure exacte, plus « il y a 9 h »', new RegExp('ouvert (aujourd’hui|hier) à ' + hm).test(tx) && !/ouvert il y a/.test(tx), tx.slice(0, 600));
+  check('accès équipe : « 2 ouvertures ces 7 jours : … » pour ce lien seulement (les autres liens ne comptent pas) ; « jamais ouvert » pour un lien neuf', /2 ouvertures ces 7 jours : (aujourd’hui|hier) \d\d:\d\d, /.test(tx) && !/3 ouvertures/.test(tx) && /jamais ouvert/.test(tx) && !r.errs.length, { tx: tx.slice(0, 600), e: r.errs });
+  check('accès équipe : ouvertures lues sur 7 jours (staff_link_opens, RLS du propriétaire)', !!oq && /staff_link_opens\?select=link_id,opened_at&opened_at=gte\.\d{4}-/.test(oq.url), oq);
   await r.ctx.close();
 }
 
