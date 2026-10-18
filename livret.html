@@ -141,6 +141,17 @@ td:first-child{font-weight:500}
 .qr-svg{width:110px;height:110px;background:#fff;display:block}
 .qr-cap{font-size:10.5px;color:var(--ink-soft);margin-top:6px}
 .qr-note{font-size:11px;color:var(--muted);line-height:1.6;margin:6px 0 4px}
+/* QR calculés sur l'appareil (Wi-Fi, livret en ligne) : même taille que les QR WhatsApp, marge blanche autour. */
+.qr-block{flex-wrap:wrap;row-gap:14px}
+.qr-wifi{max-width:132px}
+.qr-wifi svg{width:110px;height:110px;display:block;background:#fff;padding:6px;box-sizing:border-box;margin:0 auto}
+.qr-online{display:none}
+/* Commodités client — écran seulement : contact, calendrier, itinéraire, mot de passe Wi-Fi */
+.tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:10px 0 2px;font-size:12.5px;line-height:1.6}
+.tools .tool{font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--gold);border-radius:999px;padding:6px 13px;text-decoration:none;cursor:pointer;line-height:1.3}
+.tools .tool:hover{background:rgba(201,150,58,.14)}
+.tools .tool-group{color:var(--ink-soft)}
+.tools .tool-group a{font-weight:600}
 
 .cols{column-count:2;column-gap:32px}
 .cols li{break-inside:avoid}
@@ -199,8 +210,14 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
   .infobox{margin:16px 0 6px;padding:12px 16px}
   .infobox div{line-height:1.6}
   .qr-svg{width:28mm;height:28mm}
+  .qr-wifi svg{width:28mm;height:28mm;padding:1.5mm}
   .qr-block{margin:10px 0 2px;justify-content:center}
   .qr-note{text-align:center}
+  /* Écran seulement : les commodités (contact, calendrier, itinéraire) ; imprimé seulement : le QR du livret en ligne */
+  .tools{display:none !important}
+  .qr-online{display:flex;flex-direction:column;align-items:center;margin:12px 0 4px;break-inside:avoid}
+  .qr-online svg{width:26mm;height:26mm;background:#fff;padding:1.5mm;box-sizing:border-box}
+  .qr-online .qr-cap{text-align:center;max-width:70mm}
   .room{padding:9px 0}
   table{margin:10px 0}
   th,td{padding:6px 8px}
@@ -212,6 +229,7 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
   .sheet{padding:28px 22px;margin:14px 8px}
   .cover .villa{font-size:36px}
   .cols{column-count:1}
+  .qr-block{gap:14px 22px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
 </style>
@@ -246,6 +264,8 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
 <div class="sheet" id="sheet"></div>
 
 <script src="house-facts.js"></script>
+<!-- QR codes calculés sur l'appareil (Wi-Fi, version en ligne du livret) : qrcode-generator 1.4.4, MIT, servi par le site (assets/vendor/), jamais un CDN. -->
+<script src="assets/vendor/qrcode-generator-1.4.4.min.js"></script>
 <script>
 /* ═══ Fiche maison : en base (villa_settings.house_facts), plus dans le site public ═══
    Le livret la demande, dans cet ordre :
@@ -362,6 +382,62 @@ const HOST = String(VILLA.host || '').trim();
 const QR_SAID = (window.VILLA_FACTS.QR || {}).staff || '';
 const QR_JEREMIE = (window.VILLA_FACTS.QR || {}).host || '';
 
+/* ═══ Commodités client (18/10/2026) — tout est calculé sur l'appareil, depuis la fiche et le séjour ;
+   rien n'est envoyé, rien n'est stocké de plus. ═══
+   - QR Wi-Fi : « WIFI:T:WPA;S:<réseau>;P:<mot de passe>;; » — l'appareil photo propose la connexion ;
+   - QR « ce livret en ligne » : le lien personnel, à l'impression seulement (le livret posé sur la table
+     renvoie à la version à jour, à la commande et à « Votre arrivée ») ;
+   - « Enregistrer le contact » (vCard du premier contact), « Ajouter à mon calendrier » (.ics du séjour),
+     itinéraire Google Maps / Apple Plans / Waze — à l'écran seulement.
+   Le moteur QR (qrcode-generator, MIT) est servi par le site ; absent, rien ne s'affiche, pas d'erreur. */
+function qrSvg(text) {
+  if (!text || typeof window.qrcode !== 'function') return '';
+  try {
+    if (window.qrcode.stringToBytesFuncs && window.qrcode.stringToBytesFuncs['UTF-8']) window.qrcode.stringToBytes = window.qrcode.stringToBytesFuncs['UTF-8'];
+    const q = window.qrcode(0, 'M'); q.addData(text, 'Byte'); q.make();
+    return q.createSvgTag({cellSize: 4, margin: 0, scalable: true});
+  } catch (e) { return ''; }
+}
+/* Wi-Fi : caractères réservés échappés (\ ; , " :), comme le veut le format ; sans mot de passe → réseau ouvert. */
+function wifiQr(net, pass) {
+  const w = v => String(v || '').replace(/([\\;,":])/g, '\\$1');
+  return net ? qrSvg(pass ? 'WIFI:T:WPA;S:' + w(net) + ';P:' + w(pass) + ';;' : 'WIFI:T:nopass;S:' + w(net) + ';;') : '';
+}
+/* Lien personnel de ce livret (jeton + langue + groupe), pour le QR imprimé ; vide sans jeton. */
+function onlineLivretUrl() {
+  const C = window.LIVRET_CTX || {}, q = new URLSearchParams(location.search);
+  if (!C.token) return '';
+  const p = new URLSearchParams(); p.set('t', C.token);
+  const l = document.getElementById('l').value; if (l === 'fr' || l === 'en') p.set('lang', l);
+  const g = q.get('groupe') || q.get('group'); if (g) p.set('groupe', g);
+  return location.origin + location.pathname + '?' + p.toString();
+}
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+/* Pièce jointe générée sur l'appareil : data: URL. Sur iPhone, Safari ouvre la fiche contact ou le calendrier
+   directement (pas de « download », qui l'enverrait dans Fichiers) ; ailleurs, un fichier nommé. */
+function dataLink(mime, text, filename, label, cls) {
+  const href = 'data:' + mime + ';charset=utf-8,' + encodeURIComponent(text);
+  return '<a class="' + (cls || 'tool') + '" href="' + href + '"' + (IS_IOS ? '' : ' download="' + esc(filename) + '"') + '>' + label + '</a>';
+}
+const vcEsc = v => String(v || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, m => '\\' + m);
+const fileSlug = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'contact';
+/* vCard 3.0 du premier contact : prénom, rôle, numéro, villa — ce que la fiche montre déjà sur cette page. */
+function contactVcf(name, role, phone, villa) {
+  return ['BEGIN:VCARD', 'VERSION:3.0', 'N:;' + vcEsc(name) + ';;;', 'FN:' + vcEsc(name + (villa ? ' — ' + villa : '')),
+    villa ? 'ORG:' + vcEsc(villa) : '', role ? 'TITLE:' + vcEsc(role) : '', 'TEL;TYPE=CELL,VOICE:+' + waDigits(String(phone)), 'END:VCARD'].filter(Boolean).join('\r\n');
+}
+/* .ics du séjour (journée entière, du jour d'arrivée au jour de départ inclus — DTEND exclusif = départ + 1). */
+function stayIcs(from, to, villa, address, contact) {
+  const d = s => s.replace(/-/g, ''), plus1 = s => { const x = new Date(s + 'T12:00:00'); x.setDate(x.getDate() + 1); return x.toISOString().slice(0, 10); };
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const uid = 'stay-' + d(from) + '-' + fileSlug(villa).toLowerCase() + '@stafflo.app';
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Stafflo//Livret//FR', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT', 'UID:' + uid, 'DTSTAMP:' + stamp,
+    'DTSTART;VALUE=DATE:' + d(from), 'DTEND;VALUE=DATE:' + d(plus1(to)), 'SUMMARY:' + vcEsc(t_(['Séjour — ', 'Stay — ']) + villa),
+    address ? 'LOCATION:' + vcEsc(villa + ', ' + address) : '', contact ? 'DESCRIPTION:' + vcEsc(contact) : '', 'END:VEVENT', 'END:VCALENDAR'].filter(Boolean).join('\r\n');
+}
+/* Première langue affichée (fr / en / bilingue → fr) pour un texte qui ne peut exister qu'une fois (fichier). */
+function t_(pair) { return document.getElementById('l').value === 'en' ? pair[1] : pair[0]; }
+
 /* Valeurs derivees du supplement voyageurs, pour le texte des chambres. */
 const XG = (() => {
   const x = VILLA.extraGuest || {from: 0, fee: 0, max: 0}, n = x.from;
@@ -382,6 +458,12 @@ const T = {
         "We are delighted to welcome you " + AT_VILLA[1] + ". This guide gathers everything you need for a relaxed and memorable stay."],
   net:['Réseau','Network'], pass:['Mot de passe','Password'],
   maps:['Voir sur Google Maps','View on Google Maps'],
+  route:['Itinéraire','Directions'], appleMaps:['Apple Plans','Apple Maps'],
+  qrWifi:['Wi-Fi — scannez pour vous connecter','Wi-Fi — scan to connect'],
+  copyPass:['Copier le mot de passe','Copy the password'], copied:['Copié','Copied'],
+  saveContact:['Enregistrer le contact','Save the contact'],
+  addCal:['Ajouter le séjour à mon calendrier','Add the stay to my calendar'],
+  qrOnline:['Ce livret en ligne — commandes, heure d’arrivée, infos à jour','This booklet online — orders, arrival time, up-to-date info'],
   practical:['Informations pratiques','Practical Information'],
   rooms:ROOMS.length === 1 ? ['La chambre','The Bedroom'] : ['Les ' + ROOMS.length + ' chambres','The ' + ROOMS.length + ' Bedrooms'],
   roomsIntro:FACT_TEXT.roomsIntro,
@@ -835,11 +917,24 @@ function render(){
        (villaMapUrl ? ' <a href="' + villaMapUrl + '" target="_blank" rel="noopener">' + ti(T.maps) + '</a>' : '') + '</div>' : '') +
        '</div>';
 
-  if (QR_SAID || QR_JEREMIE) h += '<div class="qr-block">' +
+  /* Commodités à l'écran (18/10) : contact, calendrier, itinéraire, mot de passe Wi-Fi — jamais imprimées (#guest-tools). */
+  {
+    const C = window.LIVRET_CTX || {}, dy = C.days || {}, hasDays = /^\d{4}-\d{2}-\d{2}$/.test(dy.from || '') && /^\d{4}-\d{2}-\d{2}$/.test(dy.to || '');
+    const tools = [];
+    if (STAFF && said) tools.push(dataLink('text/vcard', contactVcf(STAFF, STAFF_ROLE[0] || STAFF_ROLE[1], said, VNAME), fileSlug(STAFF) + (VNAME ? '-' + fileSlug(VNAME) : '') + '.vcf', ti(T.saveContact)));
+    if (hasDays && VNAME) tools.push(dataLink('text/calendar', stayIcs(dy.from, dy.to, VNAME, String(VILLA.address || '').trim(), STAFF && said ? STAFF + (STAFF_ROLE[0] ? ', ' + STAFF_ROLE[0] : '') + ' — WhatsApp / SMS +' + waDigits(said) : ''), 'sejour-' + fileSlug(VNAME).toLowerCase() + '.ics', ti(T.addCal)));
+    if (PIN) tools.push('<span class="tool-group">' + ti(T.route) + ' : <a href="' + villaMapUrl + '" target="_blank" rel="noopener">Google Maps</a> · <a href="https://maps.apple.com/?ll=' + encodeURIComponent(PIN.lat + ',' + PIN.lng) + '&q=' + encodeURIComponent(VNAME || 'Villa') + '" target="_blank" rel="noopener">' + ti(T.appleMaps) + '</a> · <a href="https://waze.com/ul?ll=' + encodeURIComponent(PIN.lat + ',' + PIN.lng) + '&navigate=yes" target="_blank" rel="noopener">Waze</a></span>');
+    if (wifi && wifi.pass) tools.push('<button type="button" class="tool" id="copy-wifi" data-pass="' + esc(wifi.pass) + '">' + ti(T.copyPass) + '</button>');
+    if (tools.length) h += '<div class="tools" id="guest-tools">' + tools.join('') + '</div>';
+  }
+
+  const WIFI_QR = wifi ? wifiQr(wifi.net, wifi.pass) : '';
+  if (QR_SAID || QR_JEREMIE || WIFI_QR) h += '<div class="qr-block">' +
+       (WIFI_QR ? '<div class="qr-item qr-wifi">' + WIFI_QR + '<div class="qr-cap">' + ti(T.qrWifi) + '</div></div>' : '') +
        (QR_SAID ? '<div class="qr-item">' + QR_SAID + '<div class="qr-cap">' + ti(T.qrSaid) + '</div></div>' : '') +
        (QR_JEREMIE ? '<div class="qr-item">' + QR_JEREMIE + '<div class="qr-cap">' + ti(T.qrJeremie) + '</div></div>' : '') +
        '</div>' +
-       '<div class="qr-note">' + t(T.qrNote) + '</div>';
+       ((QR_SAID || QR_JEREMIE) ? '<div class="qr-note">' + t(T.qrNote) + '</div>' : '');
 
   if (PRACTICAL.length) h += '<h2>' + ti(T.practical) + '</h2>' + listOfLabelled(PRACTICAL);
   h += '</div>';
@@ -936,11 +1031,20 @@ function render(){
   }
   if (T.kidsBox) h += '<div class="callout">' + kidsBoxHtml() + '</div>';
   h += '<div class="sig">' + t(T.bye) + (HOST ? '<br>' + esc(HOST) : '') + '</div>';
+  /* QR « ce livret en ligne » (18/10) : imprimé seulement, avec le lien personnel du séjour — jamais sur un livret sans jeton. */
+  const ONLINE_QR = qrSvg(onlineLivretUrl());
+  if (ONLINE_QR) h += '<div class="qr-online" id="livret-qr-online">' + ONLINE_QR + '<div class="qr-cap">' + t(T.qrOnline) + '</div></div>';
   h += '<div class="foot">' + esc([VNAME, VCITY].filter(Boolean).join(' · ')) + '</div>';
   /* Signature discrète : les invités d'une villa sont souvent eux-mêmes propriétaires. */
   h += '<div class="foot foot-stafflo">' + ti(['Livret préparé avec', 'Guest booklet made with']) + ' <a href="https://stafflo.app/" target="_blank" rel="noopener">Stafflo</a></div></div>';
 
   document.getElementById('sheet').innerHTML = h;
+  /* « Copier le mot de passe » Wi-Fi : presse-papiers, confirmation deux secondes ; sans presse-papiers, rien ne casse. */
+  const cw = document.getElementById('copy-wifi');
+  if (cw) cw.addEventListener('click', () => {
+    const done = () => { const l = cw.textContent; cw.textContent = LANG === 'en' ? T.copied[1] : T.copied[0]; setTimeout(() => { cw.textContent = l; }, 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(cw.getAttribute('data-pass') || '').then(done, () => {});
+  });
 }
 
 /* Pré-remplissage depuis l'URL — permet l'ouverture directe depuis une fiche

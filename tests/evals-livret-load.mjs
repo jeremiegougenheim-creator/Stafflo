@@ -226,7 +226,7 @@ await r.ctx.close();
 // 1. Fiche complète (pilote) : rendu identique au caractère près (empreintes du 15/10/2026 — règle « Passeports » → fiches voyageurs —, hors
 //    bloc « Votre arrivée » et signature Stafflo). Si le livret est modifié VOLONTAIREMENT, recalculer.
 const crypto = await import('node:crypto');
-const sheetHash = async (page) => crypto.createHash('sha256').update(await page.evaluate(() => { const s = document.getElementById('sheet').cloneNode(true); s.querySelectorAll('#arrive, #reg, .foot-stafflo').forEach((e) => e.remove()); return s.innerHTML; })).digest('hex').slice(0, 16);
+const sheetHash = async (page) => crypto.createHash('sha256').update(await page.evaluate(() => { const s = document.getElementById('sheet').cloneNode(true); s.querySelectorAll('#arrive, #reg, .foot-stafflo, #guest-tools, .qr-wifi, #livret-qr-online').forEach((e) => e.remove()); return s.innerHTML; })).digest('hex').slice(0, 16); // 18/10 : commodités client et QR calculés sur l'appareil hors empreinte (vérifiés à part, plus bas)
 for (const [qs, h] of [['guest=Felipe%20Villalobos&dates=13%20OCT%20%E2%80%93%2016%20OCT%2026&pax=7&groupe=famille&lang=bi', '7862274952945c90'], ['guest=Hugo&dates=20%20DEC%20%E2%80%93%2027%20DEC%2026&pax=10&groupe=amis&lang=fr&tarifs=400/400/500', '817829d31b1f18d7'], ['guest=Se%C3%A1n&dates=23%20OCT%20%E2%80%93%2026%20OCT%2026&pax=6&lang=en&tarifs=500/500/600/350', 'dc2363e1e96214a4']]) {
   r = await open('t=' + TOK + '&' + qs, { view: ok200 });
   const got = await sheetHash(r.page);
@@ -302,6 +302,36 @@ await r.ctx.close();
   r = await open('t=' + TOK + '&lang=fr&pax=8&tarifs=600/600/800', { view: () => ({ status: 200, body: '{"facts":' + JSON.stringify(FB2) + '}' }) });
   const rowsB = await r.page.$$eval('#sheet table tr', (trs) => trs.map((tr) => tr.innerText.replace(/\s+/g, ' ').trim()).filter((t) => /^Brunch/i.test(t)));
   check('tarif négocié + brunch de la maison : une seule ligne Brunch, à 450 MAD (pas 600)', rowsB.length === 1 && /450 MAD/.test(rowsB[0]) && !r.errs.length, rowsB);
+  await r.ctx.close();
+}
+
+// ── Commodités client (18/10/2026) : QR Wi-Fi, contact, calendrier, itinéraire — calculés sur l'appareil, rien d'envoyé ──
+{
+  const DAYS = ',"stay":{"name":"Claire Vasseur","pax":10},"days":{"from":"2026-10-19","to":"2026-10-23"}';
+  r = await open('t=' + TOK + '&lang=fr&groupe=famille', { view: () => ({ status: 200, body: '{"facts":' + FACTS + DAYS + '}' }) });
+  const tools = await r.page.evaluate(() => {
+    const g = document.getElementById('guest-tools'), dec = (a) => a ? decodeURIComponent(a.getAttribute('href').split(',')[1]) : '';
+    const vc = g && g.querySelector('a[href^="data:text/vcard"]'), ics = g && g.querySelector('a[href^="data:text/calendar"]');
+    const links = g ? [...g.querySelectorAll('.tool-group a')].map((a) => a.getAttribute('href')) : [];
+    const w = document.querySelector('.qr-wifi'), o = document.getElementById('livret-qr-online');
+    return { has: !!g, vcf: dec(vc), ics: dec(ics), vcfDl: vc && vc.getAttribute('download'), icsDl: ics && ics.getAttribute('download'), links, copy: !!(g && g.querySelector('#copy-wifi')),
+      wifi: !!(w && w.querySelector('svg')), wifiCap: w ? w.querySelector('.qr-cap').textContent : '', waQr: document.querySelectorAll('svg.qr-svg').length,
+      online: !!(o && o.querySelector('svg')), onlineCap: o ? o.querySelector('.qr-cap').textContent : '', toolsScreen: g ? getComputedStyle(g).display : 'none', onlineScreen: o ? getComputedStyle(o).display : 'none' };
+  });
+  check('commodités : bloc présent à l’écran ; QR Wi-Fi (fiche avec wifi) en plus des 2 QR WhatsApp, inchangés', tools.has && tools.toolsScreen !== 'none' && tools.wifi && /Wi-Fi/.test(tools.wifiCap) && tools.waQr === 2 && !r.errs.length, { ...tools, vcf: '', ics: '' });
+  check('contact : vCard du premier contact — prénom, rôle, numéro au format wa.me (le « (0) » retiré), villa ; fichier nommé (navigateur de test ≠ iPhone)', /BEGIN:VCARD/.test(tools.vcf) && /FN:Saïd — Villa Dar J/.test(tools.vcf) && /TITLE:majordome/.test(tools.vcf) && /TEL;TYPE=CELL,VOICE:\+212612223236/.test(tools.vcf) && !/\(0\)/.test(tools.vcf) && /^Said-Villa-Dar-J\.vcf$/.test(tools.vcfDl || ''), { vcf: tools.vcf, dl: tools.vcfDl });
+  check('calendrier : .ics du séjour, journée entière du 19 au 23 inclus (DTEND exclusif 24), villa + adresse, contact — jamais un prix', /DTSTART;VALUE=DATE:20261019/.test(tools.ics) && /DTEND;VALUE=DATE:20261024/.test(tools.ics) && /SUMMARY:Séjour — Villa Dar J/.test(tools.ics) && /LOCATION:Villa Dar J\\, Douar Sabba/.test(tools.ics) && /DESCRIPTION:Saïd\\, majordome — WhatsApp \/ SMS \+212612223236/.test(tools.ics) && !/MAD|€/.test(tools.ics) && tools.icsDl === 'sejour-villa-dar-j.ics', tools.ics);
+  check('itinéraire : Google Maps, Apple Plans et Waze sur le point GPS de la fiche ; « Copier le mot de passe » présent', tools.links.length === 3 && tools.links[0].startsWith('https://www.google.com/maps/') && /^https:\/\/maps\.apple\.com\/\?ll=31\./.test(tools.links[1]) && /^https:\/\/waze\.com\/ul\?ll=31\./.test(tools.links[2]) && tools.copy, tools.links);
+  check('QR « ce livret en ligne » : présent dans la page avec le lien personnel, caché à l’écran (impression seulement)', tools.online && tools.onlineScreen === 'none' && /en ligne/.test(tools.onlineCap), { online: tools.online, screen: tools.onlineScreen });
+  await r.page.emulateMedia({ media: 'print' });
+  const pr = await r.page.evaluate(() => ({ tools: getComputedStyle(document.getElementById('guest-tools')).display, online: getComputedStyle(document.getElementById('livret-qr-online')).display, wifi: getComputedStyle(document.querySelector('.qr-wifi')).display, url: (document.querySelector('#livret-qr-online') || {}).dataset }));
+  check('impression : commodités cachées, QR du livret en ligne et QR Wi-Fi imprimés', pr.tools === 'none' && pr.online !== 'none' && pr.wifi !== 'none', pr);
+  await r.ctx.close();
+  // Sans jeton (propriétaire connecté qui regarde sa fiche) : pas de QR « en ligne » ; sans wifi, sans GPS, sans dates : rien de tout ça, et pas d'erreur
+  const MINI2 = JSON.stringify({ VILLA: { name: 'Riad Zina', host: 'Nadia', staff: 'Omar', said: '+212 600 000 000' }, TEAM: [{ name: 'Omar', role: ['gardien', ''], brief: true }], RULES: [['Non-fumeur.', '']] });
+  r = await open('lang=fr', { session: sessionFor(3600), rest: () => ({ status: 200, body: '[{"house_facts":' + MINI2 + '}]' }) });
+  const mini = await r.page.evaluate(() => { const g = document.getElementById('guest-tools'); return { online: !!document.getElementById('livret-qr-online'), wifi: !!document.querySelector('.qr-wifi'), copy: !!document.getElementById('copy-wifi'), ics: !!(g && g.querySelector('a[href^="data:text/calendar"]')), vcf: !!(g && g.querySelector('a[href^="data:text/vcard"]')), maps: !!(g && g.querySelector('.tool-group')), qr: document.querySelectorAll('.qr-block').length }; });
+  check('fiche minimale, sans jeton : contact seulement (Omar) — ni QR en ligne, ni Wi-Fi, ni calendrier, ni itinéraire, ni bloc QR vide, 0 erreur', !mini.online && !mini.wifi && !mini.copy && !mini.ics && mini.vcf && !mini.maps && mini.qr === 0 && !r.errs.length, { ...mini, errs: r.errs });
   await r.ctx.close();
 }
 
