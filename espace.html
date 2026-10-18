@@ -397,7 +397,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       arrivalPh: 'Ex. : vol AT801, à la villa vers 16h', bedsPh: 'Ex. : 3 couples + 2 personnes seules, ch. 4 en 2 lits', staffNotePh: 'Ce que l’équipe doit savoir : occasion, allergies, demande…',
       staffSees: 'L’équipe voit ces champs et les repas dans sa vue (Maison › Accès équipe). Jamais les notes ni les prix.',
       eqTitle: 'Accès équipe', eqTxt: 'Un lien personnel par personne : arrivées, départs, groupes, heures d’arrivée et de départ, couchages, repas, boissons et consigne. Jamais de prix, de téléphone ni vos notes. Lecture seule, en français ou en arabe.',
-      eqWho: 'Pour', eqLang: 'Langue', eqCreate: 'Créer le lien', eqNone: 'Aucun lien pour l’instant.', eqOnce: 'Ce lien ne s’affiche qu’une fois : envoyez-le maintenant. Pour le renvoyer plus tard, créez-en un nouveau.',
+      eqWho: 'Pour', eqLang: 'Langue', eqCreate: 'Créer le lien', eqNoTeam: 'Ajoutez d’abord votre équipe (prénoms, rôles, WhatsApp) : chaque personne aura ensuite son lien.', eqNone: 'Aucun lien pour l’instant.', eqOnce: 'Ce lien ne s’affiche qu’une fois : envoyez-le maintenant. Pour le renvoyer plus tard, créez-en un nouveau.',
       eqSend: 'Envoyer sur WhatsApp', eqRevoke: 'Retirer', eqRevoked: 'Accès retiré', eqSeen: 'ouvert ', eqNever: 'jamais ouvert', eqErr: 'Création impossible. Réessayez.', eqPreview: 'Voir la vue équipe',
       arrTime: 'Heure d’arrivée', depTime: 'Heure de départ', drinksTxt: 'Boissons', beds: 'Couchages', staffNote: 'Consigne équipe',
       billTitle: 'Décompte de fin de séjour', bServices: 'Brunchs, déjeuners, dîners servis', bServed: function (n) { return n + ' — nombre servi'; }, bHoliday: 'dont un jour férié (tarif double)', bGouters: 'Goûters servis',
@@ -552,7 +552,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       arrivalPh: 'E.g.: flight AT801, at the villa around 4 pm', bedsPh: 'E.g.: 3 couples + 2 singles, room 4 as twin', staffNotePh: 'What the team should know: occasion, allergies, request…',
       staffSees: 'The team sees these fields and the meals in its view (House › Team access). Never your notes or prices.',
       eqTitle: 'Team access', eqTxt: 'One personal link per person: arrivals, departures, groups, arrival and departure times, beds, meals, drinks and note. Never prices, phone numbers or your notes. Read-only, in French or Arabic.',
-      eqWho: 'For', eqLang: 'Language', eqCreate: 'Create the link', eqNone: 'No link yet.', eqOnce: 'This link is shown only once: send it now. To resend it later, create a new one.',
+      eqWho: 'For', eqLang: 'Language', eqCreate: 'Create the link', eqNoTeam: 'Add your team first (first names, roles, WhatsApp): each person then gets their own link.', eqNone: 'No link yet.', eqOnce: 'This link is shown only once: send it now. To resend it later, create a new one.',
       eqSend: 'Send on WhatsApp', eqRevoke: 'Remove', eqRevoked: 'Access removed', eqSeen: 'opened ', eqNever: 'never opened', eqErr: 'Could not create the link. Try again.', eqPreview: 'Open the team view',
       arrTime: 'Arrival time', depTime: 'Departure time', drinksTxt: 'Drinks', beds: 'Beds', staffNote: 'Team note',
       billTitle: 'End-of-stay bill', bServices: 'Brunches, lunches, dinners served', bServed: function (n) { return n + ' — number served'; }, bHoliday: 'of which on a public holiday (double rate)', bGouters: 'Afternoon teas served',
@@ -1484,6 +1484,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (!fr) return n;
     return (/^(villa|maison|résidence|demeure|bastide|ferme|casa)\b/i.test(n) ? 'la ' : /^(riad|domaine|mas|château|chalet|palais|manoir)\b/i.test(n) ? 'le ' : '') + n;
   }
+  /* « séjour au Riad X », « à la Villa Y », « aux Jardins… », « à Dar Z », « chez nous » — jamais « à le » (18/10) */
+  function auVilla() {
+    var n = villaName(); if (!n) return 'chez nous';
+    var a = atVilla(true);
+    if (/^le /i.test(a)) return 'au ' + a.slice(3);
+    if (/^la /i.test(a)) return 'à la ' + a.slice(3);
+    if (/^les /i.test(a)) return 'aux ' + a.slice(4);
+    return 'à ' + a;
+  }
   var owner = function () { return (F && F.VILLA.host) || cap1(D.villa && D.villa.owner_name) || villaName() || 'Stafflo'; };
   /* Sans fiche maison : l'équipe de la table staff (actifs), sinon celle saisie à l'inscription dans
      l'app complète (villa_settings.staff_members) — lue, jamais réécrite. */
@@ -1503,7 +1512,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var drinks = F.MEAL_NOTES[3] ? (flat(P(F.MEAL_NOTES[3], i)).match(/^[^.]*\./) || [''])[0] : '';
     var dates = fmtDay(c.a, g) + ' → ' + fmtDay(c.d, g);
     if (g === 'fr') {
-      return 'Bonjour ' + firstName(c) + ',\n\nVotre séjour à ' + atVilla(true) + ' approche (' + dates + ') ! ' + (m2 ? m2[0] : '') + '\n\n' +
+      return 'Bonjour ' + firstName(c) + ',\n\nVotre séjour ' + auVilla() + ' approche (' + dates + ') ! ' + (m2 ? m2[0] : '') + '\n\n' +
         'Pour votre groupe de ' + c.pax + ' personnes :\n' +
         '• ' + P(M[1].n, 0) + ' : ' + P(M[1][col], 0) + ' par service pour tout le groupe\n' +
         (M[2] ? '• ' + P(M[2].n, 0) + ' : ' + P(M[2][col], 0) + '\n' : '') +
@@ -1537,7 +1546,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function msgLivret(c) {
     var g = guestLang(c), fr = g === 'fr', can = orderable(fr ? 0 : 1);
     var dates = fmtDay(c.a, g) + ' → ' + fmtDay(c.d, g);
-    if (fr) return 'Bonjour ' + firstName(c) + ',\n\nVoici le livret de votre séjour à ' + atVilla(true) + ' (' + dates + ') : la maison, l’équipe, les repas, les adresses.\n\n' + livretAbs(c) + '\n\n' +
+    if (fr) return 'Bonjour ' + firstName(c) + ',\n\nVoici le livret de votre séjour ' + auVilla() + ' (' + dates + ') : la maison, l’équipe, les repas, les adresses.\n\n' + livretAbs(c) + '\n\n' +
       'Dans « Votre arrivée », dites-nous votre heure d’arrivée et la composition du groupe' + (can.length ? ', et réservez à l’avance : ' + can.join(', ') + '. Rien à payer en ligne, nous confirmons avec vous.' : '.') +
       (regOnF() && !regOf(c) ? '\n\nMerci aussi de remplir les « Fiches voyageurs », une par personne : nous sommes tenus de déclarer chaque voyageur à son arrivée.' : '') +
       '\n\nÀ très vite,\n' + owner();
@@ -1664,7 +1673,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
   function msgReviewAsk(c) {
     var fr = guestLang(c) === 'fr';
-    return fr ? 'Bonjour ' + firstName(c) + ',\n\nMerci d’avoir séjourné à ' + atVilla(true) + '. Si vous avez un instant, votre avis sur Airbnb nous aiderait beaucoup : il guide les prochains voyageurs. Nous avons laissé le vôtre de notre côté.\n\nAu plaisir de vous revoir,\n' + owner()
+    return fr ? 'Bonjour ' + firstName(c) + ',\n\nMerci d’avoir séjourné ' + auVilla() + '. Si vous avez un instant, votre avis sur Airbnb nous aiderait beaucoup : il guide les prochains voyageurs. Nous avons laissé le vôtre de notre côté.\n\nAu plaisir de vous revoir,\n' + owner()
               : 'Hello ' + firstName(c) + ',\n\nThank you for staying at ' + atVilla(false) + '. If you have a moment, a review on Airbnb would help us a lot: it guides future guests. We have left yours on our side.\n\nHope to welcome you again,\n' + owner();
   }
   /* Commande du client depuis son livret (details.guest_orders, prix recalculés par livret-view).
@@ -2153,6 +2162,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         '<button type="button" class="btn gold" data-a="eqcopy"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
         '<a class="btn green" href="https://wa.me/' + teamPhone(EQ.link.name) + '?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.eqSend) + '</a></div>' +
         '<a class="btn ghost" href="' + esc(EQ.link.url) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.eqPreview) + '</a></div>';
+    }
+    if (!names.length) { // sans équipe dans la fiche : pas de lien pour personne — d'abord l'équipe (18/10)
+      h += '<p class="sub" style="margin:0">' + esc(l.eqNoTeam) + '</p><button type="button" class="btn gold full" data-a="feopen" data-v="team"><i class="ti ti-user-plus" aria-hidden="true"></i>' + esc(l.mTeamAdd) + '</button>';
+      return card('users-group', l.eqTitle, h, (D.links || []).length ? String(D.links.length) : '');
     }
     h += '<div class="grid2"><label class="fl"><span>' + esc(l.eqWho) + '</span><select class="t" id="eq-who">' + names.map(function (n) { return '<option' + (n === EQ.name ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></label>' +
       '<label class="fl"><span>' + esc(l.eqLang) + '</span><select class="t" id="eq-lang"><option value="fr"' + (EQ.lang === 'fr' ? ' selected' : '') + '>Français</option><option value="ar" lang="ar"' + (EQ.lang === 'ar' ? ' selected' : '') + '>العربية</option></select></label></div>' +

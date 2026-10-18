@@ -250,6 +250,14 @@ await r.page.click('[data-a="panel"][data-v="livret"][data-id="s1"]'); await r.p
 const lv2 = await r.page.inputValue('#tx-s1');
 check('Msg livret (fiche partielle, EN, rien de chiffré, pas de fiches) : pas de « book ahead », ni de « Guest registration », pas de français', /^Hello Ana,/.test(lv2) && /Under “Your arrival”/.test(lv2) && !/book ahead|Guest registration/.test(lv2) && !/Bonjour|réservez/.test(lv2) && !r.errs.length, { lv2, errs: r.errs });
 await r.ctx.close();
+// 18/10 — « au Riad Zina », jamais « à le Riad Zina » ; « à la Villa … » inchangé
+r = await open({ tab: 'sejours', villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: ZINA }, links: [{ client_id: 's1', token: TK }],
+  stays: [{ id: 's1', name: 'Léa Martin', arrival: iso(5), departure: iso(8), adults: 2, booking_status: 'confirmed', source: 'direct', nat: 'France', phone: '+33611111111', details: {} }] });
+await r.page.waitForTimeout(250);
+{ const t = await r.page.$('[data-a="toggle"][data-id="s1"]'); if (t) { await t.click(); await r.page.waitForTimeout(100); } }
+await r.page.click('[data-a="panel"][data-v="livret"][data-id="s1"]'); await r.page.waitForSelector('#tx-s1');
+check('Msg livret FR, villa « Riad Zina » : « votre séjour au Riad Zina »', /Voici le livret de votre séjour au Riad Zina \(/.test(await r.page.inputValue('#tx-s1')) && !/à le /.test(await r.page.inputValue('#tx-s1')), (await r.page.inputValue('#tx-s1')).slice(0, 120));
+await r.ctx.close();
 
 // ── 5 ter. Fiches voyageurs : nombre sur le séjour, contenu lu à la demande, impression, CSV, déclaré ──
 {
@@ -1213,6 +1221,20 @@ const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + titl
   await r.page.click('#settings [data-a="icdel"][data-v="fb"]'); await r.page.waitForTimeout(400);
   const dp = r.calls.filter((c) => c.kind === 'PATCH').pop();
   check('« Retirer » : la liste sans ce calendrier, rien d’autre', !!dp && JSON.stringify(dp.body) === JSON.stringify({ ical_feeds: [FEEDS[0]] }) && /1 calendrier relié/.test(await r.page.innerText('#settings')) && !r.errs.length, { dp, errs: r.errs });
+  await r.ctx.close();
+}
+
+// ── 18/10 — Accès équipe sans équipe : pas de « Créer le lien » pour personne, d'abord l'équipe (fiche maison) ──
+{
+  const V0 = { villa_name: 'Riad Zina', owner_name: 'Nadia', city: 'Marrakech', house_facts_ref: null, house_facts: null, staff_members: null };
+  r = await open({ villa: V0 });
+  await r.page.waitForTimeout(200);
+  const tm = await txt(r.page);
+  check('sans équipe : la carte Accès équipe explique et mène à « Ajouter votre équipe » (fiche), sans sélecteur vide ni « Créer le lien »', /Ajoutez d’abord votre équipe/.test(tm) && !(await r.page.$('#eq-who')) && !(await r.page.$('[data-a="eqcreate"]')) && !!(await r.page.$('[data-a="feopen"][data-v="team"]')));
+  await r.ctx.close();
+  r = await open({ villa: { ...V0, house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina' }, TEAM: [{ name: 'Omar', brief: true, phone: '+212 600 000 000', role: ['gardien', 'caretaker'] }] } } });
+  await r.page.waitForTimeout(200);
+  check('avec une équipe : sélecteur « Pour » (Omar) et « Créer le lien »', (await r.page.$eval('#eq-who', (x) => x.value)) === 'Omar' && !!(await r.page.$('[data-a="eqcreate"]')));
   await r.ctx.close();
 }
 

@@ -253,6 +253,7 @@ check('autre villa : premier contact et hôte depuis la fiche, rôle lu dans l�
 check('autre villa : pas de Wi-Fi, pas de QR, pas de chambres, repas, menus ni « Découvrir » quand la fiche n’en a pas ; pas de Majorelle', !/Wi-Fi/.test(txt) && r.qr === 0 && !/Les \d chambres|La chambre|Bedrooms|Repas & horaires|Menu & spécialités|Découvrir|Majorelle|Petit-déjeuner/.test(txt));
 check('autre villa : anglais vide → le français est repris, jamais un blanc (bilingue : une seule ligne)', /Arrivée et départ : chambres prêtes/.test(txt) && (txt.match(/chambres prêtes à partir de 15h/g) || []).length === 1 && /No smoking inside/.test(txt));
 check('autre villa : pied de page = nom · ville, signature Stafflo', /Riad Zina · Marrakech/i.test(txt) && /Livret préparé avec/i.test(txt));
+check('autre villa : couverture « BIENVENUE AU » Riad Zina — jamais « à la » pour un riad (18/10)', /BIENVENUE AU( \/ WELCOME TO)?\s*Riad Zina/i.test(await r.page.evaluate(() => document.querySelector('.cover').innerText)), await r.page.evaluate(() => document.querySelector('.cover').innerText.slice(0, 60)));
 check('autre villa : onglet « Livret d’accueil — Riad Zina », jamais « Villa Dar J »', (await r.page.title()) === "Livret d'accueil — Riad Zina" && !/Dar J/.test(await r.page.content()), await r.page.title());
 await r.ctx.close();
 
