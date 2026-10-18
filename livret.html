@@ -86,7 +86,7 @@ html.guest .bar{display:none}
 .arrive .step button{width:38px;height:38px;border-radius:50%;border:1px solid var(--rule);background:var(--paper);font:inherit;font-size:18px;line-height:1;cursor:pointer;color:var(--ink)}
 .arrive .step output{min-width:24px;text-align:center;font-weight:600;font-size:15px}
 .arrive .ord-days{flex-direction:column;align-items:stretch}.arrive .ord-days .ord-h{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
-.arrive .ord-cal{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.arrive .oc{min-height:36px;padding:0 12px;border-radius:18px;border:1px solid var(--rule);background:var(--paper);font:inherit;font-size:13px;color:var(--ink);cursor:pointer}.arrive .oc.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}.arrive .ord-q{font-weight:600;font-size:14px;white-space:nowrap}
+.arrive .ord-cal{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.arrive .ord-grid{display:grid;gap:5px 6px;align-items:center;margin-top:8px}.arrive .og-h{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center}.arrive .og-d{font-size:13px;white-space:nowrap;padding-right:4px}.arrive .oc.cell{min-height:38px;padding:0;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1}.arrive .oc{min-height:36px;padding:0 12px;border-radius:18px;border:1px solid var(--rule);background:var(--paper);font:inherit;font-size:13px;color:var(--ink);cursor:pointer}.arrive .oc.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}.arrive .ord-q{font-weight:600;font-size:14px;white-space:nowrap}
 .arrive .ord-tot{display:flex;justify-content:space-between;gap:12px;margin-top:12px;font-size:15px}.arrive .ord-tot b{white-space:nowrap}
 .arrive select{width:100%;box-sizing:border-box;border:1px solid var(--rule);border-radius:4px;padding:9px 10px;font:inherit;font-size:14px;color:var(--ink);background:var(--paper)}
 /* Fiches voyageurs (déclaration aux autorités) — écran seulement, jamais imprimé */
@@ -448,7 +448,7 @@ const T = {
   ordPerGroup:['par service, pour tout le groupe','per service, for the whole group'],
   ordTotal:['Total indicatif','Indicative total'],
   ordPickDay:['Touchez les jours souhaités','Tap the days you would like'],
-  ordPickSvc:['Touchez les jours et le service souhaités','Tap the days and the service you would like'],
+  ordPickSvc:['Cochez les services souhaités, jour par jour','Tick the services you would like, day by day'],
   ordSent:['Commande transmise · total','Order sent · total']
 };
 
@@ -693,8 +693,13 @@ function orderBlock(){
     if (m.kind === 'meal' && days) {
       const sv = svcOf(MEALS[+m.id.slice(1)]), on = WHEN[m.id] || new Set();
       h += '<div class="ord-row ord-days"><div class="ord-h"><div class="ord-n"><b>' + ti(m.n) + '</b><span>' + esc(money(m.unit)) + ' · ' + per + '<br>' + ti(sv.length > 1 ? T.ordPickSvc : T.ordPickDay) + '</span></div>' +
-        '<span class="ord-q"><output id="oq-' + m.id + '">' + (ORDER[m.id] || 0) + '</output> ×</span></div><div class="ord-cal">' +
-        days.map(d => sv.map(s => { const k = d + '|' + s, sel = on.has(k); return '<button type="button" class="oc' + (sel ? ' on' : '') + '" aria-pressed="' + sel + '" data-ow="' + m.id + '" data-k="' + k + '">' + esc(dayLbl(d)) + (s ? ' · ' + ti(SVC[s]) : '') + '</button>'; }).join('')).join('') + '</div></div>';
+        '<span class="ord-q"><output id="oq-' + m.id + '">' + (ORDER[m.id] || 0) + '</output> ×</span></div>';
+      if (sv.length > 1) { // plusieurs services : une grille jours × services (18/10), une case cochable par service
+        h += '<div class="ord-grid" style="grid-template-columns:auto repeat(' + sv.length + ',1fr)"><span class="og-h"></span>' + sv.map(s => '<span class="og-h">' + ti(SVC[s]) + '</span>').join('') +
+          days.map(d => '<span class="og-d">' + esc(dayLbl(d)) + '</span>' + sv.map(s => { const k = d + '|' + s, sel = on.has(k); return '<button type="button" class="oc cell' + (sel ? ' on' : '') + '" aria-pressed="' + sel + '" aria-label="' + esc(dayLbl(d) + ' · ' + ti(SVC[s])) + '" data-ow="' + m.id + '" data-k="' + k + '">' + (sel ? '✓' : '') + '</button>'; }).join('')).join('') + '</div></div>';
+        return;
+      }
+      h += '<div class="ord-cal">' + days.map(d => { const k = d + '|', sel = on.has(k); return '<button type="button" class="oc' + (sel ? ' on' : '') + '" aria-pressed="' + sel + '" aria-label="' + esc(dayLbl(d)) + '" data-ow="' + m.id + '" data-k="' + k + '">' + esc(dayLbl(d)) + '</button>'; }).join('') + '</div></div>';
       return;
     }
     h += '<div class="ord-row"><div class="ord-n"><b>' + ti(m.n) + '</b><span>' + esc(money(m.unit)) + (per ? ' · ' + per : '') + (m.d ? '<br>' + ti(m.d) : '') + '</span></div>' +
@@ -708,6 +713,7 @@ document.addEventListener('click', e => {
   const id = c.getAttribute('data-ow'), k = c.getAttribute('data-k'), set = WHEN[id] = WHEN[id] || new Set();
   if (set.has(k)) set.delete(k); else if (set.size < 30) set.add(k);
   const sel = set.has(k); c.classList.toggle('on', sel); c.setAttribute('aria-pressed', String(sel));
+  if (c.classList.contains('cell')) c.textContent = sel ? '✓' : '';
   ORDER[id] = set.size;
   const o = document.getElementById('oq-' + id); if (o) o.textContent = set.size;
   const tt = document.getElementById('ord-tot'); if (tt) tt.textContent = money(orderTotal());
@@ -788,7 +794,7 @@ function sendReg(form){
 document.addEventListener('submit', e => { if (e.target && e.target.id === 'reg') { e.preventDefault(); sendReg(e.target); } });
 
 function render(){
-  const guest = document.getElementById('g').value.trim() || '—';
+  const guest = document.getElementById('g').value.trim(); // vide → « Bonjour, » (greeting), jamais un tiret
   const dates = document.getElementById('d').value.trim();
   const pax   = document.getElementById('p').value;
   const grp   = document.getElementById('grp').value;

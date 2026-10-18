@@ -121,21 +121,27 @@ await r.ctx.close();
 {
   const DV = (extra) => () => ({ status: 200, body: '{"facts":' + FACTS + ',"days":{"from":"2026-10-20","to":"2026-10-22"}' + (extra || '') + '}' });
   r = await open('t=' + TOK + '&pax=4&lang=fr', { view: DV(), post: ORDER_OK });
-  const chips = (id) => r.page.$$eval('[data-ow="' + id + '"]', (bs) => bs.map((b) => b.innerText + (b.classList.contains('on') ? '*' : '')));
+  const chips = (id) => r.page.$$eval('[data-ow="' + id + '"]', (bs) => bs.map((b) => b.getAttribute('aria-label') + (b.classList.contains('on') ? '*' : '')));
   const c1 = await chips('m1'), c2 = await chips('m2');
   check('jours du séjour proposés : 3 jours × brunch / midi / soir pour « Brunch, déjeuner ou dîner », 3 jours sans service pour le goûter ; les extras gardent leur compteur',
     c1.length === 9 && c1[0] === 'mar. 20 · brunch' && c1[5] === 'mer. 21 · soir' && c2.length === 3 && c2[0] === 'mar. 20' && !!(await r.page.$('[data-ord="1"][data-id="x0"]')) && !(await r.page.$('[data-ord="1"][data-id="m1"]')), [c1, c2]);
+  // 18/10 : plusieurs services → une grille jours × services (en-tête brunch / midi / soir, une ligne par jour, cases à cocher) ; un seul service → des jours à toucher
+  check('grille jours × services : 3 en-têtes + 3 lignes de 3 cases ; le goûter garde ses jours en pastilles', (await r.page.$$eval('[data-ow="m1"]', (bs) => bs.every((b) => b.classList.contains('cell') && b.closest('.ord-grid')))) &&
+    (await r.page.$$eval('.ord-grid .og-h', (xs) => xs.map((x) => x.textContent).join('|'))) === '|brunch|midi|soir' && (await r.page.$$eval('.ord-grid .og-d', (xs) => xs.map((x) => x.innerText).join('|'))) === 'mar. 20|mer. 21|jeu. 22' &&
+    (await r.page.$$eval('[data-ow="m2"]', (bs) => bs.every((b) => !b.classList.contains('cell') && b.innerText === b.getAttribute('aria-label')))));
   for (const k of ['2026-10-21|d', '2026-10-22|l', '2026-10-22|l', '2026-10-22|l']) await r.page.click('[data-ow="m1"][data-k="' + k + '"]');
   await r.page.click('[data-ow="m2"][data-k="2026-10-20|"]');
   check('le client touche les cases : 2 services + 1 goûter → 2 × 650 + 300 = 1 600 MAD, compteurs à jour, cases marquées',
-    /1\s?600 MAD/.test(await r.page.innerText('#ord-tot')) && (await r.page.innerText('#oq-m1')) === '2' && (await r.page.innerText('#oq-m2')) === '1' && (await chips('m1')).filter((x) => x.endsWith('*')).join() === 'mer. 21 · soir*,jeu. 22 · midi*', await chips('m1'));
+    /1\s?600 MAD/.test(await r.page.innerText('#ord-tot')) && (await r.page.innerText('#oq-m1')) === '2' && (await r.page.innerText('#oq-m2')) === '1' && (await chips('m1')).filter((x) => x.endsWith('*')).join() === 'mer. 21 · soir*,jeu. 22 · midi*' &&
+    (await r.page.$$eval('[data-ow="m1"]', (bs) => bs.map((b) => b.innerText).join(''))) === '✓✓', await chips('m1'));
   await r.page.click('#ar-send'); await r.page.waitForTimeout(400);
   const pd = r.calls.filter((c) => c.kind === 'post').pop();
   check('envoi : id + cases datées (jour, service), quantité = nombre de cases, jamais un prix', pd && JSON.stringify(pd.body.orders) === JSON.stringify([{ id: 'm1', q: 2, when: [{ d: '2026-10-21', s: 'd' }, { d: '2026-10-22', s: 'l' }] }, { id: 'm2', q: 1, when: [{ d: '2026-10-20' }] }]), pd && pd.body.orders);
   check('aucune erreur dans la page', !r.errs.length, r.errs);
   await r.ctx.close();
   r = await open('t=' + TOK + '&pax=4&lang=en', { view: DV(',"orders":{"items":[{"id":"m1","q":1,"when":[{"d":"2026-10-21","s":"d"}]}],"total":650,"cur":"MAD"}') });
-  check('commande datée déjà envoyée → cases pré-cochées (en anglais : « Wed 21 · dinner »)', (await r.page.innerText('#oq-m1')) === '1' && (await chips('m1')).filter((x) => x.endsWith('*')).join() === 'Wed 21 · dinner*', await chips('m1'));
+  check('commande datée déjà envoyée → cases pré-cochées (en anglais : « Wed 21 · dinner »)', (await r.page.innerText('#oq-m1')) === '1' && (await chips('m1')).filter((x) => x.endsWith('*')).join() === 'Wed 21 · dinner*' && (await r.page.$$eval('[data-ow="m1"].on', (bs) => bs.map((b) => b.innerText).join(''))) === '✓', await chips('m1'));
+  check('lien sans nom : « Dear, » — jamais un tiret (18/10)', /^Dear,$/m.test(await r.page.innerText('.hello')), await r.page.innerText('.hello'));
   await r.ctx.close();
 }
 
