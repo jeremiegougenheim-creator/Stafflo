@@ -834,6 +834,17 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     }).catch(function () { return false; });
   }
 
+  /* Synchro Gmail « en retard » (19/10) : jugée sur l'âge du dernier passage AU MOMENT où la base a été lue
+     (D.syncSeenAt), jamais sur une donnée restée figée dans un onglet en arrière-plan. Avant : un onglet ouvert
+     depuis 3 h comparait un passage vieux de 5 min à l'heure actuelle → « pas de synchronisation récente —
+     reconnectez Gmail », bouton doré, et le propriétaire passait l'écran « app non vérifiée » de Google pour rien
+     (la synchro tournait toutes les 10 min, sans un trou). */
+  function syncLate(sy) {
+    if (!sy || !sy.finished_at) return false;
+    if (sy.ok === false) return true;
+    return ((D.syncSeenAt || Date.now()) - new Date(sy.finished_at).getTime()) / 60000 > 40;
+  }
+
   /* ── Données ─────────────────────────────────────────────────────── */
   var FIELDS = 'id,name,nat,phone,arrival,departure,guests,adults,children,infants,price,source,booking_status,meals,notes,remarks,details,messages,staff_briefed_at,is_comp,commission,comm_mode';
   function load() {
@@ -879,7 +890,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       F = built || EMPTY_F;
       var rows = res[0];
       D.msgs = buildMsgs(res[1] || []);
-      D.sync = (res[2] || [])[0] || null;
+      D.sync = (res[2] || [])[0] || null; D.syncSeenAt = Date.now(); // moment où la base a été lue (fausse alerte du 19/10)
       D.events = res[3] || [];
       D.links = res[4] || [];
       var t = todayNum();
@@ -3605,7 +3616,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       h += row('home', k.villa, vl, '<button type="button" class="btn ghost" data-a="vsedit">' + esc(k.edit) + '</button>');
     }
     var gm = String(v.gmail || '').trim(), sy = D.sync, mins = sy && sy.finished_at ? Math.max(0, Math.round((Date.now() - new Date(sy.finished_at).getTime()) / 60000)) : null;
-    var gLate = !!gm && mins != null && (mins > 40 || sy.ok === false); // pas encore de passage : rien à signaler
+    var gLate = !!gm && mins != null && syncLate(sy); // pas encore de passage : rien à signaler ; âge jugé à la lecture de la base
     var gFresh = !!gm && GM.done > 0 && (!sy || !sy.finished_at || new Date(sy.finished_at).getTime() < GM.done); // relié à l'instant : la synchro serveur n'est pas encore passée
     if (gFresh) gLate = false;
     var pwa = false; try { pwa = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true; } catch (e) {}
@@ -3741,7 +3752,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var nt = document.getElementById('net');
     if (D.online && D.sync && D.sync.finished_at) {
       var mins = Math.max(0, Math.round((Date.now() - new Date(D.sync.finished_at).getTime()) / 60000));
-      nt.textContent = mins > 40 || D.sync.ok === false ? l.syncOld : l.syncAgo(mins); nt.className = 'chip' + (mins > 40 || D.sync.ok === false ? ' off' : '');
+      var late = syncLate(D.sync);
+      nt.textContent = late ? l.syncOld : l.syncAgo(mins); nt.className = 'chip' + (late ? ' off' : '');
     } else { nt.textContent = D.online ? l.online : l.offline; nt.className = 'chip' + (D.online ? '' : ' off'); }
     [].forEach.call(document.querySelectorAll('.langsw button'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-v') === U.lang)); });
     if (!F) { main.innerHTML = '<div class="card"><div class="b"><span class="err">house_facts</span></div></div>'; return; }
@@ -3984,6 +3996,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   // Rafraîchissement toutes les 5 min — jamais pendant une saisie (recherche, nouveau séjour, modification) : rien de tapé n'est perdu.
   var typing = function () { var ae = document.activeElement; return !!(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && document.getElementById('main').contains(ae)) || U.newStay || ST.edit || Object.keys(U.panel).some(function (k) { return U.panel[k] === 'edit'; }); };
   setInterval(function () { if (document.visibilityState === 'visible' && D.user && !U.busy && !FE.on && !typing()) load(); }, 5 * 60000);
+  /* Retour sur l'onglet (19/10) : l'Espace relit la base s'il ne l'a pas fait depuis une minute — le minuteur
+     ci-dessus ne tourne pas en arrière-plan, un onglet laissé des heures montrait des données figées. Jamais
+     pendant une saisie ni dans l'éditeur de la fiche. pageshow : retour arrière depuis le cache du navigateur. */
+  function refreshIfStale() {
+    if (document.visibilityState !== 'visible' || !D.user || U.busy || FE.on || typing()) return;
+    if (D.syncSeenAt && Date.now() - D.syncSeenAt < 60000) return;
+    load();
+  }
+  document.addEventListener('visibilitychange', refreshIfStale);
+  window.addEventListener('pageshow', function (e) { if (e && e.persisted) refreshIfStale(); });
 })();
 </script>
 </body>

@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v549 (18/10 : QR Wi-Fi et livret en ligne, contact, calendrier, partage natif ; manifestes neutres)
-const CACHE = 'stafflo-v549';
+// Stafflo Service Worker — v550 (19/10 : plus de fausse alerte « pas de synchronisation récente » au retour sur l'onglet)
+const CACHE = 'stafflo-v550';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

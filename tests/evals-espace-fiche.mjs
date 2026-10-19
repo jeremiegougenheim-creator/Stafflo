@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], share = false } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], share = false, clock = false, vis = false } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -101,7 +101,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     }
     if (u.includes('/rest/v1/sync_runs') && u.includes('source=eq.ical')) return json(icalRun);
     if (u.includes('/functions/v1/ical-sync')) { calls.push({ kind: 'icsync', auth: req.headers().authorization }); const x = icalFn ? icalFn() : { status: 200, body: { ok: true, errors: [] } }; return json(x.body, x.status); }
-    if (u.includes('/rest/v1/sync_runs')) return json(sync);
+    if (u.includes('/rest/v1/sync_runs')) { reads.push({ kind: 'sync' }); return json(sync); }
     if (u.includes('/functions/v1/polar-')) { calls.push({ kind: 'polar', url: u, auth: req.headers().authorization }); return json({ url: 'https://checkout.example.com/s/1' }); }
     if (u.startsWith('https://checkout.example.com/')) { calls.push({ kind: 'nav', url: u }); return route.fulfill({ status: 200, contentType: 'text/html', body: '<title>checkout</title>' }); }
     if (u.includes('/auth/v1/logout')) { calls.push({ kind: 'logout', auth: req.headers().authorization }); return route.fulfill({ status: 204, body: '' }); }
@@ -115,7 +115,10 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
   page.on('pageerror', (e) => errs.push(String(e)));
   await page.addInitScript(([s, on, one, wm, sh]) => { if (one) { if (sessionStorage.getItem('__init')) return; sessionStorage.setItem('__init', '1'); } localStorage.setItem('stafflo_session', JSON.stringify(s)); localStorage.setItem('stafflo_espace_lang', 'fr'); if (on) localStorage.setItem('stafflo_email_in', 'on'); if (wm) localStorage.setItem('stafflo_wa_meta', JSON.stringify(wm));
     // share : un téléphone qui propose la feuille de partage (navigator.share, fichiers compris) ; ce qui est partagé est noté dans window.__shared
-    if (sh) { window.__shared = []; navigator.share = function (d) { window.__shared.push({ text: d.text || '', title: d.title || '', files: (d.files || []).map(function (f) { return { name: f.name, type: f.type, size: f.size }; }) }); return Promise.resolve(); }; navigator.canShare = function () { return true; }; } }, [SESSION, emailIn, once, waMeta, share]);
+    if (sh) { window.__shared = []; navigator.share = function (d) { window.__shared.push({ text: d.text || '', title: d.title || '', files: (d.files || []).map(function (f) { return { name: f.name, type: f.type, size: f.size }; }) }); return Promise.resolve(); }; navigator.canShare = function () { return true; }; } }, [clock ? { ...SESSION, expires_at: Math.floor(Date.now() / 1000) + 8 * 3600 } : SESSION, emailIn, once, waMeta, share]); // horloge avancée : une session qui couvre le saut
+  // clock : horloge de la page simulée (onglet laissé des heures) ; vis : visibilité de l'onglet pilotée par window.__vis
+  if (clock) await page.clock.install({ time: new Date() });
+  if (vis) await page.addInitScript(() => { Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get() { return window.__vis || 'visible'; } }); });
   await page.goto(`http://127.0.0.1:${PORT}/espace.html#${tab}`);
   await page.waitForSelector(tab === 'maison' ? '[data-a="feopen"]:not([data-v])' : 'article, .card', { timeout: 8000 });
   return { page, ctx, calls, errs, reads };
@@ -566,6 +569,41 @@ await r.ctx.close();
   ts = await r.page.innerText('#settings');
   check('synchro Gmail ancienne (3 h) → signalée ; état de l’abonnement illisible → rien affiché (jamais un statut inventé)', /pas de synchronisation récente/.test(ts) && !/Abonnement/.test(ts));
   await r.ctx.close();
+  // Fausse alerte du 19/10 : la synchro tournait toutes les 10 min, mais l'onglet de l'Espace était resté des heures
+  // en arrière-plan ; au retour, un passage « vieux de 5 min » comparé à l'heure actuelle → « pas de synchronisation
+  // récente — reconnectez Gmail » et bouton doré. L'âge se juge à la lecture de la base ; au retour sur l'onglet, la base est relue.
+  {
+    const SYNC = [{ finished_at: new Date(Date.now() - 5 * 60000).toISOString(), ok: true }];
+    r = await open({ villa: V, sync: SYNC, bill: [], clock: true, vis: true });
+    await r.page.waitForTimeout(200);
+    let st = await r.page.innerText('#settings');
+    check('onglet frais, synchro de 5 min : « synchronisé il y a 5 min », pas d’alerte', /synchronisé il y a 5 min/.test(st) && !/pas de synchronisation récente/.test(st) && !r.errs.length, { st: st.slice(0, 300), errs: r.errs });
+    const n0 = r.reads.filter((x) => x.kind === 'sync').length;
+    await r.page.evaluate(() => { window.__vis = 'hidden'; });
+    await r.page.clock.fastForward('03:00:00'); // trois heures en arrière-plan : le minuteur de 5 min ne relit rien
+    await r.page.click('#tabs [data-a="tab"][data-v="maison"]'); await r.page.waitForTimeout(150); // un geste qui redessine sans relire
+    st = await r.page.innerText('#settings');
+    const chip = await r.page.evaluate(() => { const n = document.getElementById('net'); return { t: n.textContent, off: n.classList.contains('off') }; });
+    const gold = await r.page.evaluate(() => { const b = document.querySelector('#settings [data-a="gmconnect"]'); return !!(b && b.classList.contains('gold')); });
+    check('onglet resté 3 h en arrière-plan : PAS de « pas de synchronisation récente », ni bouton doré, ni puce « en retard » — la base n’a pas été relue en arrière-plan',
+      !/pas de synchronisation récente/.test(st) && !gold && !chip.off && !/en retard/.test(chip.t) && r.reads.filter((x) => x.kind === 'sync').length === n0, { st: st.slice(0, 300), chip, gold, reads: r.reads.filter((x) => x.kind === 'sync').length - n0 });
+    // Retour sur l'onglet : la base est relue tout de suite (passage d'il y a 4 min à l'heure de la page)
+    const pageNow = await r.page.evaluate(() => Date.now());
+    SYNC[0].finished_at = new Date(pageNow - 4 * 60000).toISOString();
+    await r.page.evaluate(() => { window.__vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); });
+    await r.page.waitForTimeout(500);
+    st = await r.page.innerText('#settings');
+    check('retour sur l’onglet : la base est relue aussitôt → « synchronisé il y a 4 min »', r.reads.filter((x) => x.kind === 'sync').length === n0 + 1 && /synchronisé il y a 4 min/.test(st) && !r.errs.length, { reads: r.reads.filter((x) => x.kind === 'sync').length - n0, st: st.slice(0, 300), errs: r.errs });
+    await r.page.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    await r.page.waitForTimeout(300);
+    check('retour répété dans la minute : pas de relecture en double', r.reads.filter((x) => x.kind === 'sync').length === n0 + 1);
+    await r.ctx.close();
+    // Une vraie panne reste signalée, même relue à l'instant : dernier passage il y a 2 h à la lecture
+    r = await open({ villa: V, sync: [{ finished_at: new Date(Date.now() - 2 * 3600e3).toISOString(), ok: true }], bill: [], vis: true });
+    await r.page.waitForTimeout(200);
+    check('vraie panne (dernier passage il y a 2 h à la lecture) : toujours signalée, bouton doré', /pas de synchronisation récente/.test(await r.page.innerText('#settings')) && await r.page.evaluate(() => !!document.querySelector('#settings [data-a="gmconnect"].gold')));
+    await r.ctx.close();
+  }
   // Échec d'enregistrement (aucune ligne touchée) : message, et ce qui a été tapé reste dans le formulaire.
   r = await open({ villa: null });
   await r.page.waitForTimeout(200);
