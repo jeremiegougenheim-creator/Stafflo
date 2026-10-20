@@ -85,8 +85,8 @@ check('sans composition : nombre de voyageurs', V.find((s) => s.name === 'Seán'
 check('details absent ou invalide : champs vides, pas d’erreur', th.beds === '' && V.find((s) => s.name === 'Seán').note === '');
 check('rotation : arrivée le jour d’un départ signalée', V.find((s) => s.name === 'Rotation J.').same_day === true && V.find((s) => s.name === 'Seán').same_day === true && f.same_day === true, JSON.stringify(V.map((s) => [s.name, s.same_day])));
 check('pas de rotation inventée', th.same_day === false);
-const long = M.staffView([{ name: 'X Y', arrival: T, departure: '2026-10-14', booking_status: 'confirmed', meals: 'm'.repeat(900), details: { staff_note: 'n'.repeat(900) } }], T)[0];
-check('textes plafonnés (600)', long.meals.length === 600 && long.note.length === 600);
+const long = M.staffView([{ name: 'X Y', arrival: T, departure: '2026-10-14', booking_status: 'confirmed', meals: 'm'.repeat(2000), details: { staff_note: 'n'.repeat(2000) } }], T)[0];
+check('textes plafonnés (repas 1500, consigne 1200 — le français traduit est plus long que l’anglais du client, 19/10)', long.meals.length === 1500 && long.note.length === 1200);
 check('date du jour invalide → rien', M.staffView(ROWS, 'hier').length === 0);
 
 // ── Retours de l'équipe (staff_reports) ────────────────────────────────────
@@ -124,7 +124,7 @@ check('arabe : sens de lecture RTL et dates marocaines', /dir = S\.lang === 'ar'
 check('noms latins isolés en arabe (<bdi>)', /<bdi>' \+ esc\(s\.name\)/.test(script));
 for (const bad of ['650', '850', 'Faiza', 'Saïd', 'Bouchra', '+212', '14h', '18h', 'Palmeraie'])
   check(`aucun fait en dur : « ${bad} »`, !script.includes(bad));
-check('pluriels arabes (1, 2, 3–10, 11+)', /n === 1 \? 'ليلة واحدة' : n === 2 \? 'ليلتان' : n <= 10/.test(script));
+check('pluriels en darija (1, 2, 3–10, 11+)', /n === 1 \? 'ليلة وحدة' : n === 2 \? 'جوج ليالي' : n <= 10/.test(script));
 check('hors connexion : dernières informations gardées', /C_KEY/.test(script) && /S\.state = S\.data \? 'offline'/.test(script));
 check('lien invalide : message clair, cache effacé', /x\.status === 404/.test(script) && /store\.set\(C_KEY, null\)/.test(script));
 const sw = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
@@ -162,6 +162,28 @@ check('sw.js ne met pas equipe.html en cache', sw.includes("url.includes('equipe
   check('réponse partielle : seuls les champs entièrement traduits sont gardés (lignes alignées une à une)', out[0].ar && out[0].ar.meals[0] === 'ok' && !out[0].ar.drinks && !out[0].ar.note);
   const tr = await M.translateAr([{ id: 'c9', field: 'note', lines: Array.from({ length: 30 }, (_x, i) => 'Phrase numéro ' + i + ' ' + 'a'.repeat(300) + '.') }], fake);
   check('plus de 6 000 caractères : le reste attend le passage suivant (coupe nette, jamais une ligne tronquée)', Object.keys(tr).length < 30 && Object.keys(tr).length > 10 && Object.values(tr).every((v) => /^AR\[Phrase numéro \d+ a+\.\]$/.test(v)));
+}
+
+// ── Une seule langue (20/10/2026) : la version française de l'Espace (details.fr), la darija, le garde-fou des nombres ──
+{
+  const EN = 'There are 4 couples and then 2 siblings.', FRB = 'Il y a 4 couples puis 2 frères et sœurs.', DR = 'For drinks, would it be possible to have: Coke Zero, Iced tea';
+  const rows = [{ id: 'c2', name: 'Elias Moreau', arrival: '2026-10-19', departure: '2026-10-23', adults: 10, booking_status: 'confirmed', meals: 'Could we do dinner on Monday 26th?',
+    details: { beds: EN, drinks: DR, arrival_time: '« Most of the group will arrive late (likely after 9pm) »',
+      fr: { beds: { src: EN, fr: FRB }, meals: { src: 'Une autre version', fr: 'Ancienne traduction' }, drinks: { src: DR, fr: "Pour les boissons, serait-il possible d'avoir : Coca Zéro, thé glacé" } } } }];
+  const s3 = M.staffView(rows, '2026-10-17')[0];
+  check('vue équipe : la version française de l’Espace (details.fr) quand l’original n’a pas changé, sinon l’original ; boissons sans la phrase d’introduction',
+    s3.beds === FRB && s3.meals === 'Could we do dinner on Monday 26th?' && s3.lines.drinks.join('|') === 'Coca Zéro|thé glacé', JSON.stringify(s3.lines));
+  check('« la plupart du groupe … après 9pm » : la phrase entière, jamais l’heure seule', /Most of the group will arrive late/.test(s3.arrival_time), s3.arrival_time);
+  check('menu d’un bloc : une ligne par plat', M.bulletsOf('Pour les 3 dîners : Entrées - salade, zaalouk Plats - tajine Desserts - cornes de gazelle', 'sentences').join('|') === 'Pour les 3 dîners :|Entrées - salade, zaalouk|Plats - tajine|Desserts - cornes de gazelle');
+  let sys = '';
+  const fake2 = async (sy, user) => { sys = sy; const req = JSON.parse(user).lines; const o = {}; for (const k of Object.keys(req)) o[k] = /beds/.test(k) ? 'كاين 5 كوبلات و 2 خوت' : 'د ' + req[k]; return JSON.stringify({ lines: o }); };
+  const w2 = []; const o2 = await M.withArabic([s3], 'o1', async () => [], async (r) => { w2.push(...r); }, fake2);
+  check('darija marocaine (futur « غادي »), plus l’arabe standard, dans la consigne de traduction', /darija/.test(sys) && /غادي/.test(sys) && !/arabe standard simple/.test(sys));
+  check('zéro invention : une traduction qui change un nombre (4 → 5 couples) est écartée — ce champ reste en français, les autres traduits', !!o2[0].ar && !o2[0].ar.beds && !!o2[0].ar.drinks && !w2.some((w) => w.field === 'beds'), JSON.stringify(o2[0].ar));
+  check('nombres : chiffres arabes orientaux, « 9pm » = 21, 14h = 14:00 ; un nombre changé se voit', M.sameNums('après 21h, 4 couples', 'بعد ٢١:٠٠، ٤ كوبلات') && M.sameNums('after 9pm', 'après 21h') && M.sameNums('vers 14h', 'تقريبا 14:00') && !M.sameNums('4 couples', '5 كوبلات'));
+  const old = [{ client_id: 'c2', field: 'drinks', src_hash: await M.hashOf(s3.lines.drinks.join('\n')), lines: ['قديم', 'قديم'] }];
+  sys = ''; const o3 = await M.withArabic([s3], 'o1', async () => old, async () => {}, fake2);
+  check('cache d’avant (arabe standard, empreinte sans version) : retraduit en darija au passage suivant', !!sys && !!o3[0].ar && o3[0].ar.drinks[0] !== 'قديم');
 }
 
 console.log(`\n${pass}/${pass + fail} PASS`);

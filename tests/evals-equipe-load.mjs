@@ -83,7 +83,7 @@ await r.ctx.close();
 
 r = await open({ lang: 'ar' });
 const ar = await r.page.evaluate(() => document.getElementById('app').innerText);
-check('arabe : boutons et aide traduits, sens RTL, extras sous « طلبات الضيف »', /طلبات الضيف/.test(ar) && /الغرف جاهزة/.test(ar) && /الإبلاغ عن مشكلة/.test(ar) && (await r.page.evaluate(() => document.documentElement.dir)) === 'rtl');
+check('arabe : boutons et aide en darija marocaine (19/10), sens RTL, extras sous « شنو طلب الكليان »', /شنو طلب الكليان/.test(ar) && /البيوت واجدين/.test(ar) && /قول لينا على شي مشكل/.test(ar) && !/يصلون|لا يوجد|الإبلاغ/.test(ar) && (await r.page.evaluate(() => document.documentElement.dir)) === 'rtl');
 await r.ctx.close();
 
 r = await open({ data: { ...DATA, reports: [{ id: 'r0', kind: 'rooms_ready', client_id: 's-next', text: null, created_at: new Date().toISOString() }] } });
@@ -104,7 +104,7 @@ await r.ctx.close();
 r = await open({ data: LINED, lang: 'ar' });
 const ali = await r.page.$$eval('article.card .row > div > ul.v', (xs) => xs.map((x) => x.getAttribute('dir') + ':' + [].map.call(x.querySelectorAll('li'), (li) => li.innerText).join('|')));
 check('arabe : les mêmes puces, traduites, en RTL', r.views[0].lang === 'ar' && ali.length === 3 && ali[0] === 'rtl:الأربعاء 21، عشاء حوالي 19:30: طاجين كفتة.|الخميس 22، غداء: كباب.|لا حساسية.' && ali[1].startsWith('rtl:12 ماء عادي|'), ali);
-check('arabe : l’heure d’arrivée traduite sur sa ligne ; le français d’origine replié sous les textes libres seulement (repas, boissons, consigne — pas sous une heure)', /الهبوط 14:00/.test(await r.page.evaluate(() => document.getElementById('app').innerText)) && (await r.page.$$('details.orig')).length === 3 && (await r.page.$$eval('details.orig', (xs) => xs.every((x) => !x.open && /النص الأصلي بالفرنسية/.test(x.querySelector('summary').innerText)))));
+check('arabe : l’heure d’arrivée traduite sur sa ligne ; le français d’origine replié sous les textes libres seulement (repas, boissons, consigne — pas sous une heure)', /الهبوط 14:00/.test(await r.page.evaluate(() => document.getElementById('app').innerText)) && (await r.page.$$('details.orig')).length === 3 && (await r.page.$$eval('details.orig', (xs) => xs.every((x) => !x.open && /النص الأصلي بالفرنساوية/.test(x.querySelector('summary').innerText)))));
 await (await r.page.$$('details.orig summary'))[0].click(); await r.page.waitForTimeout(100);
 check('un geste ouvre le français d’origine, tel quel', (await r.page.$$eval('details.orig', (xs) => xs[0].open && !xs[1].open && xs[0].innerText.includes('Mercredi 21, dîner vers 19h30 : tajine de kefta.'))));
 await r.ctx.close();

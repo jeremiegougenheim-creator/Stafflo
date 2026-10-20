@@ -69,12 +69,32 @@ export function listItems(line: string): string[] { // « 2 vins rouges (marocai
   if (cur.trim()) out.push(cur.trim());
   return out;
 }
+// 19/10 (mêmes règles que l'Espace) : un menu d'un bloc (« Entrées - … Plats - … Desserts - … ») → une ligne par plat ;
+// « Pour les boissons, serait-il possible d'avoir : … » → les boissons seules (introduction de 3 mots ou plus, sans chiffre).
+const COURSE_RX = /\s+(?=(?:Starters?|Mains?|Main courses?|Desserts?|Entr[ée]es?|Plats?(?: principaux)?|Boissons|Drinks)\s*[-–:]\s)/; // majuscule : « …, semoule ; dessert : pâtisseries » reste avec son dîner
+function colonAt(line: string): number {
+  let depth = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "(") depth++; else if (ch === ")") depth = Math.max(0, depth - 1);
+    else if (ch === ":" && !depth && !(/\d/.test(line[i - 1] || "") && /\d/.test(line[i + 1] || ""))) return i;
+  }
+  return -1;
+}
+const isIntro = (t: string) => { t = String(t || "").trim(); return t.split(/\s+/).length >= 3 && !/\d/.test(t); };
 export function bulletsOf(text: string, mode: "list" | "sentences"): string[] {
   const raw = String(text || "").trim(); if (!raw) return [];
-  const parts: string[] = [];
-  raw.split(/\n+/).forEach((ln) => {
-    const line = ln.replace(/^\s*[-•*·]\s*/, "").trim(); if (!line) return;
-    (mode === "list" ? listItems(line) : sentences(line)).forEach((x) => parts.push(x));
+  const parts: string[] = [], lns = raw.split(/\n+/);
+  lns.forEach((ln, li) => {
+    let line = ln.replace(/^\s*[-•*·]\s*/, "").trim(); if (!line) return;
+    if (mode === "list") {
+      const ci = colonAt(line);
+      if (ci > 0 && isIntro(line.slice(0, ci))) {
+        const rest = line.slice(ci + 1).trim();
+        if (rest) line = rest; else if (li < lns.length - 1) return;
+      }
+      listItems(line).forEach((x) => parts.push(x));
+    } else sentences(line).forEach((x) => x.split(COURSE_RX).forEach((y) => { if (y.trim()) parts.push(y.trim()); }));
   });
   return parts.map((x) => x.slice(0, 400));
 }
@@ -96,6 +116,8 @@ export function teamTxt(v: string): string {
 // chaque morceau a au plus une heure et un rôle clair ; sinon le texte nettoyé (teamTxt). Rien n'est calculé.
 const TM_RX = /(?:\b(vers|around|about|approx\.?|environ)\s+)?(?:\b(\d{1,2})(?::(\d{2}))?\s?(am|pm)\b|\b(\d{1,2})\s?(?:h(?!r)|:)\s?(\d{2})?(?!\d))/i;
 const TM_FLY = /\b(atterri\w*|land(?:ing|s|ed)?|vols?|flights?|avion|plane|d[ée]coll\w*|take ?off|takes off)\b/i;
+// 19/10 : « la plupart du groupe arrivera après 21h » ne dit pas l'heure de tout le groupe — la phrase reste entière.
+const TM_PART = /\b(most|some|part|half|rest|others?|la plupart|certain(?:e)?s|une partie|la moiti[ée]|les autres|le reste|majorit[ée])\b/i;
 const TM_HOME: Record<string, RegExp> = { a: /\b(arriv\w*|villa|maison|house|chez vous|there|sur place)\b/i, d: /\b(parti\w*|partons|quitt\w*|leav\w*|check[- ]?out|d[ée]part\w*)\b/i };
 function tmFmt(x: RegExpExecArray | null): string {
   if (!x) return "";
@@ -107,7 +129,7 @@ function tmFmt(x: RegExpExecArray | null): string {
 }
 export function teamTime(v: string, kind: "a" | "d"): string {
   const s = String(v || "").trim(), m = /^(?:Vol ([A-Z0-9]{2,3}\d{2,4}) · )?«\s*([^«»]+?)\s*»(?:\s*\(WhatsApp, [^)]*\))?$/.exec(s);
-  if (!m || REL.test(m[2])) return teamTxt(s);
+  if (!m || REL.test(m[2]) || TM_PART.test(m[2])) return teamTxt(s);
   const fly: string[] = [], home: string[] = [];
   const ok = (m[2].match(/[^.!?…\n,;]+[.!?…]*/g) || []).map((x) => x.trim()).filter(Boolean).every((cl) => {
     const all = cl.match(new RegExp(TM_RX.source, "gi")) || [];
@@ -144,6 +166,11 @@ const day = (iso: unknown): number | null => {
 };
 const iso = (n: number) => new Date(n * 86400000).toISOString().slice(0, 10);
 const txt = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+/** 19/10 : ce que le client a écrit dans une autre langue, traduit en français par l'Espace (details.fr[k] = {src, fr}) — tant que l'original n'a pas changé. */
+export function frv(det: Row, k: string, src: unknown): unknown {
+  const s = typeof src === "string" ? src.trim() : "", e = det && det.fr && typeof det.fr === "object" ? det.fr[k] : null;
+  return s && e && typeof e.fr === "string" && e.fr.trim() && e.src === s ? e.fr : src;
+}
 const REPORT_KINDS = ["rooms_ready", "issue"];
 /** Un retour de l'équipe, nettoyé : genre connu, séjour parmi ceux qu'elle voit, texte court. null si rien à garder. */
 export function cleanReport(body: Row, visibleIds: string[]): { kind: string; client_id: string | null; text: string | null } | null {
@@ -187,8 +214,8 @@ export function staffView(rows: Row[], todayIso: string): StaffStay[] {
       const base = {
         id: String(c.id || ""), name: shortName(c.name), a: iso(a), d: iso(d), nights: d - a,
         adults, children, infants, pax: pax || null,
-        arrival_time: teamTime(txt(det.arrival_time, 300), "a"), departure_time: teamTime(txt(det.departure_time, 300), "d"), beds: txt(det.beds, 300),
-        meals: txt(c.meals, 600), drinks: txt(det.drinks, 600), note: txt(det.staff_note, 600),
+        arrival_time: teamTime(txt(frv(det, "arrival_time", det.arrival_time), 400), "a"), departure_time: teamTime(txt(frv(det, "departure_time", det.departure_time), 400), "d"),
+        beds: txt(frv(det, "beds", det.beds), 400), meals: txt(frv(det, "meals", c.meals), 1500), drinks: txt(frv(det, "drinks", det.drinks), 800), note: txt(det.staff_note, 1200),
         // Extras commandés par le client dans son livret (transfert, massage…) : quoi et combien, jamais le prix.
         extras: extrasLine(det.guest_orders),
         same_day: departures.has(a),
@@ -199,9 +226,30 @@ export function staffView(rows: Row[], todayIso: string): StaffStay[] {
 
 // ── Arabe (18/10/2026) ───────────────────────────────────────────────────
 export const AR_MAX_CHARS = 6000; // au-delà, le reste attend le passage suivant (le français s'affiche entre-temps)
-const SYS_AR = "Tu traduis en arabe, pour le personnel d'une maison d'hôtes au Maroc (arabe standard simple, compris à Marrakech), des lignes écrites en français par le propriétaire : repas, consignes, boissons, heures, couchages. " +
-  "Règles : une ligne traduite par ligne reçue, dans le même ordre ; ne rien ajouter, ne rien résumer, ne rien commenter ; garder les chiffres, les quantités, les heures (écris-les 14:00, 6:30), les prénoms, les marques et les noms de plats (tajine, msemen, pastilla, kefta) tels quels ou translittérés ; une ligne déjà en arabe ou sans texte reste identique. " +
+// 19/10/2026 : darija marocaine (« en arabe marocain tout doit être en arabe marocain »), plus l'arabe standard. Exemples
+// tirés des essais réels (ministral-14b) : sans eux, futur égyptien (« هتصلو »), « décaféiné » → « sans café ».
+const SYS_AR = "Tu traduis en darija marocaine — écrite en lettres arabes, comme dans un message WhatsApp entre Marocains ; pas l'arabe standard, pas l'égyptien : le futur se dit « غادي » — " +
+  "pour l'équipe d'une maison d'hôtes à Marrakech, des lignes écrites en français : repas, consignes, boissons, heures, couchages. " +
+  "Exemples : « atterrissage 14h » → « وصول الطيارة 14:00 » ; « 6h30 (vol 9h) » → « 6:30 (الطيارة 9:00) » ; « Nous arriverons vers 16h » → « غادي نوصلو تقريبا مع 16:00 » ; « 2 couples et 1 personne seule » → « 2 كوبلات و 1 بوحدو » ; " +
+  "« thé et café » → « أتاي و قهوة » ; « café décaféiné » → « قهوة بلا كافيين » ; « dîner le lundi 26 » → « العشا نهار الاثنين 26 » ; « un goûter au bord de la piscine » → « أتاي ديال العشية حدا البيسين » ; « salade de potiron » → « شلاضة ديال القرعة ». " +
+  "Règles : une ligne traduite par ligne reçue ; ne rien ajouter, ne rien résumer, ne rien commenter, pas de mise en forme ; tous les nombres restent en chiffres (0-9), exactement ceux de l'original ; les heures s'écrivent 14:00, 6:30 ; " +
+  "prénoms, marques et noms de plats (tajine, msemen, pastilla, kefta, zaalouk, chermoula) tels quels ou translittérés ; une ligne déjà en arabe ou sans texte reste identique. " +
   "Réponds UNIQUEMENT par un objet JSON {\"lines\": {\"<id>\": \"<traduction>\"}} avec exactement les mêmes id.";
+/** Version de la traduction, dans l'empreinte : la changer refait le cache (19/10 : arabe standard → darija). */
+export const AR_V = "darija-1|";
+// Zéro invention : les nombres d'une ligne traduite sont exactement ceux de l'original (chiffres arabes orientaux compris,
+// « 9pm » = 21 ; 0 et 1 ne comptent pas : « 14h » / « 14:00 », « un » / « 1 ») — sinon le champ reste en français.
+const NUM_W: Record<string, number> = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, deux: 2, trois: 3, quatre: 4, cinq: 5, huit: 8, dix: 10, onze: 11, douze: 12 };
+export function numsOf(t: string): string {
+  let s = String(t || "").replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x6F0));
+  s = s.replace(/\+\d[\d\s().-]{5,}\d/g, (p) => " " + p.replace(/\D/g, "") + " ");
+  s = s.replace(/\b(\d{1,2})(?::(\d{2}))?\s?([ap])\.?m\b\.?/gi, (_a, h, mi, ap) => { let x = +h; if (/p/i.test(ap) && x < 12) x += 12; if (/a/i.test(ap) && x === 12) x = 0; return " " + x + " " + (mi || "") + " "; });
+  const out = new Set<string>();
+  for (const n of s.match(/\d+/g) || []) { const v = String(+n); if (v !== "0" && v !== "1") out.add(v); }
+  for (const w of s.toLowerCase().match(/[a-zà-ÿ]+/g) || []) if (NUM_W[w]) out.add(String(NUM_W[w]));
+  return [...out].sort().join(",");
+}
+export const sameNums = (a: string, b: string) => numsOf(a) === numsOf(b);
 export async function hashOf(s: string): Promise<string> { return (await sha256hex(s)).slice(0, 16); }
 /** Ce qui manque au cache : une entrée par (séjour, champ) dont le texte a changé ou n'a jamais été traduit. */
 export function missingAr(stays: StaffStay[], cache: Row[], hashes: Record<string, string>): { id: string; field: keyof Lines; lines: string[] }[] {
@@ -268,13 +316,14 @@ async function mistral(system: string, user: string): Promise<string | null> {
 export async function withArabic(stays: StaffStay[], owner: string, read: (ids: string[]) => Promise<Row[]>, write: (rows: Row[]) => Promise<void>, call = mistral): Promise<StaffStay[]> {
   if (!stays.length) return stays;
   const hashes: Record<string, string> = {};
-  for (const s of stays) for (const f of LINE_FIELDS) if (s.lines[f].length) hashes[s.id + "|" + f] = await hashOf(s.lines[f].join("\n"));
+  for (const s of stays) for (const f of LINE_FIELDS) if (s.lines[f].length) hashes[s.id + "|" + f] = await hashOf(AR_V + s.lines[f].join("\n"));
   const cache = await read(stays.map((s) => s.id)).catch((e) => { console.error("[staff-view] ar read", String(e).slice(0, 120)); return [] as Row[]; });
   const miss = missingAr(stays, cache, hashes);
   const fresh = miss.length ? await translateAr(miss, call) : null;
   const rows: Row[] = [];
   if (fresh) for (const it of miss) {
     const lines = it.lines.map((_x, i) => fresh[it.id + "|" + it.field + "|" + i]);
+    if (lines.every((x) => typeof x === "string") && !lines.every((x, i) => sameNums(it.lines[i], x as string))) { console.warn("[staff-view] ar écarté (nombres)", it.field); continue; }
     if (lines.every((x) => typeof x === "string")) rows.push({ owner_id: owner, client_id: it.id, lang: "ar", field: it.field, src_hash: hashes[it.id + "|" + it.field], lines, updated_at: new Date().toISOString() });
   }
   if (rows.length) await write(rows).catch((e) => console.error("[staff-view] ar write", String(e).slice(0, 120)));
