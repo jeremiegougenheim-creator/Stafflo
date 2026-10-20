@@ -379,7 +379,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         got: function (n, a, b) { return n + ' messages' + (a ? ' · du ' + a + ' au ' + b : ''); }, media: function (n) { return n + (n > 1 ? ' photos ou documents non importés' : ' photo ou document non importé'); },
         cut: function (n) { return n + (n > 1 ? ' messages coupés' : ' message coupé') + ' par WhatsApp (« Read more ») : la fin manque. Pour le texte entier, exportez la discussion (WhatsApp › Exporter la discussion).'; },
         who: 'Le client :', pickGuest: 'Touchez le nom du client pour lire ses messages.', none: 'Rien à reprendre dans les messages du client (composition, arrivée, repas, demandes).',
-        kinds: { party: 'Composition du groupe', arrival: 'Arrivée', departure: 'Départ', meals: 'Repas', drinks: 'Boissons', note: 'À noter (privé)' }, now: 'Actuel', appended: 'sera complété', replaced: 'sera remplacé',
+        kinds: { party: 'Composition du groupe', arrival: 'Arrivée', departure: 'Départ', meals: 'Repas', drinks: 'Boissons', beds: 'Couchages', note: 'À noter (privé)' }, now: 'Actuel', appended: 'sera complété', replaced: 'sera remplacé',
         apply: 'Enregistrer la sélection', aria: 'Lire avec ARIA', ariaBusy: 'ARIA lit…', ariaNone: 'ARIA n’a rien trouvé de plus.', ariaNote: 'ARIA lit les messages du client (Mistral, Paris) pour les repas et les demandes ; chaque proposition cite le message.',
         show: function (n) { return 'Voir les ' + n + ' derniers messages'; }, other: 'Autre conversation',
         errEmpty: 'Aucun message trouvé.', errBig: 'Fichier trop lourd : exportez « Sans médias ».', errFile: 'Fichier illisible : exportez la discussion « Sans médias » (.zip ou .txt).' },
@@ -539,7 +539,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         got: function (n, a, b) { return n + ' messages' + (a ? ' · from ' + a + ' to ' + b : ''); }, media: function (n) { return n + (n > 1 ? ' photos or documents not imported' : ' photo or document not imported'); },
         cut: function (n) { return n + (n > 1 ? ' messages' : ' message') + ' cut by WhatsApp (“Read more”): the end is missing. For the full text, export the chat (WhatsApp › Export chat).'; },
         who: 'The guest:', pickGuest: 'Tap the guest’s name to read their messages.', none: 'Nothing to pick up from the guest’s messages (group, arrival, meals, requests).',
-        kinds: { party: 'Group', arrival: 'Arrival', departure: 'Departure', meals: 'Meals', drinks: 'Drinks', note: 'To note (private)' }, now: 'Current', appended: 'will be added to', replaced: 'will be replaced',
+        kinds: { party: 'Group', arrival: 'Arrival', departure: 'Departure', meals: 'Meals', drinks: 'Drinks', beds: 'Beds', note: 'To note (private)' }, now: 'Current', appended: 'will be added to', replaced: 'will be replaced',
         apply: 'Save the selection', aria: 'Read with ARIA', ariaBusy: 'ARIA is reading…', ariaNone: 'ARIA found nothing more.', ariaNote: 'ARIA reads the guest’s messages (Mistral, Paris) for meals and requests; each proposal quotes the message.',
         show: function (n) { return 'See the last ' + n + ' messages'; }, other: 'Another chat',
         errEmpty: 'No message found.', errBig: 'File too large: export “Without media”.', errFile: 'Unreadable file: export the chat “Without media” (.zip or .txt).' },
@@ -2588,7 +2588,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   /* Export iPhone « [13/10/2026, 15:38:12] Nom: texte », Android « 13/10/2026, 15:38 - Nom: texte »,
      formats US (10/13/26, 3:38 PM) ; ordre jour/mois déduit de toute la conversation. */
   function waParse(raw) {
-    var txt = String(raw || '').replace(/\r\n?/g, '\n').replace(/[\u200e\u200f\u202a-\u202e\ufeff]/g, '').replace(/[\u202f\u00a0]/g, ' ');
+    var txt = String(raw || '').replace(/\r\n?/g, '\n').replace(/[\u200e\u200f\u202a-\u202e\ufeff]/g, '').replace(/[\u202f\u00a0]/g, ' ')
+      .replace(/[ \t]*<(?:This message was edited|Ce message a été modifié|Este mensaje fue editado|Mensaje editado|Diese Nachricht wurde bearbeitet)>/gi, ''); // marque de l'export, pas un mot du client
     var re = /^\[?(\d{1,4})[\/.\-](\d{1,2})[\/.\-](\d{1,4}),?\s+(\d{1,2})[:.](\d{2})(?:[:.](\d{2}))?\s*([AaPp]\.?\s?[Mm]\.?)?\]?\s*(?:[-–]\s*)?([^:\n]{1,80}?):\s?([\s\S]*)$/;
     var rows = [], cur = null;
     var ts = /^\[?\d{1,4}[\/.\-]\d{1,2}[\/.\-]\d{1,4},?\s+\d{1,2}[:.]\d{2}/;
@@ -2617,7 +2618,15 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function waGuessGuest(c, senders) {
     var toks = fold(c.name).split(' ').filter(function (w) { return w.length >= 3; });
     var hit = senders.filter(function (s) { return fold(s).split(' ').some(function (w) { return toks.indexOf(w) > -1; }); });
-    return hit.length === 1 ? hit[0] : '';
+    if (hit.length) return hit.length === 1 ? hit[0] : '';
+    // 19/10/2026 — le séjour porte le nom du réservant (« Seán »), c'est sa femme qui écrit (« ~Lise Hickey ») : aucun
+    // mot commun. Le client est alors le seul expéditeur qui n'est ni l'hôte ni quelqu'un de l'équipe. Sans nom d'hôte,
+    // ou s'il en reste plusieurs (groupe), le propriétaire choisit, comme avant.
+    var words = function (x) { return fold(x).replace(/[^a-z0-9 ]/g, ' ').split(' ').filter(function (w) { return w.length >= 3; }); };
+    var us = [].concat(words((F && F.VILLA && F.VILLA.host) || ''), words((D.villa && D.villa.owner_name) || ''), [].concat.apply([], teamNames().map(words)));
+    if (!us.length) return '';
+    var others = senders.filter(function (s) { return !words(s).some(function (w) { return us.indexOf(w) > -1; }); });
+    return others.length === 1 ? others[0] : '';
   }
   var WA_NUMW = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, deux: 2, trois: 3, quatre: 4, cinq: 5, sept: 7, huit: 8, neuf: 9, dix: 10, onze: 11, douze: 12 };
   var WA_NUM = '(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|deux|trois|quatre|cinq|sept|huit|neuf|dix|onze|douze)';
@@ -2630,7 +2639,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     time: /\b(\d{1,2}[:h.]\d{2}|\d{1,2}\s?(?:am|pm)|\d{1,2}\s?h\b|in (?:about |around |approx\.? )?\d+\s?(?:h|hrs?|hours?|min(?:utes)?)\b(?:\s?\d{1,2})?|\d+\s?hrs?\s?\d{1,2})/i,
     flightCtx: /\b(flight|vol|flying|fly|land(?:ing|s)?|atterri\w*|depart\w*|d[ée]coll\w*|arriv\w*)\b/i,
     flight: /\b([A-Z]{2}|[A-Z]\d|\d[A-Z]|[A-Z]{3})\s?(\d{2,4})\b/g,
-    meals: /\b(dinner|lunch|breakfast|brunch|meals?|menu|d[îi]ner|d[ée]jeuner|repas|tajine|tagine|couscous|bbq|barbecue)\b/i,
+    meals: /\b(dinner|lunch|breakfast|brunch|meals?|menu|d[îi]ner|d[ée]jeuner|repas|tajine|tagine|couscous|bbq|barbecue|go[ûu]ters?|afternoon tea|high tea)\b/i,
     // 17/10/2026 : « Pour le jeudi midi : pas d’entrées. » — un jour + midi/soir est un repas ; entrée, plat, dessert
     // bornent le reste de la commande (seulement dans un message qui parle déjà de repas).
     mealDay: /\b(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(soir|midi|night|evening|noon|lunch|dinner)\b/i,
@@ -2640,10 +2649,24 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     leave: /\b(check[- ]?out|leav(?:e|ing)|depart(?:ure|ing)?|d[ée]part|parti(?:r|ra|rons|ront|rai)|partons|quitt\w*|(?:return|returning) flights?|flights? (?:back|home)|fly(?:ing)? (?:back|home)|vols? (?:de )?retour|rentr(?:er|ons|erons|e)|(?:to|for) the airport|(?:pour|vers) l['’]a[ée]roport)\b/i,
     landed: /\b(arriv\w*|land(?:ing|s|ed)?|atterri\w*|eta)\b/i,
     drinks: /\b(drinks?|boissons?|wines?|vins?|champagnes?|beers?|bi[èe]res?|ros[ée]s?|cocktails?|gin|vodka|whisk(?:e?y|ies)|rhum|rum|tequila|prosecco|cava|sodas?|cokes?|coca|juices?|jus|alcohol|alcool\w*|ap[ée]ro\w*|bottles?|bouteilles?|minibar|eaux? (?:plates?|gazeuses?|p[ée]tillantes?|min[ée]rales?)|(?:still|sparkling) water)\b/i,
+    // 19/10/2026 — couchages : « There are 4 couples and then 2 siblings, who would be sharing the room with the single beds ».
+    beds: new RegExp('\\b' + WA_NUM + '\\s+(?:couples?|singles?|siblings?|personnes?\\s+seules?|c[ée]libataires?)\\b|\\b(?:single|twin|double|separate|king|queen)\\s+beds?\\b|\\blits?\\s+(?:simples?|doubles?|jumeaux|s[ée]par[ée]s)\\b', 'i'),
     notes: /\b(allerg\w*|vegetarian|vegan|v[ée]g[ée]\w*|gluten|lactose|halal|kosher|peanuts?|nuts?|arachides?|intol[ée]ran\w*|birthday|anniversaire|wedding|mariage|honeymoon|lune de miel|proposal|demande en mariage)\b/i
   };
   // Heure relative (« in about 1hr15 », « dans 20 min ») : elle ne veut rien dire sans le moment du message.
   var WA_REL = /\b(?:in|within|dans|d['’]ici)\s+(?:about\s+|around\s+|approx\.?\s+|environ\s+|à peu près\s+|moins d['’]\s*)?\d/i;
+  /* Demande polie (19/10/2026) : on commande souvent en posant une question — « Could we do dinner on Monday 26th? »,
+     « would it be possible to have: Coke Zero… », « pourriez-vous nous préparer… ». Elle compte comme une demande. Une
+     question d'information n'en est toujours pas une : « is parking possible? », « does it have a shower? », « can you
+     recommend a restaurant? », « this would change the price of our meals? », « pouvez-vous me donner le tarif ? ».
+     Le verbe de demande est obligatoire (jamais « could » seul). */
+  var WA_ASK_V = '(?:do|have|get|book|order|arrange|organi[sz]e|prepare|make|add|plan|reserve|bring)';
+  var WA_ASK = new RegExp('\\b(?:(?:could|can|may)\\s+(?:we|you|i)\\s+(?:please\\s+)?' + WA_ASK_V +
+    '|would\\s+it\\s+be\\s+possible\\s+(?:(?:for\\s+(?:us|you)\\s+)?to\\s+)?' + WA_ASK_V +
+    '|would\\s+you\\s+be\\s+able\\s+to\\s+' + WA_ASK_V + '|is\\s+it\\s+possible\\s+(?:for\\s+(?:us|you)\\s+)?to\\s+' + WA_ASK_V + ')\\b' +
+    '|\\b(?:pourr(?:iez|ions|ait)|pouvez|pouvons|peut)[-\\s](?:vous|nous|on)\\s+(?:nous\\s+|vous\\s+)?(?:faire|pr[ée]parer|avoir|organiser|commander|r[ée]server|pr[ée]voir|ajouter)\\b' +
+    '|\\b(?:est-(?:ce|il)\\s+(?:qu[\'’]il\\s+est\\s+)?possible|serait-il\\s+possible)\\s+(?:de\\s+|d[\'’]\\s*)(?:faire|pr[ée]parer|avoir|organiser|commander|r[ée]server|pr[ée]voir|ajouter)\\b', 'i');
+  var waOrder = function (x) { return !/\?\s*$/.test(x) || WA_ASK.test(x); };
   var WA_NOTFLIGHT = /^(AM|PM|UK|US|EU|OK|NO|ID|TV|PC|HM|CET|GMT|UTC|MAD|EUR|USD|GBP|BST|AND|THE|FOR|ARE|WAS|PDF|PNG|JPG)$/;
   /* Morceau de phrase qui contient la correspondance : c'est la « preuve » montrée au propriétaire. */
   function waClause(text, idx) { // sans « lookbehind » (Safari iOS < 16.4)
@@ -2708,30 +2731,58 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     // midi : pas d'entrées. Nous voudrions tous des kebabs marocains & frites. » disparaissait (Thibaut, 12/10).
     var isMeal = function (x) { return WA_RX.meals.test(x) || WA_RX.mealDay.test(x); };
     var isCourse = function (x) { return isMeal(x) || WA_RX.course.test(x); };
-    var meal = last(function (m) {
-      var s = waSentences(m.text).filter(function (x) { return !/\?\s*$/.test(x); });
+    // 19/10/2026 : une question polie est une commande (waOrder) — « Could we do dinner on Monday 26th, Friday 30th and
+    // Saturday 31st? » portait les jours des dîners, elle disparaissait.
+    var mealOf = function (m) {
+      var s = waSentences(m.text).filter(waOrder);
       if (!s.some(isMeal)) return null;
       var i = 0, j = s.length - 1;
       while (i < j && !isCourse(s[i])) i++;
       while (j > i && !isCourse(s[j])) j--;
       var v = s.slice(i, j + 1).slice(0, 12).join(' ').slice(0, 600);
       return { value: v, quote: v, when: waWhen(m) };
-    });
+    };
+    // Rafale (19/10/2026) : une commande en plusieurs messages d'affilée — le goûter à 10:32, les dîners à 10:34 — est une
+    // seule commande : le dernier message qui parle de repas, et ceux du client qui le précèdent à moins de 30 min d'écart
+    // (de proche en proche). Un message plus ancien reste remplacé par le plus récent, comme avant.
+    var atMin = function (m) { return m.dn == null || !/^\d\d:\d\d$/.test(m.hm || '') ? null : m.dn * 1440 + (+m.hm.slice(0, 2)) * 60 + (+m.hm.slice(3)); };
+    var meal = null;
+    for (var mi = mine.length - 1; mi >= 0 && !meal; mi--) {
+      var m0 = mealOf(mine[mi]); if (!m0) continue;
+      var parts = [m0], tPrev = atMin(mine[mi]);
+      for (var mk = mi - 1; mk >= 0 && tPrev != null; mk--) {
+        var tk = atMin(mine[mk]); if (tk == null || tPrev - tk > 30) break;
+        var mk0 = mealOf(mine[mk]); if (mk0) parts.unshift(mk0);
+        tPrev = tk;
+      }
+      var mv0 = parts.map(function (x) { return x.value; }).join(' ').slice(0, 1000);
+      meal = { value: mv0, quote: mv0, when: m0.when };
+    }
     if (meal) props.push({ k: 'meals', value: meal.value, quote: meal.quote, when: meal.when });
     // Boissons (17/10/2026) : le dernier message qui en parle, de la première à la dernière phrase « boisson », puis
     // les lignes de liste qui suivent (« - 2 Moët », « 12 Coca »). « Pour les boissons on aura besoin : / Eau plate
     // (12 bouteilles) / 12 bières » (Thibaut, 13/10) devient une seule proposition.
     var drink = last(function (m) {
-      var s = waSentences(m.text).filter(function (x) { return !/\?\s*$/.test(x); });
+      var s = waSentences(m.text).filter(waOrder);
       var i = -1, j = -1; s.forEach(function (x, k) { if (WA_RX.drinks.test(x)) { if (i < 0) i = k; j = k; } });
       if (i < 0) return null;
-      while (j + 1 < s.length && /^(?:[-•*·–]|\d{1,3}\b)/.test(s[j + 1])) j++;
+      // 19/10/2026 : une liste annoncée par « : » continue sur les lignes courtes qui suivent (« Coke Zero / Iced tea /
+      // Waters / Decaf tea and coffee ») ; elle s'arrête à une phrase ponctuée, un remerciement ou une ligne longue.
+      var listed = s.slice(i, j + 1).some(function (x) { return /:\s*$/.test(x); });
+      var item = function (x) { return /^(?:[-•*·–]|\d{1,3}\b)/.test(x) || (listed && x.length <= 60 && !/[.!?…]$/.test(x) && !/^(?:thanks?|thank you|merci|cheers|best|regards|bises|cordialement|bonne)\b/i.test(x)); };
+      while (j + 1 < s.length && item(s[j + 1])) j++;
       var v = s.slice(i, j + 1).slice(0, 15).reduce(function (t, x) { return !t ? x : t + (/[.!?:…]$/.test(t) ? ' ' : ', ') + x; }, '').slice(0, 600);
       return { value: v, quote: v, when: waWhen(m) };
     });
     if (drink) props.push({ k: 'drinks', value: drink.value, quote: drink.quote, when: drink.when });
+    // Couchages (19/10/2026) : la dernière phrase affirmative du client qui en parle, telle quelle (details.beds, brief maison).
+    var bed = last(function (m) {
+      var s = waSentences(m.text).filter(function (x) { return !/\?\s*$/.test(x) && WA_RX.beds.test(x); });
+      return s.length ? { value: s.join(' ').slice(0, 300), when: waWhen(m) } : null;
+    });
+    if (bed) props.push({ k: 'beds', value: bed.value, quote: bed.value, when: bed.when });
     var seen = {};
-    mine.forEach(function (m) { waSentences(m.text).forEach(function (x) { if (WA_RX.notes.test(x) && !/\?\s*$/.test(x) && !seen[x]) { seen[x] = 1; props.push({ k: 'note', value: x.slice(0, 300), quote: x.slice(0, 300), when: waWhen(m) }); } }); });
+    mine.forEach(function (m) { waSentences(m.text).forEach(function (x) { if (WA_RX.notes.test(x) && waOrder(x) && !seen[x] && !(meal && meal.value.indexOf(x) > -1)) { seen[x] = 1; props.push({ k: 'note', value: x.slice(0, 300), quote: x.slice(0, 300), when: waWhen(m) }); } }); });
     props.forEach(function (p, i) { p.id = i; p.on = true; p.src = 'rx'; });
     return props;
   }
@@ -2807,6 +2858,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         if (p.k === 'arrival') det.arrival_time = val;
         else if (p.k === 'departure') det.departure_time = val;
         else if (p.k === 'drinks') det.drinks = merge(det.drinks);
+        else if (p.k === 'beds') det.beds = merge(det.beds);
         else if (p.k === 'meals') {
           var cm = String(c.meals || '').trim(), nm = merge(cm);
           if (nm !== cm) body.meals = nm;
@@ -2859,11 +2911,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
           '<label class="fl"><span>' + esc(l.fChildren) + '</span><input class="t" type="number" min="0" max="40" inputmode="numeric" id="wa-ch-' + pid + '" value="' + esc(p.children == null ? '' : p.children) + '"></label></div>';
         cur = c.pax ? l.pax(c.pax) : '';
       } else {
-        h += p.k === 'arrival' || p.k === 'departure' ? '<input class="t" type="text" maxlength="300" id="wa-v-' + pid + '" value="' + esc(p.value) + '">' : '<textarea class="t" style="min-height:64px" maxlength="600" id="wa-v-' + pid + '">' + esc(p.value) + '</textarea>';
-        cur = p.k === 'arrival' ? String(c.details.arrival_time || '') : p.k === 'departure' ? String(c.details.departure_time || '') : p.k === 'meals' ? flat(c.meals || '') : p.k === 'drinks' ? flat(c.details.drinks || '') : '';
+        h += p.k === 'arrival' || p.k === 'departure' ? '<input class="t" type="text" maxlength="300" id="wa-v-' + pid + '" value="' + esc(p.value) + '">' : '<textarea class="t" style="min-height:64px" maxlength="1000" id="wa-v-' + pid + '">' + esc(p.value) + '</textarea>';
+        cur = p.k === 'arrival' ? String(c.details.arrival_time || '') : p.k === 'departure' ? String(c.details.departure_time || '') : p.k === 'meals' ? flat(c.meals || '') : p.k === 'drinks' ? flat(c.details.drinks || '') : p.k === 'beds' ? flat(c.details.beds || '') : '';
       }
       h += (p.value && p.value === p.quote ? (p.when ? '<span class="sub">' + esc(p.when) + '</span>' : '') : '<span class="sub wa-q">« ' + esc(p.quote) + ' »' + (p.when ? ' — ' + esc(p.when) : '') + '</span>') +
-        (cur ? '<span class="sub">' + esc(k.now + colon + ' ' + cur.slice(0, 160)) + (p.k === 'meals' || p.k === 'drinks' ? ' · ' + esc(k.appended) : p.k === 'note' ? '' : ' · ' + esc(k.replaced)) + '</span>' : '') + '</div>';
+        (cur ? '<span class="sub">' + esc(k.now + colon + ' ' + cur.slice(0, 160)) + (p.k === 'meals' || p.k === 'drinks' || p.k === 'beds' ? ' · ' + esc(k.appended) : p.k === 'note' ? '' : ' · ' + esc(k.replaced)) + '</span>' : '') + '</div>';
     });
     return h + waFooter(c, true) + '</div>';
   }

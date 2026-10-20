@@ -700,6 +700,64 @@ await r.ctx.close();
     check('enregistrer : heure de départ et boissons dans le séjour (champs de l’équipe)', !!rp && rp.body.details.departure_time === depV && rp.body.details.drinks === drV, rp && rp.body.details);
     await r.ctx.close();
   }
+  // 19/10/2026 — [REGRESSION — import WhatsApp, séjour au nom du réservant, c'est sa femme qui écrit]
+  // Cas réel (noms changés) : séjour « Élias », la cliente « ~Ana Martin » commande par questions polies, en plusieurs
+  // messages d'affilée ; export iPhone .txt (fins de ligne mêlées \r\n / \n, U+200E, « <This message was edited> »).
+  // Avant : client pas reconnu (aucun mot commun), jours des dîners perdus (« Could we do dinner on Monday 26th…? »),
+  // goûter + gâteau d'anniversaire absent, boissons coupées à « Coke Zero », couchages pas proposés.
+  // Interdit : toute valeur absente du texte source ; une question d'information n'est jamais une commande.
+  {
+    const LRM = '‎', CR = '\r';
+    const T = [
+      `[${dmy(-25)}, 12:55:52] ~Ana Martin: ${LRM}Messages and calls are end-to-end encrypted. Only people in this chat can read, listen to, or share them.${CR}`,
+      `[${dmy(-25)}, 11:45:08] ~Ana Martin: Hi Nadia, ${CR}`, `This is Ana. We are staying at your home for a family birthday.${CR}`,
+      `[${dmy(-25)}, 12:04:26] Nadia BENALI: hello Ana thank you, I will send you information by tomorrow${CR}`,
+      `[${dmy(-23)}, 17:24:48] ~Ana Martin: Thank you so much! Is there anything missing off your message that’s not already in the pack?`,
+      `[${dmy(-23)}, 17:25:51] ~Ana Martin: We were considering renting cars, is parking near the medina possible? I have seen online that it can be quite difficult`,
+      `[${dmy(-23)}, 17:36:02] Nadia BENALI: Bedroom 4 is two single beds by default and can become a double, for dinner on arrival tell me`,
+      `[${dmy(-23)}, 18:33:56] ~Ana Martin: In response to your queries: `, '',
+      'That would be great for the ramp, thank you so much. I note this bedroom has a bath, does it have a shower also? ', '',
+      'The bedrooms as they are made up would be perfect. There are 4 couples and then 2 siblings, who would be sharing the room with the single beds. ', '',
+      'Most of the group will arrive quite late on the first day (likely after 9pm), so we won’t do dinner on arrival. ',
+      `${LRM}[${dmy(-8)}, 10:16:50] ~Ana Martin: ${LRM}image omitted${CR}`,
+      `[${dmy(-8)}, 10:19:35] ~Ana Martin: Hi Nadia - here are all our passports${CR}`,
+      `[${dmy(-8)}, 10:32:52] ~Ana Martin: I have had a look at the pack you have sent us, and please could we do the afternoon tea by the pool on Monday 26th with a birthday cake (something either vanilla or lemon flavoured)? Would it be possible do this closer to lunch time around 2pm? ${LRM}<This message was edited>${CR}`,
+      `[${dmy(-8)}, 10:33:30] ~Ana Martin: Also, can you recommend a good restaurant for dinner in the medina one evening?${CR}`,
+      `[${dmy(-8)}, 10:34:16] ~Ana Martin: Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? ${CR}`, `For the 3 dinners could we have: ${CR}`,
+      `Starters - mechouia salad, zaalouk, pumpkin salad with cinnamon${CR}`, `Mains - fish with chermoula, lamb tajine, chicken couscous${CR}`,
+      `Desserts - assorted Moroccan pastries, pastilla au lait, gazelle horns${CR}`,
+      `[${dmy(-8)}, 10:35:40] ~Ana Martin: For drinks, would it be possible to have: ${CR}`, `Coke Zero${CR}`, `Iced tea ${CR}`, `Waters${CR}`, `Decaf tea and coffee${CR}`,
+      `[${dmy(-8)}, 10:35:48] ~Ana Martin: Thank you so much in advance!${CR}`,
+    ].join('\n');
+    // Texte source « à plat » : ce contre quoi chaque valeur proposée doit se retrouver mot pour mot.
+    const SRC = T.replace(/‎/g, '').replace(/\r/g, '').replace(/\s+/g, ' ');
+    const literal = (v) => String(v).replace(/[«»]/g, ' ').split(/(?<=[.!?:])\s+|,\s+/).map((x) => x.trim()).filter((x) => x.length >= 3).every((x) => SRC.indexOf(x) > -1);
+    const VZ = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' }, TEAM: [{ name: 'Omar', role: ['gardien', ''], phone: '+212600000000', brief: true }] } };
+    r = await open({ tab: 'sejours', villa: VZ, stays: [{ id: 'e1', name: 'Élias', arrival: iso(5), departure: iso(12), adults: 10, children: 0, infants: 1, booking_status: 'confirmed', source: 'Airbnb', phone: '', details: {}, meals: '', notes: 'Contact : Ana (WhatsApp), épouse d’Élias.' }] });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="e1"]'); await r.page.click('[data-a="panel"][data-id="e1"][data-v="wa"]');
+    await r.page.waitForSelector('#st-e1 input[type=file][data-file="wa"]', { state: 'attached' });
+    await r.page.setInputFiles('#st-e1 input[type=file][data-file="wa"]', { name: '_chat 62.txt', mimeType: 'text/plain', buffer: Buffer.from(T, 'utf8') });
+    await r.page.waitForTimeout(400);
+    const who = await r.page.$eval('#st-e1 [data-a="waguest"][aria-pressed="true"]', (b) => b.innerText).catch(() => '');
+    check('client deviné sans geste : « ~Ana Martin » — le séjour s’appelle « Élias », mais l’autre expéditeur est l’hôte (Nadia)', who === '~Ana Martin', who);
+    const P = await r.page.$$eval('#st-e1 .wa-p', (ps) => ps.map((p) => ({ k: p.querySelector('b').innerText, v: (p.querySelector('[id^="wa-v-"]') || {}).value || '' })));
+    const get = (k) => (P.find((x) => x.k === k) || {}).v || '';
+    const mv = get('Repas'), dv = get('Boissons'), bv = get('Couchages'), av = get('Arrivée');
+    check('repas : les jours des dîners (question polie « Could we do dinner on… ») ET le menu, dans l’ordre', /Could we do dinner on Monday 26th, Friday 30th and Saturday 31st\?/.test(mv) && /For the 3 dinners could we have:/.test(mv) && /Starters - mechouia salad, zaalouk, pumpkin salad with cinnamon/.test(mv) && /Desserts - assorted Moroccan pastries, pastilla au lait, gazelle horns/.test(mv) && mv.indexOf('Could we do dinner') < mv.indexOf('Starters'), mv);
+    check('repas : le goûter + gâteau d’anniversaire envoyé 2 min avant (même rafale) — et l’heure demandée', /please could we do the afternoon tea by the pool on Monday 26th with a birthday cake \(something either vanilla or lemon flavoured\)\?/.test(mv) && /closer to lunch time around 2pm\?/.test(mv) && mv.indexOf('afternoon tea') < mv.indexOf('Could we do dinner'), mv);
+    check('repas : ni « <This message was edited> », ni la demande de restaurant (« can you recommend » n’est pas une commande), ni l’ancien message « won’t do dinner on arrival »', !/edited/.test(mv) && !/recommend|restaurant/.test(mv) && !/won’t do dinner/.test(mv), mv);
+    check('boissons : la liste entière annoncée par « : », sans le remerciement', dv === 'For drinks, would it be possible to have: Coke Zero, Iced tea, Waters, Decaf tea and coffee', dv);
+    check('couchages (nouveau) : la phrase de la cliente, telle quelle', bv === 'There are 4 couples and then 2 siblings, who would be sharing the room with the single beds.', bv);
+    check('arrivée : inchangée (« arrive quite late on the first day (likely after 9pm) »)', /arrive quite late on the first day \(likely after 9pm\)/.test(av), av);
+    check('questions d’information jamais proposées : parking, douche, « anything missing », restaurant ; rien de l’hôte (« Bedroom 4… »)', !P.some((x) => /parking|shower|anything missing|recommend|Bedroom 4|by default/.test(x.v)), P);
+    check('le gâteau (« birthday ») n’est pas proposé deux fois : il est dans les repas, pas en note privée', !P.some((x) => /^À noter/.test(x.k) && /birthday cake/.test(x.v)), P);
+    check('zéro invention : chaque morceau de chaque valeur proposée est mot pour mot dans la conversation', P.every((x) => literal(x.v)), P.filter((x) => !literal(x.v)));
+    await r.page.click('[data-a="waapply"][data-id="e1"]'); await r.page.waitForTimeout(400);
+    const ep = r.calls.filter((x) => x.kind === 'stay').pop();
+    check('enregistrer : repas, boissons, couchages et arrivée écrits sur le séjour ; aucun message stocké', !!ep && ep.body.meals === mv && ep.body.details.drinks === dv && ep.body.details.beds === bv && ep.body.details.arrival_time === av && ep.body.details.whatsapp && !JSON.stringify(ep.body).includes('parking') && !r.errs.length, ep && { meals: ep.body.meals, det: ep.body.details, errs: r.errs });
+    await r.ctx.close();
+  }
   // Android, .zip avec média ; vol et heure ; adultes + enfants
   const crc = (b) => (zlib.crc32 ? zlib.crc32(b) : 0) >>> 0;
   const mkzip = (entries) => {
@@ -736,9 +794,19 @@ await r.ctx.close();
   await r.page.waitForTimeout(250);
   await r.page.click('[data-a="toggle"][data-id="w1"]'); await r.page.click('[data-a="panel"][data-id="w1"][data-v="edit"]'); await r.page.click('#st-w1 .panel [data-a="panel"][data-v="wa"]');
   await r.page.fill('#wa-paste-w1', USX); await r.page.click('[data-a="waread"][data-id="w1"]'); await r.page.waitForTimeout(100);
-  check('client pas reconnu (numéro) : rien proposé tant que le propriétaire ne l’a pas désigné', /Touchez le nom du client/.test(await r.page.innerText('#st-w1')) && !(await r.page.$('#wa-ad-w1-0')));
+  // 19/10/2026 : conversation à deux, l'hôte (Nadia) et un numéro → le numéro est le client, choisi d'office (même règle
+  // que « ~Lise Hickey » pour le séjour « Seán ») ; le propriétaire peut toujours en désigner un autre.
+  check('contact sous son numéro, seul expéditeur autre que l’hôte : choisi d’office, propositions affichées ; les noms restent à toucher', (await r.page.$eval('[data-a="waguest"][aria-pressed="true"]', (b) => b.innerText).catch(() => '')) === '+33 6 00 00 00 01' && !!(await r.page.$('#wa-ad-w1-0')) && !!(await r.page.$('[data-a="waguest"][data-v="1"]')));
   await r.page.click('[data-a="waguest"][data-v="0"]'); await r.page.waitForTimeout(100);
   check('format US (10/13/26, 3:38 PM) : 5 adultes, heure 15:38', (await r.page.inputValue('#wa-ad-w1-0')) === '5' && /15:38/.test(await r.page.innerText('#st-w1')));
+  await r.ctx.close();
+  // Intention d'origine gardée : deux inconnus (groupe avec le chauffeur) → aucun choix d'office, rien proposé avant le geste.
+  const USG = [`${us}, 3:38 PM - +33 6 00 00 00 01: we're 5 adults now`, `${us}, 3:39 PM - +212 6 00 00 00 02: I am the driver, I will be at the airport at 4 PM`, `${us}, 3:40 PM - Nadia: Noted!`].join('\n');
+  r = await open({ tab: 'sejours', villa: V, stays: [{ ...S[0] }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="w1"]'); await r.page.click('[data-a="panel"][data-id="w1"][data-v="edit"]'); await r.page.click('#st-w1 .panel [data-a="panel"][data-v="wa"]');
+  await r.page.fill('#wa-paste-w1', USG); await r.page.click('[data-a="waread"][data-id="w1"]'); await r.page.waitForTimeout(100);
+  check('deux expéditeurs inconnus (groupe) : rien deviné, rien proposé tant que le propriétaire n’a pas désigné le client', /Touchez le nom du client/.test(await r.page.innerText('#st-w1')) && !(await r.page.$('#wa-ad-w1-0')) && !(await r.page.$('[data-a="waguest"][aria-pressed="true"]')));
   await r.ctx.close();
   // L'import était caché dans Modifier (16/10) : « WhatsApp » de la carte ouvre les deux gestes au même endroit
   r = await open({ tab: 'sejours', villa: V, stays: [{ ...S[0], phone: '+212 6 00 00 00 01' }] });

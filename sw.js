@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v550 (19/10 : plus de fausse alerte « pas de synchronisation récente » au retour sur l'onglet)
-const CACHE = 'stafflo-v550';
+// Stafflo Service Worker — v551 (19/10 : import WhatsApp — client deviné, demandes polies, rafale de messages, couchages)
+const CACHE = 'stafflo-v551';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',
