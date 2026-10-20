@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v553 (20/10 : vue équipe en darija marocaine ; menus coupés aux seuls intitulés en majuscule)
-const CACHE = 'stafflo-v553';
+// Stafflo Service Worker — v554 (20/10 : vue équipe tout traduite, en arrière-plan — français et darija)
+const CACHE = 'stafflo-v554';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

@@ -2076,7 +2076,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var FRT = {};
   var wordSet = function (x) { var o = Object.create(null); x.split(' ').forEach(function (w) { o[w] = 1; }); return o; };
   var LANG_FR = wordSet('le la les un une des du de et à au aux en est sont nous vous pour avec sur dans pas que qui ce cette il elle par mais ou où se sa son ses leur leurs très bien merci bonjour avoir être fait faire notre nos votre vos je mon ma mes chez vers après avant puis aussi');
-  var LANG_X = wordSet('the and of to we you would could please with for is are will be have has our us it this that there can my i they what which if do does not some any from by an as was were been into about after before around should also but or so than then their them these those just very much many most like want need thanks thank hi hello el los las del al es por para con una pero como muy gracias hola somos estamos vamos queremos gli che per sono siamo grazie ciao der die das und ist wir sie mit für bitte danke nicht');
+  var LANG_X = wordSet('the and of to we you would could please with for is are will be have has our us it this that there can my i they what which if do does not some any from by an as was were been into about after before around should also but or so than then their them these those just very much many most like want need thanks thank hi hello el los las del al es por para con una pero como muy gracias hola somos estamos vamos queremos gli che per sono siamo grazie ciao der die das und ist wir sie mit für bitte danke nicht tea teas coffee coffees iced decaf water waters juice juices milk wine wines beer beers soda sodas dinner dinners lunch breakfast brunch snack snacks cake please chicken fish lamb beef salad salads pastries horns room rooms bed beds single double twin couple couples siblings kids children child baby babies arrive arriving arrival late early flight lands landing pool birthday flavoured flavored');
   function notFrench(t) {
     var s = String(t || ''), ar = (s.match(/[؀-ۿ]/g) || []).length, lat = (s.match(/[A-Za-zÀ-ÿ]/g) || []).length;
     if (ar > 8 && ar > lat) return true; // écrit en lettres arabes
@@ -2182,7 +2182,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   // sans eux, ministral-14b écrit un futur égyptien (« هتصلو ») ; avec un lexique long, il en recopiait les mots partout.
   var SYS_AR_BRIEF = 'Tu traduis en darija marocaine — écrite en lettres arabes, comme dans un message WhatsApp entre Marocains ; pas l’arabe standard, pas l’égyptien : le futur se dit « غادي » — ' +
     'des textes du brief qu’un propriétaire de maison d’hôtes à Marrakech envoie à son équipe (repas, boissons, couchages, heures, consignes). ' +
-    'Exemples : « Nous arriverons vers 16h » → « غادي نوصلو تقريبا مع 16:00 » ; « 2 couples et 1 personne seule » → « 2 كوبلات و 1 بوحدو » ; « thé et café » → « أتاي و قهوة » ; « café décaféiné » → « قهوة بلا كافيين » ; « dîner le lundi 26 » → « العشا نهار الاثنين 26 » ; « un goûter au bord de la piscine » → « أتاي ديال العشية حدا البيسين » ; « salade de potiron » → « شلاضة ديال القرعة ». ' +
+    // 20/10 (essai réel, ministral-14b) : « marocain » → « موريتاني », « Starters » → « مودع », « semoule » → « سموس » — mêmes exemples que staff-view.
+    '« marocain, marocaine » se dit « مغربي, مغربية » (jamais موريتاني). ' +
+    'Exemples : « Nous arriverons vers 16h » → « غادي نوصلو تقريبا مع 16:00 » ; « 2 couples et 1 personne seule » → « 2 كوبلات و 1 بوحدو » ; « thé et café » → « أتاي و قهوة » ; « café décaféiné » → « قهوة بلا كافيين » ; « dîner le lundi 26 » → « العشا نهار الاثنين 26 » ; « un goûter au bord de la piscine » → « أتاي ديال العشية حدا البيسين » ; « salade de potiron » → « شلاضة ديال القرعة » ; ' +
+    '« assortiment de pâtisseries marocaines » → « حلويات مغربية منوعة » ; « Entrées - salade mechouia » → « المقبلات - شلاضة مشوية » ; « Plats - tajine d’agneau » → « الأطباق - طاجين ديال لحم الغنمي » ; « Desserts - cornes de gazelle » → « الديسير - كعب غزال » ; « Pas d’entrées. » → « بلا مقبلات. » ; « Pas d’allergie. » → « ما كاين حتى حساسية. » ; « semoule en accompagnement » → « مع السميدة » ; « frites maison » → « فريت ديال الدار » ; « eaux plates » → « الما العادي ». ' +
     'Tu reçois un objet JSON {"lines": {"0": "…"}} : traduis chaque texte ; ne rien ajouter, ne rien résumer, ne rien commenter, pas de mise en forme. ' +
     'Tous les nombres restent en chiffres (0-9), exactement ceux de l’original ; les heures s’écrivent 14:00, 6:30. Prénoms, marques (Coca, Coke Zero), noms de plats (tajine, msemen, pastilla, kefta, zaalouk, chermoula) restent tels quels ou translittérés. ' +
     'Réponds UNIQUEMENT par un objet JSON {"lines": {...}} avec exactement les mêmes clés.';
@@ -2204,6 +2207,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
   function cleanTr(v, src) {
     v = String(v).replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*\*/g, '').replace(/\s*\n\s*/g, ' ').trim();
+    if (/maroc|mor+oc/i.test(src) && !/mauritan/i.test(src)) v = v.replace(/موريتان/g, 'مغرب'); // 20/10 : « marocain » traduit « mauritanien »
     if (!/^[•\-*·]/.test(src)) v = v.replace(/^[•\-*·]\s*/, '');
     return v;
   }

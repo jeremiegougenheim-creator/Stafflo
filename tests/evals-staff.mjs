@@ -186,5 +186,59 @@ check('sw.js ne met pas equipe.html en cache', sw.includes("url.includes('equipe
   check('cache d’avant (arabe standard, empreinte sans version) : retraduit en darija au passage suivant', !!sys && !!o3[0].ar && o3[0].ar.drinks[0] !== 'قديم');
 }
 
+// ── Lien de l'équipe dans UNE langue (20/10/2026, cas réel Seán) : en français, l'anglais du client traduit ; en arabe, tout ;
+//    la traduction ne bloque plus la page (arrière-plan, `pending`), par morceaux, ministral d'abord ──
+{
+  const rows = [{ id: 's1', name: 'Seán', arrival: '2026-10-25', departure: '2026-11-01', adults: 10, infants: 1, booking_status: 'confirmed',
+    meals: 'Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? For the 3 dinners could we have: Starters - mechouia salad, zaalouk Mains - lamb tajine Desserts - gazelle horns',
+    details: { beds: 'There are 4 couples and then 2 siblings, who would be sharing the room with the single beds.', drinks: 'Coke Zero, Iced tea, Waters', arrival_time: '« Most of the group will arrive quite late on the 25th (likely after 9pm) »', staff_note: 'Berceau dans la chambre du jardin.' } },
+    { id: 't1', name: 'Thibaut Vauclare', arrival: '2026-10-19', departure: '2026-10-23', adults: 10, booking_status: 'confirmed', meals: 'Mercredi 21, dîner vers 19h30 : tajine de kefta. Pas d’allergie.', details: {} }];
+  const st = M.staffView(rows, '2026-10-20').sort((x, y) => (x.id === 's1' ? -1 : 1)); // Seán d'abord (la vue trie par arrivée)
+  check('détecteur : anglais → à traduire en français ; français, heure seule → non ; tout texte latin → à traduire en arabe, l’arabe → non',
+    M.needsTr('fr', st[0].lines.meals) && M.needsTr('fr', st[0].lines.beds) && M.needsTr('fr', ['Coke Zero', 'Iced tea', 'Waters']) && !M.needsTr('fr', st[0].lines.note) && !M.needsTr('fr', st[1].lines.meals) && !M.needsTr('fr', ['15h30']) &&
+    M.needsTr('ar', st[1].lines.meals) && !M.needsTr('ar', ['غادي يوصلو مع 21:00']) && !M.needsTr('ar', ['12']), '');
+  let sys = '', calls = 0; const writes = [];
+  const fr = async (sy, user) => { sys = sy; calls++; const req = JSON.parse(user).lines, o = {}; for (const k of Object.keys(req)) o[k] = 'FR ' + req[k].replace('9pm', '21h'); return JSON.stringify({ lines: o }); };
+  let r = await M.withTr('fr', st, 'o1', async () => [], async (w) => { writes.push(...w); }, fr);
+  check('français : la page reçoit tout de suite ce qui est en cache (rien encore), `pending` = champs anglais à traduire, la traduction part à côté (job)',
+    r.pending === 4 && !!r.job && !r.stays[0].fr && calls <= 1, r.pending);
+  const done = await r.job;
+  check('français : SEULS les champs du client en anglais partent (repas, couchages, boissons, arrivée) — pas la consigne ni les repas en français de Thibaut ; jamais le nom',
+    /Tu traduis en français/.test(sys) && done.length === 4 && done.every((w) => w.lang === 'fr' && w.client_id === 's1') && done.map((w) => w.field).sort().join() === 'arrival_time,beds,drinks,meals' && !writes.some((w) => w.client_id === 't1'), done.map((w) => w.field));
+  r = await M.withTr('fr', st, 'o1', async () => writes, async () => {}, async () => { throw new Error('ne doit pas être appelé'); });
+  check('rechargement : les traductions françaises viennent du cache, pending 0, la consigne (déjà en français) sans `fr`',
+    r.pending === 0 && !r.job && r.stays[0].fr && r.stays[0].fr.beds[0].startsWith('FR There are') && r.stays[0].fr.arrival_time[0].includes('21h') && !r.stays[0].fr.note && !r.stays[1].fr, JSON.stringify(r.stays[0].fr));
+  // une traduction qui change un nombre : cette ligne reste en anglais, les autres lignes du champ sont traduites
+  const bad = async (_sy, user) => { const req = JSON.parse(user).lines, o = {}; for (const k of Object.keys(req)) o[k] = /Monday 26th/.test(req[k]) ? 'Dîner lundi 27' : 'FR ' + req[k]; return JSON.stringify({ lines: o }); };
+  const w3 = []; r = await M.withTr('fr', M.staffView(rows.slice(0, 1).map((x) => ({ ...x, id: 's2' })), '2026-10-20'), 'o1', async () => [], async (w) => { w3.push(...w); }, bad); await r.job;
+  const ml = (w3.find((w) => w.field === 'meals') || {}).lines || [];
+  check('nombre changé (26 → 27) : cette ligne reste celle du client, les autres lignes du même champ sont traduites', ml.length === 5 && /Monday 26th/.test(ml[0]) && ml.slice(1).every((x) => x.startsWith('FR ')), JSON.stringify(ml));
+  // gros séjours : plusieurs morceaux, chaque morceau écrit dès qu'il arrive
+  const big = M.staffView([{ id: 'b1', name: 'X Y', arrival: '2026-10-25', departure: '2026-11-01', adults: 2, booking_status: 'confirmed', meals: Array.from({ length: 12 }, (_x, i) => 'Could we have dinner number ' + (i + 2) + ' with ' + 'a lot of food '.repeat(8) + '.').join(' '), details: { staff_note: Array.from({ length: 6 }, (_x, i) => 'Please prepare room ' + (i + 2) + ' ' + 'with care and flowers '.repeat(6) + '.').join(' ') } }], '2026-10-20');
+  const parts = M.chunks([{ id: 'b1', field: 'meals', lines: big[0].lines.meals }, { id: 'b1', field: 'note', lines: big[0].lines.note }, { id: 'b2', field: 'beds', lines: ['x'.repeat(50)] }], 1800);
+  check('morceaux : jamais un champ coupé, plusieurs appels si besoin', parts.length === 2 && parts[0].length === 1 && parts[1].length === 2, parts.map((p) => p.map((x) => x.field)));
+  check('modèles : ministral-14b d’abord (le seul qui répond sur ce compte), medium plus essayé', M.AR_MODELS[0] === 'ministral-14b-2512' && !M.AR_MODELS.includes('mistral-medium-latest'));
+  // en panne : pending puis plus d'appel à chaque rechargement (réessai plus tard), la langue d'origine reste
+  let n = 0; const down = async () => { n++; return null; };
+  const sd = M.staffView(rows.slice(0, 1).map((x) => ({ ...x, id: 's9' })), '2026-10-20');
+  r = await M.withTr('ar', sd, 'o9', async () => [], async () => {}, down); await r.job;
+  const n1 = n; r = await M.withTr('ar', sd, 'o9', async () => [], async () => {}, down);
+  check('Mistral en panne : un essai, puis pas de nouvel appel à chaque rechargement (réessai dans 10 min) ; pas de `ar`, aucune erreur', n1 >= 1 && !r.job && n === n1 && !r.stays[0].ar && r.pending === 0, { n1, n, p: r.pending });
+  // pendant qu'une traduction tourne, un autre rechargement dit `pending` sans relancer
+  let release; const slow = (sy, user) => new Promise((ok) => { release = () => ok(fr(sy, user)); });
+  const ss = M.staffView(rows.slice(0, 1).map((x) => ({ ...x, id: 's8' })), '2026-10-20');
+  const r1 = await M.withTr('ar', ss, 'o8', async () => [], async () => {}, slow);
+  const r2 = await M.withTr('ar', ss, 'o8', async () => [], async () => {}, slow);
+  check('traduction en cours : le rechargement suivant dit `pending` (la page réessaiera) sans lancer un second appel', !!r1.job && !r2.job && r2.pending === r1.pending && r1.pending === 5, { p1: r1.pending, p2: r2.pending });
+  release(); await r1.job;
+  // seconde chance : une ligne dont un nombre a bougé repart seule, avec les nombres rappelés ; réussie → traduite
+  let tries2 = 0;
+  const flaky = async (sy, user) => { tries2++; const req = JSON.parse(user).lines, o = {}; for (const k of Object.keys(req)) o[k] = /Monday 26th/.test(req[k]) && !/ATTENTION/.test(sy) ? 'Dîner lundi 27' : 'FR ' + req[k]; return JSON.stringify({ lines: o }); };
+  const w4 = []; r = await M.withTr('fr', M.staffView(rows.slice(0, 1).map((x) => ({ ...x, id: 's3' })), '2026-10-20'), 'o1', async () => [], async (w) => { w4.push(...w); }, flaky); await r.job;
+  const m4 = (w4.find((w) => w.field === 'meals') || {}).lines || [];
+  check('nombre changé : seconde chance pour cette ligne seule (nombres rappelés) → traduite cette fois, sans rien inventer', tries2 === 2 && m4.length === 5 && m4.every((x) => x.startsWith('FR ')), { tries2, m4 });
+  check('« marocain » traduit « موريتاني » (mauritanien, vu le 20/10) : corrigé en « مغربي » ; un vrai « mauritanien » reste', M.fixAr('assortiment de pâtisseries marocaines', 'حلويات موريتانية') === 'حلويات مغربية' && M.fixAr('kebabs marocains', 'كباب الموريتاني') === 'كباب المغربي' && M.fixAr('thé mauritanien', 'أتاي موريتاني') === 'أتاي موريتاني' && M.fixAr('assorted Morrocon pastries', 'حلويات موريتانية') === 'حلويات مغربية');
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

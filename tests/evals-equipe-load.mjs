@@ -42,7 +42,8 @@ async function open({ lang = 'fr', data = DATA, report = null } = {}) {
         const r = report ? report(body) : (stored.unshift(rec), { status: 200, body: JSON.stringify({ ok: true, report: rec }) });
         return route.fulfill({ status: r.status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: r.body });
       }
-      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ ...data, lang, reports: stored }) });
+      const d = typeof data === 'function' ? data(views.length, body) : data; // 20/10 : réponse qui change d'une lecture à l'autre (traduction en arrière-plan)
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify({ ...d, lang, reports: stored }) });
     }
     if (u.startsWith('http://127.0.0.1')) return route.continue();
     return route.fulfill({ status: 204, body: '' });
@@ -104,7 +105,7 @@ await r.ctx.close();
 r = await open({ data: LINED, lang: 'ar' });
 const ali = await r.page.$$eval('article.card .row > div > ul.v', (xs) => xs.map((x) => x.getAttribute('dir') + ':' + [].map.call(x.querySelectorAll('li'), (li) => li.innerText).join('|')));
 check('arabe : les mêmes puces, traduites, en RTL', r.views[0].lang === 'ar' && ali.length === 3 && ali[0] === 'rtl:الأربعاء 21، عشاء حوالي 19:30: طاجين كفتة.|الخميس 22، غداء: كباب.|لا حساسية.' && ali[1].startsWith('rtl:12 ماء عادي|'), ali);
-check('arabe : l’heure d’arrivée traduite sur sa ligne ; le français d’origine replié sous les textes libres seulement (repas, boissons, consigne — pas sous une heure)', /الهبوط 14:00/.test(await r.page.evaluate(() => document.getElementById('app').innerText)) && (await r.page.$$('details.orig')).length === 3 && (await r.page.$$eval('details.orig', (xs) => xs.every((x) => !x.open && /النص الأصلي بالفرنساوية/.test(x.querySelector('summary').innerText)))));
+check('arabe : l’heure d’arrivée traduite sur sa ligne ; le français d’origine replié sous les textes libres seulement (repas, boissons, consigne — pas sous une heure)', /الهبوط 14:00/.test(await r.page.evaluate(() => document.getElementById('app').innerText)) && (await r.page.$$('details.orig')).length === 3 && (await r.page.$$eval('details.orig', (xs) => xs.every((x) => !x.open && /^النص الأصلي$/.test(x.querySelector('summary').innerText.trim())))));
 await (await r.page.$$('details.orig summary'))[0].click(); await r.page.waitForTimeout(100);
 check('un geste ouvre le français d’origine, tel quel', (await r.page.$$eval('details.orig', (xs) => xs[0].open && !xs[1].open && xs[0].innerText.includes('Mercredi 21, dîner vers 19h30 : tajine de kefta.'))));
 await r.ctx.close();
@@ -116,6 +117,32 @@ await r.ctx.close();
 r = await open({ data: NOAR, lang: 'fr' });
 await r.page.click('#langBtn'); await r.page.waitForTimeout(400);
 check('bascule FR → AR sans traductions en main : une nouvelle lecture avec lang = ar', r.views.length === 2 && r.views[1].lang === 'ar', r.views);
+await r.ctx.close();
+// 20/10/2026 — [REGRESSION — cas réel Seán] en français, ce que le client a écrit en anglais était affiché en anglais ; en arabe,
+// rien n'était traduit (la traduction, trop longue, n'aboutissait jamais). Une page = une seule langue : `fr` porte la version
+// française des textes du client ; la traduction qui manque part en arrière-plan (`pending`) et la page relit d'elle-même.
+const SEAN = { ...DATA, tr: 'fr', stays: [{ id: 's-sean', name: 'Seán', a: iso(5), d: iso(12), nights: 7, adults: 10, children: null, infants: 1, pax: 10, arrival_time: '« Most of the group will arrive quite late (likely after 9pm) »', departure_time: '',
+  beds: 'There are 4 couples and then 2 siblings.', meals: 'Could we do dinner on Monday 26th? Starters - zaalouk', drinks: 'Coke Zero, Iced tea', note: 'Berceau dans la chambre du jardin.', extras: '', same_day: false,
+  lines: { arrival_time: ['« Most of the group will arrive quite late (likely after 9pm) »'], departure_time: [], beds: ['There are 4 couples and then 2 siblings.'], meals: ['Could we do dinner on Monday 26th?', 'Starters - zaalouk'], drinks: ['Coke Zero', 'Iced tea'], note: ['Berceau dans la chambre du jardin.'], extras: [] },
+  fr: { arrival_time: ['« La plupart du groupe arrivera assez tard (probablement après 21h) »'], beds: ['Il y a 4 couples puis 2 frères et sœurs.'], meals: ['Pourrions-nous dîner le lundi 26 ?', 'Entrées - zaalouk'], drinks: ['Coca Zéro', 'Thé glacé'] } }] };
+r = await open({ data: SEAN });
+const ftxt = await r.page.evaluate(() => [].map.call(document.querySelectorAll('article.card .row > div > .v'), (x) => x.innerText).join(' | '));
+check('français : les textes du client en français (repas, couchages, boissons, arrivée), la consigne telle quelle — aucun anglais visible',
+  /Pourrions-nous dîner le lundi 26/.test(ftxt) && /Il y a 4 couples/.test(ftxt) && /Coca Zéro/.test(ftxt) && /après 21h/.test(ftxt) && /Berceau dans la chambre du jardin/.test(ftxt) && !/\b(Could|There|Iced|Most)\b/.test(ftxt), ftxt);
+check('français : l’original du client replié sous les textes libres traduits (repas, couchages, boissons), libellé « Texte d’origine »',
+  (await r.page.$$('details.orig')).length === 3 && (await r.page.$$eval('details.orig', (xs) => xs.every((x) => !x.open && x.querySelector('summary').innerText.trim() === 'Texte d’origine'))));
+await r.ctx.close();
+let tries = 0;
+const LATE = (n, body) => { tries = n; if (body.lang !== 'ar') return { ...SEAN, tr: 'fr' };
+  return n < 2 ? { ...SEAN, tr: 'ar', pending: 4, stays: [{ ...SEAN.stays[0], fr: undefined }] } : { ...SEAN, tr: 'ar', pending: 0, stays: [{ ...SEAN.stays[0], fr: undefined, ar: { meals: ['واش نقدرو نتعشاو نهار الاثنين 26؟', 'المقبلات - زعلوك'], beds: ['كاين 4 كوبلات و 2 خوت.'], drinks: ['كوكا زيرو', 'أتاي بارد'], arrival_time: ['أغلبية المجموعة غادي يوصلو معطلين (تقريبا من بعد 21:00)'], note: ['البيرسو ف بيت الجردة.'] } }] }; };
+r = await open({ data: LATE, lang: 'ar' });
+const band1 = await r.page.evaluate(() => document.getElementById('app').innerText);
+check('arabe, traduction pas encore prête : le texte d’origine en attendant, une bande « الترجمة جاية… »', /الترجمة جاية/.test(band1) && /Could we do dinner/.test(band1), band1.slice(0, 200));
+await r.page.waitForTimeout(5600);
+const atxt = await r.page.evaluate(() => [].map.call(document.querySelectorAll('article.card .row > div > .v'), (x) => x.innerText).join(' | '));
+check('arabe : la page relit d’elle-même ~5 s après ; tout en darija, plus d’anglais ni de bande', r.views.length === 2 && /نتعشاو/.test(atxt) && /كوكا زيرو/.test(atxt) && !/\b(Could|There|Iced|Most|Berceau)\b/.test(atxt) && !/الترجمة جاية/.test(await r.page.evaluate(() => document.getElementById('app').innerText)), { n: r.views.length, atxt });
+await r.page.waitForTimeout(5600);
+check('plus rien en attente : la page ne relit plus', r.views.length === 2, r.views.length);
 await r.ctx.close();
 // Ancienne réponse (sans `lines`, en cache) : le texte tel quel, comme avant
 r = await open({ data: DATA });
