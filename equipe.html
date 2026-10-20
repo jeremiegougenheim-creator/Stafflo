@@ -111,6 +111,9 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       arriveToday: 'Arrivent aujourd’hui', leaveToday: 'Partent aujourd’hui', sameDay: 'Départ et arrivée le même jour',
       arrival: 'Arrivée', departure: 'Départ', adults: 'Adultes', children: 'Enfants', infants: 'Bébés', people: 'Personnes',
       time: 'Heure d’arrivée', depTime: 'Heure de départ', drinks: 'Boissons', beds: 'Couchages', meals: 'Repas', mealsNone: 'Pas encore reçus', note: 'Consigne', extras: 'Commandé par le client',
+      // Lien prestataire (20/10) : couverts, commande du livret par destinataire, interlocation, « Repas confirmés »
+      covers: 'Couverts', kitchenTag: 'prestataire repas', orders: 'Repas commandés par le client', houseOrdersK: 'Préparé par la maison, pas par vous', houseOrders: 'À préparer par la maison',
+      nextArr: 'Prochaine arrivée après ce départ', nextNone: 'aucune arrivée prévue', sameDayShort: 'le jour même', mealsOk: 'Repas confirmés', mealsDone: 'Repas confirmés · ',
       updated: 'Mis à jour à ', refresh: 'Actualiser', orig: 'Texte d’origine', trBusy: 'Traduction en cours…', personal: 'Ce lien est personnel : ne le transférez pas.', loading: 'Chargement…',
       invalid: 'Ce lien n’est plus valide. Demandez un nouveau lien au propriétaire de la villa.', noLink: 'Ouvrez le lien reçu sur WhatsApp.', unknown: '?', arrow: '→',
       offline: 'Hors connexion — informations du ', server: 'Service momentanément indisponible — informations du ', langBtn: 'العربية',
@@ -126,6 +129,8 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       arriveToday: 'كيوصلو اليوم', leaveToday: 'كيخرجو اليوم', sameDay: 'خروج ووصول ف نفس النهار',
       arrival: 'الوصول', departure: 'الخروج', adults: 'الكبار', children: 'الصغار', infants: 'البيبيات', people: 'عدد الناس',
       time: 'وقتاش غادي يوصلو', depTime: 'وقتاش غادي يخرجو', drinks: 'المشروبات', beds: 'النعاس', meals: 'الماكلة', mealsNone: 'مازال ما وصلاتش', note: 'التعليمات', extras: 'شنو طلب الكليان',
+      covers: 'عدد الناس ف الماكلة', kitchenTag: 'الماكلة', orders: 'الماكلة اللي طلب الكليان', houseOrdersK: 'كتوجدها الدار، ماشي نتوما', houseOrders: 'خاص الدار توجدها',
+      nextArr: 'الوصول الجاي من بعد هاد الخروج', nextNone: 'ما كاين حتى وصول مبرمج', sameDayShort: 'ف نفس النهار', mealsOk: 'الماكلة مأكدة', mealsDone: 'الماكلة مأكدة · ',
       updated: 'آخر تحديث ', refresh: 'عاود شارجي', orig: 'النص الأصلي', trBusy: 'الترجمة جاية…', personal: 'هاد الليان ديالك بوحدك، ما تعطيه لحتى واحد.', loading: 'كيتشارجا…',
       invalid: 'هاد الليان ما بقاش خدام. طلب ليان جديد من مول الفيلا.', noLink: 'حل الليان اللي وصلك ف الواتساب.', unknown: '؟', arrow: '←',
       offline: 'ما كاينش الأنترنيت — آخر معلومات ديال ', server: 'السيرفيس ما خدامش دابا — آخر معلومات ديال ', langBtn: 'Français',
@@ -204,9 +209,11 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
         return d.report;
       });
   }
-  function readyReport(stayId) {
-    return ((S.data && S.data.reports) || []).filter(function (r) { return r.kind === 'rooms_ready' && String(r.client_id) === String(stayId); })[0] || null;
+  function reportOf(kind, stayId) {
+    return ((S.data && S.data.reports) || []).filter(function (r) { return r.kind === kind && String(r.client_id) === String(stayId); })[0] || null;
   }
+  function readyReport(stayId) { return reportOf('rooms_ready', stayId); }
+  function isKitchen() { return !!(S.data && S.data.role === 'kitchen'); }
   function fmtClock(isoTs) { var d = new Date(isoTs); return isNaN(d) ? '' : d.toLocaleTimeString(S.lang === 'ar' ? 'ar-MA' : 'fr-FR', { hour: '2-digit', minute: '2-digit' }); }
 
   function stayCard(s, t, tone, chips) {
@@ -215,11 +222,13 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
     if (chips.length) h += '<div class="chips">' + chips.map(function (c) { return '<span class="chip ' + c[0] + '">' + esc(c[1]) + '</span>'; }).join('') + '</div>';
     h += '<p class="name"><bdi>' + esc(s.name) + '</bdi></p>';
     h += '<p class="dates">' + esc(l.arrival) + ' <b>' + esc(fmt(a)) + '</b> ' + l.arrow + ' ' + esc(l.departure) + ' <b>' + esc(fmt(d)) + '</b> <span class="nw">· ' + esc(l.nights(s.nights)) + '</span></p>';
-    var cells = [];
-    if (s.adults != null) cells.push([s.adults, l.adults]);
+    var cells = [], K = isKitchen();
+    // Prestataire : les couverts d'abord (adultes + enfants), le détail seulement s'il y a des enfants ou des bébés.
+    if (K && s.pax != null) cells.push([s.pax, l.covers]);
+    if (!K && s.adults != null) cells.push([s.adults, l.adults]);
     if (s.children) cells.push([s.children, l.children]);
     if (s.infants) cells.push([s.infants, l.infants]);
-    if (!cells.length) cells.push([s.pax != null ? s.pax : l.unknown, l.people]);
+    if (!cells.length) cells.push([s.pax != null ? s.pax : l.unknown, K ? l.covers : l.people]);
     h += '<div class="pax">' + cells.map(function (c) { return '<div><b>' + esc(c[0]) + '</b><span>' + esc(c[1]) + '</span></div>'; }).join('') + '</div>';
     /* Lisible (18/10) : une ligne par phrase ou par article (`lines`, calculées par le serveur ; ancienne réponse en cache → le texte tel quel).
        Une seule langue (20/10) : les mêmes lignes traduites dans la langue de la page — `ar` (tout, en darija) ou `fr` (ce que le
@@ -235,20 +244,30 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       return '<div class="row"><i class="ti ti-' + icon + '" aria-hidden="true"></i><div>' + '<span class="k">' + esc(k) + '</span>' + body + '</div></div>';
     };
     // Qui part aujourd'hui : plus besoin d'heure, de lits ni de repas.
+    var hasOrders = String(s.orders || '').trim() !== '', hasHouse = String(s.house_orders || '').trim() !== '';
     if (a >= t) h += row('clock', l.time, s.arrival_time, null, 'arrival_time');
-    if (a >= t) h += row('bed', l.beds, s.beds, null, 'beds');
-    if (d > t) h += row('tools-kitchen-2', l.meals, s.meals, l.mealsNone, 'meals');
-    if (d > t && String(s.drinks || '').trim()) h += row('glass', l.drinks, s.drinks, null, 'drinks');
-    if (d > t && String(s.extras || '').trim()) h += row('shopping-bag', l.extras, s.extras, null, 'extras');
+    if (!K && a >= t) h += row('bed', l.beds, s.beds, null, 'beds');
+    // Commande du livret (20/10) : au prestataire ses repas, jour par jour ; à chacun ce que la maison prépare.
+    if (K && d > t && hasOrders) h += row('tools-kitchen-2', l.orders, s.orders, null, 'orders');
+    if (d > t && (!K || !hasOrders || String(s.meals || '').trim())) h += row('tools-kitchen-2', l.meals, s.meals, l.mealsNone, 'meals');
+    if (d > t && hasHouse) h += row('home', K ? l.houseOrdersK : l.houseOrders, s.house_orders, null, 'house_orders');
+    if (!K && d > t && String(s.drinks || '').trim()) h += row('glass', l.drinks, s.drinks, null, 'drinks');
+    if (!K && d > t && String(s.extras || '').trim()) h += row('shopping-bag', l.extras, s.extras, null, 'extras');
     // Heure de départ (17/10/2026) : seulement si elle est connue — utile le jour du départ et pour l'interlocation.
     if (d >= t && String(s.departure_time || '').trim()) h += row('door-exit', l.depTime, s.departure_time, null, 'departure_time');
+    // Interlocation (20/10) : la prochaine arrivée après ce départ — la date dans la langue de la page, l'heure traduite comme le reste.
+    if (d >= t && s.next && s.next.d) {
+      var nt = s[S.lang] && Array.isArray(s[S.lang].next_time) && s[S.lang].next_time.length ? s[S.lang].next_time[0] : String(s.next_time || '').trim();
+      h += '<div class="row"><i class="ti ti-refresh" aria-hidden="true"></i><div><span class="k">' + esc(l.nextArr) + '</span><span class="v" dir="auto">' + esc(fmt(dayNum(s.next.d)) + (s.next.same_day ? ' · ' + l.sameDayShort : '') + (nt ? ' · ' + nt : '')) + '</span></div></div>';
+    }
     if (String(s.note || '').trim()) h += row('note', l.note, s.note, null, 'note');
-    // « Chambres prêtes » : pour une arrivée du jour ou à venir ; une fois envoyé, l'heure reste affichée.
-    if (a >= t && s.id) {
-      var rr = readyReport(s.id);
+    // « Chambres prêtes » (maison, arrivée du jour ou à venir) ou « Repas confirmés » (prestataire, séjour pas fini, quelque chose à préparer) ;
+    // une fois envoyé, l'heure reste affichée.
+    if (s.id && (K ? d > t && (hasOrders || hasHouse || String(s.meals || '').trim()) : a >= t)) {
+      var kind = K ? 'meals_ok' : 'rooms_ready', rr = reportOf(kind, s.id);
       h += '<div class="ready">' + (rr
-        ? '<span class="done"><i class="ti ti-circle-check" aria-hidden="true"></i>' + esc(l.roomsDone + fmtClock(rr.created_at)) + '</span>'
-        : '<button type="button" class="btn ready-btn" data-a="ready" data-id="' + esc(s.id) + '"' + (S.busy ? ' disabled' : '') + '><i class="ti ti-bed" aria-hidden="true"></i>' + esc(l.roomsReady) + '</button>') + '</div>';
+        ? '<span class="done"><i class="ti ti-circle-check" aria-hidden="true"></i>' + esc((K ? l.mealsDone : l.roomsDone) + fmtClock(rr.created_at)) + '</span>'
+        : '<button type="button" class="btn ready-btn" data-a="ready" data-kind="' + kind + '" data-id="' + esc(s.id) + '"' + (S.busy ? ' disabled' : '') + '><i class="ti ti-' + (K ? 'chef-hat' : 'bed') + '" aria-hidden="true"></i>' + esc(K ? l.mealsOk : l.roomsReady) + '</button>') + '</div>';
     }
     return h + '</article>';
   }
@@ -259,7 +278,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
     document.documentElement.dir = S.lang === 'ar' ? 'rtl' : 'ltr';
     document.title = l.title + ' · Stafflo';
     document.getElementById('title').textContent = l.title;
-    var who = S.data && S.data.name ? l.hello + ' ' + S.data.name + ' · ' : '';
+    var who = S.data && S.data.name ? l.hello + ' ' + S.data.name + (isKitchen() ? ' · ' + l.kitchenTag : '') + ' · ' : '';
     document.getElementById('hello').textContent = who + fmt(todayNum(), true);
     document.getElementById('langBtn').textContent = l.langBtn;
     document.getElementById('langBtn').setAttribute('lang', S.lang === 'ar' ? 'fr' : 'ar');
@@ -305,7 +324,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
     var rb = e.target.closest('[data-a="ready"]');
     if (rb) {
       rb.disabled = true;
-      report('rooms_ready', rb.getAttribute('data-id')).then(function () { render(); }, function () { rb.disabled = false; alertBand(L().sendErr); });
+      report(rb.getAttribute('data-kind') === 'meals_ok' ? 'meals_ok' : 'rooms_ready', rb.getAttribute('data-id')).then(function () { render(); }, function () { rb.disabled = false; alertBand(L().sendErr); });
       return;
     }
     if (e.target.closest('#langBtn')) { S.lang = S.lang === 'ar' ? 'fr' : 'ar'; store.set(L_KEY, S.lang); S.tries = 0; render(); if (S.data && S.data.tr !== S.lang) load(); } // l'autre langue : ses traductions viennent du serveur

@@ -141,6 +141,8 @@ export function buildTeamAlert(r: Row, who: string, guest: string, lang: "fr" | 
   if (!r || !r.kind) return null;
   const fr = lang === "fr", name = who || (fr ? "L'équipe" : "The team"), tag = "team-" + (r.id || r.kind);
   if (r.kind === "rooms_ready") return { tag, title: fr ? `${name} : chambres prêtes` : `${name}: rooms ready`, body: guest ? (fr ? "pour " : "for ") + guest : "" };
+  // Lien prestataire (20/10) : « Léa : repas confirmés pour Thibaut V. »
+  if (r.kind === "meals_ok") return { tag, title: fr ? `${name} : repas confirmés` : `${name}: meals confirmed`, body: guest ? (fr ? "pour " : "for ") + guest : "" };
   if (r.kind === "issue") { const t = String(r.text || "").replace(/\s+/g, " ").trim(); if (!t) return null; return { tag, title: fr ? `${name} signale un problème` : `${name} reports a problem`, body: clip(t, 180) + (guest ? (fr ? " · " : " · ") + guest : "") }; }
   return null;
 }

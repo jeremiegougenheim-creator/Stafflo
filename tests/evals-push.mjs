@@ -135,6 +135,8 @@ check('brief : protégé par la clé de synchro, aperçu possible (dry)', /actio
   const rr = T({ id: 'r1', kind: 'rooms_ready' }, 'Saïd', 'Thibaut V.', 'fr');
   check('équipe : « Saïd : chambres prêtes · pour Thibaut V. »', rr && rr.title === 'Saïd : chambres prêtes' && rr.body === 'pour Thibaut V.' && rr.tag === 'team-r1');
   check('équipe : en anglais', T({ id: 'r1', kind: 'rooms_ready' }, 'Saïd', 'Thibaut V.', 'en').title === 'Saïd: rooms ready');
+  const mo = T({ id: 'r6', kind: 'meals_ok' }, 'Léa', 'Thibaut V.', 'fr');
+  check('prestataire (20/10) : « Léa : repas confirmés · pour Thibaut V. », en anglais aussi', mo && mo.title === 'Léa : repas confirmés' && mo.body === 'pour Thibaut V.' && mo.tag === 'team-r6' && T({ id: 'r6', kind: 'meals_ok' }, 'Léa', 'Thibaut V.', 'en').title === 'Léa: meals confirmed');
   const is = T({ id: 'r2', kind: 'issue', text: '  Fuite   salle de bain ' }, 'Bouchra', '', 'fr');
   check('équipe : « Bouchra signale un problème » + le texte, replié', is && is.title === 'Bouchra signale un problème' && is.body === 'Fuite salle de bain');
   check('équipe : problème sans texte → rien ; genre inconnu → rien ; sans nom → « L’équipe »', T({ id: 'r3', kind: 'issue', text: ' ' }, 'X', '', 'fr') === null && T({ id: 'r4', kind: 'price' }, 'X', '', 'fr') === null && T({ id: 'r5', kind: 'rooms_ready' }, '', '', 'fr').title === "L'équipe : chambres prêtes");

@@ -7,9 +7,18 @@
 //       table staff_links). Un lien retiré (deleted_at) ne répond plus.
 // POST { k, action: "report", kind, client_id?, text? } → { ok, report }
 //   L'équipe renvoie quelque chose (table staff_reports) : « chambres prêtes » pour un
-//   séjour (kind rooms_ready, client_id d'un séjour visible), ou un problème (kind issue,
-//   texte ≤ 300). Le propriétaire le voit dans l'Espace et reçoit une alerte. 30 par heure
-//   et par lien. Rien d'autre n'est modifiable depuis ce lien.
+//   séjour (kind rooms_ready, client_id d'un séjour visible), « repas confirmés » (kind
+//   meals_ok, lien prestataire), ou un problème (kind issue, texte ≤ 300). Le propriétaire
+//   le voit dans l'Espace et reçoit une alerte. 30 par heure et par lien. Rien d'autre
+//   n'est modifiable depuis ce lien.
+//
+// Lien prestataire (20/10/2026, staff_links.role = 'kitchen' — Lea, le prestataire repas) :
+//   la même page, mais ce qui le concerne : couverts, repas et commande du livret jour par
+//   jour (ses repas seulement — un repas « maison » de la fiche lui est montré « préparé par
+//   la maison, pas par vous »), heures d'arrivée et de départ, interlocation (la prochaine
+//   arrivée après chaque départ, « le jour même »), consigne. Jamais couchages, boissons,
+//   extras. Le lien maison (role 'house', défaut) garde tout ce qu'il avait, plus les repas
+//   « maison » commandés dans le livret (house_orders) et la prochaine arrivée (next).
 //
 // Données minimales, en lecture seule : prénom + initiale, dates, nombre de
 // personnes, et trois champs écrits POUR l'équipe dans l'Espace
@@ -46,13 +55,17 @@ function cors(req: Request): Record<string, string> {
 // ── Calcul (pur, testé par tests/evals-staff.mjs) ─────────────────────────
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
-export type Lines = { arrival_time: string[]; departure_time: string[]; beds: string[]; meals: string[]; drinks: string[]; note: string[]; extras: string[] };
+export type Lines = { arrival_time: string[]; departure_time: string[]; beds: string[]; meals: string[]; drinks: string[]; note: string[]; extras: string[]; orders: string[]; house_orders: string[]; next_time: string[] };
 export type StaffStay = {
   id: string; name: string; a: string; d: string; nights: number;
   adults: number | null; children: number | null; infants: number | null; pax: number | null;
   arrival_time: string; departure_time: string; beds: string; meals: string; drinks: string; note: string; extras: string; same_day: boolean;
+  /* 20/10 : commande du livret jour par jour — repas du prestataire (orders) et repas « maison » (house_orders), une ligne par
+     repas ; la prochaine arrivée après ce départ (next : date, « le jour même ») et son heure (next_time), pour l'interlocation. */
+  orders: string; house_orders: string; next: { d: string; same_day: boolean } | null; next_time: string;
   lines: Lines; ar?: Partial<Lines>; fr?: Partial<Lines>;
 };
+export type LinkRole = "house" | "kitchen";
 // ── Lisibilité : une phrase par ligne (repas, consigne), un article par ligne (boissons, extras) — mêmes règles que l'Espace ──
 export function sentences(line: string): string[] { // coupe après « . ! ? » suivis d'une majuscule ou d'un chiffre
   const out: string[] = []; let last = 0; const rx = /[.!?]\s+(?=[A-ZÀ-ÝÉÈÊ0-9«])/g; let m: RegExpExecArray | null;
@@ -100,10 +113,22 @@ export function bulletsOf(text: string, mode: "list" | "sentences"): string[] {
   });
   return parts.map((x) => x.slice(0, 400));
 }
-export const LINE_FIELDS: (keyof Lines)[] = ["arrival_time", "departure_time", "beds", "meals", "drinks", "note", "extras"];
+export const LINE_FIELDS: (keyof Lines)[] = ["arrival_time", "departure_time", "beds", "meals", "drinks", "note", "extras", "orders", "house_orders", "next_time"];
+const nl = (t: string) => String(t || "").split("\n").map((x) => x.trim()).filter(Boolean);
 export function linesOf(s: Omit<StaffStay, "lines">): Lines {
   return { arrival_time: s.arrival_time ? [s.arrival_time] : [], departure_time: s.departure_time ? [s.departure_time] : [], beds: s.beds ? [s.beds] : [],
-    meals: bulletsOf(s.meals, "sentences"), drinks: bulletsOf(s.drinks, "list"), note: bulletsOf(s.note, "sentences"), extras: s.extras ? s.extras.split(" · ").map((x) => x.trim()).filter(Boolean) : [] };
+    meals: bulletsOf(s.meals, "sentences"), drinks: bulletsOf(s.drinks, "list"), note: bulletsOf(s.note, "sentences"), extras: s.extras ? s.extras.split(" · ").map((x) => x.trim()).filter(Boolean) : [],
+    orders: nl(s.orders), house_orders: nl(s.house_orders), next_time: s.next_time ? [s.next_time] : [] };
+}
+/** Ce qu'un lien ne doit pas voir, selon son rôle (20/10) : vidé AVANT toute traduction, rien ne part. Prestataire : ni couchages,
+ *  ni boissons, ni extras. Maison : pas la commande du prestataire (elle a la sienne, house_orders, et les extras). */
+export function forRole(stays: StaffStay[], role: LinkRole): StaffStay[] {
+  const drop: (keyof Lines)[] = role === "kitchen" ? ["beds", "drinks", "extras"] : ["orders"];
+  return stays.map((s) => {
+    const o: StaffStay = { ...s, lines: { ...s.lines } };
+    for (const f of drop) { (o as Row)[f] = ""; o.lines[f] = []; }
+    return o;
+  });
 }
 // Heure tirée de WhatsApp (17/10/2026, même règle que les briefs de l'Espace, teamTxt) : « « - nous atterrissons à
 // 14h. » (WhatsApp, lun. 5 oct. 18:26) » → « « nous atterrissons à 14h » ». Le moment du message ne reste que pour
@@ -173,7 +198,7 @@ export function frv(det: Row, k: string, src: unknown): unknown {
   const s = typeof src === "string" ? src.trim() : "", e = det && det.fr && typeof det.fr === "object" ? det.fr[k] : null;
   return s && e && typeof e.fr === "string" && e.fr.trim() && e.src === s ? e.fr : src;
 }
-const REPORT_KINDS = ["rooms_ready", "issue"];
+const REPORT_KINDS = ["rooms_ready", "issue", "meals_ok"];
 /** Un retour de l'équipe, nettoyé : genre connu, séjour parmi ceux qu'elle voit, texte court. null si rien à garder. */
 export function cleanReport(body: Row, visibleIds: string[]): { kind: string; client_id: string | null; text: string | null } | null {
   const kind = String(body.kind || "");
@@ -181,7 +206,7 @@ export function cleanReport(body: Row, visibleIds: string[]): { kind: string; cl
   const cid = body.client_id == null || body.client_id === "" ? null : String(body.client_id);
   if (cid && !visibleIds.includes(cid)) return null;
   const text = txt(body.text, 300).replace(/\s+/g, " ") || null;
-  if (kind === "rooms_ready" && !cid) return null;
+  if ((kind === "rooms_ready" || kind === "meals_ok") && !cid) return null;
   if (kind === "issue" && !text) return null;
   return { kind, client_id: cid, text };
 }
@@ -199,20 +224,51 @@ export function extrasLine(o: unknown): string {
 }
 const int = (v: unknown): number | null => (v == null || v === "" || !isFinite(+v) || +v < 0 ? null : Math.round(+v));
 
-export function staffView(rows: Row[], todayIso: string): StaffStay[] {
+// ── Commande du livret, par destinataire (20/10/2026 — mêmes règles que l'Espace : orderSplit, houseMeal, bigMode) ──
+// Un repas commandé (details.guest_orders.items, id m<i> → MEALS[i] de la fiche) va au prestataire, sauf s'il est marqué
+// « maison » dans la fiche (house) — et, à partir de 7 personnes, selon big : 'house' (la maison), 'kitchen' (le prestataire),
+// 'off' (plus proposé : absent). Une ligne par repas : « 2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi ». Sans fiche :
+// tout au prestataire. Les extras ne sont pas des repas (extrasLine).
+const SVC: Record<string, string> = { b: "brunch", l: "midi", d: "soir" };
+export function whenTxt(w: unknown): string {
+  return (Array.isArray(w) ? w : []).filter((x: Row) => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.d || ""))).map((x: Row) =>
+    new Date(x.d + "T12:00:00Z").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", timeZone: "UTC" }) + (SVC[x.s] ? " " + SVC[x.s] : "")).join(", ");
+}
+const mealName = (n: unknown) => String(Array.isArray(n) ? n[0] : n || "").replace(/\s*\((?:sur demande|on request)\)\s*$/i, "").trim().slice(0, 80);
+export function orderLines(o: unknown, facts: Row | null, pax: number | null): { kitchen: string[]; house: string[] } {
+  const out = { kitchen: [] as string[], house: [] as string[] };
+  const items = o && typeof o === "object" && Array.isArray((o as Row).items) ? (o as Row).items : [];
+  const meals: Row[] = facts && Array.isArray(facts.MEALS) ? facts.MEALS : [];
+  for (const x of items) {
+    if (!x || x.kind !== "meal" || !Number.isInteger(x.q) || x.q <= 0) continue;
+    const m = /^m(\d+)$/.exec(String(x.id || "")), row = m ? meals[+m[1]] : null;
+    const big = row && (row.big === "kitchen" || row.big === "off") ? row.big : "house";
+    let to: "kitchen" | "house" = "kitchen";
+    if (row && row.house) { if (pax != null && pax >= 7) { if (big === "off") continue; to = big === "kitchen" ? "kitchen" : "house"; } else to = "house"; }
+    const w = whenTxt(x.when), line = x.q + " × " + mealName(x.n) + (w ? " — " + w : "");
+    if (out[to].length < 20) out[to].push(line.slice(0, 200));
+  }
+  return out;
+}
+
+export function staffView(rows: Row[], todayIso: string, facts: Row | null = null): StaffStay[] {
   const t = day(todayIso);
   if (t == null) return [];
   const firm = (rows || []).filter((c) => !FIRM_OUT.includes(String(c.booking_status || "").toLowerCase()))
     .map((c) => ({ c, a: day(c.arrival), d: day(c.departure) }))
     .filter((x) => x.a != null && x.d != null && (x.d as number) > (x.a as number)) as { c: Row; a: number; d: number }[];
   const departures = new Set(firm.map((x) => x.d));
+  const detOf = (c: Row) => (c.details && typeof c.details === "object" ? c.details : {});
+  // Interlocation (20/10) : le premier séjour ferme qui commence le jour de ce départ ou après (même règle que le brief de l'Espace).
+  const nextOf = (d: number) => firm.filter((x) => x.a >= d).sort((x, y) => x.a - y.a)[0] || null;
   return firm
     .filter((x) => x.d >= t && x.a <= t + WINDOW_DAYS)
     .sort((x, y) => x.a - y.a)
     .map(({ c, a, d }) => {
-      const det = c.details && typeof c.details === "object" ? c.details : {};
+      const det = detOf(c);
       const adults = int(c.adults), children = int(c.children), infants = int(c.infants);
       const pax = adults != null || children != null ? (adults || 0) + (children || 0) : int(c.guests);
+      const ord = orderLines(det.guest_orders, facts, pax || null), nx = nextOf(d);
       const base = {
         id: String(c.id || ""), name: shortName(c.name), a: iso(a), d: iso(d), nights: d - a,
         adults, children, infants, pax: pax || null,
@@ -221,6 +277,9 @@ export function staffView(rows: Row[], todayIso: string): StaffStay[] {
         // Extras commandés par le client dans son livret (transfert, massage…) : quoi et combien, jamais le prix.
         extras: extrasLine(det.guest_orders),
         same_day: departures.has(a),
+        orders: ord.kitchen.join("\n"), house_orders: ord.house.join("\n"),
+        next: nx ? { d: iso(nx.a), same_day: nx.a === d } : null,
+        next_time: nx ? teamTime(txt(frv(detOf(nx.c), "arrival_time", detOf(nx.c).arrival_time), 400), "a") : "",
       };
       return { ...base, lines: linesOf(base) };
     });
@@ -244,7 +303,7 @@ export type TrLang = "ar" | "fr";
 // 20/10 (essai réel, ministral-14b) : « marocain » → « موريتاني » (mauritanien !), « Starters » → « مودع », « Pas d'entrées »
 // → « مايكونش مودع », « la cuisinière repart » → « الطاهية غادي تنصرو » — d'où des exemples tirés de ces phrases mêmes.
 const SYS_AR = "Tu traduis en darija marocaine — écrite en lettres arabes, comme dans un message WhatsApp entre Marocains ; pas l'arabe standard, pas l'égyptien : le futur se dit « غادي » — " +
-  "pour l'équipe d'une maison d'hôtes à Marrakech, des lignes écrites en français ou dans la langue du client (souvent l'anglais) : repas, consignes, boissons, heures, couchages. " +
+  "pour l'équipe d'une maison d'hôtes à Marrakech, des lignes écrites en français ou dans la langue du client (souvent l'anglais) : repas, consignes, boissons, heures, couchages, commande du livret (« 2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi » → « 2 × الغدا ولا العشا — الأربعاء 21 العشية، الخميس 22 الغدا »). " +
   "« marocain, marocaine, Moroccan » se dit « مغربي, مغربية » (jamais موريتاني). " +
   "Exemples : « atterrissage 14h » → « وصول الطيارة 14:00 » ; « 6h30 (vol 9h) » → « 6:30 (الطيارة 9:00) » ; « Most of the group will arrive late (after 9pm) » → « أغلبية المجموعة غادي يوصلو معطلين (من بعد 21:00) » ; " +
   "« 2 couples et 1 personne seule » → « 2 كوبلات و 1 بوحدو » ; « thé et café décaféinés » → « أتاي و قهوة بلا كافيين » ; « iced tea » → « أتاي بارد » ; « eaux » → « الما » ; " +
@@ -469,13 +528,18 @@ Deno.serve(async (req: Request) => {
   if (!validToken(body.k)) return out({ error: "invalid_link" }, 404);
   try {
     const h = await sha256hex(body.k);
-    const link = ((await db(`staff_links?select=id,owner_id,name,lang,last_seen_at&token_hash=eq.${h}&deleted_at=is.null&limit=1`)) || [])[0];
+    const link = ((await db(`staff_links?select=id,owner_id,name,lang,role,last_seen_at&token_hash=eq.${h}&deleted_at=is.null&limit=1`)) || [])[0];
     if (!link) return out({ error: "invalid_link" }, 404);
+    const role: LinkRole = link.role === "kitchen" ? "kitchen" : "house";
     const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Casablanca" }).format(new Date());
     const t = day(todayIso) as number;
+    // 20/10 : 31 jours de plus pour connaître la prochaine arrivée après un départ en fin de fenêtre (staffView n'affiche que WINDOW_DAYS).
     const rows = await db(`crm_clients?select=id,name,arrival,departure,guests,adults,children,infants,booking_status,meals,details` +
-      `&user_id=eq.${link.owner_id}&deleted_at=is.null&departure=gte.${iso(t - 1)}&arrival=lte.${iso(t + WINDOW_DAYS)}&order=arrival.asc&limit=200`) || [];
-    let stays = staffView(rows, todayIso);
+      `&user_id=eq.${link.owner_id}&deleted_at=is.null&departure=gte.${iso(t - 1)}&arrival=lte.${iso(t + WINDOW_DAYS + 31)}&order=arrival.asc&limit=300`) || [];
+    // La fiche maison du compte (repas « maison » / prestataire) — seulement si elle est en place (même drapeau que l'Espace).
+    const vs = ((await db(`villa_settings?select=house_facts,house_facts_ref&owner_id=eq.${link.owner_id}&order=created_at.asc&limit=1`).catch(() => [])) || [])[0];
+    const facts: Row | null = vs && vs.house_facts_ref === "villa-facts.js" && vs.house_facts && typeof vs.house_facts === "object" ? vs.house_facts : null;
+    let stays = forRole(staffView(rows, todayIso, facts), role);
     if (body.action === "report") {
       if (limited("r:" + link.id, 30, 60 * 60000)) return out({ error: "rate_limited" }, 429);
       const rep = cleanReport(body, stays.map((s) => s.id));
@@ -511,10 +575,10 @@ Deno.serve(async (req: Request) => {
         // Une petite traduction arrive souvent en quelques secondes : on l'attend un peu, la page l'a tout de suite.
         let fin = false; tr.job.then(() => { fin = true; });
         await Promise.race([tr.job, new Promise((ok) => setTimeout(ok, 6000))]);
-        if (fin) { const again = await withTr(lang, staffView(rows, todayIso), owner, read, write, async () => null).catch(() => null); if (again) { stays = again.stays; pending = again.pending; } }
+        if (fin) { const again = await withTr(lang, forRole(staffView(rows, todayIso, facts), role), owner, read, write, async () => null).catch(() => null); if (again) { stays = again.stays; pending = again.pending; } }
       }
     }
-    return out({ name: link.name, lang: link.lang, tr: lang, pending, today: todayIso, stays, reports, at: new Date().toISOString() });
+    return out({ name: link.name, lang: link.lang, role, tr: lang, pending, today: todayIso, stays, reports, at: new Date().toISOString() });
   } catch (_e) {
     return out({ error: "unavailable" }, 503);
   }

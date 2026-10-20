@@ -56,7 +56,7 @@ check('séjour terminé hier exclu, départ du jour inclus', !names.includes('Pa
 check('au-delà de 30 jours exclu', !names.includes('Trop L.'), names);
 check('dates incohérentes exclues', !names.includes('Dates F.'), names);
 check('ordre par arrivée', names.join('|') === 'Part A.|Tomas H.|Arnaud D.|Rotation J.|Seán', names.join('|'));
-const KEYS = ['id', 'name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'departure_time', 'beds', 'meals', 'drinks', 'note', 'extras', 'same_day', 'lines'];
+const KEYS = ['id', 'name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'departure_time', 'beds', 'meals', 'drinks', 'note', 'extras', 'same_day', 'orders', 'house_orders', 'next', 'next_time', 'lines'];
 check('champs exactement ceux prévus (aucun prix, note, téléphone, email, code)', V.every((s) => Object.keys(s).join(',') === KEYS.join(',')), Object.keys(V[0]).join(','));
 const flat = JSON.stringify(V);
 for (const bad of ['1298', 'TARIFS', '+44', 'f@x.com', 'Royaume', 'HMX', 'privé', 'Herrera'])
@@ -88,6 +88,38 @@ check('pas de rotation inventée', th.same_day === false);
 const long = M.staffView([{ name: 'X Y', arrival: T, departure: '2026-10-14', booking_status: 'confirmed', meals: 'm'.repeat(2000), details: { staff_note: 'n'.repeat(2000) } }], T)[0];
 check('textes plafonnés (repas 1500, consigne 1200 — le français traduit est plus long que l’anglais du client, 19/10)', long.meals.length === 1500 && long.note.length === 1200);
 check('date du jour invalide → rien', M.staffView(ROWS, 'hier').length === 0);
+
+// ── Lien prestataire (20/10) : commande du livret par destinataire, prochaine arrivée, rôle du lien ──
+{
+  const FACTS = { MEALS: [{ n: ['Petit-déjeuner', 'Breakfast'] }, { n: ['Déjeuner ou dîner (sur demande)', 'Lunch or dinner'] }, { n: ['Goûter (sur demande)'], house: true }, { n: ['Déjeuner léger (sur demande)'], house: true, big: 'off' }, { n: ['Brunch (sur demande)'], house: true, big: 'kitchen' }] };
+  const ORD = { total: 3000, items: [
+    { id: 'm1', kind: 'meal', n: ['Déjeuner ou dîner (sur demande)', 'Lunch or dinner (on request)'], q: 2, unit: 850, when: [{ d: '2026-10-21', s: 'd' }, { d: '2026-10-22', s: 'l' }] },
+    { id: 'm2', kind: 'meal', n: ['Goûter (sur demande)', 'Afternoon tea'], q: 1, unit: 450, when: [{ d: '2026-10-22', s: 'd' }] },
+    { id: 'm3', kind: 'meal', n: ['Déjeuner léger (sur demande)'], q: 1, unit: 450 },
+    { id: 'm4', kind: 'meal', n: ['Brunch (sur demande)'], q: 1, unit: 850, when: [{ d: '2026-10-23', s: 'b' }] },
+    { id: 'x0', kind: 'extra', n: ['Transfert aéroport'], q: 1, unit: 300 }] };
+  const small = M.orderLines(ORD, FACTS, 6), big = M.orderLines(ORD, FACTS, 10), none = M.orderLines(ORD, null, 10);
+  check('1–6 personnes : déjeuner/dîner au prestataire ; goûter, déjeuner léger et brunch (« maison ») à la maison ; jamais les extras ; « (sur demande) » retiré ; jour et service', small.kitchen.join('|') === '2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi' && small.house.join('|') === '1 × Goûter — jeu. 22 soir|1 × Déjeuner léger|1 × Brunch — ven. 23 brunch', small);
+  check('7 personnes et plus : le brunch suit la fiche (big kitchen → prestataire), le déjeuner léger n’est plus proposé (off → absent), le goûter reste à la maison', big.kitchen.join('|') === '2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi|1 × Brunch — ven. 23 brunch' && big.house.join('|') === '1 × Goûter — jeu. 22 soir', big);
+  check('sans fiche : tout au prestataire ; commande absente ou invalide : rien', none.kitchen.length === 4 && none.house.length === 0 && M.orderLines(null, FACTS, 4).kitchen.length === 0 && M.orderLines({ items: 'x' }, FACTS, 4).kitchen.length === 0);
+  check('rien ne fuit par la commande : aucun prix dans les lignes', !/850|450|300/.test(JSON.stringify(small)) && !/850|450|300/.test(JSON.stringify(big)));
+  const rows2 = [
+    { id: 'k1', name: 'Thibaut Vauclare', arrival: '2026-10-19', departure: '2026-10-23', adults: 10, booking_status: 'confirmed', meals: 'Dîner du 21 : tajine.', details: { guest_orders: ORD, beds: '4 couples', drinks: 'coca', staff_note: 'Clés sous le pot.', arrival_time: '« nous atterrissons à 14h »' } },
+    { id: 'k2', name: 'Seán', arrival: '2026-10-23', departure: '2026-11-01', adults: 2, booking_status: 'confirmed', details: { arrival_time: 'vers 15h30', guest_orders: { total: 300, items: [{ id: 'x0', kind: 'extra', n: ['Massage'], q: 1, unit: 300 }] } } },
+    { id: 'k3', name: 'Loin', arrival: '2026-12-10', departure: '2026-12-12', adults: 2, booking_status: 'confirmed' },
+  ];
+  const kv = M.staffView(rows2, '2026-10-20', FACTS);
+  const t1 = kv.find((s) => s.id === 'k1'), t2 = kv.find((s) => s.id === 'k2');
+  check('séjour : orders / house_orders une ligne par repas, prochaine arrivée après le départ (le jour même) avec son heure', t1.orders === '2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi\nBrunch'.replace('\nBrunch', '\n1 × Brunch — ven. 23 brunch') && t1.house_orders === '1 × Goûter — jeu. 22 soir' && !!t1.next && t1.next.d === '2026-10-23' && t1.next.same_day === true && t1.next_time === 'vers 15h30' && t1.lines.orders.length === 2 && t1.lines.house_orders.length === 1 && t1.lines.next_time[0] === 'vers 15h30', t1);
+  check('prochaine arrivée au-delà des 30 jours (lue, pas affichée) ; sans suivant → null', !!t2.next && t2.next.d === '2026-12-10' && t2.next.same_day === false && t2.next_time === '' && !kv.some((s) => s.id === 'k3') && M.staffView(rows2.slice(0, 1), '2026-10-20', FACTS)[0].next === null);
+  const kit = M.forRole(kv, 'kitchen'), hs = M.forRole(kv, 'house');
+  check('prestataire : ni couchages, ni boissons, ni extras (vidés avant toute traduction) ; ses repas, ceux de la maison, la consigne', kit[0].beds === '' && kit[0].drinks === '' && kit[0].extras === '' && kit[0].lines.beds.length === 0 && kit[0].lines.drinks.length === 0 && kit[0].lines.extras.length === 0 && kit[0].orders === t1.orders && kit[0].house_orders === t1.house_orders && kit[0].note === 'Clés sous le pot.');
+  check('maison : tout comme avant, plus les repas « maison » commandés ; pas la commande du prestataire', hs[0].beds === '4 couples' && hs[0].drinks === 'coca' && hs[0].orders === '' && hs[0].lines.orders.length === 0 && hs[0].house_orders === t1.house_orders && hs[1].extras === '1 × Massage');
+  check('le rôle ne modifie pas l’original', kv[0].beds === '4 couples' && kv[0].orders === t1.orders);
+  check('retour « repas confirmés » : séjour visible obligatoire ; genre accepté', JSON.stringify(M.cleanReport({ kind: 'meals_ok', client_id: 'k1' }, ['k1'])) === JSON.stringify({ kind: 'meals_ok', client_id: 'k1', text: null }) && M.cleanReport({ kind: 'meals_ok' }, ['k1']) === null && M.cleanReport({ kind: 'meals_ok', client_id: 'zz' }, ['k1']) === null);
+  check('fonction : rôle du lien lu et renvoyé, fiche du compte lue pour le partage, fenêtre élargie pour la prochaine arrivée ; la relecture après traduction garde le rôle', /select=id,owner_id,name,lang,role,last_seen_at/.test(fnSrc) && (fnSrc.match(/forRole\(staffView\(rows, todayIso, facts\), role\)/g) || []).length === 2 && /villa_settings\?select=house_facts,house_facts_ref/.test(fnSrc) && /WINDOW_DAYS \+ 31/.test(fnSrc) && /lang: link\.lang, role,/.test(fnSrc));
+  check('traduction : commande et heure de la prochaine arrivée traduites comme le reste (LINE_FIELDS)', M.LINE_FIELDS.includes('orders') && M.LINE_FIELDS.includes('house_orders') && M.LINE_FIELDS.includes('next_time'));
+}
 
 // ── Retours de l'équipe (staff_reports) ────────────────────────────────────
 const VIS = ['s1', 's2'];
@@ -201,13 +233,13 @@ check('sw.js ne met pas equipe.html en cache', sw.includes("url.includes('equipe
   const fr = async (sy, user) => { sys = sy; calls++; const req = JSON.parse(user).lines, o = {}; for (const k of Object.keys(req)) o[k] = 'FR ' + req[k].replace('9pm', '21h'); return JSON.stringify({ lines: o }); };
   let r = await M.withTr('fr', st, 'o1', async () => [], async (w) => { writes.push(...w); }, fr);
   check('français : la page reçoit tout de suite ce qui est en cache (rien encore), `pending` = champs anglais à traduire, la traduction part à côté (job)',
-    r.pending === 4 && !!r.job && !r.stays[0].fr && calls <= 1, r.pending);
+    r.pending === 5 && !!r.job && !r.stays[0].fr && calls <= 1, r.pending); // 5 : les 4 champs de Seán + l'heure de la prochaine arrivée (Seán, en anglais) sur la carte de Thibaut (20/10)
   const done = await r.job;
   check('français : SEULS les champs du client en anglais partent (repas, couchages, boissons, arrivée) — pas la consigne ni les repas en français de Thibaut ; jamais le nom',
-    /Tu traduis en français/.test(sys) && done.length === 4 && done.every((w) => w.lang === 'fr' && w.client_id === 's1') && done.map((w) => w.field).sort().join() === 'arrival_time,beds,drinks,meals' && !writes.some((w) => w.client_id === 't1'), done.map((w) => w.field));
+    /Tu traduis en français/.test(sys) && done.length === 5 && done.every((w) => w.lang === 'fr') && done.filter((w) => w.client_id === 's1').map((w) => w.field).sort().join() === 'arrival_time,beds,drinks,meals' && writes.filter((w) => w.client_id === 't1').map((w) => w.field).join() === 'next_time', done.map((w) => w.client_id + ':' + w.field));
   r = await M.withTr('fr', st, 'o1', async () => writes, async () => {}, async () => { throw new Error('ne doit pas être appelé'); });
   check('rechargement : les traductions françaises viennent du cache, pending 0, la consigne (déjà en français) sans `fr`',
-    r.pending === 0 && !r.job && r.stays[0].fr && r.stays[0].fr.beds[0].startsWith('FR There are') && r.stays[0].fr.arrival_time[0].includes('21h') && !r.stays[0].fr.note && !r.stays[1].fr, JSON.stringify(r.stays[0].fr));
+    r.pending === 0 && !r.job && r.stays[0].fr && r.stays[0].fr.beds[0].startsWith('FR There are') && r.stays[0].fr.arrival_time[0].includes('21h') && !r.stays[0].fr.note && Object.keys(r.stays[1].fr || {}).join() === 'next_time', JSON.stringify(r.stays[0].fr));
   // une traduction qui change un nombre : cette ligne reste en anglais, les autres lignes du champ sont traduites
   const bad = async (_sy, user) => { const req = JSON.parse(user).lines, o = {}; for (const k of Object.keys(req)) o[k] = /Monday 26th/.test(req[k]) ? 'Dîner lundi 27' : 'FR ' + req[k]; return JSON.stringify({ lines: o }); };
   const w3 = []; r = await M.withTr('fr', M.staffView(rows.slice(0, 1).map((x) => ({ ...x, id: 's2' })), '2026-10-20'), 'o1', async () => [], async (w) => { w3.push(...w); }, bad); await r.job;

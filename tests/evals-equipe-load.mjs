@@ -91,6 +91,33 @@ r = await open({ data: { ...DATA, reports: [{ id: 'r0', kind: 'rooms_ready', cli
 check('retour déjà envoyé depuis un autre appareil → coché au chargement', /Chambres prêtes · \d{2}:\d{2}/.test(await r.page.evaluate(() => document.getElementById('app').innerText)) && !(await r.page.$('[data-a="ready"]')));
 await r.ctx.close();
 
+// ── Lien prestataire (20/10) : role kitchen → couverts, repas commandés (les siens), « préparé par la maison », interlocation, « Repas confirmés » ; jamais couchages, boissons, extras ──
+const KSTAY = { id: 's-next', name: 'Thibaut V.', a: iso(4), d: iso(8), nights: 4, adults: 10, children: null, infants: null, pax: 10, arrival_time: 'atterrissage 14h', departure_time: '', beds: '', meals: 'Pas d’allergie.', drinks: '', note: 'Clés sous le pot.', extras: '',
+  orders: '2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi\n1 × Brunch — ven. 23 brunch', house_orders: '1 × Goûter — jeu. 22 soir', next: { d: iso(8), same_day: true }, next_time: 'vers 15h30', same_day: false,
+  lines: { arrival_time: ['atterrissage 14h'], departure_time: [], beds: [], meals: ['Pas d’allergie.'], drinks: [], note: ['Clés sous le pot.'], extras: [], orders: ['2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi', '1 × Brunch — ven. 23 brunch'], house_orders: ['1 × Goûter — jeu. 22 soir'], next_time: ['vers 15h30'] } };
+const KDATA = { ...DATA, name: 'Léa', role: 'kitchen', stays: [KSTAY] };
+r = await open({ data: KDATA });
+let kt = await r.page.evaluate(() => document.getElementById('app').innerText);
+const khead = await r.page.evaluate(() => document.getElementById('hello').innerText);
+check('prestataire : 0 erreur ; en-tête « Léa · prestataire repas » ; couverts (pas adultes) ; ses repas jour par jour ; « Préparé par la maison, pas par vous » ; prochaine arrivée « le jour même · vers 15h30 » ; consigne',
+  !r.errs.length && /Léa · prestataire repas/.test(khead) && /10\s*Couverts/.test(kt) && !/Adultes/.test(kt) && /Repas commandés par le client\s*2 × Déjeuner ou dîner — mer\. 21 soir, jeu\. 22 midi\s*1 × Brunch — ven\. 23 brunch/.test(kt) && /Préparé par la maison, pas par vous\s*1 × Goûter — jeu\. 22 soir/.test(kt) && /Prochaine arrivée après ce départ\s*.*· le jour même · vers 15h30/.test(kt) && /Consigne\s*Clés sous le pot\./.test(kt), [r.errs, kt]);
+check('prestataire : ni couchages, ni boissons, ni extras, ni « Chambres prêtes »', !/Couchages|Boissons|Commandé par le client|Chambres prêtes/.test(kt));
+check('« Repas confirmés » sur le séjour à venir', (await r.page.$$('[data-a="ready"]')).length === 1 && (await r.page.getAttribute('[data-a="ready"]', 'data-kind')) === 'meals_ok');
+await r.page.click('[data-a="ready"]'); await r.page.waitForTimeout(300);
+kt = await r.page.evaluate(() => document.getElementById('app').innerText);
+check('un geste → { action: report, kind: meals_ok, client_id } ; puis « Repas confirmés · HH:MM », le bouton ne revient pas', r.posts.length === 1 && r.posts[0].kind === 'meals_ok' && r.posts[0].client_id === 's-next' && /Repas confirmés · \d{2}:\d{2}/.test(kt) && !(await r.page.$('[data-a="ready"]')), r.posts);
+check('« Signaler un problème » reste', !!(await r.page.$('#issueTxt')));
+await r.ctx.close();
+r = await open({ data: KDATA, lang: 'ar' });
+const kar = await r.page.evaluate(() => document.getElementById('app').innerText);
+check('prestataire en arabe : libellés en darija (couverts, repas commandés, maison, vossul jay, repas confirmés)', /عدد الناس ف الماكلة/.test(kar) && /الماكلة اللي طلب الكليان/.test(kar) && /كتوجدها الدار، ماشي نتوما/.test(kar) && /الوصول الجاي من بعد هاد الخروج/.test(kar) && /الماكلة مأكدة/.test(kar) && !/النعاس|المشروبات/.test(kar), kar);
+await r.ctx.close();
+// Lien maison : les repas « maison » commandés et la prochaine arrivée en plus, le reste inchangé
+r = await open({ data: { ...DATA, role: 'house', stays: [{ ...KSTAY, beds: '4 couples', orders: '', lines: { ...KSTAY.lines, beds: ['4 couples'], orders: [] } }] } });
+const ht = await r.page.evaluate(() => document.getElementById('app').innerText);
+check('maison : « À préparer par la maison · 1 × Goûter », prochaine arrivée, couchages et adultes comme avant, pas la commande du prestataire, « Chambres prêtes »', /À préparer par la maison\s*1 × Goûter — jeu\. 22 soir/.test(ht) && /Prochaine arrivée après ce départ/.test(ht) && /10\s*Adultes/.test(ht) && /Couchages\s*4 couples/.test(ht) && !/Repas commandés par le client/.test(ht) && (await r.page.getAttribute('[data-a="ready"]', 'data-kind')) === 'rooms_ready', ht);
+await r.ctx.close();
+
 // ── Lisible et en arabe (18/10) : `lines` → une puce par phrase / article ; `ar` → les mêmes lignes en arabe, le français replié dessous ──
 const LINED = { ...DATA, stays: [{ id: 's-next', name: 'Thibaut V.', a: iso(4), d: iso(8), nights: 4, adults: 10, children: null, infants: null, pax: 10, arrival_time: 'atterrissage 14h', departure_time: '6h30 (vol 9h)', beds: '',
   meals: 'Mercredi 21, dîner vers 19h30 : tajine de kefta. Jeudi 22, déjeuner : kebabs. Pas d’allergie.', drinks: '12 eaux plates, 2 vins rouges (vins marocains, choisis par nous)', note: 'Départ à 6h30 : petit-déjeuner préparé la veille. Pas de transfert.', extras: '', same_day: false,

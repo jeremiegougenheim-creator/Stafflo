@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], share = false, clock = false, vis = false } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], reports = [], share = false, clock = false, vis = false } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -56,6 +56,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/livret_links')) return json(links);
     if (u.includes('/rest/v1/staff_links')) { if (m === 'POST') { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'eqcreate', body: b }); return json([{ id: 'nl1', ...b, created_at: new Date().toISOString() }], 201); } return json(teamLinks); }
     if (u.includes('/rest/v1/staff_link_opens')) { reads.push({ kind: 'opens', url: decodeURIComponent(u) }); return json(opens); }
+    if (u.includes('/rest/v1/staff_reports')) { if (m === 'PATCH') { calls.push({ kind: 'seen', url: u }); return json([{}]); } return json(reports); }
     if (u.includes('/rest/v1/guest_registrations')) return json(regs);
     if (u.includes('/rest/v1/inbound_addresses')) return json(inbound);
     if (u.includes('/rest/v1/rpc/inbound_address')) { calls.push({ kind: 'inaddr' }); return json('in-abcdefghij12@stafflo.app'); }
@@ -931,6 +932,34 @@ await r.ctx.close();
   await r.page.click('[data-a="eqshare"]'); await r.page.waitForTimeout(200);
   const sh2 = await r.page.evaluate(() => window.__shared);
   check('lien équipe : « Partager » envoie le message avec le lien, tel qu’affiché', sh2.length === 1 && sh2[0].text.indexOf(eq.url) > -1 && /Omar/.test(sh2[0].text), sh2);
+  await r.ctx.close();
+}
+
+// ── 5 duodecies. Lien prestataire (20/10) : le rôle suit la fiche (membre « kitchen ») ; « Repas confirmés » visible ──
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' }, MEALS: [{ n: ['Déjeuner ou dîner', 'Lunch or dinner'], a: ['650 MAD', ''], b: ['850 MAD', ''] }],
+    TEAM: [{ name: 'Omar', role: ['gardien', ''], phone: '+212600000000', brief: true }, { name: 'Lea', role: ['prestataire repas', ''], brief: true, kitchen: true }] } };
+  const S = [{ id: 'p1', name: 'Ana Ruiz', arrival: iso(3), departure: iso(6), adults: 2, booking_status: 'confirmed', source: 'Airbnb', phone: '+33600000000', details: {} }];
+  r = await open({ tab: 'maison', villa: V, teamLinks: [{ id: 'l1', name: 'Omar', lang: 'fr', role: 'house', created_at: iso(-3) }, { id: 'l2', name: 'Lea', lang: 'fr', role: 'kitchen', created_at: iso(-2) }] });
+  await r.page.waitForTimeout(250);
+  let tm = await txt(r.page);
+  check('Accès équipe : l’aide du lien prestataire (la fiche a un prestataire) ; le lien de Lea porte « prestataire », pas celui d’Omar', /Lien prestataire : couverts, repas/.test(tm) && /Lea · FR · prestataire/.test(tm) && !/Omar · FR · prestataire/.test(tm), tm.slice(0, 600));
+  await r.page.selectOption('#eq-who', 'Lea'); await r.page.click('[data-a="eqcreate"]'); await r.page.waitForSelector('#eq-msg', { timeout: 8000 });
+  const mk = r.calls.find((x) => x.kind === 'eqcreate');
+  check('créer le lien de Lea → role: kitchen envoyé avec l’empreinte ; le panneau dit « Lea · FR · prestataire »', !!mk && mk.body.role === 'kitchen' && mk.body.name === 'Lea' && /Lea · FR · prestataire/.test(await r.page.$eval('#eq-msg', (x) => x.closest('.panel').querySelector('.ttl').textContent)), mk && mk.body);
+  await r.ctx.close();
+  r = await open({ tab: 'maison', villa: V });
+  await r.page.waitForTimeout(250);
+  await r.page.selectOption('#eq-who', 'Omar'); await r.page.click('[data-a="eqcreate"]'); await r.page.waitForSelector('#eq-msg', { timeout: 8000 });
+  const mk2 = r.calls.find((x) => x.kind === 'eqcreate');
+  check('créer le lien d’Omar → role: house', !!mk2 && mk2.body.role === 'house');
+  await r.ctx.close();
+  // Le retour « repas confirmés » de Lea : carte De l'équipe, ligne sur le séjour (Jour)
+  const REP = [{ id: 'rp1', link_id: 'l2', client_id: 'p1', kind: 'meals_ok', text: null, created_at: new Date().toISOString(), seen_at: null }];
+  r = await open({ tab: 'jour', villa: V, stays: S.slice(), teamLinks: [{ id: 'l2', name: 'Lea', lang: 'fr', role: 'kitchen', created_at: iso(-2) }], reports: REP });
+  await r.page.waitForTimeout(250);
+  tm = await txt(r.page);
+  check('Jour : « De l’équipe · Lea · repas confirmés pour Ana » et, sur le séjour, « Repas confirmés · Lea · date »', /Lea · repas confirmés pour Ana/.test(tm) && /Repas confirmés · Lea · /.test(tm), tm.slice(0, 900));
   await r.ctx.close();
 }
 
