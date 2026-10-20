@@ -1944,9 +1944,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
      une section par sujet, une ligne vide entre les sections, une puce par élément. Les textes libres (repas,
      consigne) sont découpés en puces : à chaque retour à la ligne et à chaque phrase ; les boissons à chaque virgule.
      Rien n'est reformulé. */
+  // 20/10 (parcours réel) : « ven. 23 midi, sam. 24 soir » n'est pas trois phrases — le point d'une abréviation (jour, mois, env., min.) ne coupe pas.
+  var ABBR_RX = /(?:^|[\s(—–-])(?:lun|mar|mer|jeu|ven|sam|dim|janv|f[ée]vr|avr|juil|sept|oct|nov|d[ée]c|env|approx|min|max|tel|t[ée]l|etc)\.$/i;
   function sentences(line) { // sans « lookbehind » (Safari iOS < 16.4) : coupe après « . ! ? » suivis d'une majuscule ou d'un chiffre
     var out = [], last = 0, rx = /[.!?]\s+(?=[A-ZÀ-ÝÉÈÊ0-9«])/g, m;
-    while ((m = rx.exec(line))) { out.push(line.slice(last, m.index + 1)); last = m.index + m[0].length; }
+    while ((m = rx.exec(line))) { if (line[m.index] === '.' && ABBR_RX.test(line.slice(last, m.index + 1))) continue; out.push(line.slice(last, m.index + 1)); last = m.index + m[0].length; }
     out.push(line.slice(last));
     return out.map(function (x) { return x.trim(); }).filter(Boolean);
   }
@@ -1988,10 +1990,14 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         }
         listItems(line).forEach(function (x) { parts.push(x); });
       }
-      else sentences(line).forEach(function (x) { x.split(COURSE_RX).forEach(function (y) { if (y.trim()) parts.push(y.trim()); }); });
+      else line.split(/\s+·\s+/).forEach(function (seg) { sentences(seg).forEach(function (x) { x.split(COURSE_RX).forEach(function (y) { if (y.trim()) parts.push(y.trim()); }); }); }); // « · » sépare des éléments (résumé de commande du livret), jamais une phrase
     });
     return parts.map(function (x) { return x.slice(0, 400); });
   }
+  /* 20/10 (parcours réel) : le résumé que le livret écrit dans « repas » (« 2 × Déjeuner ou dîner — ven. 23 midi ») reprend les lignes de la
+     commande ; dans un brief qui a déjà sa section 🧺 / 🏠, ces lignes-là ne sont pas répétées sous 🍽 Repas. */
+  function orderKey(x) { return String(x || '').toLowerCase().replace(/\s*\((?:sur demande|on request)\)/g, '').replace(/\s+/g, ' ').trim(); }
+  function orderDedup(lines, drop) { if (!drop || !drop.length) return lines; var set = {}; drop.forEach(function (x) { set[orderKey(x)] = 1; }); return lines.filter(function (x) { return !set[orderKey(x)]; }); }
   function section(title, items, keep) { // keep : le titre seul quand il n'y a rien dessous (la date d'arrivée, de départ)
     var it = (items || []).filter(Boolean);
     if (!it.length) return keep ? title : '';
@@ -2059,9 +2065,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var t = tmRender(teamTimeP(frOf(n, 'arrival_time'), 'a'), lang, FREE);
     return head + b.next + brDay(n.a, lang) + (t ? ' — ' + t : '') + (n.a === c.d ? b.sameDay : '');
   }
-  function mealsSection(c, lang, FREE) {
+  function mealsSection(c, lang, FREE, drop) {
     var b = BR[lang], m = frOf(c, 'meals');
-    return m ? section('🍽 ' + B(b.meals), bulletsOf(m, 'sentences').map(FREE)) : '🍽 ' + B(b.meals) + b.colon + b.noMeals;
+    if (!m) return '🍽 ' + B(b.meals) + b.colon + b.noMeals;
+    var keep = orderDedup(bulletsOf(m, 'sentences'), drop);
+    return keep.length ? section('🍽 ' + B(b.meals), keep.map(FREE)) : ''; // tout était dans la commande : elle a sa section
   }
   function noteSection(c, lang, FREE) {
     // La consigne écrite pour l'équipe. Jamais les notes du propriétaire (17/10/2026 : elles partaient quand il n'y avait
@@ -2264,7 +2272,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       arrivalSection(c, '', lang, FREE),
       departureSection(c, lang, FREE),
       turnSection(c, lang, FREE),
-      mealsSection(c, lang, FREE),
+      mealsSection(c, lang, FREE, orderSplit(c, 'fr').kitchen.concat(orderSplit(c, 'fr').house)),
       section('🧺 ' + B(b.order), os.kitchen.map(tr)),
       section('🏠 ' + B(b.notYou), os.house.map(tr)),
       noteSection(c, lang, FREE),
@@ -2286,7 +2294,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       turnSection(c, lang, FREE),
       baby,
       '🛏 ' + B(b.beds) + b.colon + (beds ? FREE(flat(beds)) : b.tbc),
-      mealsSection(c, lang, FREE),
+      mealsSection(c, lang, FREE, kitchenOn() ? orderSplit(c, 'fr').house : []),
       section('🏠 ' + B(b.houseTodo), oh),
       section('🥤 ' + B(b.drinks), bulletsOf(frOf(c, 'drinks'), 'list').map(FREE)),
       noteSection(c, lang, FREE),

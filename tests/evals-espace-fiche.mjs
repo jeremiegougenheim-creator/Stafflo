@@ -1157,7 +1157,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kt = await r.page.inputValue('#tx-k1');
   check('brief prestataire : couverts, services, commande du livret, consigne — jamais un prix ni le téléphone du client',
-    /^\*Brief prestataire — Felipe Villalobos\*\npour Léa\n\n/.test(kt) && /\*Couverts\* : 7 personnes \(6 adultes, 1 enfant\)/.test(kt) && /\*Repas\*\n• .*1 végétarien/.test(kt) &&
+    /^\*Brief prestataire — Felipe Villalobos\*\npour Léa\n\n/.test(kt) && /\*Couverts\* : 7 personnes \(6 adultes, 1 enfant\)/.test(kt) && /\*Repas\*\n• Mardi dîner, mercredi déjeuner et dîner\n• 1 végétarien, rien de pimenté/.test(kt) && // 20/10 : « · » sépare deux éléments
     JSON.stringify(sect(kt, 'Commande du livret').items) === '["3 × Dîner cuisinière","2 × Déjeuner léger"]' && /\*Consigne\*\n• Tajine de kefta/.test(kt) && /\*Arrivée\* : .*\n• 15h30/.test(kt) &&
     !/2 600|MAD|€|7700 900123/.test(kt), kt);
   check('envoi : « Envoyer à Léa » sur SON numéro, jamais celui de la maison ni celui du client', !!(await r.page.$('#st-k1 [data-a="sendchef"]')) && /Envoyer à Léa/.test(await r.page.innerText('#st-k1')) &&
@@ -1383,6 +1383,29 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   const bd = await r.page.inputValue('#tx-k1');
   check('commande datée : le brief maison aussi (« À préparer par la maison : 1 × Goûter … — ven. 23 »)', /^• 1 × .* — ven\. 23$/m.test((sect(bd, 'À préparer par la maison') || { items: [''] }).items.map((x) => '• ' + x).join('\n')) && !r.errs.length, bd);
   check('commande datée : la carte du séjour montre les jours au propriétaire', /2 × Brunch, déjeuner ou dîner \(sur demande\) — mer\. 21 soir, jeu\. 22 midi/.test(sdTxt), sdTxt.slice(0, 800));
+  await r.ctx.close();
+  // 20/10 (parcours réel, compte neuf) : le livret écrit dans « repas » le texte du client + le résumé de sa commande (« … · 2 × … — ven. 23 midi, sam. 24 soir »).
+  // Avant : « ven. 23 » coupait les phrases (puces « 23 midi, sam. », « 24 soir ») et la commande se répétait sous Repas et sous 🧺.
+  const SE = [{ ...SD[0], meals: 'Dîner samedi : tajine de poulet. Pas d’allergie. · 2 × ' + KG.MEALS[1].n[0] + ' — mer. 21 soir, jeu. 22 midi · 1 × ' + KG.MEALS[2].n[0] + ' — ven. 23' }];
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KG }, stays: SE });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]');
+  await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+  const ke = await r.page.inputValue('#tx-k1');
+  check('résumé du livret dans « repas » : les abréviations ne coupent plus (« ven. 23 »), et sous 🍽 Repas du brief prestataire il ne reste que les mots du client — la commande est dans 🧺 et 🏠',
+    JSON.stringify(sect(ke, 'Repas').items) === '["Dîner samedi : tajine de poulet.","Pas d’allergie."]' && sect(ke, 'Commande du livret').items.length === 1 && sect(ke, 'Préparé par la maison, pas par vous').items.length === 1, ke);
+  await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+  const be = await r.page.inputValue('#tx-k1');
+  check('brief maison : garde la ligne du prestataire sous Repas (le service du dîner), pas le goûter déjà sous 🏠',
+    JSON.stringify(sect(be, 'Repas').items) === JSON.stringify(['Dîner samedi : tajine de poulet.', 'Pas d’allergie.', '2 × ' + KG.MEALS[1].n[0] + ' — mer. 21 soir, jeu. 22 midi']) && sect(be, 'À préparer par la maison').items.length === 1, be);
+  await r.ctx.close();
+  // seulement le résumé de commande dans « repas » : la section Repas disparaît (tout est dans 🧺), pas de « pas encore reçus » mensonger
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KG }, stays: [{ ...SD[0], meals: '2 × ' + KG.MEALS[1].n[0] + ' — mer. 21 soir, jeu. 22 midi · 1 × ' + KG.MEALS[2].n[0] + ' — ven. 23' }] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="k1"]');
+  await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+  const kf = await r.page.inputValue('#tx-k1');
+  check('repas = seulement la commande : pas de section Repas ni « pas encore reçus » dans le brief prestataire, la commande reste', !/\*Repas\*/.test(kf) && !/pas encore reçus/.test(kf) && sect(kf, 'Commande du livret').items.length === 1, kf);
   await r.ctx.close();
   // Éditeur : la case « Préparé par la maison » sur chaque repas (fiche avec prestataire), gardée à l'enregistrement
   r = await open({ villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KH } });

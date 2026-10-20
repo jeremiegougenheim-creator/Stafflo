@@ -67,9 +67,11 @@ export type StaffStay = {
 };
 export type LinkRole = "house" | "kitchen";
 // ── Lisibilité : une phrase par ligne (repas, consigne), un article par ligne (boissons, extras) — mêmes règles que l'Espace ──
+// 20/10 (parcours réel) : « ven. 23 midi, sam. 24 soir » n'est pas trois phrases — le point d'une abréviation (jour, mois, env., min.) ne coupe pas.
+const ABBR_RX = /(?:^|[\s(—–-])(?:lun|mar|mer|jeu|ven|sam|dim|janv|f[ée]vr|avr|juil|sept|oct|nov|d[ée]c|env|approx|min|max|tel|t[ée]l|etc)\.$/i;
 export function sentences(line: string): string[] { // coupe après « . ! ? » suivis d'une majuscule ou d'un chiffre
   const out: string[] = []; let last = 0; const rx = /[.!?]\s+(?=[A-ZÀ-ÝÉÈÊ0-9«])/g; let m: RegExpExecArray | null;
-  while ((m = rx.exec(line))) { out.push(line.slice(last, m.index + 1)); last = m.index + m[0].length; }
+  while ((m = rx.exec(line))) { if (line[m.index] === "." && ABBR_RX.test(line.slice(last, m.index + 1))) continue; out.push(line.slice(last, m.index + 1)); last = m.index + m[0].length; }
   out.push(line.slice(last));
   return out.map((x) => x.trim()).filter(Boolean);
 }
@@ -109,9 +111,16 @@ export function bulletsOf(text: string, mode: "list" | "sentences"): string[] {
         if (rest) line = rest; else if (li < lns.length - 1) return;
       }
       listItems(line).forEach((x) => parts.push(x));
-    } else sentences(line).forEach((x) => x.split(COURSE_RX).forEach((y) => { if (y.trim()) parts.push(y.trim()); }));
+    } else line.split(/\s+·\s+/).forEach((seg) => sentences(seg).forEach((x) => x.split(COURSE_RX).forEach((y) => { if (y.trim()) parts.push(y.trim()); }))); // « · » sépare des éléments (résumé de commande du livret), jamais une phrase
   });
   return parts.map((x) => x.slice(0, 400));
+}
+/** 20/10 : le résumé que le livret écrit dans « repas » reprend les lignes de la commande ; une ligne déjà montrée à part (orders / house_orders) n'est pas répétée sous Repas. */
+const orderKey = (x: string) => String(x || "").toLowerCase().replace(/\s*\((?:sur demande|on request)\)/g, "").replace(/\s+/g, " ").trim();
+export function orderDedup(lines: string[], drop: string[]): string[] {
+  if (!drop.length) return lines;
+  const set = new Set(drop.map(orderKey));
+  return lines.filter((x) => !set.has(orderKey(x)));
 }
 export const LINE_FIELDS: (keyof Lines)[] = ["arrival_time", "departure_time", "beds", "meals", "drinks", "note", "extras", "orders", "house_orders", "next_time"];
 const nl = (t: string) => String(t || "").split("\n").map((x) => x.trim()).filter(Boolean);
@@ -127,6 +136,8 @@ export function forRole(stays: StaffStay[], role: LinkRole): StaffStay[] {
   return stays.map((s) => {
     const o: StaffStay = { ...s, lines: { ...s.lines } };
     for (const f of drop) { (o as Row)[f] = ""; o.lines[f] = []; }
+    // les lignes de commande montrées à part ne se répètent pas sous Repas (prestataire : les siennes et celles de la maison ; maison : les siennes)
+    o.lines.meals = orderDedup(o.lines.meals, role === "kitchen" ? s.lines.orders.concat(s.lines.house_orders) : s.lines.house_orders);
     return o;
   });
 }
