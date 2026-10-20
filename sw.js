@@ -1,5 +1,5 @@
-// Stafflo Service Worker — v551 (19/10 : import WhatsApp — client deviné, demandes polies, rafale de messages, couchages)
-const CACHE = 'stafflo-v551';
+// Stafflo Service Worker — v552 (20/10 : briefs dans une seule langue — français, anglais ou darija ; textes du client traduits en français)
+const CACHE = 'stafflo-v552';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

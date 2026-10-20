@@ -1106,6 +1106,9 @@ await r.ctx.close();
 
 // Briefs WhatsApp (18/10) : « *Titre* » en gras WhatsApp, une section par sujet séparée d'une ligne vide, une puce par élément.
 const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\*([^\\n]*)\\n?((?:• [^\\n]*\\n?)*)').exec(txt); return m ? { head: m[1].trim(), items: m[2].split('\n').filter(Boolean).map((x) => x.replace(/^• /, '')) } : null; };
+// 19/10 : seul le texte libre d'un brief part à la traduction, élément par élément — {"lines": {"0": "…"}} ; la réponse, même forme
+const linesOf = (b) => { try { return JSON.parse(b.user).lines || null; } catch (e) { return null; } };
+const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object.fromEntries(Object.entries(linesOf(b) || {}).map(([k, v]) => [k, f(v)])) }) + '\n```' });
 // ── 5 duodecies. Deux briefs : la maison (majordome, ménage) et la cuisine (prestataire repas) ──────
 {
   // Le contact de la maison est le majordome ; la cuisine passe par le prestataire repas (drapeau kitchen)
@@ -1151,28 +1154,130 @@ const sect = (txt, title) => { const m = new RegExp('(?:^|\\n)[^\\n]*\\*' + titl
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   check('Léa n’a pas de lien → le brief prestataire n’en parle pas', !/lien Stafflo/.test(await r.page.inputValue('#tx-k1')));
   await r.ctx.close();
-  // 18/10 — brief en arabe : un geste « العربية » (ai-proxy write_staff), le texte arabe remplace le français dans la zone (c'est lui qu'on envoie), « Français » y revient
-  const AR_TXT = '*ملخص البيت — Felipe Villalobos*\nإلى سعيد، بشرى\n\n👥 *المجموعة* : 7 أشخاص';
+  // 18/10 — brief en arabe : un geste « العربية », le texte arabe remplace le français dans la zone (c'est lui qu'on envoie), « Français » y revient.
+  // 19/10 : en darija marocaine ; titres, destinataires, groupe, dates, heures et téléphone écrits par l'Espace (prénoms intacts) —
+  // seul le texte libre (repas, consigne, commande) part à l'IA (write_staff), élément par élément, chaque nombre gardé.
+  let arFail = false;
+  const DJ = (x) => 'د ' + x; // traduction factice : reconnaissable, garde chaque nombre
   r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, stays: ST,
-    ai: (b) => (b.task === 'write_staff' && /Brief maison — Felipe/.test(b.user) ? { text: AR_TXT } : { text: '' }) });
+    ai: (b) => (b.task === 'write_staff' && /darija/.test(b.system) && !arFail ? mapLines(b, DJ) : { text: '' }) });
   await r.page.waitForTimeout(250);
   await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const frTxt = await r.page.inputValue('#tx-k1');
   check('brief maison : bouton « العربية » ; rien n’est traduit sans geste', !!(await r.page.$('#st-k1 [data-a="briefar"][data-v="brief"]')) && !r.calls.some((x) => x.kind === 'ai'));
   await r.page.click('#st-k1 [data-a="briefar"]'); await r.page.waitForTimeout(400);
-  const aiq = r.calls.filter((x) => x.kind === 'ai').pop();
-  check('un geste → ai-proxy write_staff avec le brief français tel quel (mise en page gardée dans la consigne) ; zone en arabe (RTL), titre « · arabe », bouton « Français »',
-    !!aiq && aiq.body.task === 'write_staff' && aiq.body.user === frTxt && /astérisques|puces/.test(aiq.body.system) && (await r.page.inputValue('#tx-k1')) === AR_TXT && (await r.page.getAttribute('#tx-k1', 'dir')) === 'rtl' &&
-    /BRIEF MAISON · ARABE/i.test(await r.page.innerText('#st-k1 .panel .ttl')) && !!(await r.page.$('#st-k1 [data-a="briefpfr"]')), { aiq: aiq && aiq.body.task, v: (await r.page.inputValue('#tx-k1')).slice(0, 60) });
+  const aiq = r.calls.filter((x) => x.kind === 'ai').pop(), sentK = Object.values((aiq && linesOf(aiq.body)) || {}), AR_TXT = await r.page.inputValue('#tx-k1');
+  check('un geste → ai-proxy write_staff (darija) avec SEULEMENT le texte libre — repas, consigne ; jamais un titre, un prénom, une date ni le téléphone',
+    !!aiq && aiq.body.task === 'write_staff' && /darija/.test(aiq.body.system) && sentK.some((x) => /1 végétarien/.test(x)) && sentK.some((x) => /Tajine de kefta/.test(x)) &&
+    !sentK.some((x) => /Felipe|Saïd|Bouchra|\*|7700|Brief|Arrivée|octobre|novembre|15h30/.test(x)), sentK);
+  check('zone en darija (RTL) : titre, destinataires, groupe, heure, client écrits par l’Espace, prénoms intacts ; titre « · arabe », bouton « Français »',
+    AR_TXT.startsWith('*معلومات الدار — Felipe Villalobos*\nلـ Saïd، Bouchra\n\n👥 *المجموعة* : 7 ديال الناس (6 كبار، 1 صغير)') && /📍 \*الوصول\* : [^\n]+\n• 15:30/.test(AR_TXT) &&
+    /🛏 \*النعاس\* : مازال ما تأكدش/.test(AR_TXT) && /📞 \*الكليان\* : \+44 7700 900123/.test(AR_TXT) && /\n• د Tajine de kefta/.test(AR_TXT) && !/Arrivée|Groupe|Couchages|Client|pour |à confirmer/.test(AR_TXT) &&
+    (await r.page.getAttribute('#tx-k1', 'dir')) === 'rtl' && /BRIEF MAISON · ARABE/i.test(await r.page.innerText('#st-k1 .panel .ttl')) && !!(await r.page.$('#st-k1 [data-a="briefpfr"]')), AR_TXT.slice(0, 400));
   await r.page.click('#st-k1 [data-a="briefpfr"]'); await r.page.waitForTimeout(150);
   check('« Français » : le brief français revient, sans nouvel appel ; « العربية » à nouveau sans appel (gardé en mémoire)', (await r.page.inputValue('#tx-k1')) === frTxt && r.calls.filter((x) => x.kind === 'ai').length === 1 && !(await r.page.getAttribute('#tx-k1', 'dir')));
   await r.page.click('#st-k1 [data-a="briefar"]'); await r.page.waitForTimeout(200);
   check('retour à l’arabe : depuis la mémoire, aucun nouvel appel', (await r.page.inputValue('#tx-k1')) === AR_TXT && r.calls.filter((x) => x.kind === 'ai').length === 1);
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   check('brief prestataire : son propre bouton ; l’IA ne répond pas → le français reste, un mot d’erreur', !!(await r.page.$('#st-k1 [data-a="briefar"][data-v="chef"]')) && /Brief prestataire — Felipe/.test(await r.page.inputValue('#tx-k1')));
+  arFail = true;
   await r.page.click('#st-k1 [data-a="briefar"][data-v="chef"]'); await r.page.waitForTimeout(400);
   check('traduction impossible → brief prestataire inchangé, en français, bouton toujours là', /^\*Brief prestataire — Felipe/.test(await r.page.inputValue('#tx-k1')) && /Traduction impossible/.test(await r.page.innerText('#toastHost')) && !!(await r.page.$('#st-k1 [data-a="briefar"][data-v="chef"]')));
   await r.ctx.close();
+  // 19/10/2026 — [REGRESSION — une sortie, une seule langue] Cas réel : le brief de Saïd pour « Seán » mêlait le français de l'Espace
+  // et l'anglais de Lise. En français, tout est en français : ce que le client a écrit dans une autre langue est traduit (une fois,
+  // gardé dans details.fr tant que l'original ne change pas) ; « English » → tout en anglais ; « العربية » → tout en darija.
+  // Zéro invention : une traduction dont les nombres ne sont pas ceux de l'original est écartée. Et : pas de prix dans le brief
+  // de l'équipe (lit bébé), boissons sans la phrase d'introduction, menu en puces, « la plupart du groupe » gardé.
+  {
+    const EN = {
+      meals: 'I have had a look at the pack you have sent us, and please could we do the afternoon tea by the pool on Monday 26th with a birthday cake (something either vanilla or lemon flavoured)? Would it be possible do this closer to lunch time around 2pm? Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? For the 3 dinners could we have: Starters - mechouia salad, zaalouk, pumpkin salad with cinnamon Mains - fish with chermoula, lamb tajine, chicken couscous Desserts - assorted Moroccan pastries, pastilla au lait, gazelle horns',
+      drinks: 'For drinks, would it be possible to have: Coke Zero, Iced tea, Waters, Decaf tea and coffee',
+      beds: 'There are 4 couples and then 2 siblings, who would be sharing the room with the single beds.',
+      arrival_time: '« Most of the group will arrive quite late on the first day (likely after 9pm) »',
+    };
+    const FRV = {
+      meals: "J'ai regardé le livret que vous nous avez envoyé : pourrions-nous avoir le goûter au bord de la piscine le lundi 26 avec un gâteau d'anniversaire (vanille ou citron) ? Serait-il possible de le faire plutôt vers l'heure du déjeuner, vers 14h ? Pourrions-nous dîner le lundi 26, le vendredi 30 et le samedi 31 ? Pour les 3 dîners, pourrions-nous avoir : Entrées - salade méchouia, zaalouk, salade de potiron à la cannelle Plats - poisson à la chermoula, tajine d'agneau, couscous au poulet Desserts - assortiment de pâtisseries marocaines, pastilla au lait, cornes de gazelle",
+      drinks: "Pour les boissons, serait-il possible d'avoir : Coca Zéro, thé glacé, eaux, thé et café décaféinés",
+      beds: 'Il y a 4 couples puis 2 frères et sœurs, qui partageront la chambre aux lits simples.',
+      arrival_time: '« La plupart du groupe arrivera assez tard le premier jour (probablement après 21h) »',
+    };
+    let badArrival = false, enBad = false, dropLine = false;
+    const ai = (b) => {
+      if (b.task === 'write_staff' && /Tu traduis en français/.test(b.system)) {
+        const req = JSON.parse(b.user).lines, out = {};
+        for (const k of Object.keys(req)) { const f = k.split('|')[0]; let v = f === 'arrival_time' && badArrival ? FRV.arrival_time.replace('21h', '22h') : FRV[f]; if (!/«/.test(req[k])) v = v.replace(/^«\s*|\s*»$/g, '');
+          // comme ministral-14b le 19/10 (essai réel sur les textes de Lise) : du gras markdown, un retour à la ligne après « : »
+          if (f === 'meals') v = v.replace('le lundi 26, le vendredi 30', 'le **lundi 26**, le **vendredi 30**'); if (f === 'drinks') v = v.replace(" d'avoir : ", " d'avoir :\n");
+          out[k] = v; }
+        return { text: '```json\n' + JSON.stringify({ lines: out }) + '\n```' }; // réponse entourée de ``` : lue quand même
+      }
+      if (b.task === 'write_staff' && /into English/.test(b.system)) return mapLines(b, (x) => (enBad ? x.replace(/26/, '27') : 'EN ' + x));
+      if (b.task === 'write_staff' && /darija/i.test(b.system) && dropLine) { const o = linesOf(b); delete o['1']; return { text: JSON.stringify({ lines: o }) }; }
+      if (b.task === 'write_staff' && /darija/i.test(b.system)) return mapLines(b, (x) => '• د ' + x); // puce ajoutée par le modèle : retirée
+      return { text: '' };
+    };
+    const VF = { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF };
+    const S2 = [{ id: 'e2', name: 'Élias', arrival: iso(5), departure: iso(12), adults: 10, children: 0, infants: 1, booking_status: 'confirmed', source: 'Airbnb', phone: '', meals: EN.meals, details: { drinks: EN.drinks, beds: EN.beds, arrival_time: EN.arrival_time } }];
+    r = await open({ tab: 'sejours', villa: VF, stays: S2, ai });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="e2"]');
+    const ai0 = r.calls.filter((x) => x.kind === 'ai').length;
+    await r.page.click('#st-e2 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(700);
+    const tq = r.calls.filter((x) => x.kind === 'ai').slice(ai0);
+    check('brief ouvert : UN appel de traduction en français, avec seulement ce que le client a écrit (4 champs) — jamais son nom, jamais un prix',
+      tq.length === 1 && /Tu traduis en français/.test(tq[0].body.system) && Object.keys(JSON.parse(tq[0].body.user).lines).map((k) => k.split('|')[0]).sort().join() === 'arrival_time,beds,drinks,meals' && !/Élias|MAD/.test(tq[0].body.user), tq.map((x) => x.body.user.slice(0, 160)));
+    const bt = await r.page.inputValue('#tx-e2'), rep = sect(bt, 'Repas') || { items: [] }, boi = sect(bt, 'Boissons') || { items: [] };
+    check('repas en français, une puce par demande, puis Entrées / Plats / Desserts chacun sur sa ligne',
+      rep.items.includes('Pourrions-nous dîner le lundi 26, le vendredi 30 et le samedi 31 ?') && rep.items.includes('Entrées - salade méchouia, zaalouk, salade de potiron à la cannelle') &&
+      rep.items.includes("Plats - poisson à la chermoula, tajine d'agneau, couscous au poulet") && rep.items.includes('Desserts - assortiment de pâtisseries marocaines, pastilla au lait, cornes de gazelle') &&
+      rep.items.some((x) => /gâteau d'anniversaire \(vanille ou citron\)/.test(x)), rep.items);
+    check('boissons : une puce par boisson, sans la phrase d’introduction', JSON.stringify(boi.items) === '["Coca Zéro","thé glacé","eaux","thé et café décaféinés"]', boi.items);
+    check('couchages en français', /\*Couchages\* : Il y a 4 couples puis 2 frères et sœurs, qui partageront la chambre aux lits simples\.$/m.test(bt), bt);
+    check('arrivée : « La plupart du groupe … après 21h » en entier — jamais « 21h » seul (pas tout le groupe)', /La plupart du groupe arrivera assez tard le premier jour \(probablement après 21h\)/.test(bt) && !/^• 21h$/m.test(bt), (sect(bt, 'Arrivée') || {}).items);
+    check('aucun mot anglais dans le brief français', !/\b(the|and|would|could|please|drinks|dinner|Most|There)\b/.test(bt), (bt.match(/\b(the|and|would|could|please|drinks|dinner|Most|There)\b/g) || []));
+    check('la date de départ est dans le brief même sans heure de départ (elle disparaissait depuis le 18/10)', new RegExp('\\n\\n🚪 \\*Départ\\* : [a-zé]+ \\d{1,2} [a-zéû]+\\n\\n').test(bt), (bt.match(/^.*Départ.*$/m) || [])[0]);
+    check('pas de prix dans le brief de l’équipe : « lit bébé et chaise haute à installer », sans « 400 MAD »', /\*Bébés \(1\)\* : lit bébé et chaise haute à installer$/m.test(bt) && !/MAD/.test(bt), (bt.match(/^.*Bébés.*$/m) || [])[0]);
+    const fp = r.calls.filter((x) => x.kind === 'stay').pop();
+    check('traduction gardée sur le séjour (details.fr : original + français) ; les mots du client intacts',
+      !!fp && fp.body.details.fr.meals.src === EN.meals && fp.body.details.fr.meals.fr === FRV.meals && fp.body.details.fr.arrival_time.fr === FRV.arrival_time && fp.body.details.drinks === EN.drinks && fp.body.details.beds === EN.beds && fp.body.meals === undefined, fp && fp.body);
+    check('la fiche du séjour montre toujours les mots du client (preuve) ; le panneau dit que c’est traduit', /There are 4 couples and then 2 siblings/.test(await r.page.innerText('#st-e2')) && /traduit en français/.test(await r.page.innerText('#st-e2 .panel')));
+    await r.page.click('#st-e2 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(300);
+    const kt = await r.page.inputValue('#tx-e2');
+    check('brief prestataire : les mêmes textes en français, sans nouvel appel (traduction gardée)', /Pourrions-nous dîner le lundi 26/.test(kt) && !/\b(Could|dinner|the)\b/.test(kt) && r.calls.filter((x) => x.kind === 'ai').length === ai0 + 1, kt.slice(0, 300));
+    await r.page.click('#st-e2 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(200);
+    await r.page.click('#st-e2 [data-a="briefen"]'); await r.page.waitForTimeout(400);
+    let q = r.calls.filter((x) => x.kind === 'ai').pop(), sentE = Object.values(linesOf(q.body) || {}), et = await r.page.inputValue('#tx-e2');
+    check('« English » : le brief en anglais (un geste) — libellés, dates, groupe par l’Espace ; seul le texte libre (français) part à l’IA ; titre « · anglais »',
+      /into English/.test(q.body.system) && sentE.includes('Pourrions-nous dîner le lundi 26, le vendredi 30 et le samedi 31 ?') && sentE.includes('Coca Zéro') && !sentE.some((x) => /\*|Élias|Saïd|Brief|Arrivée|octobre/.test(x)) &&
+      et.startsWith('*House brief — Élias*\nfor Saïd, Bouchra\n\n👥 *Group*: 10 people (10 adults, 1 infant)') && /👶 \*Babies \(1\)\*: cot and high chair to set up/.test(et) && /📞 \*Guest\*: no number yet/.test(et) &&
+      /\n• EN Pourrions-nous dîner le lundi 26/.test(et) && /· ANGLAIS/i.test(await r.page.innerText('#st-e2 .panel .ttl')), { sentE, et: et.slice(0, 400) });
+    await r.page.click('#st-e2 [data-a="briefar"]'); await r.page.waitForTimeout(400);
+    q = r.calls.filter((x) => x.kind === 'ai').pop();
+    const sentA = Object.values(linesOf(q.body) || {}), at = await r.page.inputValue('#tx-e2');
+    check('« العربية » : darija marocaine (plus l’arabe standard), seul le texte libre en français part à l’IA ; titres en darija, zone RTL',
+      /darija/i.test(q.body.system) && !/arabe standard simple/.test(q.body.system) && sentA.includes('Pourrions-nous dîner le lundi 26, le vendredi 30 et le samedi 31 ?') && (await r.page.getAttribute('#tx-e2', 'dir')) === 'rtl' &&
+      at.startsWith('*معلومات الدار — Élias*\nلـ Saïd، Bouchra\n\n👥 *المجموعة* : 10 ديال الناس (10 كبار، 1 بيبي)') && /👶 \*البيبي \(1\)\* : الناموسية/.test(at) && /\n• د Pourrions-nous dîner/.test(at) && !/• •/.test(at) &&
+      !/Arrivée|Groupe|Couchages|Boissons|Repas|Client/.test(at), at.slice(0, 400));
+    await r.page.click('#st-e2 [data-a="briefpfr"]'); await r.page.waitForTimeout(150);
+    check('« Français » : retour au brief français, à l’identique', (await r.page.inputValue('#tx-e2')) === bt && !r.errs.length, r.errs);
+    await r.ctx.close();
+    // Garde-fou chiffres : une traduction qui change une heure (21h → 22h) est écartée — l'original reste, et c'est dit ;
+    // une traduction anglaise qui change un nombre (26 → 27) aussi : le brief reste en français, un mot d'erreur.
+    badArrival = true; enBad = true;
+    r = await open({ tab: 'sejours', villa: VF, stays: [{ ...S2[0], id: 'e3', meals: EN.meals, details: { drinks: EN.drinks, beds: EN.beds, arrival_time: EN.arrival_time } }], ai });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="e3"]'); await r.page.click('#st-e3 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(700);
+    const bt3 = await r.page.inputValue('#tx-e3');
+    check('traduction qui change une heure (21h → 22h) : écartée — l’arrivée reste celle du client, le reste est en français, et le panneau le dit',
+      /Most of the group will arrive quite late/.test(bt3) && !/22h/.test(bt3) && /Pourrions-nous dîner/.test(bt3) && /Laissé tel quel.*arrivée/i.test(await r.page.innerText('#st-e3 .panel')), bt3.slice(0, 400));
+    await r.page.click('#st-e3 [data-a="briefen"]'); await r.page.waitForTimeout(400);
+    check('traduction anglaise qui change un nombre (lundi 26 → 27) : écartée, le brief reste en français, un mot d’erreur', (await r.page.inputValue('#tx-e3')) === bt3 && /chiffre/.test(await r.page.innerText('#toastHost')) && !r.errs.length, r.errs);
+    dropLine = true; // cas réel (ministral-14b, 19/10, brief entier) : une ligne avait disparu de la traduction
+    await r.page.click('#st-e3 [data-a="briefar"]'); await r.page.waitForTimeout(400);
+    check('traduction qui oublie une ligne : écartée, le brief reste en français, « Traduction impossible »', (await r.page.inputValue('#tx-e3')) === bt3 && /Traduction impossible/.test(await r.page.innerText('#toastHost')) && !(await r.page.getAttribute('#tx-e3', 'dir')));
+    await r.ctx.close();
+  }
   // 17/10/2026 — briefs nettoyés (brief de Thibaut) : l'heure dite par le client sur la ligne Arrivée, sans « (WhatsApp, date) »
   // ni tiret ; départ et boissons ; « 10 adultes » ; pas de nuits, pas de « à demander au client », jamais les notes privées.
   {

@@ -318,6 +318,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       rg: { line: 'Fiches voyageurs', got: function (n, d) { return n + (n > 1 ? ' reçues le ' : ' reçue le ') + d; }, none: 'pas encore reçues', decl: 'déclarées le ', print: 'Imprimer les fiches', csv: 'Télécharger (CSV)', mark: 'Marquer déclarées aux autorités', loading: 'Ouverture des fiches…', err: 'Lecture impossible — réessayez', purge: 'Effacées automatiquement le ',
         fiche: 'Fiche individuelle', last: 'Nom', first: 'Prénom(s)', born: 'Date et lieu de naissance', nat: 'Nationalité', doc: 'Pièce d’identité', job: 'Profession', addr: 'Adresse habituelle', arr: 'Arrivée', dep: 'Départ prévu', place: 'Hébergement', host: 'Exploitant', sign: 'Signature du voyageur', docs: { passport: 'Passeport', id_card: 'Carte d’identité', other: 'Autre pièce' } }, unmarkLivret: 'Livret pas encore envoyé',
       markBrief: 'Marquer le brief envoyé', briefDone: 'Brief envoyé le ', briefAr: 'العربية', briefFr: 'Français', briefArBusy: 'Traduction…', briefArErr: 'Traduction impossible pour l’instant — le brief reste en français.', briefArTtl: ' · arabe',
+      briefEn: 'English', briefEnTtl: ' · anglais', briefNumErr: 'Traduction écartée : un chiffre ne correspondait pas à l’original — le brief reste en français.',
+      frBusy: 'Traduction en français de ce que le client a écrit…', frDone: function (x) { return 'Ce que le client a écrit est traduit en français pour l’équipe (' + x + ') ; ses mots restent sur le séjour.'; },
+      frBad: function (x) { return 'Laissé tel quel (la traduction changeait un chiffre) : ' + x + '.'; }, frErr: function (x) { return 'Pas traduit pour l’instant, laissé tel quel : ' + x + '.'; },
+      frF: { meals: 'repas', drinks: 'boissons', beds: 'couchages', arrival_time: 'arrivée', departure_time: 'départ' },
       payout: function (amt, by) { return 'Versement Airbnb ' + amt + ' envoyé' + (by ? ' · sur le compte vers le ' + by : ''); },
       livretDone: 'Livret envoyé le ', saved: 'Enregistré', saveErr: 'Enregistrement impossible — réessayez', billOk: 'Merci : votre abonnement est actif.',
       phonePh: '+33 6 12 34 56 78', savePhone: 'Enregistrer le numéro', noPhone: 'Pas de numéro : copiez le message et envoyez-le depuis Airbnb.',
@@ -478,6 +482,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       rg: { line: 'Guest forms', got: function (n, d) { return n + ' received on ' + d; }, none: 'not received yet', decl: 'registered on ', print: 'Print the forms', csv: 'Download (CSV)', mark: 'Mark as registered with the authorities', loading: 'Opening the forms…', err: 'Could not read — try again', purge: 'Deleted automatically on ',
         fiche: 'Individual form', last: 'Surname', first: 'First name(s)', born: 'Date and place of birth', nat: 'Nationality', doc: 'ID document', job: 'Occupation', addr: 'Home address', arr: 'Arrival', dep: 'Planned departure', place: 'Accommodation', host: 'Operator', sign: 'Guest signature', docs: { passport: 'Passport', id_card: 'ID card', other: 'Other document' } }, unmarkLivret: 'Guide not sent yet',
       markBrief: 'Mark brief as sent', briefDone: 'Brief sent on ', briefAr: 'العربية', briefFr: 'Français', briefArBusy: 'Translating…', briefArErr: 'Translation unavailable right now — the brief stays in French.', briefArTtl: ' · Arabic',
+      briefEn: 'English', briefEnTtl: ' · English', briefNumErr: 'Translation discarded: a number did not match the original — the brief stays in French.',
+      frBusy: 'Translating what the guest wrote into French…', frDone: function (x) { return 'What the guest wrote is translated into French for the team (' + x + '); their own words stay on the stay.'; },
+      frBad: function (x) { return 'Left as written (the translation changed a number): ' + x + '.'; }, frErr: function (x) { return 'Not translated for now, left as written: ' + x + '.'; },
+      frF: { meals: 'meals', drinks: 'drinks', beds: 'beds', arrival_time: 'arrival', departure_time: 'departure' },
       payout: function (amt, by) { return 'Airbnb payout ' + amt + ' sent' + (by ? ' · due in the bank by ' + by : ''); },
       livretDone: 'Guide sent on ', saved: 'Saved', saveErr: 'Could not save — try again', billOk: 'Thank you: your subscription is active.',
       phonePh: '+44 7700 900123', savePhone: 'Save number', noPhone: 'No number: copy the message and send it from Airbnb.',
@@ -1848,12 +1856,6 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function nextStay(c) {
     return (D.all || []).filter(function (x) { return x.id !== c.id && x.a >= c.d; }).sort(function (x, y) { return x.a - y.a; })[0] || null;
   }
-  function turnLine(c) {
-    var n = nextStay(c);
-    if (!n) return 'Interlocation : aucune arrivée prévue après ce départ';
-    var at = String(n.details && n.details.arrival_time || '').trim();
-    return 'Interlocation : prochaine arrivée ' + fmtLongDay(n.a, 'fr') + whenTeam(at, 'a') + (n.a === c.d ? ' (le jour même)' : '');
-  }
   /* Briefs (17/10/2026) : ce que l'équipe lit, sans ce qui ne sert qu'au propriétaire. Une phrase tirée de WhatsApp garde
      ses guillemets mais perd « (WhatsApp, lun. 5 oct. 18:26) » quand elle dit une heure ; quand l'heure est relative
      (« in about 1hr15 »), elle garde le moment du message, sans lequel elle ne veut rien dire. Pas de « 10 personnes
@@ -1870,46 +1872,67 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   var TM_RX = /(?:\b(vers|around|about|approx\.?|environ)\s+)?(?:\b(\d{1,2})(?::(\d{2}))?\s?(am|pm)\b|\b(\d{1,2})\s?(?:h(?!r)|:)\s?(\d{2})?(?!\d))/i;
   var TM_FLY = /\b(atterri\w*|land(?:ing|s|ed)?|vols?|flights?|avion|plane|d[ée]coll\w*|take ?off|takes off)\b/i;
   var TM_HOME = { a: /\b(arriv\w*|villa|maison|house|chez vous|there|sur place)\b/i, d: /\b(parti\w*|partons|quitt\w*|leav\w*|check[- ]?out|d[ée]part\w*)\b/i };
-  function tmFmt(x) {
+  // 19/10 : « la plupart du groupe arrivera après 21h » ne dit pas l'heure de tout le groupe — la phrase reste entière.
+  var TM_PART = /\b(most|some|part|half|rest|others?|la plupart|certain(?:e)?s|une partie|la moiti[ée]|les autres|le reste|majorit[ée])\b/i;
+  function tmParse(x) {
     var h = +(x[2] || x[5]), mi = x[3] || x[6] || '';
     if (x[4]) { if (/p/i.test(x[4]) && h < 12) h += 12; if (/a/i.test(x[4]) && h === 12) h = 0; }
-    if (h > 23 || (mi && +mi > 59)) return '';
-    return (x[1] ? 'vers ' : '') + h + 'h' + (mi && mi !== '00' ? mi : '');
+    if (h > 23 || (mi && +mi > 59)) return null;
+    return { about: !!x[1], h: h, mi: mi };
   }
-  function teamTime(v, kind) {
-    var s = String(v || '').trim(), m = /^(?:Vol ([A-Z0-9]{2,3}\d{2,4}) · )?«\s*([^«»]+?)\s*»(?:\s*\(WhatsApp, [^)]*\))?$/.exec(s);
-    if (!m || WA_REL.test(m[2])) return teamTxt(s);
+  function tmFmt(t, lang) { // 16h40 en français ; 16:40 en anglais et en darija
+    var b = BR[lang || 'fr'];
+    return (t.about ? b.about : '') + t.h + (lang && lang !== 'fr' ? ':' + (t.mi || '00') : 'h' + (t.mi && t.mi !== '00' ? t.mi : ''));
+  }
+  // 19/10 : l'heure en morceaux ({t:'time', home, fly, code}), rendue ensuite dans la langue du brief (tmRender) ; une phrase
+  // ({t:'text'}) part telle quelle en français, traduite (FREE) en anglais ou en darija.
+  function teamTimeP(v, kind) {
+    var s = String(v || '').trim(); if (!s) return { t: 'none' };
+    var m = /^(?:Vol ([A-Z0-9]{2,3}\d{2,4}) · )?«\s*([^«»]+?)\s*»(?:\s*\(WhatsApp, [^)]*\))?$/.exec(s);
+    if (!m || WA_REL.test(m[2]) || TM_PART.test(m[2])) return { t: 'text', s: teamTxt(s) };
     var fly = [], home = [];
     var ok = waClauses(m[2]).every(function (cl) {
       var all = cl.s.match(new RegExp(TM_RX.source, 'gi')) || [];
       if (!all.length) return true;
-      var t = all.length === 1 ? tmFmt(TM_RX.exec(cl.s)) : '';
+      var t = all.length === 1 ? tmParse(TM_RX.exec(cl.s)) : null;
       if (!t) return false;
       if (TM_FLY.test(cl.s)) fly.push(t); else if (TM_HOME[kind].test(cl.s)) home.push(t); else return false;
       return true;
     });
-    if (!ok || !fly.length && !home.length) return teamTxt(s);
-    var code = m[1] ? 'vol ' + m[1] : '';
-    var f = fly.length ? (kind === 'a' ? (code ? code + ', atterrissage ' : 'atterrissage ') : (code ? code + ' ' : 'vol ')) + fly.join(', ') : code;
-    return home.length ? home.join(', ') + (f ? ' (' + f + ')' : '') : f;
+    if (!ok || !fly.length && !home.length) return { t: 'text', s: teamTxt(s) };
+    return { t: 'time', kind: kind, code: m[1] || '', fly: fly, home: home };
   }
-  function whenTeam(v, kind) { var s = teamTime(v, kind); return s ? ' — ' + s : ''; }
-  function groupTxt(c) {
-    var comp = TXT.fr.composition(c.ad, c.ch, c.inf);
-    if (!c.pax) return 'nombre à confirmer';
-    return c.ch || c.inf ? c.pax + ' personnes' + (comp ? ' (' + comp + ')' : '') : comp || c.pax + ' personnes';
+  var BARE_TM = /^(vers\s+|around\s+|about\s+|environ\s+)?(\d{1,2})\s?(?:h|:)\s?(\d{2})?$/i;
+  function tmRender(p, lang, FREE) {
+    lang = lang || 'fr';
+    if (p.t === 'none') return '';
+    if (p.t === 'text') {
+      var bt = lang !== 'fr' && BARE_TM.exec(p.s); // « 15h30 » saisi à la main : l'heure, pas une phrase à traduire
+      if (bt && +bt[2] < 24) return tmFmt({ about: !!bt[1], h: +bt[2], mi: bt[3] || '' }, lang);
+      return FREE ? FREE(p.s) : p.s;
+    }
+    var b = BR[lang], f1 = function (x) { return tmFmt(x, lang); };
+    var code = p.code ? b.flight + ' ' + p.code : '';
+    var f = p.fly.length ? (p.kind === 'a' ? (code ? code + b.sep + b.landing + ' ' : b.landing + ' ') : (code ? code + ' ' : b.flight + ' ')) + p.fly.map(f1).join(b.sep) : code;
+    return p.home.length ? p.home.map(f1).join(b.sep) + (f ? ' (' + f + ')' : '') : f;
+  }
+  function teamTime(v, kind) { return tmRender(teamTimeP(v, kind), 'fr'); }
+  function groupTxt(c, lang) {
+    var b = BR[lang || 'fr'], comp = b.comp(c.ad, c.ch, c.inf);
+    if (!c.pax) return b.unknown;
+    return c.ch || c.inf ? b.people(c.pax) + (comp ? ' (' + comp + ')' : '') : comp || b.people(c.pax);
   }
   /* Commande du livret, par destinataire (16/10/2026) : un repas marqué « maison » dans la fiche (MEALS[i].house,
      ex. déjeuner léger grillé par le majordome) et les extras vont au brief maison ; les autres repas au prestataire. */
   /* 17/10/2026 : à partir de 7 personnes, un repas « maison » suit la fiche (bigMode) : la maison le garde ('house'),
      ou il part chez le prestataire — 'kitchen', et 'off' pour une ancienne commande d'un repas qui n'est plus proposé. */
   function houseMeal(c, i) { var row = (F.MEALS || [])[i]; return !!(row && row.house) && (mealsRow(c) === 'a' || bigMode(row) === 'house'); }
-  function orderSplit(c) {
+  function orderSplit(c, lang) {
     var o = orderOf(c), out = { kitchen: [], house: [] }; if (!o) return out;
     o.items.forEach(function (x) {
       var m = /^m(\d+)$/.exec(String(x.id || ''));
       var house = x.kind === 'extra' || (m ? houseMeal(c, +m[1]) : false);
-      out[house ? 'house' : 'kitchen'].push(orderLine(x, 'fr'));
+      out[house ? 'house' : 'kitchen'].push(orderLine(x, lang === 'en' ? 'en' : 'fr'));
     });
     return out;
   }
@@ -1934,109 +1957,333 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (cur.trim()) out.push(cur.trim());
     return out;
   }
+  /* 19/10 : un menu écrit d'un bloc (« Entrées - … Plats - … Desserts - … ») → une puce par plat ; une liste de boissons
+     annoncée par une phrase (« Pour les boissons, serait-il possible d'avoir : … ») → les boissons seules, la phrase
+     d'introduction (3 mots ou plus, sans chiffre) n'est pas une boisson. Rien n'est reformulé. */
+  var COURSE_RX = /\s+(?=(?:starters?|mains?|main courses?|desserts?|entr[ée]es?|plats?(?: principaux)?|boissons|drinks)\s*[-–:]\s)/i;
+  function colonAt(line) {
+    var depth = 0;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (ch === '(') depth++; else if (ch === ')') depth = Math.max(0, depth - 1);
+      else if (ch === ':' && !depth && !(/\d/.test(line[i - 1] || '') && /\d/.test(line[i + 1] || ''))) return i;
+    }
+    return -1;
+  }
+  function isIntro(t) { t = String(t || '').trim(); return t.split(/\s+/).length >= 3 && !/\d/.test(t); }
   function bulletsOf(text, mode) {
     var raw = String(text || '').trim(); if (!raw) return [];
-    var parts = [];
-    raw.split(/\n+/).forEach(function (line) {
+    var parts = [], lines = raw.split(/\n+/);
+    lines.forEach(function (line, li) {
       line = line.replace(/^\s*[-•*·]\s*/, '').trim(); if (!line) return;
-      if (mode === 'list') listItems(line).forEach(function (x) { parts.push(x); });
-      else sentences(line).forEach(function (x) { parts.push(x); });
+      if (mode === 'list') {
+        var ci = colonAt(line);
+        if (ci > 0 && isIntro(line.slice(0, ci))) {
+          var rest = line.slice(ci + 1).trim();
+          if (rest) line = rest; else if (li < lines.length - 1) return; // « Pour les boissons : » puis une boisson par ligne
+        }
+        listItems(line).forEach(function (x) { parts.push(x); });
+      }
+      else sentences(line).forEach(function (x) { x.split(COURSE_RX).forEach(function (y) { if (y.trim()) parts.push(y.trim()); }); });
     });
     return parts.map(function (x) { return x.slice(0, 400); });
   }
-  function section(title, items, inline) {
+  function section(title, items, keep) { // keep : le titre seul quand il n'y a rien dessous (la date d'arrivée, de départ)
     var it = (items || []).filter(Boolean);
-    if (!it.length) return '';
-    if (inline) return title + ' : ' + it[0];
+    if (!it.length) return keep ? title : '';
     return title + '\n' + it.map(function (x) { return '• ' + x; }).join('\n');
   }
   var B = function (t) { return '*' + t + '*'; };
+  /* 19/10/2026 — le brief dans la langue de l'équipe. Libellés, dates, heures, composition du groupe et phrases fixes sont
+     écrits ici dans les trois langues (BR) ; seul le texte libre — repas, boissons, couchages, phrase du client, consigne,
+     commande — passe par la traduction (FREE), élément par élément. Les prénoms ne passent jamais par l'IA. La darija est
+     écrite à la main : ministral-14b la massacrait sur les titres et les prénoms (essai réel du 19/10 : « Saïd » → « صاد »). */
+  var AR_DAYS = ['الحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  var AR_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر'];
+  var BR = {
+    fr: { house: 'Brief maison', kitchen: 'Brief prestataire', to: 'pour ', team: 'l’équipe', cook: 'la cuisine', sep: ', ', colon: ' : ',
+      group: 'Groupe', covers: 'Couverts', arr: 'Arrivée', dep: 'Départ', turn: 'Interlocation', baby: 'Bébés', babyTxt: 'lit bébé et chaise haute à installer',
+      beds: 'Couchages', tbc: 'à confirmer', meals: 'Repas', noMeals: 'pas encore reçus', houseTodo: 'À préparer par la maison', order: 'Commande du livret',
+      notYou: 'Préparé par la maison, pas par vous', drinks: 'Boissons', note: 'Consigne', client: 'Client', noPhone: 'pas encore de numéro',
+      link: 'Détail à jour', linkTxt: 'sur votre lien Stafflo (arrivées, repas, chambres prêtes)', ready: 'chambres prêtes ', from: 'à partir de ',
+      next: 'prochaine arrivée ', noNext: 'aucune arrivée prévue après ce départ', sameDay: ' (le jour même)', flight: 'vol', landing: 'atterrissage', about: 'vers ',
+      people: function (n) { return n + ' personnes'; }, unknown: 'nombre à confirmer', comp: function (a, k, i) { return TXT.fr.composition(a, k, i); } },
+    en: { house: 'House brief', kitchen: 'Caterer brief', to: 'for ', team: 'the team', cook: 'the kitchen', sep: ', ', colon: ': ',
+      group: 'Group', covers: 'Covers', arr: 'Arrival', dep: 'Departure', turn: 'Turnover', baby: 'Babies', babyTxt: 'cot and high chair to set up',
+      beds: 'Beds', tbc: 'to be confirmed', meals: 'Meals', noMeals: 'not received yet', houseTodo: 'To be prepared by the house', order: 'Guest order',
+      notYou: 'Prepared by the house, not by you', drinks: 'Drinks', note: 'Instructions', client: 'Guest', noPhone: 'no number yet',
+      link: 'Up to date', linkTxt: 'on your Stafflo link (arrivals, meals, rooms ready)', ready: 'rooms ready ', from: 'from ',
+      next: 'next arrival ', noNext: 'no arrival planned after this departure', sameDay: ' (same day)', flight: 'flight', landing: 'landing', about: 'around ',
+      people: function (n) { return n + ' people'; }, unknown: 'number to be confirmed', comp: function (a, k, i) { return TXT.en.composition(a, k, i); } },
+    ar: { house: 'معلومات الدار', kitchen: 'معلومات الكوزينة', to: 'لـ ', team: 'الفريق', cook: 'الكوزينة', sep: '، ', colon: ' : ',
+      group: 'المجموعة', covers: 'عدد الناس', arr: 'الوصول', dep: 'الخروج', turn: 'الضيوف الجايين', baby: 'البيبي', babyTxt: 'الناموسية ديال البيبي والكرسي ديالو خاصهم يتوجدو',
+      beds: 'النعاس', tbc: 'مازال ما تأكدش', meals: 'الماكلة', noMeals: 'مازال ما وصلاتش', houseTodo: 'خاص الدار توجد', order: 'الطلبية ديال الكليان',
+      notYou: 'الدار هي اللي غادي توجدو، ماشي نتوما', drinks: 'المشروبات', note: 'التعليمات', client: 'الكليان', noPhone: 'مازال ما عندناش النمرة',
+      link: 'المعلومات محيّنة', linkTxt: 'فالليان ديالك ديال Stafflo (الوصول، الماكلة، البيوت واجدين)', ready: 'البيوت واجدين ', from: 'من ',
+      next: 'كيوصلو ', noNext: 'ما كاين حتى وصول من بعد هاد الخروج', sameDay: ' (نفس النهار)', flight: 'الطيارة', landing: 'وصول الطيارة', about: 'تقريبا ',
+      people: function (n) { return n + ' ديال الناس'; }, unknown: 'العدد مازال ما تأكدش',
+      comp: function (a, k, i) { var p = []; if (a) p.push(a + (a > 1 ? ' كبار' : ' كبير')); if (k) p.push(k + (k > 1 ? ' صغار' : ' صغير')); if (i) p.push(i + ' بيبي'); return p.join('، '); } }
+  };
+  function brDay(n, lang) {
+    if (lang !== 'ar') return fmtLongDay(n, lang === 'en' ? 'en' : 'fr');
+    var d = new Date(n * 86400000);
+    return AR_DAYS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + AR_MONTHS[d.getUTCMonth()];
+  }
+  var SAME = function (x) { return x; };
   function roomsReady() {
     var arrFact = flat(P(F.PRACTICAL.filter(function (p) { return /^Arrivée et départ/.test(p[0]); })[0] || ['', ''], 0));
     return (arrFact.match(/prêtes (à partir de [^.,;]+)/) || [])[1] || '';
   }
-  function arrivalSection(c, ready) {
-    var tm = teamTime(c.details.arrival_time, 'a');
-    return section('📍 ' + B('Arrivée') + ' : ' + fmtLongDay(c.a, 'fr'), [tm, ready ? 'chambres prêtes ' + ready : '']);
+  function readyTxt(lang, FREE) { // « à partir de 15h » (fiche) → « from 15:00 », « من 15:00 » ; sinon traduit
+    var r = roomsReady(); if (!r || lang === 'fr') return r;
+    var t = /^à partir de (\d{1,2})\s?h\s?(\d{2})?$/.exec(r.trim());
+    return t && +t[1] < 24 ? BR[lang].from + tmFmt({ h: +t[1], mi: t[2] || '' }, lang) : FREE(r);
   }
-  function departureSection(c) {
-    var tm = teamTime(c.details.departure_time, 'd');
-    return section('🚪 ' + B('Départ') + ' : ' + fmtLongDay(c.d, 'fr'), [tm]);
+  function arrivalSection(c, ready, lang, FREE) {
+    var b = BR[lang], tm = tmRender(teamTimeP(frOf(c, 'arrival_time'), 'a'), lang, FREE);
+    return section('📍 ' + B(b.arr) + b.colon + brDay(c.a, lang), [tm, ready ? b.ready + ready : ''], true);
   }
-  function turnSection(c) { return '🔄 ' + B('Interlocation') + turnLine(c).replace(/^Interlocation/, ''); }
-  function mealsSection(c) {
-    var m = String(c.meals || '').trim();
-    return m ? section('🍽 ' + B('Repas'), bulletsOf(m, 'sentences')) : '🍽 ' + B('Repas') + ' : pas encore reçus';
+  function departureSection(c, lang, FREE) {
+    var b = BR[lang], tm = tmRender(teamTimeP(frOf(c, 'departure_time'), 'd'), lang, FREE);
+    // 19/10 : la date de départ reste même sans heure (depuis la mise en page du 18/10, elle disparaissait avec l'heure)
+    return section('🚪 ' + B(b.dep) + b.colon + brDay(c.d, lang), [tm], true);
   }
-  function noteSection(c) {
+  /* Interlocation : le prochain séjour ferme qui commence après ce départ (nextStay), avec son heure, ou « aucune arrivée prévue ». */
+  function turnSection(c, lang, FREE) {
+    var b = BR[lang], n = nextStay(c), head = '🔄 ' + B(b.turn) + b.colon;
+    if (!n) return head + b.noNext;
+    var t = tmRender(teamTimeP(frOf(n, 'arrival_time'), 'a'), lang, FREE);
+    return head + b.next + brDay(n.a, lang) + (t ? ' — ' + t : '') + (n.a === c.d ? b.sameDay : '');
+  }
+  function mealsSection(c, lang, FREE) {
+    var b = BR[lang], m = frOf(c, 'meals');
+    return m ? section('🍽 ' + B(b.meals), bulletsOf(m, 'sentences').map(FREE)) : '🍽 ' + B(b.meals) + b.colon + b.noMeals;
+  }
+  function noteSection(c, lang, FREE) {
     // La consigne écrite pour l'équipe. Jamais les notes du propriétaire (17/10/2026 : elles partaient quand il n'y avait
     // pas de consigne — prix compris — alors que la fiche du séjour les dit privées).
     var sn = String(c.details.staff_note || '').trim();
-    return sn ? section('📝 ' + B('Consigne'), bulletsOf(sn.slice(0, 1200), 'sentences')) : '';
+    return sn ? section('📝 ' + B(BR[lang].note), bulletsOf(sn.slice(0, 1200), 'sentences').map(FREE)) : '';
   }
-  /* Brief en arabe (18/10) : un geste, « العربية », traduit le brief affiché (ai-proxy, write_staff, Mistral UE) ; le texte
-     arabe remplace le français dans la zone — c'est lui que Copier / Envoyer à Saïd envoient — et « Français » y revient.
-     Gardé en mémoire par séjour et par brief tant que le français n'a pas changé ; jamais envoyé sans un geste. */
+  /* Une sortie, une seule langue (19/10/2026). Cas réel : le brief de Saïd pour « Seán » mêlait le français de l'Espace et
+     l'anglais de Lise. Le brief est en français ; ce que le client a écrit dans une autre langue (repas, boissons, couchages,
+     heures d'arrivée et de départ) est traduit en français à l'ouverture du brief — un appel, ai-proxy write_staff (Mistral
+     UE), jamais son nom ni un prix —, gardé sur le séjour (details.fr[k] = {src, fr, at}) tant que l'original ne change pas.
+     Le séjour garde les mots du client (preuve) ; seule l'équipe lit la traduction. Zéro invention : une traduction dont les
+     nombres (jours, heures, quantités) ne sont pas exactement ceux de l'original est écartée — l'original reste, et c'est dit.
+     Puis, à un geste, le brief entier en anglais (« English ») ou en darija marocaine (« العربية »), même garde-fou. */
+  var FR_KEYS = ['meals', 'drinks', 'beds', 'arrival_time', 'departure_time'];
+  var FRT = {};
+  var wordSet = function (x) { var o = Object.create(null); x.split(' ').forEach(function (w) { o[w] = 1; }); return o; };
+  var LANG_FR = wordSet('le la les un une des du de et à au aux en est sont nous vous pour avec sur dans pas que qui ce cette il elle par mais ou où se sa son ses leur leurs très bien merci bonjour avoir être fait faire notre nos votre vos je mon ma mes chez vers après avant puis aussi');
+  var LANG_X = wordSet('the and of to we you would could please with for is are will be have has our us it this that there can my i they what which if do does not some any from by an as was were been into about after before around should also but or so than then their them these those just very much many most like want need thanks thank hi hello el los las del al es por para con una pero como muy gracias hola somos estamos vamos queremos gli che per sono siamo grazie ciao der die das und ist wir sie mit für bitte danke nicht');
+  function notFrench(t) {
+    var s = String(t || ''), ar = (s.match(/[؀-ۿ]/g) || []).length, lat = (s.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+    if (ar > 8 && ar > lat) return true; // écrit en lettres arabes
+    var w = s.toLowerCase().match(/[a-zà-ÿœ]+/g) || [];
+    if (w.length < 3) return false; // « 15h30 », « 2 lits » : rien à traduire
+    var fr = 0, x = 0;
+    w.forEach(function (y) { if (LANG_FR[y] || /[àâçèêëîïôûùœ]/.test(y)) fr++; else if (LANG_X[y]) x++; });
+    return x >= 2 && x > fr;
+  }
+  // Les nombres d'un texte : chiffres (arabes orientaux compris), « 9pm » → 21, mots-nombres usuels ; 0 et 1 ne comptent pas
+  // (« un enfant » / « 1 enfant », « 16h » / « 16:00 »). Un numéro de téléphone compte pour un seul nombre.
+  var NUM_W = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, deux: 2, trois: 3, quatre: 4, cinq: 5, huit: 8, dix: 10, onze: 11, douze: 12 };
+  function numsOf(t) {
+    var s = String(t || '').replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x660); }).replace(/[۰-۹]/g, function (d) { return String(d.charCodeAt(0) - 0x6F0); });
+    s = s.replace(/\+\d[\d\s().-]{5,}\d/g, function (p) { return ' ' + p.replace(/\D/g, '') + ' '; });
+    s = s.replace(/\b(\d{1,2})(?::(\d{2}))?\s?([ap])\.?m\b\.?/gi, function (a, h, mi, ap) { h = +h; if (/p/i.test(ap) && h < 12) h += 12; if (/a/i.test(ap) && h === 12) h = 0; return ' ' + h + ' ' + (mi || '') + ' '; });
+    var out = {};
+    (s.match(/\d+/g) || []).forEach(function (n) { n = String(+n); if (n !== '0' && n !== '1') out[n] = 1; });
+    (s.toLowerCase().match(/[a-zà-ÿ]+/g) || []).forEach(function (w) { if (NUM_W[w]) out[String(NUM_W[w])] = 1; });
+    return Object.keys(out).sort().join(',');
+  }
+  function sameNums(a, b) { return numsOf(a) === numsOf(b); }
+  function srcOf(c, k) { return String((k === 'meals' ? c.meals : c.details[k]) || '').trim(); }
+  function frEntry(c, k) {
+    var src = srcOf(c, k); if (!src) return null;
+    var e = c.details.fr && typeof c.details.fr === 'object' ? c.details.fr[k] : null;
+    if (e && e.fr && e.src === src) return e;
+    var m = FRT[c.id] && FRT[c.id].mem[k];
+    return m && m.src === src ? m : null;
+  }
+  function frOf(c, k) { var e = frEntry(c, k); return e ? e.fr : srcOf(c, k); }
+  function frTodo(c) {
+    var st = FRT[c.id];
+    return FR_KEYS.filter(function (k) { var s = srcOf(c, k); return s && notFrench(s) && !frEntry(c, k) && !(st && st.bad[k] && st.bad[k].src === s); });
+  }
+  function parseJsonLoose(t) {
+    t = String(t || '').replace(/^\s*```\w*\s*/, '').replace(/\s*```\s*$/, '');
+    var i = t.indexOf('{'), j = t.lastIndexOf('}');
+    if (i < 0 || j <= i) return null;
+    try { return JSON.parse(t.slice(i, j + 1)); } catch (e) { return null; }
+  }
+  var SYS_FR_FIELDS = 'Tu traduis en français des textes écrits par un client (dans sa langue) pour le brief de l’équipe d’une maison d’hôtes à Marrakech. ' +
+    'Tu reçois un objet JSON {"lines": {"clé": "texte"}}. Traduis chaque texte en français simple et fidèle : ne rien ajouter, ne rien résumer, ne rien retirer, ne rien commenter. ' +
+    'Garde tous les nombres (jours, dates, quantités, heures — 9pm devient 21h), les prénoms, les marques, les noms de plats (tajine, zaalouk, pastilla, msemen, chermoula) et les tirets qui séparent les plats. ' +
+    'Texte brut : pas de gras (**), pas de markdown. Un texte déjà en français est renvoyé tel quel. Réponds UNIQUEMENT par un objet JSON {"lines": {...}} avec exactement les mêmes clés.';
+  function ensureFr(c) {
+    var st = FRT[c.id] || (FRT[c.id] = { busy: false, bad: {}, mem: {} });
+    if (st.busy) return;
+    var todo = frTodo(c); if (!todo.length) return;
+    var lines = {}, plan = {};
+    todo.forEach(function (k) {
+      var src = srcOf(c, k), body = src, wrap = null;
+      var q = (k === 'arrival_time' || k === 'departure_time') && /^([^«»]*«\s*)([^«»]+?)(\s*»[^«»]*)$/.exec(src); // la phrase citée seule, pas « Vol … » ni « (WhatsApp, …) »
+      if (q) { wrap = [q[1], q[3]]; body = q[2]; }
+      plan[k] = { src: src, wrap: wrap, ls: body.split('\n') };
+      plan[k].ls.forEach(function (x, i) { if (x.trim()) lines[k + '|' + i] = x.trim().slice(0, 3000); });
+    });
+    st.busy = true; st.fail = false; render();
+    aiPost({ task: 'write_staff', system: SYS_FR_FIELDS, user: JSON.stringify({ lines: lines }), max_tokens: 3000 })
+      .then(function (r) { return r.json().then(function (x) { return r.ok && x && x.text ? String(x.text) : ''; }); })
+      .then(function (t) {
+        var got = parseJsonLoose(t); got = got && got.lines && typeof got.lines === 'object' ? got.lines : got;
+        if (!got || typeof got !== 'object') throw new Error('bad_json');
+        var out = {}, now = new Date().toISOString();
+        Object.keys(plan).forEach(function (k) {
+          var p = plan[k], ok = true;
+          var fr = p.ls.map(function (x, i) {
+            if (!x.trim()) return x;
+            var v = got[k + '|' + i]; if (typeof v !== 'string' || !v.trim()) { ok = false; return x; }
+            return v.replace(/\*\*|__/g, '').trim(); // ministral-14b met du gras markdown (**lundi 26**) : WhatsApp le montrerait tel quel
+          }).join('\n');
+          if (p.wrap) fr = p.wrap[0] + fr.replace(/^[«"“]\s*|\s*[»"”]$/g, '') + p.wrap[1];
+          if (!ok || !sameNums(p.src, fr) || fr.length > p.src.length * 3 + 200) { st.bad[k] = { src: p.src, why: ok ? 'num' : 'fail' }; return; }
+          out[k] = st.mem[k] = { src: p.src, fr: fr, at: now };
+        });
+        if (Object.keys(out).length) return saveFr(c, out);
+      })
+      .catch(function () { st.fail = true; todo.forEach(function (k) { if (!st.mem[k]) st.bad[k] = { src: srcOf(c, k), why: 'fail' }; }); })
+      .then(function () { st.busy = false; render(); });
+  }
+  function saveFr(c, out) { // sans toast : le propriétaire n'a rien saisi. Hors ligne ou essai terminé : gardé sur cet appareil (FRT).
+    var det = Object.assign({}, c.details);
+    det.fr = Object.assign({}, c.details.fr && typeof c.details.fr === 'object' ? c.details.fr : {}, out);
+    return api('crm_clients?id=eq.' + encodeURIComponent(c.id), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' }, body: JSON.stringify({ details: det })
+    }).then(function (rows) { var row = rows && rows[0]; c.details = row && row.details && typeof row.details === 'object' ? row.details : det; decorate(c); }).catch(function () {});
+  }
+  function frNote(c) { // une ligne sous le brief : ce qui est traduit, ce qui est laissé tel quel
+    var l = L(), st = FRT[c.id] || { bad: {}, mem: {} };
+    if (st.busy) return l.frBusy;
+    var done = FR_KEYS.filter(function (k) { return notFrench(srcOf(c, k)) && frEntry(c, k); });
+    var bad = FR_KEYS.filter(function (k) { return st.bad[k] && st.bad[k].why === 'num' && st.bad[k].src === srcOf(c, k); });
+    var fail = FR_KEYS.filter(function (k) { return st.bad[k] && st.bad[k].why === 'fail' && st.bad[k].src === srcOf(c, k); });
+    var nm = function (ks) { return ks.map(function (k) { return l.frF[k]; }).join(', '); };
+    return [done.length ? l.frDone(nm(done)) : '', bad.length ? l.frBad(nm(bad)) : '', fail.length ? l.frErr(nm(fail)) : ''].filter(Boolean).join(' ');
+  }
+  /* Le brief entier dans une autre langue (18/10, revu le 19/10) : un geste, « English » ou « العربية » (darija marocaine,
+     l'arabe parlé par l'équipe — plus l'arabe standard), à partir du brief français. Le texte traduit remplace le français
+     dans la zone — c'est lui que Copier / Envoyer à Saïd envoient — et « Français » y revient. Gardé en mémoire par séjour,
+     brief et langue tant que le français n'a pas changé ; jamais envoyé sans un geste ; un nombre changé → écarté. */
   var TR = {};
-  var SYS_AR_BRIEF = 'Tu traduis en arabe (arabe standard simple, compris par le personnel d’une maison d’hôtes à Marrakech) un brief WhatsApp écrit en français par le propriétaire pour son équipe. ' +
-    'Garde EXACTEMENT la mise en page : les mêmes lignes, les lignes vides, les puces « • », les emojis, les astérisques *…* autour des titres. Ne rien ajouter, ne rien résumer, ne rien commenter. ' +
-    'Chiffres, quantités, heures (écris-les 14:00, 6:30), prénoms, marques, noms de plats (tajine, msemen, pastilla, kefta) et numéros de téléphone restent tels quels ou translittérés. Réponds par le texte traduit seul.';
-  function trKey(c, pn) { return c.id + '|' + pn; }
-  function briefAr(c, pn) {
-    var k = trKey(c, pn), tx = document.getElementById('tx-' + c.id), src = tx ? tx.value : (pn === 'chef' ? msgKitchen(c) : msgBrief(c));
+  // Seul le texte libre part à l'IA, élément par élément (JSON) : aucune ligne fusionnée ni oubliée. Exemples de darija :
+  // sans eux, ministral-14b écrit un futur égyptien (« هتصلو ») ; avec un lexique long, il en recopiait les mots partout.
+  var SYS_AR_BRIEF = 'Tu traduis en darija marocaine — écrite en lettres arabes, comme dans un message WhatsApp entre Marocains ; pas l’arabe standard, pas l’égyptien : le futur se dit « غادي » — ' +
+    'des textes du brief qu’un propriétaire de maison d’hôtes à Marrakech envoie à son équipe (repas, boissons, couchages, heures, consignes). ' +
+    'Exemples : « Nous arriverons vers 16h » → « غادي نوصلو تقريبا مع 16:00 » ; « 2 couples et 1 personne seule » → « 2 كوبلات و 1 بوحدو » ; « thé et café » → « أتاي و قهوة » ; « café décaféiné » → « قهوة بلا كافيين » ; « dîner le lundi 26 » → « العشا نهار الاثنين 26 » ; « un goûter au bord de la piscine » → « أتاي ديال العشية حدا البيسين » ; « salade de potiron » → « شلاضة ديال القرعة ». ' +
+    'Tu reçois un objet JSON {"lines": {"0": "…"}} : traduis chaque texte ; ne rien ajouter, ne rien résumer, ne rien commenter, pas de mise en forme. ' +
+    'Tous les nombres restent en chiffres (0-9), exactement ceux de l’original ; les heures s’écrivent 14:00, 6:30. Prénoms, marques (Coca, Coke Zero), noms de plats (tajine, msemen, pastilla, kefta, zaalouk, chermoula) restent tels quels ou translittérés. ' +
+    'Réponds UNIQUEMENT par un objet JSON {"lines": {...}} avec exactement les mêmes clés.';
+  var SYS_EN_BRIEF = 'You translate into English short texts from the brief a guesthouse owner in Marrakech sends to his team (meals, drinks, beds, times, instructions). ' +
+    'You receive a JSON object {"lines": {"0": "…"}}: translate each text; add nothing, summarise nothing, comment on nothing, no formatting. ' +
+    'Keep every number as a digit, exactly those of the original; times in 24-hour clock (14:00, 6:30). First names, brands, dish names (tajine, msemen, pastilla, kefta, zaalouk, chermoula) stay as they are. ' +
+    'Reply ONLY with a JSON object {"lines": {...}} with exactly the same keys.';
+  var TRF = {}; // c.id|lang → { texte français : traduction } (mémoire de la page)
+  function briefIn(c, pn, lang) { // le brief dans une langue, et les textes libres qui y manquent encore
+    var cache = TRF[c.id + '|' + lang] || {}, need = [];
+    var FREE = lang === 'fr' ? SAME : function (x) {
+      x = String(x || '').trim();
+      if (!x || !/[A-Za-zÀ-ÿ]/.test(x)) return x;
+      if (Object.prototype.hasOwnProperty.call(cache, x)) return cache[x];
+      if (need.indexOf(x) < 0) need.push(x);
+      return x;
+    };
+    return { text: pn === 'chef' ? msgKitchen(c, lang, FREE) : msgBrief(c, lang, FREE), need: need };
+  }
+  function cleanTr(v, src) {
+    v = String(v).replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*\*/g, '').replace(/\s*\n\s*/g, ' ').trim();
+    if (!/^[•\-*·]/.test(src)) v = v.replace(/^[•\-*·]\s*/, '');
+    return v;
+  }
+  function trKey(c, pn, lang) { return c.id + '|' + pn + '|' + lang; }
+  function briefTr(c, pn, lang) {
+    var fr = pn === 'chef' ? msgKitchen(c) : msgBrief(c), k = trKey(c, pn, lang), other = TR[trKey(c, pn, lang === 'ar' ? 'en' : 'ar')];
     if (TR[k] && TR[k].busy) return;
-    if (TR[k] && TR[k].text && TR[k].src === src) { TR[k].on = true; render(); return; }
-    TR[k] = { busy: true, src: src, text: '', on: false }; render();
-    aiPost({ task: 'write_staff', system: SYS_AR_BRIEF, user: src, max_tokens: 2000 })
-      .then(function (r) { return r.json().then(function (x) { return r.ok && x && x.text ? String(x.text).trim() : ''; }); })
-      .then(function (t) { if (!t) throw new Error('empty'); TR[k] = { busy: false, src: src, text: t, on: true }; })
+    if (other) other.on = false;
+    if (TR[k] && TR[k].text && TR[k].src === fr) { TR[k].on = true; render(); return; }
+    var r = briefIn(c, pn, lang);
+    if (!r.need.length) { TR[k] = { busy: false, src: fr, text: r.text, on: true }; render(); return; }
+    var lines = {}; r.need.forEach(function (x, i) { lines[String(i)] = x; });
+    TR[k] = { busy: true, src: fr, text: '', on: false }; render();
+    aiPost({ task: 'write_staff', system: lang === 'ar' ? SYS_AR_BRIEF : SYS_EN_BRIEF, user: JSON.stringify({ lines: lines }), max_tokens: 3500 })
+      .then(function (res) { return res.json().then(function (x) { return res.ok && x && x.text ? String(x.text) : ''; }); })
+      .then(function (t) {
+        var got = parseJsonLoose(t); got = got && got.lines && typeof got.lines === 'object' ? got.lines : got;
+        if (!got || typeof got !== 'object') throw new Error('bad_json');
+        var add = {}, bad = false;
+        r.need.forEach(function (x, i) {
+          var v = got[String(i)];
+          if (typeof v !== 'string' || !v.trim()) throw new Error('missing');
+          v = cleanTr(v, x);
+          if (!sameNums(x, v)) bad = true;
+          add[x] = v;
+        });
+        if (bad) { TR[k] = null; toast(L().briefNumErr, true); return; }
+        var cache = TRF[c.id + '|' + lang] || (TRF[c.id + '|' + lang] = {});
+        Object.keys(add).forEach(function (x) { cache[x] = add[x]; });
+        var r2 = briefIn(c, pn, lang);
+        if (r2.need.length) throw new Error('incomplete');
+        TR[k] = { busy: false, src: fr, text: r2.text, on: true };
+      })
       .catch(function () { TR[k] = null; toast(L().briefArErr, true); })
       .then(function () { render(); });
   }
   /* Le destinataire a un lien personnel actif (staff_links, par nom) → le brief le rappelle à la fin : le détail du séjour y reste à jour,
      dans sa langue (français ou arabe). L'adresse elle-même ne peut pas être recopiée : le jeton n'est jamais stocké (empreinte seule). 18/10 */
-  function linkLine(name) {
-    var has = !!name && (D.links || []).some(function (k) { return k && String(k.name || '').trim().toLowerCase() === String(name).trim().toLowerCase(); });
-    return has ? '🔗 ' + B('Détail à jour') + ' : sur votre lien Stafflo (arrivées, repas, chambres prêtes)' : '';
+  function linkLine(name, lang) {
+    var b = BR[lang || 'fr'], has = !!name && (D.links || []).some(function (k) { return k && String(k.name || '').trim().toLowerCase() === String(name).trim().toLowerCase(); });
+    return has ? '🔗 ' + B(b.link) + b.colon + b.linkTxt : '';
   }
-  function msgKitchen(c) {
-    var who = kitchenTeam().map(function (m) { return m.name; }).join(', ') || 'la cuisine';
-    var os = orderSplit(c);
+  function msgKitchen(c, lang, FREE) {
+    lang = lang || 'fr'; FREE = FREE || SAME;
+    var b = BR[lang], who = kitchenTeam().map(function (m) { return m.name; }).join(b.sep) || b.cook;
+    var os = orderSplit(c, lang), tr = lang === 'en' ? SAME : FREE; // en anglais, les repas de la commande ont leur nom anglais (fiche)
     return [
-      B('Brief prestataire — ' + (c.name || '')) + '\npour ' + who,
-      '👥 ' + B('Couverts') + ' : ' + groupTxt(c),
-      arrivalSection(c, ''),
-      departureSection(c),
-      turnSection(c),
-      mealsSection(c),
-      section('🧺 ' + B('Commande du livret'), os.kitchen),
-      section('🏠 ' + B('Préparé par la maison, pas par vous'), os.house),
-      noteSection(c),
-      linkLine(kitchenName())
+      B(b.kitchen + ' — ' + (c.name || '')) + '\n' + b.to + who,
+      '👥 ' + B(b.covers) + b.colon + groupTxt(c, lang),
+      arrivalSection(c, '', lang, FREE),
+      departureSection(c, lang, FREE),
+      turnSection(c, lang, FREE),
+      mealsSection(c, lang, FREE),
+      section('🧺 ' + B(b.order), os.kitchen.map(tr)),
+      section('🏠 ' + B(b.notYou), os.house.map(tr)),
+      noteSection(c, lang, FREE),
+      linkLine(kitchenName(), lang)
     ].filter(Boolean).join('\n\n');
   }
-  function msgBrief(c) {
-    var team = houseTeam().map(function (m) { return m.name; }).join(', ') || 'l’équipe';
-    var baby = '';
-    if (c.inf) {
-      var bk = flat(P((F.GOOD_TO_KNOW || []).filter(function (g) { return /lit bébé/i.test(g[0]); })[0] || ['', ''], 0));
-      baby = '👶 ' + B('Bébés (' + c.inf + ')') + ' : lit bébé et chaise haute à installer' + (bk ? ' — ' + (bk.match(/^[^.]*\.[^.]*\./) || [bk])[0] : '');
-    }
-    var oh = kitchenOn() ? orderSplit(c).house : [];
+  function msgBrief(c, lang, FREE) {
+    lang = lang || 'fr'; FREE = FREE || SAME;
+    var b = BR[lang], team = houseTeam().map(function (m) { return m.name; }).join(b.sep) || b.team;
+    // 19/10 : plus la phrase de la fiche (un second jeu de lit bébé, avec son prix) — l'équipe installe, elle ne vend pas : jamais un prix dans un brief.
+    var baby = c.inf ? '👶 ' + B(b.baby + ' (' + c.inf + ')') + b.colon + b.babyTxt : '';
+    var oh = kitchenOn() ? orderSplit(c, lang).house.map(lang === 'en' ? SAME : FREE) : [];
+    var beds = frOf(c, 'beds');
     return [
-      B('Brief maison — ' + (c.name || '')) + '\npour ' + team,
-      '👥 ' + B('Groupe') + ' : ' + groupTxt(c),
-      arrivalSection(c, roomsReady()),
-      departureSection(c),
-      turnSection(c),
+      B(b.house + ' — ' + (c.name || '')) + '\n' + b.to + team,
+      '👥 ' + B(b.group) + b.colon + groupTxt(c, lang),
+      arrivalSection(c, readyTxt(lang, FREE), lang, FREE),
+      departureSection(c, lang, FREE),
+      turnSection(c, lang, FREE),
       baby,
-      '🛏 ' + B('Couchages') + ' : ' + (String(c.details.beds || '').trim() ? flat(c.details.beds) : 'à confirmer'),
-      mealsSection(c),
-      section('🏠 ' + B('À préparer par la maison'), oh),
-      section('🥤 ' + B('Boissons'), bulletsOf(c.details.drinks, 'list')),
-      noteSection(c),
-      '📞 ' + B('Client') + ' : ' + (String(c.phone || '').trim() || 'pas encore de numéro'),
-      linkLine(saidName())
+      '🛏 ' + B(b.beds) + b.colon + (beds ? FREE(flat(beds)) : b.tbc),
+      mealsSection(c, lang, FREE),
+      section('🏠 ' + B(b.houseTodo), oh),
+      section('🥤 ' + B(b.drinks), bulletsOf(frOf(c, 'drinks'), 'list').map(FREE)),
+      noteSection(c, lang, FREE),
+      '📞 ' + B(b.client) + b.colon + (String(c.phone || '').trim() || b.noPhone),
+      linkLine(saidName(), lang)
     ].filter(Boolean).join('\n\n');
   }
   var waDigits = function (raw) { return String(raw || '').replace(/\(0\)/g, '').replace(/\D/g, ''); };
@@ -2414,17 +2661,23 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     } else if (pn) {
       var team = pn === 'brief' || pn === 'chef'; // message d'équipe : français, jamais la langue du client
       var txt = pn === 'livret' ? msgLivret(c) : pn === 'meals' ? msgMeals(c) : pn === 'arrival' ? msgArrival(c) : pn === 'passports' ? msgPassports(c) : pn === 'depart' ? msgDepart(c) : pn === 'chef' ? msgKitchen(c) : msgBrief(c);
-      var trq = team ? TR[trKey(c, pn)] : null, arOn = !!(team && trq && trq.on && trq.text && trq.src === txt);
-      if (arOn) txt = trq.text;
-      h += '<div class="panel"><span class="ttl">' + esc(pn === 'depart' ? l.actDepart : l.act[pn]) + (team ? (arOn ? esc(l.briefArTtl) : '') : ' · ' + guestLang(c).toUpperCase()) + '</span>' +
-        '<textarea class="t" id="tx-' + esc(c.id) + '"' + (arOn ? ' dir="rtl" lang="ar"' : '') + '>' + esc(txt) + '</textarea><div class="row2">' +
-        '<button type="button" class="btn gold" data-a="copy" data-id="' + esc(c.id) + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' + shareBtn(c.id) +
+      // 19/10 : ce que le client a écrit dans une autre langue part en français dans le brief (traduit à l'ouverture, une fois)
+      if (team && frTodo(c).length && !(FRT[c.id] && FRT[c.id].busy)) setTimeout(function () { ensureFr(c); }, 0);
+      var frBusy = !!(team && FRT[c.id] && FRT[c.id].busy), dis = frBusy ? ' disabled' : '';
+      var trA = team ? TR[trKey(c, pn, 'ar')] : null, trE = team ? TR[trKey(c, pn, 'en')] : null;
+      var arOn = !!(trA && trA.on && trA.text && trA.src === txt), enOn = !arOn && !!(trE && trE.on && trE.text && trE.src === txt);
+      if (arOn) txt = trA.text; else if (enOn) txt = trE.text;
+      var trBtn = function (a, lab, busy) { return '<button type="button" class="btn ghost" data-a="' + a + '" data-v="' + pn + '" data-id="' + esc(c.id) + '"' + (busy || frBusy ? ' disabled' : '') + '><i class="ti ti-language" aria-hidden="true"></i>' + esc(busy ? l.briefArBusy : lab) + '</button>'; };
+      var fnote = team && !arOn && !enOn ? frNote(c) : '';
+      h += '<div class="panel"><span class="ttl">' + esc(pn === 'depart' ? l.actDepart : l.act[pn]) + (team ? esc(arOn ? l.briefArTtl : enOn ? l.briefEnTtl : '') : ' · ' + guestLang(c).toUpperCase()) + '</span>' +
+        '<textarea class="t" id="tx-' + esc(c.id) + '"' + (arOn ? ' dir="rtl" lang="ar"' : enOn ? ' lang="en"' : '') + '>' + esc(txt) + '</textarea>' +
+        (fnote ? '<span class="sub" id="frn-' + esc(c.id) + '"><i class="ti ti-language" aria-hidden="true"></i> ' + esc(fnote) + '</span>' : '') + '<div class="row2">' +
+        '<button type="button" class="btn gold" data-a="copy" data-id="' + esc(c.id) + '"' + dis + '><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' + (frBusy ? shareBtn(c.id).replace('<button ', '<button disabled ') : shareBtn(c.id)) +
         (wa && !team ? '<button type="button" class="btn ghost" data-a="sendwa" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.openWa) + '</button>' : '') +
         (pn === 'livret' ? '<a class="btn ghost" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.seeLivret) + '</a>' : '') +
-        (pn === 'chef' && kitchenWa() ? '<button type="button" class="btn ghost" data-a="sendchef" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(kitchenName())) + '</button>' : '') +
-        (pn === 'brief' && saidWa() ? '<button type="button" class="btn ghost" data-a="sendsaid" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(saidName())) + '</button>' : '') +
-        (team ? (arOn ? '<button type="button" class="btn ghost" data-a="briefpfr" data-v="' + pn + '" data-id="' + esc(c.id) + '"><i class="ti ti-language" aria-hidden="true"></i>' + esc(l.briefFr) + '</button>'
-          : '<button type="button" class="btn ghost" data-a="briefar" data-v="' + pn + '" data-id="' + esc(c.id) + '"' + (trq && trq.busy ? ' disabled' : '') + '><i class="ti ti-language" aria-hidden="true"></i>' + esc(trq && trq.busy ? l.briefArBusy : l.briefAr) + '</button>') : '') +
+        (pn === 'chef' && kitchenWa() ? '<button type="button" class="btn ghost" data-a="sendchef" data-id="' + esc(c.id) + '"' + dis + '><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(kitchenName())) + '</button>' : '') +
+        (pn === 'brief' && saidWa() ? '<button type="button" class="btn ghost" data-a="sendsaid" data-id="' + esc(c.id) + '"' + dis + '><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(saidName())) + '</button>' : '') +
+        (team ? (arOn || enOn ? trBtn('briefpfr', l.briefFr, false) : '') + (enOn ? '' : trBtn('briefen', l.briefEn, !!(trE && trE.busy))) + (arOn ? '' : trBtn('briefar', l.briefAr, !!(trA && trA.busy))) : '') +
         (pn === 'brief' ? '<button type="button" class="btn ghost" data-a="briefdone" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' +
           esc(c.staff_briefed_at ? l.briefDone + fmtDay(dayNum(String(c.staff_briefed_at).slice(0, 10))) : l.markBrief) + '</button>' : '') +
         (pn === 'depart' ? '<button type="button" class="btn ghost" data-a="departdone" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' +
@@ -3922,8 +4175,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'copydraft') { var dt = document.getElementById('dr-' + v); if (dt) copyText(dt.value); }
     else if (a === 'sendchef' && c) { var tx4 = document.getElementById('tx-' + c.id); window.open('https://wa.me/' + kitchenWa() + '?text=' + encodeURIComponent(tx4 ? tx4.value : msgKitchen(c)), '_blank', 'noopener'); }
     else if (a === 'setuphide') { try { localStorage.setItem(SETUP_HIDE, '1'); } catch (er) {} toast(L().setup.hidden); render(); }
-    else if (a === 'briefar' && c) { briefAr(c, v === 'chef' ? 'chef' : 'brief'); }
-    else if (a === 'briefpfr' && c) { var tk0 = TR[trKey(c, v === 'chef' ? 'chef' : 'brief')]; if (tk0) tk0.on = false; render(); }
+    else if (a === 'briefar' && c) { briefTr(c, v === 'chef' ? 'chef' : 'brief', 'ar'); }
+    else if (a === 'briefen' && c) { briefTr(c, v === 'chef' ? 'chef' : 'brief', 'en'); }
+    else if (a === 'briefpfr' && c) { ['ar', 'en'].forEach(function (lg) { var tk0 = TR[trKey(c, v === 'chef' ? 'chef' : 'brief', lg)]; if (tk0) tk0.on = false; }); render(); }
     else if (a === 'sendsaid' && c) { var tx3 = document.getElementById('tx-' + c.id); window.open('https://wa.me/' + saidWa() + '?text=' + encodeURIComponent(tx3 ? tx3.value : msgBrief(c)), '_blank', 'noopener'); }
     else if (a === 'reload') { D.loaded = false; render(); load(); }
     else if (a === 'seen') { var rp = (D.reports || []).filter(function (x) { return x.id === v; })[0]; if (rp) seenReport(rp); }
