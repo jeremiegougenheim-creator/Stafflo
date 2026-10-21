@@ -1590,6 +1590,66 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.ctx.close();
 }
 
+// ── 21/10 — Nouveau séjour depuis un message collé (WhatsApp, SMS, email Airbnb) : formulaire pré-rempli, cité, rien enregistré ──
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', city: 'Marrakech', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' }, TEAM: [{ name: 'Omar', brief: true, role: ['gardien', 'caretaker'] }] }, ical_feeds: [] };
+  const yr = new Date().getFullYear() + 1; // dates à venir, écrites avec l'année : lues telles quelles
+  const WA = [`[12/10/${yr - 1}, 10:02:11] Nadia: Bonjour Pablo, avec plaisir !`,
+    `[12/10/${yr - 1}, 10:05:40] ~ Pablo Serrano: Merci ! Nous serions du 25 au 30 mars ${yr}, nous sommes 6 adultes et 2 enfants.`,
+    `[12/10/${yr - 1}, 10:06:02] ~ Pablo Serrano: Mon numéro : +34 612 345 678. Pour le prix, 2 400 € pour le séjour c'est bon pour nous.`,
+    `[12/10/${yr - 1}, 10:07:00] Nadia: Parfait, je bloque les dates.`].join('\n');
+  r = await open({ tab: 'sejours', villa: V, stays: [] });
+  await r.page.click('[data-a="nsopen"]'); await r.page.waitForSelector('#ns-name');
+  check('Nouveau séjour : bouton « Coller un message (WhatsApp, SMS, email) », rien d’autre tant qu’il n’est pas ouvert', !!(await r.page.$('[data-a="nspaste"]')) && !(await r.page.$('#ns-paste')));
+  await r.page.click('[data-a="nspaste"]'); await r.page.waitForSelector('#ns-paste');
+  await r.page.fill('#ns-paste', WA); await r.page.click('[data-a="nsread"]'); await r.page.waitForTimeout(150);
+  const vals = async () => ({ name: await r.page.inputValue('#ns-name'), arr: await r.page.inputValue('#ns-arr'), dep: await r.page.inputValue('#ns-dep'), ad: await r.page.inputValue('#ns-adults'), ch: await r.page.inputValue('#ns-children'), src: await r.page.inputValue('#ns-source'), net: await r.page.inputValue('#ns-net'), paid: await r.page.inputValue('#ns-paid'), phone: await r.page.inputValue('#ns-phone') });
+  let v = await vals(), tf = await r.page.innerText('#ns-paste-box');
+  check('WhatsApp collé (export iPhone, Nadia + « ~ Pablo Serrano ») : client = l’expéditeur qui n’est ni l’hôte ni l’équipe ; dates « du 25 au 30 mars », 6 adultes, 2 enfants, téléphone, 2 400 € (direct : net et payé), source Direct',
+    v.name === 'Pablo Serrano' && v.arr === `${yr}-03-25` && v.dep === `${yr}-03-30` && v.ad === '6' && v.ch === '2' && v.src === 'Direct' && v.net === '2400' && v.paid === '2400' && v.phone === '+34612345678', v);
+  check('chaque valeur citée (« Lu dans le message ») : la phrase du client, pas une invention ; rien d’enregistré, aucun appel IA', /Lu dans le message/.test(tf) && /Arrivée : .*— « Nous serions du 25 au 30 mars/.test(tf) && /Adultes : 6 — « nous sommes 6 adultes et 2 enfants/.test(tf) && /Téléphone : \+34612345678/.test(tf) && !r.calls.some((c) => c.kind === 'insert' || c.kind === 'ai') && !r.errs.length, { tf: tf.slice(0, 700), errs: r.errs });
+  // Enregistrer : le séjour tel que lu, origine espace
+  await r.page.click('[data-a="nssave"]'); await r.page.waitForTimeout(400);
+  const ins = r.calls.find((c) => c.kind === 'insert');
+  check('« Créer le séjour » : le séjour enregistré avec ce qui a été lu (et relu dans le formulaire), rien de plus', !!ins && ins.body.name === 'Pablo Serrano' && ins.body.arrival === `${yr}-03-25` && ins.body.departure === `${yr}-03-30` && ins.body.adults === 6 && ins.body.children === 2 && ins.body.guests === 8 && ins.body.price === 2400 && ins.body.phone === '+34612345678' && ins.body.source === 'Direct' && ins.body.details.origin === 'espace' && !r.errs.length, ins && ins.body);
+  await r.ctx.close();
+  // SMS / message direct en anglais : « Oct 25 – Nov 1 », « we are 4 adults and 2 kids », airbnb mentionné → source Airbnb ; pas de montant
+  r = await open({ tab: 'sejours', villa: V, stays: [] });
+  await r.page.click('[data-a="nsopen"]'); await r.page.waitForSelector('#ns-name'); await r.page.click('[data-a="nspaste"]'); await r.page.waitForSelector('#ns-paste');
+  await r.page.fill('#ns-paste', `Hi Nadia, my name is Clara Whitfield. We would love to book the riad Oct 25 – Nov 1 ${yr} via airbnb, we are 4 adults and 2 kids. Arriving around 3pm.`); await r.page.click('[data-a="nsread"]'); await r.page.waitForTimeout(150);
+  v = await vals(); tf = await r.page.innerText('#ns-paste-box');
+  check('SMS en anglais : « my name is Clara Whitfield », « Oct 25 – Nov 1 », 4 adultes 2 enfants, source Airbnb ; montant et téléphone vides (pas écrits), dits « Pas trouvé » nulle part puisque les quatre champs clés sont là',
+    v.name === 'Clara Whitfield' && v.arr === `${yr}-10-25` && v.dep === `${yr}-11-01` && v.ad === '4' && v.ch === '2' && v.src === 'Airbnb' && v.net === '' && v.paid === '' && v.phone === '' && !/Pas trouvé/.test(tf), v);
+  // Texte sans rien de lisible → formulaire vide, message honnête ; puis ARIA : seules les valeurs mot pour mot sont reprises
+  await r.page.fill('#ns-paste', 'Bonjour, est-ce que la villa est libre pour les vacances de la Toussaint ? Nous serions une famille.'); await r.page.click('[data-a="nsread"]'); await r.page.waitForTimeout(150);
+  v = await vals(); tf = await r.page.innerText('#ns-paste-box');
+  check('texte sans dates ni nombre : rien de rempli (la lecture précédente n’est pas gardée à tort… le nom tapé avant reste), « Rien de lisible »', v.arr === '' && v.dep === '' && v.ad === '' && /Rien de lisible/.test(tf), { v, tf: tf.slice(0, 300) });
+  await r.ctx.close();
+  const ARIA_TXT = `Hello, this is Jon and Mia. We land on the 2nd of December and fly back home on the 6th. We'll be 2 adults plus our little one (1 child). Budget around 1500 euros.`;
+  r = await open({ tab: 'sejours', villa: V, stays: [], ai: (b) => ({ text: JSON.stringify({ name: { value: 'Jon and Mia', quote: 'this is Jon and Mia' }, arrival: { value: `${yr}-12-02`, quote: 'We land on the 2nd of December' }, departure: { value: `${yr}-12-06`, quote: 'fly back home on the 6th' }, party: { adults: 2, children: 1, quote: "We'll be 2 adults plus our little one (1 child)" }, phone: { value: '+33600000000', quote: 'Hello' }, amount_eur: { value: 1500, quote: 'Budget around 1500 euros' } }) }) });
+  await r.page.click('[data-a="nsopen"]'); await r.page.waitForSelector('#ns-name'); await r.page.click('[data-a="nspaste"]'); await r.page.waitForSelector('#ns-paste');
+  await r.page.fill('#ns-paste', ARIA_TXT); await r.page.click('[data-a="nsread"]'); await r.page.waitForTimeout(150);
+  v = await vals();
+  check('règles d’abord : « 2nd of December » n’est pas une forme lue par les règles (arrivée vide), « 2 adults » et « 1 child » et « 1500 euros » le sont', v.arr === '' && v.ad === '2' && v.ch === '1' && v.paid === '1500' && !r.calls.some((c) => c.kind === 'ai'), v);
+  await r.page.click('[data-a="nsaria"]'); await r.page.waitForTimeout(400);
+  v = await vals(); tf = await r.page.innerText('#ns-paste-box');
+  const ai = r.calls.find((c) => c.kind === 'ai');
+  check('« Lire avec ARIA » : un appel extract avec le texte ; le nom et les dates dont le jour et le mois sont dans la phrase citée sont repris ; le téléphone, dont la citation ne porte pas le numéro, est refusé ; ce que les règles avaient lu n’est pas réécrit',
+    !!ai && ai.body.task === 'extract' && v.name === 'Jon and Mia' && v.arr === `${yr}-12-02` && v.dep === '' && v.ad === '2' && v.ch === '1' && v.phone === '' && /Nom : Jon and Mia — « this is Jon and Mia »/.test(tf) && !r.errs.length, { v, tf: tf.slice(0, 600), errs: r.errs });
+  await r.ctx.close();
+  // Email Airbnb collé : mêmes règles que gmail-sync — nom complet, code, dates Check-in / Checkout, voyageurs, net « YOU EARN », total payé
+  const MAIL = `Reservation confirmed - Ana Ruiz Prieto arrives 13 Oct\nNew booking confirmed! Ana arrives 13 Oct. Send a message to confirm check-in details.\nAna Ruiz Prieto [https://www.airbnb.com/hosting/reservations/details/HMABCD1234]\nIdentity verified · 3 reviews\nCheck-in\nTue, 13 Oct ${yr}\nCheckout\nFri, 16 Oct ${yr}\n4:00 pm\n11:00 am\nGUESTS\n5 adults, 2 children\nCONFIRMATION CODE\nHMABCD1234\nGUEST PAID\nTOTAL (EUR) €1,862.40\nHOST PAYOUT\n3 nights room fee €1,800.00\nYOU EARN €1,735.20`;
+  r = await open({ tab: 'sejours', villa: V, stays: [] });
+  await r.page.click('[data-a="nsopen"]'); await r.page.waitForSelector('#ns-name'); await r.page.click('[data-a="nspaste"]'); await r.page.waitForSelector('#ns-paste');
+  await r.page.fill('#ns-paste', MAIL); await r.page.click('[data-a="nsread"]'); await r.page.waitForTimeout(150);
+  v = await vals(); tf = await r.page.innerText('#ns-paste-box');
+  check('email Airbnb collé : Ana Ruiz Prieto, 13 → 16 oct., 5 adultes 2 enfants, Airbnb, net 1 735,20 (YOU EARN), payé 1 862,40, code HMABCD1234 cité', v.name === 'Ana Ruiz Prieto' && v.arr === `${yr}-10-13` && v.dep === `${yr}-10-16` && v.ad === '5' && v.ch === '2' && v.src === 'Airbnb' && v.net === '1735.2' && v.paid === '1862.4' && /Code Airbnb : HMABCD1234/.test(tf), v);
+  await r.page.click('[data-a="nssave"]'); await r.page.waitForTimeout(400);
+  const ins2 = r.calls.find((c) => c.kind === 'insert');
+  check('enregistré : séjour Airbnb rattaché par son code (reservation_code), net dans price, payé dans financial.guestTotal', !!ins2 && ins2.body.source === 'Airbnb' && ins2.body.details.reservation_code === 'HMABCD1234' && ins2.body.price === 1735.2 && ins2.body.details.financial.guestTotal === 1862.4 && ins2.body.guests === 7 && !r.errs.length, ins2 && ins2.body);
+  await r.ctx.close();
+}
+
 // ── 21/10 — Séjour créé par le serveur depuis un calendrier (ical-sync) : « à compléter », À faire, Modifier, interrupteur ──
 {
   const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null, ical_feeds: [{ id: 'fa', label: 'Airbnb', url: 'https://www.airbnb.com/calendar/ical/1.ics?s=x' }, { id: 'fb', label: 'airbnb', url: 'https://ical.booking.com/v1/export?t=y' }], ical_auto_create: true };
