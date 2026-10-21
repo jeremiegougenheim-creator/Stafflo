@@ -11,8 +11,9 @@
 //                              jamais la base et cette fonction).
 //   { action: "test" }       + JWT utilisateur   → alerte d'essai sur les appareils de
 //                              l'utilisateur.
-//                              Aussi : retours de l'équipe (staff_reports) et commandes
-//                              des clients depuis leur livret (guest_notices).
+//                              Aussi : retours de l'équipe (staff_reports), commandes
+//                              des clients depuis leur livret (guest_notices) et, depuis le
+//                              21/10, séjours créés depuis un calendrier relié (ical-sync).
 //   { action: "brief" }      + en-tête x-sync-key → cron du matin : une notification
 //                              « aujourd'hui » (arrivées, départs, à faire, messages,
 //                              avis), seulement s'il y a quelque chose. { dry: true } = aperçu.
@@ -157,6 +158,18 @@ export function buildOrderAlert(n: Row, lang: "fr" | "en"): { title: string; bod
     body: clip(items, 160) + (fr ? " — à confirmer dans votre Espace" : " — confirm in your Espace") };
 }
 
+// ── Séjour créé depuis un calendrier (ical-sync, 21/10) : « Nouvelle réservation Airbnb · 25 oct. → 1 nov. · 7 nuits · à compléter : nom, montant » ──
+// Le texte ne reprend que ce que le calendrier a donné : dates, plateforme, code. Jamais un nom deviné.
+export function buildStayAlert(c: Row, lang: "fr" | "en"): { title: string; body: string; tag: string } | null {
+  if (!c || !c.arrival || !c.departure) return null;
+  const fr = lang === "fr", a = dn(c.arrival), d = dn(c.departure);
+  const n = a != null && d != null && d > a ? d - a : 0;
+  const src = String(c.source || "").trim(), pend = Array.isArray((c.details || {}).pending) ? (c.details || {}).pending : [];
+  const miss = [pend.includes("name") ? (fr ? "nom" : "name") : "", pend.includes("price") ? (fr ? "montant" : "amount") : ""].filter(Boolean).join(", ");
+  const parts = [day(c.arrival, lang) + " → " + day(c.departure, lang), n ? (fr ? `${n} nuit${n > 1 ? "s" : ""}` : `${n} night${n > 1 ? "s" : ""}`) : "", (c.details || {}).reservation_code || "", miss ? (fr ? "à compléter : " : "to complete: ") + miss : ""];
+  return { tag: "stay-" + c.id, title: fr ? `Nouvelle réservation${src ? " " + src : ""}` : `New booking${src ? " " + src : ""}`, body: parts.filter(Boolean).join(" · ") };
+}
+
 // ── Point du matin (cron :30 chaque heure → 8 h 30 heure de la villa) ────
 // Même logique que l'Espace : vérifications avant arrivée (téléphone et livret
 // J-3, repas J-2, brief J-1), message de départ, avis Airbnb (14 jours), messages
@@ -179,11 +192,14 @@ export function buildBrief(stays: Row[], msgCount: number, todayIso: string, lan
   });
   const departMsg = !facts ? 0 : firm.filter((c) => { const d = dn(c.departure)!; return d >= t && d - t <= 1 && !(c.details || {}).departMsgAt; }).length;
   const reviews = firm.filter((c) => { const d = dn(c.departure)!; return /airbnb/i.test(String(c.source || "")) && !c.is_comp && !(c.details || {}).reviewDoneAt && t > d && t <= d + 14; }).length;
+  // Séjours créés depuis un calendrier (ical-sync, 21/10) dont le nom ou le montant manque encore, à venir ou en cours.
+  const incomplete = firm.filter((c) => dn(c.departure)! >= t && Array.isArray((c.details || {}).pending) && (c.details || {}).pending.length > 0).length;
   const parts: string[] = [];
-  if (arr.length) parts.push((fr ? "Arrivée : " : "Arriving: ") + arr.map((c) => first(c) + pax(c)).join(", "));
+  if (arr.length) parts.push((fr ? "Arrivée : " : "Arriving: ") + arr.map((c) => (/^HM[A-Z0-9]{8}$/.test(first(c)) ? (fr ? "réservation " + first(c) : "booking " + first(c)) : first(c)) + pax(c)).join(", "));
   if (dep.length) parts.push((fr ? "Départ : " : "Leaving: ") + dep.map(first).join(", "));
   const todo = late + today + departMsg;
   if (todo) parts.push(fr ? `${todo} à faire` + (late ? `, dont ${late} en retard` : "") : `${todo} to do` + (late ? `, ${late} overdue` : ""));
+  if (incomplete) parts.push(fr ? `${incomplete} réservation${incomplete > 1 ? "s" : ""} à compléter (nom, montant)` : `${incomplete} booking${incomplete > 1 ? "s" : ""} to complete (name, amount)`);
   if (msgCount) parts.push(fr ? `${msgCount} message${msgCount > 1 ? "s" : ""} client${msgCount > 1 ? "s" : ""} à traiter` : `${msgCount} guest message${msgCount > 1 ? "s" : ""} to handle`);
   if (reviews) parts.push(fr ? `${reviews} avis Airbnb à laisser` : `${reviews} Airbnb review${reviews > 1 ? "s" : ""} to leave`);
   if (!parts.length) return null; // rien à signaler : pas de notification
@@ -298,7 +314,21 @@ Deno.serve(async (req: Request) => {
         if (make("fr") && subs.length) { guestStats.alerts++; const d = await deliver(subs, make); guestStats.sent += d.sent; guestStats.failed += d.failed; }
         await db(`guest_notices?id=eq.${n.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ notified_at: new Date().toISOString() }) });
       }
-      return out({ ok: true, stats, team: teamStats, guests: guestStats });
+      // Séjours créés depuis un calendrier (ical-sync, 21/10) : une alerte par séjour, au propriétaire, jamais deux fois
+      // (details.ical_notified_at). Les 12 dernières heures : un passage manqué n'est pas rattrapé par une salve.
+      const made: Row[] = await db(`crm_clients?select=id,user_id,arrival,departure,source,details,created_at&deleted_at=is.null&details->>origin=eq.ical_sync&details->>ical_notified_at=is.null&created_at=gte.${since}&order=created_at.asc&limit=50`).catch(() => []) || [];
+      const stayStats = { pending: made.length, alerts: 0, sent: 0, failed: 0 };
+      for (const c of made) {
+        const owner = String(c.user_id || "");
+        if (owner && !subsBy.has(owner)) { subsBy.set(owner, await subsOf(owner)); }
+        const subs = owner ? subsBy.get(owner)! : [];
+        const make = (lang: "fr" | "en") => buildStayAlert(c, lang);
+        if (make("fr") && subs.length) { stayStats.alerts++; const d = await deliver(subs, make); stayStats.sent += d.sent; stayStats.failed += d.failed; }
+        // details relu à l'instant : si gmail-sync a complété le séjour entre-temps, ses champs sont gardés.
+        const cur = (await db(`crm_clients?select=details&id=eq.${encodeURIComponent(c.id)}&limit=1`).catch(() => []) || [])[0];
+        await db(`crm_clients?id=eq.${encodeURIComponent(c.id)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ details: { ...((cur && cur.details) || c.details || {}), ical_notified_at: new Date().toISOString() } }) });
+      }
+      return out({ ok: true, stats, team: teamStats, guests: guestStats, stays: stayStats });
     }
     if (body.action === "brief") {
       const key = req.headers.get("x-sync-key") || "";

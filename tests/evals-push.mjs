@@ -59,7 +59,7 @@ check('signature ES256 valide', okSig);
 const idx = fs.readFileSync(path.join(root, 'supabase/functions/push-notify/index.ts'), 'utf8');
 const seg = idx.slice(idx.indexOf('// ── Textes des alertes'), idx.indexOf('async function subsOf'));
 const segJs = esbuild.transformSync(seg.replace(/^export /gm, ''), { loader: 'ts' }).code;
-const MOD = await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert, buildBrief, buildTeamAlert, buildOrderAlert, shortName, tzFor, localDay, BRIEF_HOUR };').toString('base64'));
+const MOD = await import('data:text/javascript;base64,' + Buffer.from(segJs + '\nexport { buildAlert, buildBrief, buildTeamAlert, buildOrderAlert, buildStayAlert, shortName, tzFor, localDay, BRIEF_HOUR };').toString('base64'));
 const A = MOD.buildAlert, B0 = MOD.buildBrief;
 // Compte pilote : fiche maison (livret, repas, message de départ comptés).
 const PILOT = { name: 'Villa Dar J', facts: true };
@@ -111,6 +111,27 @@ check('clé privée VAPID jamais renvoyée au navigateur', /action === "public_k
   check('brief multi-villa : sans fiche, ni livret ni repas ni départ comptés', n && /2 à faire, dont 2 en retard/.test(n.body), n && n.body);
   const z = B0(S, 1, T, 'en');
   check('brief multi-villa : sans nom de villa → « Stafflo », jamais le pilote', z && z.title === 'Stafflo — today', z && z.title);
+  // Séjours créés depuis un calendrier (21/10) : nom = code, montant vide → « à compléter » dans le point ; l'arrivée du jour dit « réservation HM… », jamais un nom inventé
+  const I = [{ name: 'HMABCD1234', arrival: '2026-10-13', departure: '2026-10-16', phone: '', details: { pending: ['name', 'price'], reservation_code: 'HMABCD1234', origin: 'ical_sync' }, source: 'Airbnb', booking_status: 'confirmed' },
+    { name: 'Airbnb 2026-10-20', arrival: '2026-10-20', departure: '2026-10-23', details: { pending: ['price'] }, source: 'Airbnb', booking_status: 'confirmed' },
+    { name: 'Clara Whitfield', arrival: '2026-10-07', departure: '2026-10-10', details: { pending: ['name'] }, source: 'Airbnb', booking_status: 'confirmed' }];
+  const i = B0(I, 0, T, 'fr', { name: 'Casa Lumi', facts: false });
+  check('brief : séjours du calendrier à compléter comptés (à venir ou en cours, pas les partis) ; l’arrivée du jour dit « réservation HM… »', i && /Arrivée : réservation HMABCD1234/.test(i.body) && /2 réservations à compléter \(nom, montant\)/.test(i.body), i && i.body);
+  check('brief : en anglais', /2 bookings to complete \(name, amount\)/.test(B0(I, 0, T, 'en', { name: 'Casa Lumi', facts: false }).body));
+}
+
+// ── Séjour créé depuis un calendrier (crm_clients origin ical_sync → une alerte, jamais deux fois) ────
+{
+  const SA = MOD.buildStayAlert;
+  const c = { id: '1792541900000', arrival: '2026-10-25', departure: '2026-11-01', source: 'Airbnb', details: { reservation_code: 'HMABCD1234', origin: 'ical_sync', pending: ['name', 'price'] } };
+  const fr = SA(c, 'fr'), en = SA(c, 'en');
+  check('séjour du calendrier : « Nouvelle réservation Airbnb · 25 oct. → 1 nov. · 7 nuits · HM… · à compléter : nom, montant »', fr && fr.title === 'Nouvelle réservation Airbnb' && fr.body === '25 oct. → 1 nov. · 7 nuits · HMABCD1234 · à compléter : nom, montant' && fr.tag === 'stay-1792541900000', fr);
+  check('séjour du calendrier : en anglais', en && en.title === 'New booking Airbnb' && en.body === 'Oct 25 → Nov 1 · 7 nights · HMABCD1234 · to complete: name, amount', en);
+  check('séjour du calendrier : sans code ni source, nom jamais deviné ; une nuit au singulier', SA({ id: 'x', arrival: '2026-10-25', departure: '2026-10-26', details: { pending: ['price'] } }, 'fr').body === '25 oct. → 26 oct. · 1 nuit · à compléter : montant' && SA({ id: 'x', arrival: '2026-10-25', departure: '2026-10-26', details: {} }, 'fr').title === 'Nouvelle réservation');
+  check('séjour du calendrier : sans dates → rien', SA({ id: 'x', details: {} }, 'fr') === null && SA(null, 'fr') === null);
+  check('fonction : séjours lus (origin ical_sync, ical_notified_at vide, 12 h), alerte au propriétaire (user_id), puis marqués dans details — jamais deux fois',
+    /crm_clients\?select=id,user_id,arrival,departure,source,details,created_at&deleted_at=is\.null&details->>origin=eq\.ical_sync&details->>ical_notified_at=is\.null&created_at=gte\.\$\{since\}/.test(idx) && /const owner = String\(c\.user_id \|\| ""\);/.test(idx) && /ical_notified_at: new Date\(\)\.toISOString\(\)/.test(idx) && /buildStayAlert\(c, lang\)/.test(idx));
+  check('fonction : details relu avant d’être marqué (ce que gmail-sync a complété entre-temps est gardé)', /select=details&id=eq\.\$\{encodeURIComponent\(c\.id\)\}&limit=1/.test(idx) && /\.\.\.\(\(cur && cur\.details\) \|\| c\.details \|\| \{\}\), ical_notified_at/.test(idx));
 }
 {
   const { tzFor, localDay, BRIEF_HOUR } = MOD;
