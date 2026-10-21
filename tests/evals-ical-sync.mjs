@@ -108,9 +108,9 @@ check('source d’un calendrier : d’après la plateforme du lien, jamais le no
   const T = iso(0);
   const E = (id, s, d, extra) => ({ id, feed_id: 'air', uid: id, start_date: iso(s), end_date: iso(d), kind: 'reserved', code: null, hidden_at: null, gone_at: null, ...(extra || {}) });
   const evs = [
-    E('e-code', 10, 14, { code: 'HMCODE0001' }), // couverte par le code (séjour déplacé à d'autres dates)
+    E('e-code', 10, 14, { code: 'HMTEST0101' }), // couverte par le code (séjour déplacé à d'autres dates)
     E('e-dates', 20, 23), // couverte par les dates (séjour saisi à la main qui chevauche)
-    E('e-free', 30, 33, { code: 'HMFREE0002' }), // à créer
+    E('e-free', 30, 33, { code: 'HMTEST0102' }), // à créer
     E('e-free-b', 32, 35), // même plage que la précédente (chevauche) : une seule création
     E('e-blocked', 40, 42, { kind: 'blocked' }), // blocage : jamais
     E('e-hidden', 50, 52, { hidden_at: '2026-10-20T10:00:00Z' }), // masquée par le propriétaire
@@ -119,7 +119,7 @@ check('source d’un calendrier : d’après la plateforme du lien, jamais le no
     E('e-cancelled-stay', 70, 73), // un séjour annulé ne couvre pas : à créer
   ];
   const stays = [
-    { id: 's1', arrival: iso(90), departure: iso(93), booking_status: 'confirmed', details: { reservation_code: 'HMCODE0001' } },
+    { id: 's1', arrival: iso(90), departure: iso(93), booking_status: 'confirmed', details: { reservation_code: 'HMTEST0101' } },
     { id: 's2', arrival: iso(18), departure: iso(21), booking_status: 'confirmed', details: {} },
     { id: 's3', arrival: iso(70), departure: iso(73), booking_status: 'cancelled', details: {} },
   ];
@@ -128,8 +128,8 @@ check('source d’un calendrier : d’après la plateforme du lien, jamais le no
     u.map((e) => e.id).join() === 'e-free,e-cancelled-stay', u.map((e) => e.id));
   const row = M.stayRow(u[0], 'o1', 'Airbnb', '2026-10-21T07:00:00.000Z', 1);
   check('ligne de séjour : dates, source, code, confirmé, montant vide, nom = code, « à compléter » nom et montant, traces du calendrier',
-    row.user_id === 'o1' && row.name === 'HMFREE0002' && row.arrival === iso(30) && row.departure === iso(33) && row.source === 'Airbnb' && row.booking_status === 'confirmed' && row.price === null && row.guests === null &&
-    row.details.reservation_code === 'HMFREE0002' && row.details.origin === 'ical_sync' && row.details.ical_event_id === 'e-free' && row.details.ical_feed_id === 'air' && row.details.pending.join() === 'name,price' && row.id === String(Date.parse('2026-10-21T07:00:00.000Z') + 1), row);
+    row.user_id === 'o1' && row.name === 'HMTEST0102' && row.arrival === iso(30) && row.departure === iso(33) && row.source === 'Airbnb' && row.booking_status === 'confirmed' && row.price === null && row.guests === null &&
+    row.details.reservation_code === 'HMTEST0102' && row.details.origin === 'ical_sync' && row.details.ical_event_id === 'e-free' && row.details.ical_feed_id === 'air' && row.details.pending.join() === 'name,price' && row.id === String(Date.parse('2026-10-21T07:00:00.000Z') + 1), row);
   const row2 = M.stayRow(u[1], 'o1', 'Vrbo', '2026-10-21T07:00:00.000Z', 2);
   check('sans code : nom « <source> <arrivée> », pas de code inventé', row2.name === 'Vrbo ' + iso(70) && !('reservation_code' in row2.details) && row2.id !== row.id, row2);
 }
@@ -155,13 +155,13 @@ check('réservation Airbnb sans séjour → séjour créé (dates, source Airbnb
 r = await post({ 'x-sync-key': 'SYNC' }); b = await r.json();
 check('passage suivant : rien n’est créé deux fois (le séjour couvre maintenant la réservation)', b.results[0].created === 0 && DB.stays.length === 2, b.results[0]);
 // Interrupteur du compte coupé : les dates sont lues, aucun séjour créé.
-FEEDS['www.airbnb.com'] = AIRBNB.replace('END:VCALENDAR', ['BEGIN:VEVENT', `DTEND;VALUE=DATE:${ymd(100)}`, `DTSTART;VALUE=DATE:${ymd(97)}`, 'UID:late@airbnb.com', 'SUMMARY:Reserved', 'DESCRIPTION:Reservation URL: https://www.airbnb.com/hosting/reservations/details/HMLATE0099', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n'));
+FEEDS['www.airbnb.com'] = AIRBNB.replace('END:VCALENDAR', ['BEGIN:VEVENT', `DTEND;VALUE=DATE:${ymd(100)}`, `DTSTART;VALUE=DATE:${ymd(97)}`, 'UID:late@airbnb.com', 'SUMMARY:Reserved', 'DESCRIPTION:Reservation URL: https://www.airbnb.com/hosting/reservations/details/HMTEST0199', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n'));
 DB.villas[0].ical_auto_create = false;
 r = await post({ 'x-sync-key': 'SYNC' }); b = await r.json();
 check('interrupteur « créer les séjours » coupé (villa_settings.ical_auto_create = false) : la nouvelle réservation est rangée, aucun séjour créé', b.results[0].created === 0 && b.results[0].reserved === 3 && !!DB.events.find((e) => e.uid === 'late@airbnb.com') && DB.stays.length === 2, b.results[0]);
 DB.villas[0].ical_auto_create = true;
 r = await post({ 'x-sync-key': 'SYNC' }); b = await r.json();
-check('interrupteur remis : le séjour est créé au passage suivant, avec son code', b.results[0].created === 1 && DB.stays.length === 3 && DB.stays[2].name === 'HMLATE0099' && DB.stays[2].details.reservation_code === 'HMLATE0099' && DB.stays[2].arrival === iso(97), DB.stays[2]);
+check('interrupteur remis : le séjour est créé au passage suivant, avec son code', b.results[0].created === 1 && DB.stays.length === 3 && DB.stays[2].name === 'HMTEST0199' && DB.stays[2].details.reservation_code === 'HMTEST0199' && DB.stays[2].arrival === iso(97), DB.stays[2]);
 
 // 3. Annulation, masquage, calendrier retiré
 DB.events.find((e) => e.uid === 'noend@airbnb.com').hidden_at = '2026-10-17T10:00:00Z';

@@ -1593,9 +1593,9 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
 // ── 21/10 — Séjour créé par le serveur depuis un calendrier (ical-sync) : « à compléter », À faire, Modifier, interrupteur ──
 {
   const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: null, house_facts: null, ical_feeds: [{ id: 'fa', label: 'Airbnb', url: 'https://www.airbnb.com/calendar/ical/1.ics?s=x' }, { id: 'fb', label: 'airbnb', url: 'https://ical.booking.com/v1/export?t=y' }], ical_auto_create: true };
-  const EV = [{ id: 'e10', feed_id: 'fa', start_date: iso(12), end_date: iso(15), kind: 'reserved', code: 'HMAUTO0001', label: 'Airbnb', hidden_at: null }];
+  const EV = [{ id: 'e10', feed_id: 'fa', start_date: iso(12), end_date: iso(15), kind: 'reserved', code: 'HMTEST0021', label: 'Airbnb', hidden_at: null }];
   const SS = [
-    { id: 'ic1', name: 'HMAUTO0001', arrival: iso(12), departure: iso(15), adults: null, guests: null, price: null, booking_status: 'confirmed', source: 'Airbnb', details: { reservation_code: 'HMAUTO0001', origin: 'ical_sync', ical_event_id: 'e10', ical_feed_id: 'fa', pending: ['name', 'price'] } },
+    { id: 'ic1', name: 'HMTEST0021', arrival: iso(12), departure: iso(15), adults: null, guests: null, price: null, booking_status: 'confirmed', source: 'Airbnb', details: { reservation_code: 'HMTEST0021', origin: 'ical_sync', ical_event_id: 'e10', ical_feed_id: 'fa', pending: ['name', 'price'] } },
     { id: 'ic2', name: 'Airbnb ' + iso(30), arrival: iso(30), departure: iso(33), price: null, booking_status: 'confirmed', source: 'Airbnb', details: { origin: 'ical_sync', ical_event_id: 'e-vanished', ical_feed_id: 'fa', pending: ['name', 'price'] } },
     { id: 'ic3', name: 'Ana Ruiz', arrival: iso(40), departure: iso(43), price: 900, booking_status: 'confirmed', source: 'Airbnb', details: { origin: 'gmail_sync', pending: [] } },
   ];
@@ -1603,9 +1603,9 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.waitForTimeout(300);
   let tj = await txt(r.page);
   check('Jour › À faire : « Compléter le séjour (nom, montant) » pour les deux séjours du calendrier, pas pour Ana ; aucune « réservation sans séjour » (le serveur l’a créée)',
-    (tj.match(/Compléter le séjour \(nom, montant\)/g) || []).length === 2 && /HMAUTO0001 · dans 12 jours/.test(tj) && !/Ana Ruiz · /.test(tj.split('Compléter le séjour')[2] || '') && !/réservations sans séjour/i.test(tj) && !r.errs.length, tj.slice(0, 900));
+    (tj.match(/Compléter le séjour \(nom, montant\)/g) || []).length === 2 && /HMTEST0021 · dans 12 jours/.test(tj) && !/Ana Ruiz · /.test(tj.split('Compléter le séjour')[2] || '') && !/réservations sans séjour/i.test(tj) && !r.errs.length, tj.slice(0, 900));
   await r.page.click('[data-a="goto"][data-id="ic1"][data-v="complete"]'); await r.page.waitForSelector('#ed-name-ic1');
-  check('« Compléter » ouvre le séjour dans Séjours, panneau Modifier, nom = le code (rien d’inventé)', (await r.page.inputValue('#ed-name-ic1')) === 'HMAUTO0001' && (await r.page.inputValue('#ed-net-ic1')) === '' && !!(await r.page.$('[data-a="nsopen"]')));
+  check('« Compléter » ouvre le séjour dans Séjours, panneau Modifier, nom = le code (rien d’inventé)', (await r.page.inputValue('#ed-name-ic1')) === 'HMTEST0021' && (await r.page.inputValue('#ed-net-ic1')) === '' && !!(await r.page.$('[data-a="nsopen"]')));
   let ts = await txt(r.page);
   check('carte : « À compléter : nom, montant · réservation lue dans le calendrier Airbnb », en attente (pas « prêt ») ; le séjour dont la réservation a disparu du calendrier est signalé',
     /À compléter : nom, montant · réservation lue dans le calendrier Airbnb/.test(ts) && !/Prêt — rien ne manque/.test(ts) && /Plus dans le calendrier Airbnb — annulée \?/.test(ts) && (await r.page.$$('article.stay.alert')).length === 1 && (await r.page.$eval('#st-ic2', (e) => e.className)) === 'stay alert', ts.slice(0, 1200));
@@ -1613,7 +1613,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.fill('#ed-name-ic1', 'Pablo Serrano'); await r.page.fill('#ed-net-ic1', '1250'); await r.page.click('[data-a="editsave"][data-id="ic1"]'); await r.page.waitForTimeout(300);
   let up = r.calls.filter((c) => c.kind === 'stay').pop();
   check('Modifier (nom + montant) : name, price, et details sans « pending » — code, origine et événement du calendrier gardés',
-    !!up && /id=eq\.ic1/.test(up.url) && up.body.name === 'Pablo Serrano' && up.body.price === 1250 && up.body.details && !('pending' in up.body.details) && up.body.details.reservation_code === 'HMAUTO0001' && up.body.details.ical_event_id === 'e10' && up.body.details.origin === 'ical_sync', up && up.body);
+    !!up && /id=eq\.ic1/.test(up.url) && up.body.name === 'Pablo Serrano' && up.body.price === 1250 && up.body.details && !('pending' in up.body.details) && up.body.details.reservation_code === 'HMTEST0021' && up.body.details.ical_event_id === 'e10' && up.body.details.origin === 'ical_sync', up && up.body);
   ts = await txt(r.page);
   check('après : plus de « à compléter » pour Pablo, un seul « Compléter le séjour » reste (le séjour disparu)', !/Pablo Serrano[\s\S]{0,200}À compléter/.test(ts) && !r.errs.length, ts.slice(0, 600));
   await r.ctx.close();
