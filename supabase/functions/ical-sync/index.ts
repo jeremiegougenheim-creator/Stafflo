@@ -8,8 +8,9 @@
 // Ce qui est gardé (table ical_events, lue par le propriétaire) : pour chaque événement du calendrier, ses
 // dates, « réservé » ou « bloqué », le code de réservation Airbnb (HM…) s'il est écrit, le nom du calendrier.
 // Jamais le texte de l'événement (Airbnb y met les 4 derniers chiffres du téléphone du voyageur).
-// Aucun séjour n'est créé ici : l'Espace montre ces dates (calendrier) et propose les réservations sans
-// séjour au propriétaire, qui crée le séjour ou masque. La base reste la seule vérité.
+// Depuis le 21/10/2026, une réservation lue sans séjour crée le séjour (createStays, ci-dessous) : avant, l'Espace
+// la proposait seulement (« Créer le séjour ») — et le propriétaire du pilote créait tout à la main. Ce qui n'est
+// pas créé (événement bloqué, interrupteur coupé) reste proposé par l'Espace. La base reste la seule vérité.
 //
 // POST {}  + x-sync-key (cron, clé vérifiée par gmail_sync_key_ok) → tous les comptes qui ont des calendriers.
 // POST {}  + session du propriétaire (« Lire maintenant », après un ajout) → SON compte seulement (6 / heure).
@@ -122,10 +123,57 @@ async function fetchFeed(url: string): Promise<string> {
   return text;
 }
 
-/** Un compte : chaque calendrier lu, rangé ; ce qui a disparu marqué gone_at. */
-export async function syncOwner(owner: string, rawFeeds: unknown, now = new Date()): Promise<Row> {
+// ── Séjours créés depuis les calendriers (21/10/2026) ───────────────────────────────────────────
+// Une réservation lue (kind « reserved » : Airbnb « Reserved » avec son code HM…, Vrbo…), pas masquée, pas
+// disparue, départ ≥ aujourd'hui, qu'aucun séjour ferme ne couvre (même code, ou dates qui se chevauchent — mêmes
+// règles que l'Espace) → séjour créé : dates, source (plateforme du lien, jamais le nom donné au calendrier), code.
+// Le nom est le code (sinon « <source> <arrivée> ») et le montant reste vide : tous deux marqués à compléter
+// (details.pending = ['name', 'price']) — l'email de confirmation Airbnb les remplit par le code (gmail-sync), ou
+// le propriétaire (Modifier). Rien n'est inventé. Jamais pour un événement « bloqué » (Booking.com exporte tout
+// en « CLOSED - Not available »). Interrupteur : villa_settings.ical_auto_create (vrai par défaut ; Réglages).
+export const FIRM_OUT = ["inquiry", "lead", "quoted", "declined", "cancelled", "canceled"];
+export function sourceOf(url: string): string {
+  let h = ""; try { h = new URL(String(url || "")).hostname; } catch { h = ""; }
+  return /airbnb/i.test(h) ? "Airbnb" : /booking\.com/i.test(h) ? "Booking" : /vrbo|abritel|homeaway|bookabach/i.test(h) ? "Vrbo" : "Autre";
+}
+/** Réservations à créer : pas couvertes par un séjour ferme (code ou dates), une seule par plage de dates. */
+export function uncovered(events: Row[], stays: Row[], today: string): Row[] {
+  const firm = (stays || []).filter((s) => !FIRM_OUT.includes(String(s.booking_status || "").toLowerCase()) && s.arrival && s.departure);
+  const covers = (s: Row, e: Row) => (e.code && String((s.details || {}).reservation_code || "") === e.code) || (s.arrival < e.end_date && e.start_date < s.departure);
+  const out: Row[] = [];
+  for (const e of (events || []).slice().sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)))) {
+    if (e.kind !== "reserved" || e.hidden_at || e.gone_at || !(e.end_date >= today)) continue;
+    if (firm.some((s) => covers(s, e)) || out.some((o) => o.start_date < e.end_date && e.start_date < o.end_date)) continue;
+    out.push(e);
+  }
+  return out;
+}
+export function stayRow(e: Row, owner: string, source: string, started: string, i: number): Row {
+  const code = /^HM[A-Z0-9]{8}$/.test(String(e.code || "")) ? String(e.code) : null;
+  return {
+    id: String(Date.parse(started) + i), user_id: owner, name: code || `${source} ${e.start_date}`, arrival: e.start_date, departure: e.end_date,
+    source, booking_status: "confirmed", price: null, commission: null, guests: null,
+    details: { ...(code ? { reservation_code: code } : {}), origin: "ical_sync", ical_event_id: e.id, ical_feed_id: e.feed_id, created_from_ical_at: started, pending: ["name", "price"] },
+  };
+}
+async function createStays(owner: string, feeds: { id: string; url: string }[], today: string, started: string): Promise<number> {
+  const ids: Record<string, string> = {}; feeds.forEach((f) => { ids[f.id] = sourceOf(f.url); });
+  const evs: Row[] = (await db(`ical_events?select=id,feed_id,uid,start_date,end_date,kind,code,hidden_at,gone_at&owner_id=eq.${owner}&kind=eq.reserved&gone_at=is.null&hidden_at=is.null&end_date=gte.${today}&order=start_date.asc&limit=200`) || [])
+    .filter((e) => ids[e.feed_id]);
+  if (!evs.length) return 0;
+  const codes = evs.map((e) => e.code).filter((c) => /^HM[A-Z0-9]{8}$/.test(String(c || "")));
+  // Séjours qui peuvent couvrir : en cours ou à venir, ou portant un de ces codes (dates déplacées sur Airbnb).
+  const or = `or=(departure.gte.${plusDay(today, -1)}${codes.length ? `,details->>reservation_code.in.(${codes.join(",")})` : ""})`;
+  const stays: Row[] = await db(`crm_clients?select=id,arrival,departure,booking_status,details&user_id=eq.${owner}&deleted_at=is.null&${or}&limit=500`) || [];
+  const rows = uncovered(evs, stays, today).map((e, i) => stayRow(e, owner, ids[e.feed_id], started, i));
+  if (rows.length) await db("crm_clients", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify(rows) });
+  return rows.length;
+}
+
+/** Un compte : chaque calendrier lu, rangé ; ce qui a disparu marqué gone_at ; les réservations sans séjour créées. */
+export async function syncOwner(owner: string, rawFeeds: unknown, now = new Date(), auto = true): Promise<Row> {
   const started = now.toISOString(), today = started.slice(0, 10);
-  const feeds = feedsOf(rawFeeds), stats: Row = { feeds: feeds.length, events: 0, reserved: 0, blocked: 0, gone: 0, errors: [] as Row[] };
+  const feeds = feedsOf(rawFeeds), stats: Row = { feeds: feeds.length, events: 0, reserved: 0, blocked: 0, gone: 0, created: 0, errors: [] as Row[] };
   const okIds: string[] = [];
   for (const f of feeds) {
     try {
@@ -148,6 +196,11 @@ export async function syncOwner(owner: string, rawFeeds: unknown, now = new Date
   const keep = okIds.length ? `&feed_id=not.in.(${okIds.map((x) => encodeURIComponent(x)).join(",")})` : "";
   const dropped: Row[] = await db(`ical_events?owner_id=eq.${owner}&gone_at=is.null${keep}&select=id`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ gone_at: started }) }) || [];
   stats.gone += dropped.length;
+  // Réservations sans séjour → séjours (interrupteur du compte). Une erreur ici n'efface rien de ce qui précède.
+  if (auto && feeds.length) {
+    try { stats.created = await createStays(owner, feeds, today, started); }
+    catch (e) { stats.errors.push({ feed: null, label: "stays", error: String((e as Error).message || e).slice(0, 80) }); }
+  }
   await db("sync_runs", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ owner_id: owner, source: "ical", started_at: started, finished_at: new Date().toISOString(), ok: !stats.errors.length, stats }) }).catch(() => {});
   return stats;
 }
@@ -178,10 +231,10 @@ Deno.serve(async (req: Request) => {
     if (key) {
       const ok = await fetch(SB_URL + "/rest/v1/rpc/gmail_sync_key_ok", { method: "POST", headers: H, body: JSON.stringify({ k: key }) }).then((r) => r.json()).catch(() => false);
       if (ok !== true) return out({ error: "unauthorized" }, 401);
-      const rows: Row[] = await db("villa_settings?select=owner_id,ical_feeds&ical_feeds=neq.%5B%5D&owner_id=not.is.null&limit=500") || [];
+      const rows: Row[] = await db("villa_settings?select=owner_id,ical_feeds,ical_auto_create&ical_feeds=neq.%5B%5D&owner_id=not.is.null&limit=500") || [];
       const results: Row[] = [];
       for (const r of rows) {
-        try { results.push({ owner: r.owner_id, ...(await syncOwner(String(r.owner_id), r.ical_feeds)) }); }
+        try { results.push({ owner: r.owner_id, ...(await syncOwner(String(r.owner_id), r.ical_feeds, new Date(), r.ical_auto_create !== false)) }); }
         catch (e) { results.push({ owner: r.owner_id, error: String((e as Error).message || e).slice(0, 120) }); }
       }
       return out({ ok: true, owners: results.length, results }, results.some((x) => x.error) ? 207 : 200);
@@ -189,8 +242,8 @@ Deno.serve(async (req: Request) => {
     const uid = await userFrom(req);
     if (!uid) return out({ error: "unauthorized" }, 401);
     if (limited("u:" + uid, 6, 60 * 60000)) return out({ error: "rate_limited" }, 429);
-    const v: Row[] = await db(`villa_settings?select=ical_feeds&owner_id=eq.${uid}&limit=1`) || [];
-    const stats = await syncOwner(uid, v[0] && v[0].ical_feeds);
+    const v: Row[] = await db(`villa_settings?select=ical_feeds,ical_auto_create&owner_id=eq.${uid}&limit=1`) || [];
+    const stats = await syncOwner(uid, v[0] && v[0].ical_feeds, new Date(), !!v[0] && v[0].ical_auto_create !== false);
     return out({ ok: true, ...stats });
   } catch (e) {
     console.error("[ical-sync]", String(e).slice(0, 200));

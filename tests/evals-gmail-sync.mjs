@@ -114,6 +114,31 @@ check('versement sans code : payout null', p.payout === null, p.payout);
 p = P('Reservation confirmed - Ana Ruiz Prieto arrives 13 Oct', CONF_BODY);
 check('confirmation : pas de bloc payout', p.payout === null, p.payout);
 
+// ── Compléter un séjour créé depuis un calendrier (ical-sync, 21/10) ──────
+// Le séjour existe déjà (nom = code HM…, montant vide, details.pending = ['name', 'price']) ; l'email de
+// confirmation du même code le finit : nom, voyageurs, net. Un nom déjà saisi n'est jamais remplacé.
+{
+  const c = src.indexOf('// ── CRM'), d = src.indexOf('// ── Google');
+  const js2 = esbuild.transformSync(src.slice(c, d).replace(/^export /gm, ''), { loader: 'ts' }).code;
+  const run = async (stay, subject, body) => {
+    const calls = [];
+    const ctx2 = { db: async (path, init) => { calls.push({ path, init: init || {} }); if (/reservation_code=eq\.HMABCD1234/.test(path)) return [stay]; return init && init.method === 'PATCH' ? null : []; } };
+    vm.runInNewContext(js2 + '\nthis.applyToCrm = applyToCrm;', ctx2);
+    const log = [];
+    const id = await ctx2.applyToCrm(P(subject, body), 'em-1', false, log, 'o1');
+    const patch = calls.find((x) => x.init.method === 'PATCH');
+    return { id, log, body: patch ? JSON.parse(patch.init.body) : null, posts: calls.filter((x) => x.init.method === 'POST').length };
+  };
+  let r = await run({ id: 'ical-1', name: 'HMABCD1234', arrival: '2026-10-13', departure: '2026-10-16', guests: null, adults: null, children: null, infants: null, price: null, source: 'Airbnb', booking_status: 'confirmed',
+    details: { reservation_code: 'HMABCD1234', origin: 'ical_sync', ical_event_id: 'ev-1', pending: ['name', 'price'] } }, 'Reservation confirmed - Ana Ruiz Prieto arrives 13 Oct', CONF_BODY);
+  check('séjour du calendrier (nom = code, à compléter) + email de confirmation du même code → complété : nom, voyageurs, net, plus rien à compléter ; aucun séjour créé en double',
+    r.id === 'ical-1' && r.posts === 0 && r.body && r.body.name === 'Ana Ruiz Prieto' && r.body.adults === 5 && r.body.children === 2 && r.body.guests === 7 && r.body.price === 1735.2 && r.body.commission === 0 &&
+    r.body.details.pending.length === 0 && r.body.details.origin === 'ical_sync' && r.body.details.ical_event_id === 'ev-1' && r.body.details.payout_eur === 1735.2 && r.log[0].action === 'complete', r.body);
+  r = await run({ id: 'man-1', name: 'Ana R.', arrival: '2026-10-13', departure: '2026-10-16', guests: 7, adults: 5, children: 2, infants: 0, price: 1700, source: 'Airbnb', booking_status: 'confirmed',
+    details: { reservation_code: 'HMABCD1234', origin: 'espace' } }, 'Reservation confirmed - Ana Ruiz Prieto arrives 13 Oct', CONF_BODY);
+  check('séjour saisi à la main (nom, montant déjà là) : le nom et le montant ne sont jamais remplacés par l’email', r.id === 'man-1' && (!r.body || (r.body.name === undefined && r.body.price === undefined)), r.body);
+}
+
 // ── Garde-fous du code ─────────────────────────────────────────────────────
 check('versement relié par code exact, résultat unique', /reservation_code=eq\.\$\{it\.code\}&limit=2/.test(src) && /rows\?\.length !== 1/.test(src));
 check('versement : prix rempli seulement s\'il est vide et < 28 nuits', /!\(\+stay\.price > 0\) && it\.amount_eur != null && list\.length === 1 && nights > 0 && nights < 28/.test(src));

@@ -228,12 +228,15 @@ async function applyToCrm(p: Parsed, emailId: string | null, dry: boolean, log: 
       if (p.thread_id && !d.airbnb_thread_id) d.airbnb_thread_id = p.thread_id;
       if (p.payout_eur != null && d.payout_eur == null) { d.payout_eur = p.payout_eur; d.payout_source = "gmail_sync"; }
       if (p.guest_message && !d.guest_message) d.guest_message = p.guest_message;
-      if (JSON.stringify(d) !== JSON.stringify(stay.details || {})) up.details = d;
+      // Séjour créé depuis un calendrier (ical-sync, 21/10) : son nom est le code, marqué « à compléter » — l'email le donne.
+      const pending: string[] = Array.isArray(d.pending) ? d.pending.slice() : [];
+      if (pending.includes("name") && p.name) { up.name = p.name; d.pending = pending.filter((x) => x !== "name"); }
       if (stay.adults == null && p.adults != null) up.adults = p.adults;
       if (stay.children == null && p.children != null) up.children = p.children;
       if (stay.infants == null && p.infants != null) up.infants = p.infants;
       if (!(+stay.guests > 0) && p.adults != null) up.guests = p.adults + (p.children || 0);
-      if (!(+stay.price > 0) && p.payout_eur != null) { up.price = p.payout_eur; up.commission = 0; }
+      if (!(+stay.price > 0) && p.payout_eur != null) { up.price = p.payout_eur; up.commission = 0; if (Array.isArray(d.pending)) d.pending = d.pending.filter((x: string) => x !== "price"); }
+      if (JSON.stringify(d) !== JSON.stringify(stay.details || {})) up.details = d;
       if (["inquiry", "quoted", "lead", "request"].includes(String(stay.booking_status || "").toLowerCase())) up.booking_status = "confirmed";
       if (Object.keys(up).length) { log.push({ action: "complete", id: stay.id, fields: Object.keys(up) }); if (!dry) await patchStay(stay.id, up); }
       return stay.id;

@@ -52,7 +52,7 @@ function cors(req: Request): Record<string, string> {
   };
 }
 
-// ── Calcul (pur, testé par tests/evals-staff.mjs) ─────────────────────────
+// ── Calcul (pur, testé par tests/evals-staff.mjs) ─────────────────────────────────────────
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
 export type Lines = { arrival_time: string[]; departure_time: string[]; beds: string[]; meals: string[]; drinks: string[]; note: string[]; extras: string[]; orders: string[]; house_orders: string[]; next_time: string[] };
@@ -195,7 +195,8 @@ export async function sha256hex(s: string): Promise<string> {
 /** « Tomas Herrera » → « Tomas H. » ; un seul mot → tel quel. */
 export function shortName(n: unknown): string {
   const p = String(n || "").trim().split(/\s+/).filter(Boolean);
-  if (!p.length) return "?";
+  // Séjour créé depuis un calendrier (ical-sync, 21/10) : le nom est encore le code de réservation — pour l'équipe, « ? ».
+  if (!p.length || (p.length === 1 && /^HM[A-Z0-9]{8}$/.test(p[0])) || (p.length === 2 && /^\d{4}-\d{2}-\d{2}$/.test(p[1]))) return "?";
   return p.length > 1 ? p[0] + " " + p[p.length - 1].charAt(0).toUpperCase() + "." : p[0];
 }
 const day = (iso: unknown): number | null => {
@@ -296,7 +297,7 @@ export function staffView(rows: Row[], todayIso: string, facts: Row | null = nul
     });
 }
 
-// ── Traductions de la vue équipe (18/10/2026, revu le 20/10) ─────────────
+// ── Traductions de la vue équipe (18/10/2026, revu le 20/10) ─────────────────────────
 // Une page, une seule langue. En arabe : tout en darija marocaine. En français : ce que le client a écrit dans une autre
 // langue (souvent l'anglais) est traduit en français — jusqu'au 20/10 il ne l'était que si le propriétaire avait ouvert
 // le brief dans l'Espace (details.fr), d'où des lignes en anglais sur le lien de Saïd (cas réel : Seán).
@@ -520,7 +521,7 @@ export async function withArabic(stays: StaffStay[], owner: string, read: (ids: 
   return again.stays;
 }
 
-// ── Service ───────────────────────────────────────────────────────────────
+// ── Service ─────────────────────────────────────────────────────────────────────
 async function db(path: string, init: RequestInit = {}) {
   const r = await fetch(SB_URL + "/rest/v1/" + path, { ...init, headers: { ...H, ...(init.headers || {}) } });
   if (!r.ok) throw new Error("db " + r.status);

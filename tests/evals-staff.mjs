@@ -34,6 +34,8 @@ check('prénom + initiale', M.shortName('Tomas Herrera') === 'Tomas H.');
 check('un seul mot tel quel', M.shortName('Seán') === 'Seán');
 check('nom vide → « ? »', M.shortName('') === '?' && M.shortName(null) === '?');
 check('nom composé : dernière initiale', M.shortName('  jean  de la fontaine ') === 'jean F.');
+// Séjour créé depuis un calendrier (ical-sync, 21/10) : le nom est encore le code, ou « Airbnb 2026-11-02 » — l'équipe voit « ? », jamais le code
+check('nom pas encore connu (code HM… ou « Airbnb <date> ») → « ? »', M.shortName('HMABCD1234') === '?' && M.shortName('Airbnb 2026-11-02') === '?' && M.shortName('Ana Ruiz') === 'Ana R.');
 
 // ── Séjours visibles ─────────────────────────────────────────────────────
 const T = '2026-10-13';
