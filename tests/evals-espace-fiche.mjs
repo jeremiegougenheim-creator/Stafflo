@@ -1596,7 +1596,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   const yr = new Date().getFullYear() + 1; // dates à venir, écrites avec l'année : lues telles quelles
   const WA = [`[12/10/${yr - 1}, 10:02:11] Nadia: Bonjour Pablo, avec plaisir !`,
     `[12/10/${yr - 1}, 10:05:40] ~ Pablo Serrano: Merci ! Nous serions du 25 au 30 mars ${yr}, nous sommes 6 adultes et 2 enfants.`,
-    `[12/10/${yr - 1}, 10:06:02] ~ Pablo Serrano: Mon numéro : +34 612 345 678. Pour le prix, 2 400 € pour le séjour c'est bon pour nous.`,
+    `[12/10/${yr - 1}, 10:06:02] ~ Pablo Serrano: Mon numéro : +34 612 345 678. 2 400 € pour le séjour c'est bon pour nous.`,
     `[12/10/${yr - 1}, 10:07:00] Nadia: Parfait, je bloque les dates.`].join('\n');
   r = await open({ tab: 'sejours', villa: V, stays: [] });
   await r.page.click('[data-a="nsopen"]'); await r.page.waitForSelector('#ns-name');
@@ -1605,7 +1605,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.fill('#ns-paste', WA); await r.page.click('[data-a="nsread"]'); await r.page.waitForTimeout(150);
   const vals = async () => ({ name: await r.page.inputValue('#ns-name'), arr: await r.page.inputValue('#ns-arr'), dep: await r.page.inputValue('#ns-dep'), ad: await r.page.inputValue('#ns-adults'), ch: await r.page.inputValue('#ns-children'), src: await r.page.inputValue('#ns-source'), net: await r.page.inputValue('#ns-net'), paid: await r.page.inputValue('#ns-paid'), phone: await r.page.inputValue('#ns-phone') });
   let v = await vals(), tf = await r.page.innerText('#ns-paste-box');
-  check('WhatsApp collé (export iPhone, Nadia + « ~ Pablo Serrano ») : client = l’expéditeur qui n’est ni l’hôte ni l’équipe ; dates « du 25 au 30 mars », 6 adultes, 2 enfants, téléphone, 2 400 € (direct : net et payé), source Direct',
+  check('WhatsApp collé (export iPhone, Nadia + « ~ Pablo Serrano ») : client = l’expéditeur qui n’est ni l’hôte ni l’équipe ; dates « du 25 au 30 mars », 6 adultes, 2 enfants, téléphone (sans le montant qui suit), 2 400 € (direct : net et payé), source Direct',
     v.name === 'Pablo Serrano' && v.arr === `${yr}-03-25` && v.dep === `${yr}-03-30` && v.ad === '6' && v.ch === '2' && v.src === 'Direct' && v.net === '2400' && v.paid === '2400' && v.phone === '+34612345678', v);
   check('chaque valeur citée (« Lu dans le message ») : la phrase du client, pas une invention ; rien d’enregistré, aucun appel IA', /Lu dans le message/.test(tf) && /Arrivée : .*— « Nous serions du 25 au 30 mars/.test(tf) && /Adultes : 6 — « nous sommes 6 adultes et 2 enfants/.test(tf) && /Téléphone : \+34612345678/.test(tf) && !r.calls.some((c) => c.kind === 'insert' || c.kind === 'ai') && !r.errs.length, { tf: tf.slice(0, 700), errs: r.errs });
   // Enregistrer : le séjour tel que lu, origine espace
