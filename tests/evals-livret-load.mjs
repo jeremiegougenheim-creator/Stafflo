@@ -129,7 +129,13 @@ await r.ctx.close();
   check('grille jours × services : 3 en-têtes + 3 lignes de 3 cases ; le goûter garde ses jours en pastilles', (await r.page.$$eval('[data-ow="m1"]', (bs) => bs.every((b) => b.classList.contains('cell') && b.closest('.ord-grid')))) &&
     (await r.page.$$eval('.ord-grid .og-h', (xs) => xs.map((x) => x.textContent).join('|'))) === '|brunch|midi|soir' && (await r.page.$$eval('.ord-grid .og-d', (xs) => xs.map((x) => x.innerText).join('|'))) === 'mar. 20|mer. 21|jeu. 22' &&
     (await r.page.$$eval('[data-ow="m2"]', (bs) => bs.every((b) => !b.classList.contains('cell') && b.innerText === b.getAttribute('aria-label')))));
+  check('soirs libres (22/10) : rien tant qu’aucun dîner n’est coché', await r.page.$eval('#ord-free', (e) => e.hidden && !e.textContent));
   for (const k of ['2026-10-21|d', '2026-10-22|l', '2026-10-22|l', '2026-10-22|l']) await r.page.click('[data-ow="m1"][data-k="' + k + '"]');
+  check('soirs libres : un dîner coché mercredi → « Soirs sans dîner : mar. 20 » (le soir du départ, jeudi, n’existe pas ; le midi ne compte pas)',
+    await r.page.$eval('#ord-free', (e) => !e.hidden && e.textContent === 'Soirs sans dîner : mar. 20 — cochez-les ci-dessus si vous le souhaitez.'), await r.page.$eval('#ord-free', (e) => e.textContent));
+  await r.page.click('[data-ow="m1"][data-k="2026-10-20|d"]');
+  check('soirs libres : tous les soirs ont un dîner → la ligne disparaît', await r.page.$eval('#ord-free', (e) => e.hidden));
+  await r.page.click('[data-ow="m1"][data-k="2026-10-20|d"]');
   await r.page.click('[data-ow="m2"][data-k="2026-10-20|"]');
   check('le client touche les cases : 2 services + 1 goûter → 2 × 650 + 300 = 1 600 MAD, compteurs à jour, cases marquées',
     /1\s?600 MAD/.test(await r.page.innerText('#ord-tot')) && (await r.page.innerText('#oq-m1')) === '2' && (await r.page.innerText('#oq-m2')) === '1' && (await chips('m1')).filter((x) => x.endsWith('*')).join() === 'mer. 21 · soir*,jeu. 22 · midi*' &&

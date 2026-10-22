@@ -1110,7 +1110,12 @@ await r.page.waitForTimeout(200);
 check('Jour › À faire : « Confirmer la commande du client » en tête, même à 12 jours de l’arrivée', /Confirmer la commande du client/.test(await txt(r.page)) && !r.errs.length, r.errs);
 await r.page.click('[data-a="goto"][data-v="order"]'); await r.page.waitForTimeout(150);
 let tx6 = await txt(r.page);
-check('Séjours : chiffre « Extras commandés par vos clients · 1 séjour — 2 100 MAD » et ligne de commande sur le séjour', /Extras commandés par vos clients · 1 séjour\s*2\s?100 MAD/.test(tx6) && /Commande du client · [^:]+: 2 × Dîner · 1 × Transfert aéroport — 2\s?100 MAD/.test(tx6), tx6.slice(0, 600));
+check('Séjours : ligne de commande sur le séjour, et le parcours du livret (22/10 : « livret pas envoyé » puis la commande à confirmer)', /Commande du client · [^:]+: 2 × Dîner · 1 × Transfert aéroport — 2\s?100 MAD/.test(tx6) && /Livret : livret pas envoyé · commande 2\s?100 MAD · à confirmer/.test(tx6), tx6.slice(0, 600));
+// 22/10 : la carte « Extras » du mois (Séjours) — le séjour arrive dans 12 jours : ce mois-ci ou le suivant
+for (let k = 0; k < 2 && !/Ana Ruiz[^\n]*\n?commande 2\s?100 MAD · à confirmer/.test(await r.page.innerText('#main')); k++) { await r.page.click('[data-a="exm"][data-v="1"]'); await r.page.waitForTimeout(120); }
+tx6 = await r.page.innerText('#main');
+check('Séjours › Extras du mois : séjours 1, livret envoyé 0/1, commande 1/1, commandé 2 100 MAD, la ligne du séjour « commande 2 100 MAD · à confirmer », mention des ouvertures suivies',
+  /EXTRAS[\s\S]*Séjours\s*1\s*Livret envoyé\s*0\/1[\s\S]*Commande\s*1\/1\s*Commandé\s*2\s?100 MAD[\s\S]*Ana Ruiz[^\n]*\n?commande 2\s?100 MAD · à confirmer[\s\S]*Ouvertures suivies depuis le 22 octobre 2026/.test(tx6), tx6.slice(0, 900));
 await r.page.click('[data-a="ordok"][data-id="s1"]'); await r.page.waitForTimeout(250);
 const okc = r.calls.filter((c) => c.kind === 'stay').pop();
 check('« Commande confirmée au client » → details.orderConfirmedAt, la commande reste, rien d’autre', !!okc && Object.keys(okc.body).join() === 'details' && !!okc.body.details.orderConfirmedAt && okc.body.details.guest_orders.total === 2100);

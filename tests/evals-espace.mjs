@@ -208,5 +208,52 @@ check('v14 : le texte du propriétaire (message client collé, correction) fait 
 check('v14 : repas recopiés tels quels (aucun plat ajouté, retiré ou renommé, catégorie inchangée) — FR et EN', /n’ajoute, ne retire et ne renomme aucun plat/.test(script) && /never add, drop or rename a dish/.test(script));
 
 for (const f of ['espace.html', 'livret.html', 'equipe.html']) { const s = fs.readFileSync(path.join(root, f), 'utf8'); check(f + ' : chaque <style> est refermé (sinon tout le script devient du texte)', (s.match(/<style[\s>]/g) || []).length === (s.match(/<\/style>/g) || []).length); }
+// 22/10 — extras par séjour : parcours du livret (envoyé → ouvert → commande → confirmée), soirs libres, relance, carte du mois
+{
+  const names = ['journey', 'jLine', 'jState', 'dinnerRow', 'orderedEvenings', 'freeEvenings', 'offerable', 'nudgeable', 'msgExtra', 'curOf'];
+  const srcs = names.map((n) => fnSource(script, n));
+  check('22/10 : fonctions du module extras présentes', srcs.every(Boolean), names.filter((n, i) => !srcs[i]));
+  const ctx = {
+    U: { lang: 'fr' }, HAS_FACTS: true, EXO: { s2: { opens: 3, last_opened_at: '2026-10-20T20:14:00Z' } }, EXO_OK: true,
+    LINKS: { get: () => 'tok' }, todayNum: () => 100, Date, String, Array, Object, Math, RegExp,
+    F: { VILLA: { currency: 'MAD', name: 'Riad Test' }, MEALS: [{ n: ['Petit-déjeuner', 'Breakfast'], a: ['Inclus', ''], b: ['Inclus', ''] }, { n: ['Déjeuner ou dîner (sur demande)', 'Lunch or dinner (on request)'], a: ['650 MAD', ''], b: ['850 MAD', ''] }, { n: ['Goûter', 'Afternoon tea'], a: ['450 MAD', ''], b: ['450 MAD', ''] }] },
+    L: () => ({ ex: { sentOn: (d) => 'envoyé le ' + d, notSent: 'livret pas envoyé', sentNot: 'pas encore ouvert', sentUnk: 'livret envoyé', opens: (n) => 'ouvert ' + n + ' fois', lastOpen: (w) => 'dernière lecture ' + w, order: (v) => 'commande ' + v, conf: 'confirmée', toConf: 'à confirmer' } }),
+    P: (pair, i) => Array.isArray(pair) ? String(pair[i == null ? 0 : i] || pair[0]) : String(pair || ''), mealsRow: (c) => (c.pax >= 7 ? 'b' : 'a'), bigMode: (r) => (r && (r.big === 'kitchen' || r.big === 'off') ? r.big : 'house'),
+    unitPrice: (meal, col) => { const v = parseInt(String(meal[col][0]).replace(/\D/g, ''), 10); return isFinite(v) && v > 0 ? v : null; },
+    dayNum: (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null; },
+    fmtDay: (n) => 'J' + n, fmtLongDay: (n) => 'jour ' + n, seenAt: () => 'hier 21:14', money: (v, c) => v + ' ' + c, guestLang: () => 'fr', firstName: () => 'Claire', auVilla: () => 'au Riad Test', atVilla: () => 'Riad Test', owner: () => 'Jérémie', livretAbs: () => 'https://x/livret.html?t=tok', orderable: () => [],
+    orderOf: (c) => { const o = c.details && c.details.guest_orders; return o && +o.total > 0 && Array.isArray(o.items) ? o : null; },
+    orderOpen: (c) => { const o = c.details && c.details.guest_orders; return !!o && !(c.details.orderConfirmedAt && String(c.details.orderConfirmedAt) >= String(o.at || '')); }
+  };
+  vm.createContext(ctx);
+  vm.runInContext(srcs.join('\n') + '\nthis.api = { journey, jLine, jState, dinnerRow, freeEvenings, offerable, nudgeable, msgExtra };', ctx);
+  const A = ctx.api, D = (iso) => ctx.dayNum(iso);
+  const base = (over) => Object.assign({ id: 's1', name: 'Claire', a: 103, d: 106, n: 3, pax: 4, meals: '', details: {} }, over);
+  // dates fixes : jour 103 = 1970-04-14, 104, 105 (3 nuits)
+  const dOf = (n) => new Date(n * 86400000).toISOString().slice(0, 10);
+  check('parcours : rien d’envoyé → « livret pas envoyé »', A.jLine(base()) === 'livret pas envoyé');
+  check('parcours : envoyé, jamais ouvert (ouvertures suivies) → « pas encore ouvert »', A.jLine(base({ details: { livretSentAt: '2026-10-12T10:00:00Z' } })) === 'envoyé le J' + D('2026-10-12') + ' · pas encore ouvert');
+  check('parcours : ouvert 3 fois, dernière lecture, puis commande à confirmer', A.jLine(base({ id: 's2', details: { livretSentAt: '2026-10-12T10:00:00Z', guest_orders: { total: 2500, cur: 'MAD', at: '2026-10-21T08:00:00Z', items: [] } } })) === 'envoyé le J' + D('2026-10-12') + ' · ouvert 3 fois · dernière lecture hier 21:14 · commande 2500 MAD · à confirmer');
+  check('parcours : commande confirmée', A.jState(base({ details: { guest_orders: { total: 900, cur: 'MAD', at: '2026-10-21T08:00:00Z', items: [] }, orderConfirmedAt: '2026-10-21T09:00:00Z' } })).txt === 'commande 900 MAD · confirmée');
+  ctx.EXO_OK = false;
+  check('sans colonnes d’ouverture : « livret envoyé », jamais « pas encore ouvert » (rien d’inventé)', A.jLine(base({ details: { livretSentAt: '2026-10-12T10:00:00Z' } })) === 'envoyé le J' + D('2026-10-12') && !A.nudgeable(base({ details: { livretSentAt: '2026-10-01T10:00:00Z' } })));
+  ctx.EXO_OK = true;
+  check('dîner de la fiche : la ligne « Déjeuner ou dîner », prix du groupe (4 → 650, 8 → 850)', A.dinnerRow(base()).unit === 650 && A.dinnerRow(base({ pax: 8 })).unit === 850 && A.dinnerRow(base({ pax: 8 })).i === 1);
+  check('soirs libres : sans commande, chaque nuit (jamais le soir du départ)', JSON.stringify(A.freeEvenings(base())) === '[103,104,105]');
+  const ord = { total: 650, cur: 'MAD', at: '2026-10-21T08:00:00Z', items: [{ id: 'm1', kind: 'meal', n: ['Déjeuner ou dîner (sur demande)', 'Lunch or dinner (on request)'], q: 2, when: [{ d: dOf(104), s: 'd' }, { d: dOf(105), s: 'l' }] }] };
+  check('soirs libres : dîner commandé le 2e soir → restent le 1er et le 3e (un déjeuner ne compte pas)', JSON.stringify(A.freeEvenings(base({ details: { guest_orders: ord } }))) === '[103,105]');
+  check('soirs libres : un dîner commandé sans date → on ne sait pas, rien proposé', A.freeEvenings(base({ details: { guest_orders: { total: 650, cur: 'MAD', at: 'x', items: [{ id: 'm1', kind: 'meal', n: ['Déjeuner ou dîner', 'Lunch or dinner'], q: 1 }] } } })).length === 0);
+  check('proposer le dîner : livret utilisé, soirs libres → oui ; déjà proposé → non ; repas notés hors livret → non ; une nuit → non', A.offerable(base({ details: { guest_orders: ord } })) && !A.offerable(base({ details: { guest_orders: ord, extraOfferAt: 'x' } })) && !A.offerable(base({ meals: 'dîner le mardi via WhatsApp' })) && !A.offerable(base({ a: 105, n: 1 })) && A.offerable(base()));
+  const m = A.msgExtra(base({ details: { guest_orders: ord } }));
+  check('message « Proposer le dîner » : soirs libres nommés, nom du repas de la fiche sans « (sur demande) », prix du groupe, lien du livret sur la commande (#ord), rien d’inventé', /2 soirs sont encore libres : jour 103, jour 105\./.test(m) && m.includes('« Déjeuner ou dîner » — 650 MAD par service') && m.includes('https://x/livret.html?t=tok#ord') && !/cuisini|chef/i.test(m), m);
+  check('relance livret : envoyé depuis 3 jours, jamais ouvert, arrivée dans 2 à 14 jours → oui ; ouvert → non ; déjà relancé → non ; envoyé hier → non',
+    A.nudgeable(base({ a: 105, details: { livretSentAt: dOf(96) + 'T10:00:00Z' } })) && !A.nudgeable(base({ id: 's2', a: 105, details: { livretSentAt: dOf(96) + 'T10:00:00Z' } })) && !A.nudgeable(base({ a: 105, details: { livretSentAt: dOf(96) + 'T10:00:00Z', livretNudgeAt: 'x' } })) && !A.nudgeable(base({ a: 105, details: { livretSentAt: dOf(99) + 'T10:00:00Z' } })));
+  check('22/10 : ouvertures lues dans livret_links (opens, first/last), colonnes absentes → null, jamais inventé', /livret_links\?select=client_id,opens,first_opened_at,last_opened_at&deleted_at=is\.null/.test(script) && /EXO_OK = Array\.isArray\(res\[16\]\)/.test(script));
+  check('22/10 : « À faire » porte la relance (lnudge) et le dîner des soirs libres (extra, 7 à 2 jours avant)', /k: 'lnudge', due: t/.test(script) && /c\.a - t <= 7 && offerable\(c\)/.test(script) && /lnudge: 'Livret pas encore ouvert : relancer'/.test(script) && /extra: 'Proposer le dîner les soirs libres'/.test(script));
+  check('22/10 : carte « Extras » du mois dans Séjours (mois précédent / suivant), une ligne par séjour, mention « ouvertures suivies depuis le 22 octobre 2026 »', /h \+= extrasCard\(\);/.test(script) && /data-a="exm" data-v="-1"/.test(script) && /Ouvertures suivies depuis le 22 octobre 2026/.test(script) && /a === 'exm'/.test(script));
+  check('22/10 : marquer « dîner proposé » / « relance envoyée » = details.extraOfferAt / details.livretNudgeAt (fusion, rien d’écrasé)', /setDetail\(c, 'extraOfferAt'/.test(script) && /setDetail\(c, 'livretNudgeAt'/.test(script));
+  check('22/10 : le livret dit « &o=1 » quand le propriétaire l’ouvre (session ou ?edit=1) — l’ouverture ne compte pas', /\(own \|\| q\.get\('edit'\) === '1' \? '&o=1' : ''\)/.test(fs.readFileSync(path.join(root, 'livret.html'), 'utf8')));
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

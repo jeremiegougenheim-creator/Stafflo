@@ -16,7 +16,8 @@ const src = fs.readFileSync(path.join(root, 'supabase/functions/livret-view/inde
 const FACTS = { VILLA: { name: 'Villa Test', wifi: { net: 'n', pass: 'p' } }, TEAM: [] };
 const iso = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
 const DB = {
-  links: [{ token: 'A'.repeat(43), owner_id: 'o1', client_id: 's1' }, { token: 'B'.repeat(43), owner_id: 'o1', client_id: 's-old' }],
+  links: [{ token: 'A'.repeat(43), owner_id: 'o1', client_id: 's1' }, { token: 'B'.repeat(43), owner_id: 'o1', client_id: 's-old' },
+    { id: 'L4', token: 'D'.repeat(43), owner_id: 'o1', client_id: 's1', opens: 0, first_opened_at: null, last_opened_at: null }], // colonnes d'ouverture (22/10)
   stays: [
     { id: 's1', user_id: 'o1', name: 'Ana Ruiz', arrival: iso(2), departure: iso(5), details: { livretSentAt: '2026-10-10T09:00:00Z' } },
     { id: 's-old', user_id: 'o1', name: 'Old Guest', arrival: iso(-20), departure: iso(-10), details: {} },
@@ -94,7 +95,7 @@ let lim = false; for (let k = 0; k < 25; k++) { const x = await get('guest=X&dat
 check('ancien lien : essais limités par adresse IP (20 / heure)', lim);
 
 // 4. Garde-fous statiques
-check('écritures en base : le séjour (PATCH), l’alerte de commande (guest_notices), les fiches voyageurs (guest_registrations, POST ou PATCH) et la lecture de la clé — jamais de DELETE', (src.match(/method:\s*"PATCH"/g) || []).length === 2 && (src.match(/method:\s*"POST"/g) || []).length === 3 && /db\(`guest_notices`, \{ method: "POST"/.test(src) && /db\(`guest_registrations`, \{ method: "POST"/.test(src) && /db\(`guest_registrations\?id=eq\.\$\{cur\[0\]\.id\}`, \{ method: "PATCH"/.test(src) && /db\("rpc\/guest_reg_key", \{ method: "POST"/.test(src) && !/method:\s*"DELETE"/.test(src));
+check('écritures en base : le séjour (PATCH), l’ouverture du livret (livret_links, PATCH — 22/10), l’alerte de commande (guest_notices), les fiches voyageurs (guest_registrations, POST ou PATCH) et la lecture de la clé — jamais de DELETE', (src.match(/method:\s*"PATCH"/g) || []).length === 3 && /db\(`livret_links\?id=eq\.\$\{r\.link!\.id\}`, \{ method: "PATCH"/.test(src) && (src.match(/method:\s*"POST"/g) || []).length === 3 && /db\(`guest_notices`, \{ method: "POST"/.test(src) && /db\(`guest_registrations`, \{ method: "POST"/.test(src) && /db\(`guest_registrations\?id=eq\.\$\{cur\[0\]\.id\}`, \{ method: "PATCH"/.test(src) && /db\("rpc\/guest_reg_key", \{ method: "POST"/.test(src) && !/method:\s*"DELETE"/.test(src));
 
 // 5. Le client répond (POST) : heure d'arrivée, composition, repas — dans les deux sens.
 {
@@ -230,6 +231,25 @@ check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
   check('trop de voyageurs (> 30) → rien ; champs bornés', M.cleanTravellers(Array.from({ length: 31 }, () => T1)) === null && M.cleanTravellers([{ last: 'x'.repeat(200), first: 'y' }])[0].last.length === 60);
   r = await post({ t: 'B'.repeat(43), travellers: [T1] }, '5.5.5.6');
   check('séjour terminé → 410, aucune fiche écrite', r.status === 410 && REGS.length === 1);
+}
+
+// Ouvertures du livret par le client (22/10/2026) : livret_links.opens / first_opened_at / last_opened_at, écrites par GET ?t=.
+{
+  const now = Date.parse('2026-10-22T10:00:00Z');
+  check('openPatch : première ouverture → opens 1, first et last posés', JSON.stringify(M.openPatch({ id: 'L', opens: 0, first_opened_at: null, last_opened_at: null }, now)) === JSON.stringify({ opens: 1, last_opened_at: '2026-10-22T10:00:00.000Z', first_opened_at: '2026-10-22T10:00:00.000Z' }));
+  check('openPatch : rechargement 10 min après → rien (une lecture, pas deux)', M.openPatch({ id: 'L', opens: 1, first_opened_at: '2026-10-22T10:00:00Z', last_opened_at: '2026-10-22T10:00:00Z' }, now + 10 * 60000) === null);
+  const p2 = M.openPatch({ id: 'L', opens: 1, first_opened_at: '2026-10-22T10:00:00Z', last_opened_at: '2026-10-22T10:00:00Z' }, now + 31 * 60000);
+  check('openPatch : 31 min après → opens 2, first inchangé, last avancé', p2 && p2.opens === 2 && p2.first_opened_at === '2026-10-22T10:00:00Z' && p2.last_opened_at === '2026-10-22T10:31:00.000Z');
+  check('openPatch : colonnes absentes (migration pas passée) → rien, le livret marche comme avant', M.openPatch({ owner_id: 'o1', client_id: 's1' }, now) === null && M.openPatch(undefined, now) === null);
+  const n0 = PATCHES.length;
+  let r = await get('t=' + 'D'.repeat(43), '7.7.7.1');
+  const pl = PATCHES.filter((x) => x.url.includes('/rest/v1/livret_links'));
+  check('GET ?t= par le client → une ouverture écrite sur CE lien (id), rien d’autre', r.status === 200 && pl.length === 1 && pl[0].url.includes('id=eq.L4') && pl[0].body.opens === 1 && !!pl[0].body.first_opened_at && PATCHES.length === n0 + 1, pl);
+  r = await get('t=' + 'D'.repeat(43) + '&o=1', '7.7.7.2');
+  check('GET ?t=&o=1 (le propriétaire vérifie le lien) → rien d’écrit', r.status === 200 && PATCHES.length === n0 + 1);
+  r = await get('t=' + 'A'.repeat(43), '7.7.7.3');
+  check('lien sans colonnes d’ouverture → rien d’écrit, livret servi', r.status === 200 && PATCHES.length === n0 + 1);
+  check('la réponse ne renvoie pas les compteurs au client', !JSON.stringify(await r.json()).includes('opens'));
 }
 
 console.log(`\n${pass}/${pass + fail} PASS`);

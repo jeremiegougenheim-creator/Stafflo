@@ -35,6 +35,10 @@
 //   Le propriétaire les lit par la fonction guest-registrations. Effacées un an après le départ.
 // Lien court (18/10/2026) : GET ?t= renvoie aussi stay: { name, pax } — l'en-tête du livret (prénom, nombre), qui
 //   voyageait jusque-là dans l'adresse du lien (guest=, dates=, pax=). Rien d'autre (ni prix, ni téléphone). Limite par adresse IP.
+// Ouvertures (22/10/2026) : GET ?t= note que le CLIENT a ouvert son livret — livret_links.opens (+1 au plus toutes les
+//   30 min, rechargements compris), first_opened_at, last_opened_at. Jamais quand c'est le propriétaire (&o=1 : la page
+//   l'envoie quand une session Stafflo est sur l'appareil, ou avec ?edit=1). Une panne d'écriture ne bloque jamais le
+//   livret. L'Espace en fait le parcours d'un séjour : envoyé → ouvert → commande → confirmée.
 // verify_jwt : off (le client n'a pas de compte) — l'accès, c'est le jeton.
 
 const SB_URL = Deno.env.get("SUPABASE_URL") || "";
@@ -285,13 +289,23 @@ async function factsOf(owner: string): Promise<Row | null> {
 }
 
 // Le séjour d'un jeton (lien non retiré, séjour pas terminé depuis plus de 7 jours), sinon le code d'erreur.
-async function stayOfToken(t: string, today: string): Promise<{ stay?: Row; owner?: string; err?: number }> {
-  const l = await db(`livret_links?select=owner_id,client_id&token=eq.${t}&deleted_at=is.null&limit=1`);
+async function stayOfToken(t: string, today: string): Promise<{ stay?: Row; owner?: string; link?: Row; err?: number }> {
+  const l = await db(`livret_links?select=id,owner_id,client_id,opens,first_opened_at,last_opened_at&token=eq.${t}&deleted_at=is.null&limit=1`)
+    .catch(() => db(`livret_links?select=owner_id,client_id&token=eq.${t}&deleted_at=is.null&limit=1`)); // colonnes d'ouverture absentes : comme avant
   if (!l.length) return { err: 404 };
   const s = await db(`crm_clients?select=id,name,arrival,departure,deleted_at,details,meals,adults,children,guests&id=eq.${encodeURIComponent(l[0].client_id)}&user_id=eq.${l[0].owner_id}&limit=1`);
   const graceEnd = day(Date.parse(today + "T12:00:00Z") - GRACE_DAYS * 86400000);
   if (!s.length || s[0].deleted_at || String(s[0].departure || "").slice(0, 10) < graceEnd) return { err: 410 };
-  return { stay: s[0], owner: String(l[0].owner_id) };
+  return { stay: s[0], owner: String(l[0].owner_id), link: l[0] };
+}
+// Ouverture par le client : +1 au plus toutes les 30 min (un rechargement n'est pas une nouvelle lecture). null = rien à écrire.
+export const OPEN_GAP_MS = 30 * 60_000;
+export function openPatch(link: Row | undefined, nowMs: number): Row | null {
+  if (!link || !link.id || !("opens" in link)) return null; // colonnes pas encore là
+  const last = link.last_opened_at ? Date.parse(link.last_opened_at) : NaN;
+  if (isFinite(last) && nowMs - last < OPEN_GAP_MS) return null;
+  const at = new Date(nowMs).toISOString();
+  return { opens: (Number(link.opens) || 0) + 1, last_opened_at: at, first_opened_at: link.first_opened_at || at };
 }
 const answersOf = (stay: Row) => (stay.details && typeof stay.details === "object" && stay.details.guest_answers) || null;
 const ordersOf = (stay: Row) => (stay.details && typeof stay.details === "object" && stay.details.guest_orders) || null;
@@ -343,6 +357,9 @@ Deno.serve(async (req: Request) => {
       if (r.err || !r.stay) return out({ error: r.err === 410 ? "expired" : "not_found" }, r.err || 404);
       const f = await factsOf(String(r.owner));
       if (!f) return out({ error: "not_found" }, 404);
+      const op = q.get("o") === "1" ? null : openPatch(r.link, Date.now()); // le propriétaire qui vérifie ne compte pas
+      if (op) await db(`livret_links?id=eq.${r.link!.id}`, { method: "PATCH", headers: { "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(op) })
+        .catch((e) => console.error("[livret-view] open", String(e).slice(0, 120)));
       return out({ facts: f, stay: stayHead(r.stay), answers: answersOf(r.stay), orders: ordersOf(r.stay), days: daysOf(r.stay), ...(regOn(f) ? { reg: await regOf(String(r.owner), String(r.stay.id)).catch(() => null) } : {}) }); // une panne ici ne bloque jamais le livret
     }
     const guest = q.get("guest") || "", dates = q.get("dates") || "";

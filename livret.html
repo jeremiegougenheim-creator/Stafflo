@@ -300,8 +300,11 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
     };
   }
   var steps = [];
-  if (tok) steps.push(function () { return view('t=' + encodeURIComponent(tok)); });
-  var own = ownerStep(); if (own) steps.push(own);
+  var own = ownerStep();
+  // 22/10/2026 : « &o=1 » quand le propriétaire ouvre le lien (session Stafflo sur l'appareil, ou ?edit=1) — livret-view
+  // ne compte alors pas l'ouverture : l'Espace ne doit voir « ouvert » que quand c'est le client.
+  if (tok) steps.push(function () { return view('t=' + encodeURIComponent(tok) + (own || q.get('edit') === '1' ? '&o=1' : '')); });
+  if (own) steps.push(own);
   // Client (lien personnel, pas de session propriétaire ici, pas de ?edit=1) : page de lecture seulement.
   if (tok && !own && q.get('edit') !== '1') document.documentElement.classList.add('guest');
   if (!tok && guest && dates) steps.push(function () { return view('guest=' + encodeURIComponent(guest) + '&dates=' + encodeURIComponent(dates)); });
@@ -314,6 +317,8 @@ a{color:var(--terracotta);text-decoration:none;border-bottom:1px solid rgba(181,
     var main = document.getElementById('livret-main'), s = document.createElement('script');
     s.text = main.textContent;
     document.body.appendChild(s);
+    // 22/10/2026 : lien « …#ord » (message « Proposer le dîner » de l'Espace) → la commande, une fois le livret dessiné.
+    if (location.hash === '#ord') setTimeout(function () { var o = document.getElementById('ord'); if (o && o.scrollIntoView) o.scrollIntoView({ block: 'start' }); }, 60);
   }
   var MSG = {
     gone: ['Ce livret n’est plus disponible. Demandez le lien à jour à votre hôte.', 'This welcome booklet is no longer available. Please ask your host for an up-to-date link.'],
@@ -518,6 +523,7 @@ const T = {
   arrSentOn:['Transmis le','Sent on'],
   arrErr:['L’envoi n’a pas abouti. Vérifiez votre connexion et réessayez.','Sending failed. Check your connection and try again.'],
   ordTitle:['Commander pour votre séjour','Order for your stay'],
+  ordFree:['Soirs sans dîner : ','Evenings without dinner: '], ordFreeHint:['— cochez-les ci-dessus si vous le souhaitez.','— tick them above if you wish.'],
   regTitle:['Fiches voyageurs','Guest registration'],
   regWhy:['La loi impose de déclarer chaque voyageur aux autorités à son arrivée. Remplissez une fiche par personne avant de venir : rien à faire sur place. Vos informations sont chiffrées, vues seulement par votre hôte pour cette déclaration, et effacées un an après votre départ.','The law requires every guest to be registered with the authorities on arrival. Fill in one form per person before you come: nothing to do on site. Your details are encrypted, seen only by your host for this registration, and deleted one year after your stay.'],
   regWho:['Voyageur','Guest'], regLast:['Nom','Surname'], regFirst:['Prénom(s)','First name(s)'],
@@ -766,6 +772,19 @@ const ORDER = {}, WHEN = {};
   if (Array.isArray(x.when) && x.when.length) WHEN[x.id] = new Set(x.when.map(w => w.d + '|' + (w.s || '')));
 });
 const orderTotal = () => orderMenu().reduce((t, m) => t + m.unit * (ORDER[m.id] || 0), 0);
+/* Soirs libres (22/10/2026) : dès qu'un dîner est coché, les soirs du séjour sans dîner sont nommés sous la carte
+   (« Soirs sans dîner : mer. 21, jeu. 22 — cochez-les ci-dessus si vous le souhaitez. »). Le soir du départ n'existe
+   pas. Rien avant le premier dîner coché : la grille suffit, pas de relance à qui n'a rien choisi. */
+function freeEveningsTxt(){
+  const days = ordDays(); if (!days) return '';
+  const ids = orderMenu().filter(m => m.kind === 'meal' && /d[îi]ner|dinner/i.test([].concat(m.n).join(' '))).map(m => m.id);
+  if (!ids.length) return '';
+  const chosen = new Set(); let any = false;
+  ids.forEach(id => { const w = WHEN[id]; if (!w) return; w.forEach(k => { const [d, sv] = k.split('|'); if (!sv || sv === 'd') { chosen.add(d); any = true; } }); });
+  if (!any) return '';
+  const free = days.slice(0, -1).filter(d => !chosen.has(d));
+  return free.length ? ti(T.ordFree) + free.map(dayLbl).join(', ') + ' ' + ti(T.ordFreeHint) : '';
+}
 function orderBlock(){
   const menu = orderMenu();
   if (!menu.length) return '';
@@ -790,7 +809,8 @@ function orderBlock(){
       '<div class="step"><button type="button" data-ord="-1" data-id="' + m.id + '" aria-label="−">−</button><output id="oq-' + m.id + '">' + (ORDER[m.id] || 0) + '</output>' +
       '<button type="button" data-ord="1" data-id="' + m.id + '" aria-label="+">+</button></div></div>';
   });
-  return h + '<div class="ord-tot"><span>' + ti(T.ordTotal) + '</span><b id="ord-tot">' + esc(money(orderTotal())) + '</b></div></div>';
+  const fe = freeEveningsTxt();
+  return h + '<p class="why" id="ord-free"' + (fe ? '' : ' hidden') + '>' + esc(fe) + '</p><div class="ord-tot"><span>' + ti(T.ordTotal) + '</span><b id="ord-tot">' + esc(money(orderTotal())) + '</b></div></div>';
 }
 document.addEventListener('click', e => {
   const c = e.target.closest && e.target.closest('[data-ow]'); if (!c) return;
@@ -801,6 +821,7 @@ document.addEventListener('click', e => {
   ORDER[id] = set.size;
   const o = document.getElementById('oq-' + id); if (o) o.textContent = set.size;
   const tt = document.getElementById('ord-tot'); if (tt) tt.textContent = money(orderTotal());
+  const fl = document.getElementById('ord-free'); if (fl) { const fe = freeEveningsTxt(); fl.textContent = fe; fl.hidden = !fe; }
 });
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-ord]'); if (!b) return;
