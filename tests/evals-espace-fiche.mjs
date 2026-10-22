@@ -1799,6 +1799,65 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.ctx.close();
 }
 
+// ── 22/10 — le prestataire derrière chaque extra : commande → « Envoyer à Houda » en un geste, « votre part », rien au client ──
+{
+  const VX = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia', currency: 'MAD' }, MEALS: [], TEAM: [{ name: 'Omar', role: ['gardien', ''], phone: '+212600000000', brief: true }],
+    EXTRAS: [{ n: ['Massage 60 min', 'Massage 60 min'], price: 550, unit: ['par personne', 'per person'], who: 'Houda — Aura & Soul', wa: '+212 649 967 722', take: 100 },
+      { n: ['Transfert aéroport — van', 'Airport transfer — van'], price: 600, unit: ['par trajet', 'per trip'], who: 'Abde' },
+      { n: ['Panier de fruits', 'Fruit basket'], price: 150, unit: ['par panier', 'per basket'] }] } };
+  const ORDX = { items: [{ id: 'x0', kind: 'extra', n: ['Massage 60 min', 'Massage 60 min'], q: 2, unit: 550, sub: 1100 }, { id: 'x1', kind: 'extra', n: ['Transfert aéroport — van', 'Airport transfer — van'], q: 1, unit: 600, sub: 600 }, { id: 'x2', kind: 'extra', n: ['Panier de fruits', 'Fruit basket'], q: 1, unit: 150, sub: 150 }], total: 1850, cur: 'MAD', at: new Date(Date.now() - 3600e3).toISOString() };
+  const STX = { id: 's1', name: 'Thibaut Verlaine', arrival: iso(6), departure: iso(10), adults: 7, booking_status: 'confirmed', source: 'airbnb', nat: 'France', phone: '+33600000000', details: { guest_orders: ORDX, arrival_time: '« nous atterrissons à 14h »' } };
+  r = await open({ tab: 'jour', villa: VX, stays: [STX] });
+  await r.page.waitForTimeout(250);
+  let tp = await txt(r.page);
+  check('Jour › À faire : « Transmettre la commande au prestataire » (extras commandés, prestataire pas prévenu)', /Transmettre la commande au prestataire/.test(tp) && !r.errs.length, [tp.slice(0, 300), r.errs]);
+  await r.page.click('[data-a="goto"][data-v="prov"]'); await r.page.waitForTimeout(200);
+  tp = await txt(r.page);
+  check('Séjour : une ligne par prestataire (Houda : 2 × Massage · à transmettre ; Abde : 1 × Transfert · à transmettre), le panier sans prestataire n’a pas de ligne, bouton « Envoyer à Houda »',
+    /Houda — Aura & Soul : 2 × Massage 60 min · À transmettre à Houda — Aura & Soul/.test(tp) && /Abde : 1 × Transfert aéroport — van · À transmettre à Abde/.test(tp) && !/Panier de fruits · À transmettre/.test(tp) && /Envoyer à Houda — Aura & Soul/.test(tp), tp.slice(0, 700));
+  const pm = await r.page.inputValue('#tx-s1');
+  check('message au prestataire : en français, prénom + initiale du client, nombre, dates, lignes commandées (les siennes seulement), heure d’arrivée, jamais le téléphone du client ni un prix',
+    /^Bonjour Houda,\n\nCommande pour Riad Zina — séjour de Thibaut V\. \(7 pers\.\), du [^\n]+ au [^\n]+ :\n• 2 × Massage 60 min\nArrivée : atterrissage 14h\n\nMerci de me confirmer\.\nNadia$/.test(pm) && !/Transfert|Panier|550|1\s?850|0600000000|\+33/.test(pm), pm);
+  const wab = await r.page.$('[data-a="sendprov"][data-v="houda — aura & soul"]');
+  check('« Envoyer à Houda » (WhatsApp du prestataire, depuis la fiche) ; pour Abde sans WhatsApp dans la fiche : copier seulement', !!wab);
+  await r.page.click('[data-a="provdone"][data-id="s1"]'); await r.page.waitForTimeout(250);
+  const pd = r.calls.filter((c) => c.kind === 'stay').pop();
+  check('« Marquer envoyé » → details.provSentAt[houda…] seulement, la commande reste', !!pd && Object.keys(pd.body).join() === 'details' && !!(pd.body.details.provSentAt || {})['houda — aura & soul'] && pd.body.details.guest_orders.total === 1850 && !pd.body.details.provSentAt.abde, pd && pd.body);
+  tp = await txt(r.page);
+  check('après l’envoi : « Envoyé à Houda le … », Abde toujours à transmettre', /Houda — Aura & Soul : 2 × Massage 60 min · Envoyé à Houda — Aura & Soul le /.test(tp) && /À transmettre à Abde/.test(tp), tp.slice(0, 700));
+  // carte Extras du mois : votre part = 2 × 100 (massage seulement : le transfert et le panier n'ont pas « ce que vous gardez »)
+  await r.page.click('[data-a="tab"][data-v="sejours"]').catch(() => {}); await r.page.waitForTimeout(150);
+  for (let k = 0; k < 2 && !/Thibaut Verlaine[^\n]*\n?commande 1\s?850 MAD/.test(await r.page.innerText('#main')); k++) { await r.page.click('[data-a="exm"][data-v="1"]'); await r.page.waitForTimeout(120); }
+  const ex = await r.page.innerText('#main');
+  check('Extras du mois : « Votre part : 200 MAD sur 1 commande (extras avec « ce que vous gardez » renseigné) »', /Votre part : 200 MAD sur 1 commande/.test(ex), ex.slice(0, 600));
+  await r.ctx.close();
+  // commande refaite après l'envoi → à renvoyer ; sans prestataire renseigné → rien à faire
+  const later = { ...STX, details: { guest_orders: { ...ORDX, at: new Date().toISOString() }, provSentAt: { 'houda — aura & soul': new Date(Date.now() - 7200e3).toISOString() } } };
+  r = await open({ tab: 'jour', villa: VX, stays: [later] });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="goto"][data-v="prov"]'); await r.page.waitForTimeout(200);
+  check('commande modifiée après l’envoi : Houda repasse « à transmettre »', /À transmettre à Houda — Aura & Soul/.test(await txt(r.page)));
+  await r.ctx.close();
+  const VN = { ...VX, house_facts: { ...VX.house_facts, EXTRAS: VX.house_facts.EXTRAS.map((e) => ({ n: e.n, price: e.price, unit: e.unit })) } };
+  r = await open({ tab: 'jour', villa: VN, stays: [STX] });
+  await r.page.waitForTimeout(250);
+  const tn = await txt(r.page);
+  check('sans prestataire dans la fiche : ni « Transmettre », ni ligne, ni « votre part » — rien d’inventé', !/Transmettre la commande/.test(tn) && !/À transmettre/.test(tn) && !/Votre part/.test(tn) && !r.errs.length, r.errs);
+  await r.ctx.close();
+  // fiche › Extras : les trois champs, gardés par feClean, montrés comme « jamais montrés au client »
+  r = await open({ tab: 'maison', villa: VX });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="feopen"]:not([data-v])'); await r.page.waitForSelector('#fe-VILLA\\.name');
+  await r.page.click('details[data-fold="fe:Extras à commander"] > summary'); await r.page.waitForTimeout(200); // la rubrique est repliée quand elle a déjà des lignes
+  const fx = await txt(r.page);
+  check('fiche › Extras : « Prestataire », « Son WhatsApp », « Ce que vous gardez, par unité (MAD) », et la mention « Jamais montré au client ni à l’équipe »', /Prestataire \(prénom ou société\)/.test(fx) && /Son WhatsApp/.test(fx) && /Ce que vous gardez, par unité \(MAD\)/.test(fx) && /Jamais montré au client ni à l’équipe/.test(fx) && (await r.page.inputValue('[data-fe="EXTRAS.0.who"]')) === 'Houda — Aura & Soul' && (await r.page.inputValue('[data-fe="EXTRAS.0.take"]')) === '100', fx.slice(0, 400));
+  await r.page.fill('[data-fe="EXTRAS.1.wa"]', '+212 661 000 000'); await r.page.fill('[data-fe="EXTRAS.1.take"]', '50');
+  await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
+  const sv = r.calls.filter((c) => c.kind === 'PATCH' && c.body && c.body.house_facts).pop();
+  check('enregistrer : who / wa / take gardés par extra (Abde : wa et take ajoutés ; le panier sans rien)', !!sv && sv.body.house_facts.EXTRAS[0].who === 'Houda — Aura & Soul' && sv.body.house_facts.EXTRAS[0].take === 100 && sv.body.house_facts.EXTRAS[1].wa === '+212 661 000 000' && sv.body.house_facts.EXTRAS[1].take === 50 && !('who' in sv.body.house_facts.EXTRAS[2]) && !('take' in sv.body.house_facts.EXTRAS[2]), sv && sv.body.house_facts.EXTRAS);
+  await r.ctx.close();
+}
+
 await browser.close(); server.close();
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

@@ -252,5 +252,17 @@ check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
   check('la réponse ne renvoie pas les compteurs au client', !JSON.stringify(await r.json()).includes('opens'));
 }
 
+// ── 22/10 — ce qui reste entre le propriétaire et sa maison ne part jamais au client ──
+{
+  const FP = { VILLA: { name: 'Riad Zina', said: '+212 600 000 001' }, TEAM: [{ name: 'Omar', role: ['gardien', ''], phone: '+212600000000', brief: true }],
+    EXTRAS: [{ n: ['Massage 60 min', ''], price: 550, unit: ['par personne', ''], who: 'Houda', wa: '+212 649 967 722', take: 100 }, { n: ['Panier', ''], price: 150 }], MEALS: [{ n: ['Dîner', ''], a: 650 }] };
+  const pub = M.publicFacts(FP);
+  check('publicFacts : TEAM sans téléphone, EXTRAS sans prestataire (who / wa) ni « ce que vous gardez » (take) ; prix, unité, nom gardés ; le contact public VILLA.said reste',
+    !('phone' in pub.TEAM[0]) && pub.TEAM[0].name === 'Omar' && !('who' in pub.EXTRAS[0]) && !('wa' in pub.EXTRAS[0]) && !('take' in pub.EXTRAS[0]) && pub.EXTRAS[0].price === 550 && pub.EXTRAS[0].unit[0] === 'par personne' && pub.VILLA.said === '+212 600 000 001' && !JSON.stringify(pub).includes('649 967'), JSON.stringify(pub));
+  check('publicFacts : la fiche d’origine n’est pas modifiée (l’Espace du propriétaire la lit entière)', FP.TEAM[0].phone === '+212600000000' && FP.EXTRAS[0].who === 'Houda' && FP.EXTRAS[0].take === 100);
+  check('publicFacts : la carte de commande (prix recalculés) est la même avant et après', JSON.stringify(M.orderMenu(pub, 4)) === JSON.stringify(M.orderMenu(FP, 4)));
+  check('factsOf passe par publicFacts, et c’est la seule lecture de house_facts du service', /return f && typeof f === "object" && f\.VILLA \? publicFacts\(f\) : null;/.test(src) && (src.match(/select=house_facts/g) || []).length === 1 && (src.match(/await factsOf\(/g) || []).length >= 3);
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

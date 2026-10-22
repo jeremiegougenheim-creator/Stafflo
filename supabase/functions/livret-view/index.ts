@@ -282,10 +282,20 @@ async function regOf(owner: string, stayId: string): Promise<Row | null> {
   return r.length ? { count: r[0].travellers, at: r[0].submitted_at } : null;
 }
 
+/** 22/10 : ce qui reste entre le propriétaire et sa maison ne part jamais au client — téléphones de l'équipe (TEAM[].phone,
+ *  « jamais montré au client »), prestataire derrière chaque extra (EXTRAS[].who / wa) et ce que le propriétaire garde (take).
+ *  Le premier contact du livret reste VILLA.said, voulu public. */
+export function publicFacts(f: Row): Row {
+  const strip = (rows: unknown, keys: string[]) => Array.isArray(rows) ? rows.map((r) => { if (!r || typeof r !== "object") return r; const o: Row = { ...(r as Row) }; for (const k of keys) delete o[k]; return o; }) : rows;
+  const out: Row = { ...f };
+  if (Array.isArray(f.TEAM)) out.TEAM = strip(f.TEAM, ["phone"]);
+  if (Array.isArray(f.EXTRAS)) out.EXTRAS = strip(f.EXTRAS, ["who", "wa", "take"]);
+  return out;
+}
 async function factsOf(owner: string): Promise<Row | null> {
   const v = await db(`villa_settings?select=house_facts&owner_id=eq.${owner}&limit=1`);
   const f = v[0] && v[0].house_facts;
-  return f && typeof f === "object" && f.VILLA ? f : null;
+  return f && typeof f === "object" && f.VILLA ? publicFacts(f) : null;
 }
 
 // Le séjour d'un jeton (lien non retiré, séjour pas terminé depuis plus de 7 jours), sinon le code d'erreur.
