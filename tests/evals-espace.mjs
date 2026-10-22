@@ -142,7 +142,8 @@ check('v11 : « À faire » → Infos équipe ouvre le panneau Modifier', /depar
 // Dates hors de l'année en cours : avec l'année.
 {
   const i = script.indexOf('  function fmtDay('), j = script.indexOf('\n  }\n', i);
-  const ctx = { U: { lang: 'fr' }, Date }; vm.createContext(ctx); vm.runInContext(script.slice(i, j + 5) + '\nthis.f = fmtDay;', ctx);
+  // 22/10/2026 : l'année en cours est celle de la villa (todayNum, fuseau de la maison) — ici, celle du jour UTC.
+  const ctx = { U: { lang: 'fr' }, Date, todayNum: () => Math.floor(Date.now() / 86400000) }; vm.createContext(ctx); vm.runInContext(script.slice(i, j + 5) + '\nthis.f = fmtDay;', ctx);
   const y = new Date().getFullYear(), d = (yy) => Date.UTC(yy, 5, 10) / 86400000;
   check('v11 : « 10 juin » dans l’année en cours, « 10 juin 2027 » l’année suivante', !/\d{4}/.test(ctx.f(d(y))) && new RegExp(String(y + 1)).test(ctx.f(d(y + 1))));
 }

@@ -185,6 +185,25 @@ export function teamTime(v: string, kind: "a" | "d"): string {
 // Même liste que l'Espace (espace.html, FIRM_OUT) : l'équipe voit les séjours que voit le propriétaire.
 const FIRM_OUT = ["inquiry", "lead", "quoted", "declined", "cancelled", "canceled"];
 
+// Fuseau de la villa (22/10/2026) : même table que push-notify (tzFor). Avant : « Africa/Casablanca » en dur, faux pour
+// toute villa hors du Maroc (le pilote est au Maroc : inchangé pour lui). Pays inconnu → "" : la page garde le jour du téléphone.
+const TZ: [RegExp, string][] = [
+  [/\b(maroc|morocco)\b/, "Africa/Casablanca"], [/\bfrance\b/, "Europe/Paris"], [/\bportugal\b/, "Europe/Lisbon"],
+  [/\b(espagne|spain|espana)\b/, "Europe/Madrid"], [/\b(italie|italy|italia)\b/, "Europe/Rome"], [/\b(grece|greece)\b/, "Europe/Athens"],
+  [/\b(royaume-uni|united kingdom|uk|england|angleterre)\b/, "Europe/London"], [/\b(suisse|switzerland)\b/, "Europe/Zurich"],
+  [/\b(belgique|belgium)\b/, "Europe/Brussels"], [/\b(croatie|croatia)\b/, "Europe/Zagreb"], [/\b(turquie|turkey|turkiye)\b/, "Europe/Istanbul"],
+  [/\b(tunisie|tunisia)\b/, "Africa/Tunis"], [/\b(thailande|thailand)\b/, "Asia/Bangkok"], [/\b(indonesie|indonesia|bali)\b/, "Asia/Makassar"],
+  [/\b(maurice|mauritius)\b/, "Indian/Mauritius"], [/\b(emirats|uae|united arab emirates|dubai)\b/, "Asia/Dubai"],
+  [/\b(afrique du sud|south africa)\b/, "Africa/Johannesburg"], [/\b(mexique|mexico)\b/, "America/Mexico_City"],
+];
+export function villaTz(country: unknown, city: unknown): string {
+  const k = (String(country || "") + " " + String(city || "")).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  for (const [re, tz] of TZ) if (re.test(k)) return tz;
+  return "";
+}
+export function todayIn(tz: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz || "UTC" }).format(now);
+}
 export function validToken(k: unknown): k is string {
   return typeof k === "string" && /^[A-Za-z0-9_-]{32,64}$/.test(k);
 }
@@ -543,13 +562,15 @@ Deno.serve(async (req: Request) => {
     const link = ((await db(`staff_links?select=id,owner_id,name,lang,role,last_seen_at&token_hash=eq.${h}&deleted_at=is.null&limit=1`)) || [])[0];
     if (!link) return out({ error: "invalid_link" }, 404);
     const role: LinkRole = link.role === "kitchen" ? "kitchen" : "house";
-    const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Casablanca" }).format(new Date());
+    // La fiche maison du compte (repas « maison » / prestataire) — seulement si elle est en place (même drapeau que l'Espace).
+    // Lue d'abord (22/10) : le pays et la ville donnent le fuseau, donc « aujourd'hui » chez la villa.
+    const vs = ((await db(`villa_settings?select=house_facts,house_facts_ref,country,city&owner_id=eq.${link.owner_id}&order=created_at.asc&limit=1`).catch(() => [])) || [])[0];
+    const tz = villaTz(vs && vs.country, vs && vs.city);
+    const todayIso = todayIn(tz);
     const t = day(todayIso) as number;
     // 20/10 : 31 jours de plus pour connaître la prochaine arrivée après un départ en fin de fenêtre (staffView n'affiche que WINDOW_DAYS).
     const rows = await db(`crm_clients?select=id,name,arrival,departure,guests,adults,children,infants,booking_status,meals,details` +
       `&user_id=eq.${link.owner_id}&deleted_at=is.null&departure=gte.${iso(t - 1)}&arrival=lte.${iso(t + WINDOW_DAYS + 31)}&order=arrival.asc&limit=300`) || [];
-    // La fiche maison du compte (repas « maison » / prestataire) — seulement si elle est en place (même drapeau que l'Espace).
-    const vs = ((await db(`villa_settings?select=house_facts,house_facts_ref&owner_id=eq.${link.owner_id}&order=created_at.asc&limit=1`).catch(() => [])) || [])[0];
     const facts: Row | null = vs && vs.house_facts_ref === "villa-facts.js" && vs.house_facts && typeof vs.house_facts === "object" ? vs.house_facts : null;
     let stays = forRole(staffView(rows, todayIso, facts), role);
     if (body.action === "report") {
@@ -590,7 +611,7 @@ Deno.serve(async (req: Request) => {
         if (fin) { const again = await withTr(lang, forRole(staffView(rows, todayIso, facts), role), owner, read, write, async () => null).catch(() => null); if (again) { stays = again.stays; pending = again.pending; } }
       }
     }
-    return out({ name: link.name, lang: link.lang, role, tr: lang, pending, today: todayIso, stays, reports, at: new Date().toISOString() });
+    return out({ name: link.name, lang: link.lang, role, tr: lang, pending, today: todayIso, tz, stays, reports, at: new Date().toISOString() });
   } catch (_e) {
     return out({ error: "unavailable" }, 503);
   }

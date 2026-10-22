@@ -152,7 +152,16 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
 
   /* Dates : jours calendaires (UTC), jamais d'heure locale. */
   function dayNum(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null; }
-  function todayNum() { var d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000; }
+  /* Jour de la villa (22/10/2026) : staff-view donne le fuseau de la villa (tz, déduit de son pays) et son jour (today).
+     Fuseau inconnu : le jour du téléphone, comme avant. Navigateur sans ce fuseau : le jour reçu, s'il a moins de 12 h. */
+  function todayNum() {
+    var d = new Date(), sv = S && S.data;
+    if (sv && sv.tz) {
+      try { var n = dayNum(new Intl.DateTimeFormat('en-CA', { timeZone: sv.tz }).format(d)); if (n != null) return n; } catch (e) {}
+      if (sv.at && Date.now() - new Date(sv.at).getTime() < 12 * 3600000) { var n2 = dayNum(sv.today); if (n2 != null) return n2; }
+    }
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
+  }
   function fmt(n, long) {
     return new Date(n * 86400000).toLocaleDateString(S.lang === 'ar' ? 'ar-MA' : 'fr-FR',
       long ? { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' } : { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });

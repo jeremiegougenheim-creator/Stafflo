@@ -640,16 +640,60 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
 
   /* ── Dates : tout en jours calendaires (UTC), jamais d'heure locale ── */
   function dayNum(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null; }
-  function todayNum() { var d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000; }
+  /* Heure de la maison (22/10/2026). « Aujourd'hui » et les heures affichées se lisent dans le fuseau de la villa, pas
+     celui du téléphone : depuis Hong Kong ou Bangkok, la date du téléphone bascule vers 16–17 h à Marrakech, et l'Espace
+     montrait le soir les arrivées du lendemain comme celles du jour. Fuseau déduit du pays (et de la ville) de Réglages,
+     même table que push-notify (tzFor, point du matin) ; pays inconnu → l'heure du téléphone, comme avant.
+     Gardé sur l'appareil (stafflo_villa_tz, par compte) pour que le premier affichage soit déjà juste. */
+  var TZ_RULES = [
+    [/\b(maroc|morocco)\b/, 'Africa/Casablanca'], [/\bfrance\b/, 'Europe/Paris'], [/\bportugal\b/, 'Europe/Lisbon'],
+    [/\b(espagne|spain|espana)\b/, 'Europe/Madrid'], [/\b(italie|italy|italia)\b/, 'Europe/Rome'], [/\b(grece|greece)\b/, 'Europe/Athens'],
+    [/\b(royaume-uni|united kingdom|uk|england|angleterre)\b/, 'Europe/London'], [/\b(suisse|switzerland)\b/, 'Europe/Zurich'],
+    [/\b(belgique|belgium)\b/, 'Europe/Brussels'], [/\b(croatie|croatia)\b/, 'Europe/Zagreb'], [/\b(turquie|turkey|turkiye)\b/, 'Europe/Istanbul'],
+    [/\b(tunisie|tunisia)\b/, 'Africa/Tunis'], [/\b(thailande|thailand)\b/, 'Asia/Bangkok'], [/\b(indonesie|indonesia|bali)\b/, 'Asia/Makassar'],
+    [/\b(maurice|mauritius)\b/, 'Indian/Mauritius'], [/\b(emirats|uae|united arab emirates|dubai)\b/, 'Asia/Dubai'],
+    [/\b(afrique du sud|south africa)\b/, 'Africa/Johannesburg'], [/\b(mexique|mexico)\b/, 'America/Mexico_City']
+  ];
+  function tzFor(country, city) {
+    var k = (String(country || '') + ' ' + String(city || '')).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    for (var i = 0; i < TZ_RULES.length; i++) if (TZ_RULES[i][0].test(k)) return TZ_RULES[i][1];
+    return '';
+  }
+  var VTZ = '', TZF = {};
+  try { var tzc = JSON.parse(localStorage.getItem('stafflo_villa_tz') || 'null'), tzs = JSON.parse(localStorage.getItem('stafflo_session') || 'null'); if (tzc && tzc.tz && tzs && tzs.user && tzc.uid === tzs.user.id) VTZ = String(tzc.tz); } catch (e) {}
+  function setVillaTz(country, city, uid) {
+    var tz = tzFor(country, city);
+    if (tz) { try { new Intl.DateTimeFormat('en-GB', { timeZone: tz }); } catch (e) { tz = ''; } }
+    VTZ = tz;
+    try { if (tz && uid) localStorage.setItem('stafflo_villa_tz', JSON.stringify({ uid: uid, tz: tz })); else localStorage.removeItem('stafflo_villa_tz'); } catch (e) {}
+  }
+  /* L'horloge de la villa : année, mois, jour, heure, minute d'un instant (fuseau de la villa, sinon celui du téléphone). */
+  function clock(d) {
+    if (VTZ) try {
+      var f = TZF[VTZ] || (TZF[VTZ] = new Intl.DateTimeFormat('en-GB', { timeZone: VTZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
+      var o = {}; f.formatToParts(d).forEach(function (p) { o[p.type] = p.value; });
+      if (o.year && o.month && o.day) return { y: +o.year, m: +o.month, d: +o.day, h: (+o.hour || 0) % 24, mi: +o.minute || 0 };
+    } catch (e) {}
+    return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate(), h: d.getHours(), mi: d.getMinutes() };
+  }
+  function dayOfInstant(d) { var c = clock(d); return Date.UTC(c.y, c.m - 1, c.d) / 86400000; }
+  function todayNum() { return dayOfInstant(new Date()); }
+  function hmOf(d) { var c = clock(d); return (c.h < 10 ? '0' : '') + c.h + ':' + (c.mi < 10 ? '0' : '') + c.mi; }
+  /* Le téléphone n'est pas à l'heure de la villa (propriétaire en voyage) : l'en-tête le dit, « 18:42 à la villa ». */
+  function awayFromVilla() {
+    if (!VTZ) return false;
+    var n = new Date(), c = clock(n);
+    return c.h !== n.getHours() || c.d !== n.getDate() || c.mi !== n.getMinutes();
+  }
   function fmtDay(n, lng) {
     var d = new Date(n * 86400000), o = { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' };
-    if (d.getUTCFullYear() !== new Date().getFullYear()) o.year = 'numeric'; // « 10 juin » seul serait ambigu pour 2027
+    if (d.getUTCFullYear() !== new Date(todayNum() * 86400000).getUTCFullYear()) o.year = 'numeric'; // « 10 juin » seul serait ambigu pour 2027
     return d.toLocaleDateString((lng || U.lang) === 'en' ? 'en-GB' : 'fr-FR', o);
   }
   function seenAt(iso, lng, short) {
     var d = new Date(iso); if (isNaN(d.getTime())) return '';
-    var en = (lng || U.lang) === 'en', p2 = function (x) { return (x < 10 ? '0' : '') + x; }, hm = p2(d.getHours()) + ':' + p2(d.getMinutes());
-    var now = new Date(), dn = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000, tn = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000;
+    var en = (lng || U.lang) === 'en', hm = hmOf(d);
+    var dn = dayOfInstant(d), tn = todayNum();
     var day = dn === tn ? (en ? 'today' : 'aujourd’hui') : dn === tn - 1 ? (en ? 'yesterday' : 'hier') : fmtDay(dn, lng);
     return day + (short ? ' ' : en ? ' at ' : ' à ') + hm;
   }
@@ -913,6 +957,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       D.reports = res[8] || [];
       D.regs = {}; (res[9] || []).forEach(function (r) { D.regs[String(r.client_id)] = r; });
       D.villa = (res[5] || [])[0] || null;
+      if (res[5]) { var su = readSession(); setVillaTz(D.villa && D.villa.country, D.villa && D.villa.city, su && su.user && su.user.id); } // heure de la maison (22/10) ; lecture ratée : on garde celle d'avant
       D.staff = res[6] || [];
       var built = D.villa && D.villa.house_facts_ref === 'villa-facts.js' && HF ? HF.build(D.villa.house_facts) : null;
       HAS_FACTS = !!built;
@@ -2760,7 +2805,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var next = D.stays.filter(function (c) { return c.a > t && c.a - t <= 21; }).slice(0, 4);
     var deps = D.stays.filter(function (c) { return c.d === t || c.d === t + 1; });
     var up = D.stays.filter(function (c) { return c.a >= t; });
-    var m0 = new Date(), mStart = Date.UTC(m0.getFullYear(), m0.getMonth(), 1) / 86400000, mEnd = Date.UTC(m0.getFullYear(), m0.getMonth() + 1, 1) / 86400000;
+    var m0 = new Date(todayNum() * 86400000), mStart = Date.UTC(m0.getUTCFullYear(), m0.getUTCMonth(), 1) / 86400000, mEnd = Date.UTC(m0.getUTCFullYear(), m0.getUTCMonth() + 1, 1) / 86400000; // mois de la villa (22/10)
     var nightsMonth = D.stays.concat(D.past || []).reduce(function (s, c) { return s + Math.max(0, Math.min(c.d, mEnd) - Math.max(c.a, mStart)); }, 0);
     var net = up.reduce(function (s, c) { return s + (c.is_comp ? 0 : (+c.price || 0)); }, 0);
     h += billCard(); // essai terminé, paiement à mettre à jour : dit en haut, avant que l'enregistrement échoue (17/10)
@@ -2812,7 +2857,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   /* Calendrier du mois : nuits occupées, arrivées, départs — depuis les séjours de la base. Aucun prix. */
   function calCard() {
     var l = L(), k = l.cal, t = todayNum(), off = U.calM || 0;
-    var now = new Date(), y = now.getFullYear(), m = now.getMonth() + off;
+    var now = new Date(todayNum() * 86400000), y = now.getUTCFullYear(), m = now.getUTCMonth() + off; // mois de la villa (22/10)
     var first = Date.UTC(y, m, 1) / 86400000, last = Date.UTC(y, m + 1, 1) / 86400000;
     var all = D.stays.concat(D.past || []), evs = icEvents(), extIn = false;
     var lead = (new Date(first * 86400000).getUTCDay() + 6) % 7, free = 0;
@@ -3270,8 +3315,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return loc(a) !== loc(b) && a.slice(-9) === b.slice(-9);
   }
   var WL = { links: {}, byStay: {}, free: [] };
-  var wlDay = function (m) { var d = new Date(m.sent_at); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000; };
-  var wlHm = function (m) { var d = new Date(m.sent_at); return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); };
+  var wlDay = function (m) { return dayOfInstant(new Date(m.sent_at)); }; // jour et heure de la villa (22/10)
+  var wlHm = function (m) { return hmOf(new Date(m.sent_at)); };
   function wlIndex() {
     WL = { links: {}, byStay: {}, free: [] };
     var all = D.all || [], msgs = D.wa || [];
@@ -3518,7 +3563,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     d = parseInt(d, 10); m = parseInt(m, 10); y = y == null || y === '' ? null : parseInt(y, 10);
     if (!(d >= 1 && d <= 31 && m >= 1 && m <= 12)) return '';
     if (y != null && y < 100) y += 2000;
-    if (y == null) { var now = new Date(); y = now.getFullYear(); if (Date.UTC(y, m - 1, d) / 86400000 < todayNum() - 31) y++; }
+    if (y == null) { y = new Date(todayNum() * 86400000).getUTCFullYear(); if (Date.UTC(y, m - 1, d) / 86400000 < todayNum() - 31) y++; }
     if (!(y >= 2024 && y <= 2035)) return '';
     var dt = new Date(Date.UTC(y, m - 1, d)); if (dt.getUTCDate() !== d) return '';
     return dt.toISOString().slice(0, 10);
@@ -3717,7 +3762,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     // v12 — les trois chiffres (à venir, nuits du mois, net à venir) vivent ici, avec les séjours
     if (D.stays.length + (D.past || []).length) {
       var up = D.stays.filter(function (c) { return c.a >= t; });
-      var m0 = new Date(), mStart = Date.UTC(m0.getFullYear(), m0.getMonth(), 1) / 86400000, mEnd = Date.UTC(m0.getFullYear(), m0.getMonth() + 1, 1) / 86400000;
+      var m0 = new Date(todayNum() * 86400000), mStart = Date.UTC(m0.getUTCFullYear(), m0.getUTCMonth(), 1) / 86400000, mEnd = Date.UTC(m0.getUTCFullYear(), m0.getUTCMonth() + 1, 1) / 86400000; // mois de la villa (22/10)
       var nightsMonth = D.stays.concat(D.past || []).reduce(function (s, c) { return s + Math.max(0, Math.min(c.d, mEnd) - Math.max(c.a, mStart)); }, 0);
       var net = up.reduce(function (s, c) { return s + (c.is_comp ? 0 : (+c.price || 0)); }, 0);
       h += '<div class="tiles span"><div class="tile"><span class="l">' + esc(l.tUpcoming) + '</span><span class="v">' + up.length + '</span></div>' +
@@ -4318,13 +4363,23 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       '<div class="row2" style="margin-top:4px"><a class="btn ghost" href="app.html?app=1&lang=' + (U.lang === 'en' ? 'en' : 'fr') + '">' + esc(l.loginForgot) + '</a><a class="btn ghost" href="app.html?signup=1&lang=' + (U.lang === 'en' ? 'en' : 'fr') + '">' + esc(l.loginNew) + '</a></div></form>';
   }
   var TABS = [['jour', 'sun'], ['sejours', 'calendar-event'], ['maison', 'home']]; // v12 — ARIA est dans l'en-tête
+  /* Date de l'en-tête = jour de la villa ; téléphone dans un autre fuseau → « · 18:42 à la villa » (relu chaque minute). */
+  function headDate() {
+    var el = document.getElementById('today'); if (!el) return;
+    var td = fmtLongDay(todayNum()), away = awayFromVilla();
+    el.textContent = td.charAt(0).toUpperCase() + td.slice(1) + (away ? ' · ' + hmOf(new Date()) + (U.lang === 'en' ? ' at the villa' : ' à la villa') : '');
+  }
+  setInterval(function () { // minuit à la villa : tout se redessine (jamais pendant une saisie ni dans l'éditeur de la fiche)
+    try { var was = HEAD_DAY; HEAD_DAY = todayNum(); if (was != null && was !== HEAD_DAY && D.loaded && !U.busy && !FE.on && !typing()) render(); else headDate(); } catch (e) {}
+  }, 60000);
+  var HEAD_DAY = null;
   function render() {
     var l = L(), t = todayNum(), main = document.getElementById('main');
     document.documentElement.lang = U.lang;
     document.getElementById('title').textContent = l.titles[U.tab];
     var kk = document.getElementById('kicker');
     if (kk) kk.textContent = D.loaded && D.user ? (villaName() ? villaName() + (villaCity() ? ' · ' + villaCity() : '') : l.mYourVilla) : 'Stafflo';
-    var td = fmtLongDay(t); document.getElementById('today').textContent = td.charAt(0).toUpperCase() + td.slice(1);
+    headDate();
     var nt = document.getElementById('net');
     if (D.online && D.sync && D.sync.finished_at) {
       var mins = Math.max(0, Math.round((Date.now() - new Date(D.sync.finished_at).getTime()) / 60000));
