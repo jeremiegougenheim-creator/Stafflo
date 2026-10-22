@@ -35,6 +35,8 @@
 // Sans clé, en panne ou trop long (12 s) : la page montre le français, comme avant.
 // 20/10/2026 : même chose en français (`fr`) pour ce que le client a écrit dans une autre langue ; la traduction de ce
 // qui manque part en arrière-plan (waitUntil), la réponse dit `pending` et la page se recharge quelques secondes après.
+// 22/10/2026 : troisième langue, l'anglais (`en`, body.lang ou lang du lien) — tout ce qui n'est pas en anglais est traduit
+// (le français du propriétaire compris), même cache staff_i18n, même règle zéro invention. La page lit FR · EN · عربية.
 
 const SB_URL = Deno.env.get("SUPABASE_URL") || "";
 const SRK = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -328,7 +330,7 @@ export function staffView(rows: Row[], todayIso: string, facts: Row | null = nul
 // arrive ; la page reçoit `pending` et se recharge quelques secondes plus tard.
 export const AR_MAX_CHARS = 6000; // un appel : au-delà, le reste part dans l'appel suivant (jamais une ligne coupée)
 export const TR_CHUNK = 1800;
-export type TrLang = "ar" | "fr";
+export type TrLang = "ar" | "fr" | "en"; // 22/10 : anglais (équipe qui ne lit ni le français ni la darija)
 // 19/10/2026 : darija marocaine (« en arabe marocain tout doit être en arabe marocain »), plus l'arabe standard. Exemples
 // tirés des essais réels (ministral-14b) : sans eux, futur égyptien (« هتصلو »), « décaféiné » → « sans café ».
 // 20/10 (essai réel, ministral-14b) : « marocain » → « موريتاني » (mauritanien !), « Starters » → « مودع », « Pas d'entrées »
@@ -350,10 +352,15 @@ const SYS_FR = "Tu traduis en français des lignes écrites par un client (dans 
   "Traduis chaque ligne en français simple et fidèle : ne rien ajouter, ne rien résumer, ne rien retirer, ne rien commenter, pas de mise en forme (pas de gras). " +
   "Garde tous les nombres en chiffres (jours, dates, quantités, heures — 9pm devient 21h), les prénoms, les marques, les noms de plats (tajine, zaalouk, pastilla, msemen, chermoula) et les tirets qui séparent les plats ; garde les guillemets « » s'il y en a. " +
   "Une ligne déjà en français est renvoyée telle quelle. Réponds UNIQUEMENT par un objet JSON {\"lines\": {\"<id>\": \"<traduction>\"}} avec exactement les mêmes id.";
-const SYS: Record<TrLang, string> = { ar: SYS_AR, fr: SYS_FR };
+// 22/10 : anglais — pour une équipe qui ne lit ni le français ni la darija (villa hors du Maroc). Mêmes règles : rien d'ajouté, nombres gardés.
+const SYS_EN = "You translate into plain, faithful English lines written in French (by the owner, for the team) or in the guest's language, for the team of a guest house: meals, drinks, beds, arrival and departure times, instructions, booklet orders (« 2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi » → « 2 × Lunch or dinner — Wed 21 evening, Thu 22 lunch »). " +
+  "Translate each line into simple English: add nothing, summarise nothing, remove nothing, no comments, no formatting (no bold). " +
+  "Keep every number as digits (days, dates, quantities, times — 14h becomes 14:00, 6h30 becomes 06:30), first names, brands, dish names (tajine, zaalouk, pastilla, msemen, chermoula, kefta) and the dashes separating dishes; keep « » quotes if present. " +
+  "A line already in English is returned unchanged. Answer ONLY with a JSON object {\"lines\": {\"<id>\": \"<translation>\"}} with exactly the same ids.";
+const SYS: Record<TrLang, string> = { ar: SYS_AR, fr: SYS_FR, en: SYS_EN };
 /** Version de la traduction, dans l'empreinte : la changer refait le cache (19/10 : arabe standard → darija). */
 export const AR_V = "darija-3|"; // 20/10 : exemples ajoutés (« marocain » ≠ « موريتاني »), seconde chance des nombres → retraduit une fois
-export const TR_V: Record<TrLang, string> = { ar: AR_V, fr: "fr-1|" };
+export const TR_V: Record<TrLang, string> = { ar: AR_V, fr: "fr-1|", en: "en-1|" };
 // Zéro invention : les nombres d'une ligne traduite sont exactement ceux de l'original (chiffres arabes orientaux compris,
 // « 9pm » = 21 ; 0 et 1 ne comptent pas : « 14h » / « 14:00 », « un » / « 1 ») — sinon la ligne reste dans sa langue d'origine.
 const NUM_W: Record<string, number> = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, deux: 2, trois: 3, quatre: 4, cinq: 5, huit: 8, dix: 10, onze: 11, douze: 12 };
@@ -383,11 +390,23 @@ export function notFrench(t: string): boolean {
   for (const y of w) { if (LANG_FR.has(y) || /[àâçèêëîïôûùœ]/.test(y)) fr++; else if (LANG_X.has(y)) x++; }
   return x >= 2 && x > fr;
 }
+// 22/10 : pas anglais ? Mots outils anglais contre mots outils français / espagnols / italiens / allemands et accents ; arabe → oui.
+const LANG_EN = wordSet("the and of to we you would could please with for is are will be have has our us it this that there can my i they what which if do does not some any from by an as was were been into about after before around should also but or so than then their them these those just very much many most like want need thanks thank hi hello");
+const LANG_OTH = wordSet("le la les un une des du de et à au aux en est sont nous vous pour avec sur dans pas que qui ce cette il elle par mais ou où se sa son ses leur leurs très bien merci bonjour avoir être fait faire notre nos votre vos je mon ma mes chez vers après avant puis aussi el los las del al es por para con una pero como muy gracias hola somos estamos vamos queremos gli che per sono siamo grazie ciao der die das und ist wir sie mit für bitte danke nicht");
+export function notEnglish(t: string): boolean {
+  const s = String(t || ""), ar = arCount(s), lat = latCount(s);
+  if (ar > 8 && ar > lat) return true;
+  const w = s.toLowerCase().match(/[a-zà-ÿœ]+/g) || [];
+  if (w.length < 3) return false;
+  let en = 0, x = 0;
+  for (const y of w) { if (LANG_EN.has(y)) en++; else if (LANG_OTH.has(y) || /[àâçèêëîïôûùœ]/.test(y)) x++; }
+  return x >= 2 && x > en;
+}
 /** Un champ à traduire dans cette langue ? Arabe : tout texte qui n'est pas déjà en arabe ; français : ce qui n'est pas en français. */
 export function needsTr(lang: TrLang, lines: string[]): boolean {
   const s = lines.join(" ");
   if (!latCount(s) && !arCount(s)) return false; // chiffres seuls
-  return lang === "ar" ? !(arCount(s) > latCount(s)) : notFrench(s);
+  return lang === "ar" ? !(arCount(s) > latCount(s)) : lang === "en" ? notEnglish(s) : notFrench(s);
 }
 export async function hashOf(s: string): Promise<string> { return (await sha256hex(s)).slice(0, 16); }
 type Item = { id: string; field: keyof Lines; lines: string[] };
@@ -593,7 +612,7 @@ Deno.serve(async (req: Request) => {
     const reports = await db(`staff_reports?select=id,kind,client_id,text,created_at&link_id=eq.${link.id}&deleted_at=is.null&created_at=gte.${new Date(Date.now() - 7 * 86400000).toISOString()}&order=created_at.desc&limit=50`).catch(() => []) || [];
     // Langue affichée par la page (body.lang), sinon celle du lien. Arabe : tout en darija ; français : ce que le client a
     // écrit dans une autre langue. Cache staff_i18n ; ce qui manque part en arrière-plan (la page se recharge : `pending`).
-    const lang: TrLang = body.lang === "ar" || body.lang === "fr" ? body.lang : (link.lang === "ar" ? "ar" : "fr");
+    const lang: TrLang = body.lang === "ar" || body.lang === "fr" || body.lang === "en" ? body.lang : (link.lang === "ar" ? "ar" : link.lang === "en" ? "en" : "fr");
     const owner = String(link.owner_id);
     const read = (ids: string[]) => db(`staff_i18n?select=client_id,field,src_hash,lines&owner_id=eq.${link.owner_id}&lang=eq.${lang}&client_id=in.(${ids.map((x) => '"' + encodeURIComponent(x) + '"').join(",")})&limit=500`).then((r: Row[] | null) => r || []);
     const write = (rws: Row[]) => db(`staff_i18n?on_conflict=client_id,lang,field`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rws) }).then(() => {});

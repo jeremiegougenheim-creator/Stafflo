@@ -338,6 +338,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       frBusy: 'Traduction en français de ce que le client a écrit…', frDone: function (x) { return 'Ce que le client a écrit est traduit en français pour l’équipe (' + x + ') ; ses mots restent sur le séjour.'; },
       frBad: function (x) { return 'Laissé tel quel (la traduction changeait un chiffre) : ' + x + '.'; }, frErr: function (x) { return 'Pas traduit pour l’instant, laissé tel quel : ' + x + '.'; },
       frF: { meals: 'repas', drinks: 'boissons', beds: 'couchages', arrival_time: 'arrivée', departure_time: 'départ' },
+      trOrig: 'Texte d’origine', trWait: 'traduction…',
       payout: function (amt, by) { return 'Versement Airbnb ' + amt + ' envoyé' + (by ? ' · sur le compte vers le ' + by : ''); },
       livretDone: 'Livret envoyé le ', saved: 'Enregistré', saveErr: 'Enregistrement impossible — réessayez', billOk: 'Merci : votre abonnement est actif.',
       phonePh: '+33 6 12 34 56 78', savePhone: 'Enregistrer le numéro', noPhone: 'Pas de numéro : copiez le message et envoyez-le depuis Airbnb.',
@@ -520,6 +521,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       frBusy: 'Translating what the guest wrote into French…', frDone: function (x) { return 'What the guest wrote is translated into French for the team (' + x + '); their own words stay on the stay.'; },
       frBad: function (x) { return 'Left as written (the translation changed a number): ' + x + '.'; }, frErr: function (x) { return 'Not translated for now, left as written: ' + x + '.'; },
       frF: { meals: 'meals', drinks: 'drinks', beds: 'beds', arrival_time: 'arrival', departure_time: 'departure' },
+      trOrig: 'Original text', trWait: 'translating…',
       payout: function (amt, by) { return 'Airbnb payout ' + amt + ' sent' + (by ? ' · due in the bank by ' + by : ''); },
       livretDone: 'Guide sent on ', saved: 'Saved', saveErr: 'Could not save — try again', billOk: 'Thank you: your subscription is active.',
       phonePh: '+44 7700 900123', savePhone: 'Save number', noPhone: 'No number: copy the message and send it from Airbnb.',
@@ -2316,6 +2318,23 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     w.forEach(function (y) { if (LANG_FR[y] || /[àâçèêëîïôûùœ]/.test(y)) fr++; else if (LANG_X[y]) x++; });
     return x >= 2 && x > fr;
   }
+  /* 22/10 : l'Espace en anglais traduit vers l'anglais ce qui n'y est pas (le français du client compris) — même détecteur,
+     mots outils anglais contre mots outils français / espagnols / italiens / allemands et accents ; même règle que staff-view. */
+  var LANG_EN = wordSet('the and of to we you would could please with for is are will be have has our us it this that there can my i they what which if do does not some any from by an as was were been into about after before around should also but or so than then their them these those just very much many most like want need thanks thank hi hello');
+  var LANG_OTH = wordSet('le la les un une des du de et à au aux en est sont nous vous pour avec sur dans pas que qui ce cette il elle par mais ou où se sa son ses leur leurs très bien merci bonjour avoir être fait faire notre nos votre vos je mon ma mes chez vers après avant puis aussi el los las del al es por para con una pero como muy gracias hola somos estamos vamos queremos gli che per sono siamo grazie ciao der die das und ist wir sie mit für bitte danke nicht');
+  function notEnglish(t) {
+    var s = String(t || ''), ar = (s.match(/[؀-ۿ]/g) || []).length, lat = (s.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+    if (ar > 8 && ar > lat) return true;
+    var w = s.toLowerCase().match(/[a-zà-ÿœ]+/g) || [];
+    if (w.length < 3) return false;
+    var en = 0, x = 0;
+    w.forEach(function (y) { if (LANG_EN[y]) en++; else if (LANG_OTH[y] || /[àâçèêëîïôûùœ]/.test(y)) x++; });
+    return x >= 2 && x > en;
+  }
+  /* Une traduction par langue de page (22/10) : fr → details.fr[k] = {src, fr}, en → details.en[k] = {src, en} ; mémoire ENT pour l'anglais. */
+  var ENT = {};
+  var TRD = { fr: { detect: notFrench, mem: FRT }, en: { detect: notEnglish, mem: ENT } };
+  var pageLang = function () { return U.lang === 'en' ? 'en' : 'fr'; };
   // Les nombres d'un texte : chiffres (arabes orientaux compris), « 9pm » → 21, mots-nombres usuels ; 0 et 1 ne comptent pas
   // (« un enfant » / « 1 enfant », « 16h » / « 16:00 »). Un numéro de téléphone compte pour un seul nombre.
   var NUM_W = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, deux: 2, trois: 3, quatre: 4, cinq: 5, huit: 8, dix: 10, onze: 11, douze: 12 };
@@ -2330,18 +2349,21 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
   function sameNums(a, b) { return numsOf(a) === numsOf(b); }
   function srcOf(c, k) { return String((k === 'meals' ? c.meals : c.details[k]) || '').trim(); }
-  function frEntry(c, k) {
+  function trEntry(c, k, lang) {
     var src = srcOf(c, k); if (!src) return null;
-    var e = c.details.fr && typeof c.details.fr === 'object' ? c.details.fr[k] : null;
-    if (e && e.fr && e.src === src) return e;
-    var m = FRT[c.id] && FRT[c.id].mem[k];
+    var e = c.details[lang] && typeof c.details[lang] === 'object' ? c.details[lang][k] : null;
+    if (e && e[lang] && e.src === src) return e;
+    var m = TRD[lang].mem[c.id] && TRD[lang].mem[c.id].mem[k];
     return m && m.src === src ? m : null;
   }
-  function frOf(c, k) { var e = frEntry(c, k); return e ? e.fr : srcOf(c, k); }
-  function frTodo(c) {
-    var st = FRT[c.id];
-    return FR_KEYS.filter(function (k) { var s = srcOf(c, k); return s && notFrench(s) && !frEntry(c, k) && !(st && st.bad[k] && st.bad[k].src === s); });
+  function frEntry(c, k) { return trEntry(c, k, 'fr'); }
+  function trOf(c, k, lang) { var e = trEntry(c, k, lang); return e ? e[lang] : srcOf(c, k); }
+  function frOf(c, k) { return trOf(c, k, 'fr'); }
+  function trTodo(c, lang) {
+    var st = TRD[lang].mem[c.id], detect = TRD[lang].detect;
+    return FR_KEYS.filter(function (k) { var s = srcOf(c, k); return s && detect(s) && !trEntry(c, k, lang) && !(st && st.bad[k] && st.bad[k].src === s); });
   }
+  function frTodo(c) { return trTodo(c, 'fr'); }
   function parseJsonLoose(t) {
     t = String(t || '').replace(/^\s*```\w*\s*/, '').replace(/\s*```\s*$/, '');
     var i = t.indexOf('{'), j = t.lastIndexOf('}');
@@ -2352,10 +2374,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     'Tu reçois un objet JSON {"lines": {"clé": "texte"}}. Traduis chaque texte en français simple et fidèle : ne rien ajouter, ne rien résumer, ne rien retirer, ne rien commenter. ' +
     'Garde tous les nombres (jours, dates, quantités, heures — 9pm devient 21h), les prénoms, les marques, les noms de plats (tajine, zaalouk, pastilla, msemen, chermoula) et les tirets qui séparent les plats. ' +
     'Texte brut : pas de gras (**), pas de markdown. Un texte déjà en français est renvoyé tel quel. Réponds UNIQUEMENT par un objet JSON {"lines": {...}} avec exactement les mêmes clés.';
-  function ensureFr(c) {
-    var st = FRT[c.id] || (FRT[c.id] = { busy: false, bad: {}, mem: {} });
+  var SYS_EN_FIELDS = 'You translate into English texts written by a guest or by the owner (in French or another language) for the team of a guest house. ' +
+    'You receive a JSON object {"lines": {"key": "text"}}. Translate each text into plain, faithful English: add nothing, summarise nothing, remove nothing, no comments. ' +
+    'Keep every number (days, dates, quantities, times — 9h30 becomes 09:30), first names, brands, dish names (tajine, zaalouk, pastilla, msemen, chermoula, kefta) and the dashes separating dishes. ' +
+    'Plain text: no bold (**), no markdown. A text already in English is returned unchanged. Answer ONLY with a JSON object {"lines": {...}} with exactly the same keys.';
+  var TR_SYS = { fr: SYS_FR_FIELDS, en: SYS_EN_FIELDS };
+  function ensureFr(c) { return ensureTr(c, 'fr'); }
+  function ensureTr(c, lang) {
+    var MEM = TRD[lang].mem, st = MEM[c.id] || (MEM[c.id] = { busy: false, bad: {}, mem: {} });
     if (st.busy) return;
-    var todo = frTodo(c); if (!todo.length) return;
+    var todo = trTodo(c, lang); if (!todo.length) return;
     var lines = {}, plan = {};
     todo.forEach(function (k) {
       var src = srcOf(c, k), body = src, wrap = null;
@@ -2365,7 +2393,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       plan[k].ls.forEach(function (x, i) { if (x.trim()) lines[k + '|' + i] = x.trim().slice(0, 3000); });
     });
     st.busy = true; st.fail = false; render();
-    aiPost({ task: 'write_staff', system: SYS_FR_FIELDS, user: JSON.stringify({ lines: lines }), max_tokens: 3000 })
+    aiPost({ task: 'write_staff', system: TR_SYS[lang], user: JSON.stringify({ lines: lines }), max_tokens: 3000 })
       .then(function (r) { return r.json().then(function (x) { return r.ok && x && x.text ? String(x.text) : ''; }); })
       .then(function (t) {
         var got = parseJsonLoose(t); got = got && got.lines && typeof got.lines === 'object' ? got.lines : got;
@@ -2380,16 +2408,17 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
           }).join('\n');
           if (p.wrap) fr = p.wrap[0] + fr.replace(/^[«"“]\s*|\s*[»"”]$/g, '') + p.wrap[1];
           if (!ok || !sameNums(p.src, fr) || fr.length > p.src.length * 3 + 200) { st.bad[k] = { src: p.src, why: ok ? 'num' : 'fail' }; return; }
-          out[k] = st.mem[k] = { src: p.src, fr: fr, at: now };
+          var ent = { src: p.src, at: now }; ent[lang] = fr; out[k] = st.mem[k] = ent;
         });
-        if (Object.keys(out).length) return saveFr(c, out);
+        if (Object.keys(out).length) return saveTr(c, out, lang);
       })
       .catch(function () { st.fail = true; todo.forEach(function (k) { if (!st.mem[k]) st.bad[k] = { src: srcOf(c, k), why: 'fail' }; }); })
       .then(function () { st.busy = false; render(); });
   }
-  function saveFr(c, out) { // sans toast : le propriétaire n'a rien saisi. Hors ligne ou essai terminé : gardé sur cet appareil (FRT).
+  function saveFr(c, out) { return saveTr(c, out, 'fr'); }
+  function saveTr(c, out, lang) { // sans toast : le propriétaire n'a rien saisi. Hors ligne ou essai terminé : gardé sur cet appareil (FRT / ENT).
     var det = Object.assign({}, c.details);
-    det.fr = Object.assign({}, c.details.fr && typeof c.details.fr === 'object' ? c.details.fr : {}, out);
+    det[lang] = Object.assign({}, c.details[lang] && typeof c.details[lang] === 'object' ? c.details[lang] : {}, out);
     return api('crm_clients?id=eq.' + encodeURIComponent(c.id), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', Prefer: 'return=representation' }, body: JSON.stringify({ details: det })
     }).then(function (rows) { var row = rows && rows[0]; c.details = row && row.details && typeof row.details === 'object' ? row.details : det; decorate(c); }).catch(function () {});
@@ -2678,7 +2707,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function createLink() {
     var name = EQ.name || teamNames()[0] || '';
     if (!name || EQ.busy) return;
-    var tok = b64u(crypto.getRandomValues(new Uint8Array(32))), lang = EQ.lang === 'ar' ? 'ar' : 'fr';
+    var tok = b64u(crypto.getRandomValues(new Uint8Array(32))), lang = EQ.lang === 'ar' ? 'ar' : EQ.lang === 'en' ? 'en' : 'fr';
     // Lien prestataire (20/10) : le rôle suit la fiche — un membre « kitchen » (prestataire repas) reçoit la vue prestataire.
     var role = isKitchenName(name) ? 'kitchen' : 'house';
     EQ.busy = true; EQ.link = null; render();
@@ -2708,12 +2737,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       var seen = k.last_seen_at ? l.eqSeen + seenAt(k.last_seen_at) : l.eqNever;
       var op = (D.opens || []).filter(function (o) { return o.link_id === k.id; });
       var wk = op.length ? l.eqWeek(op.length, op.slice(0, 5).map(function (o) { return seenAt(o.opened_at, null, true); }).join(', ') + (op.length > 5 ? '…' : '')) : '';
-      return '<div class="line" style="align-items:center"><span><b>' + esc(k.name) + '</b> · ' + (k.lang === 'ar' ? '<span lang="ar">العربية</span>' : 'FR') + (k.role === 'kitchen' ? ' · <span class="pill gold">' + esc(l.eqKitchen) + '</span>' : '') + '<br><span class="sub">' + esc(seen) + '</span>' + (wk ? '<span class="sub" style="display:block">' + esc(wk) + '</span>' : '') + '</span>' +
+      return '<div class="line" style="align-items:center"><span><b>' + esc(k.name) + '</b> · ' + (k.lang === 'ar' ? '<span lang="ar">العربية</span>' : k.lang === 'en' ? 'EN' : 'FR') + (k.role === 'kitchen' ? ' · <span class="pill gold">' + esc(l.eqKitchen) + '</span>' : '') + '<br><span class="sub">' + esc(seen) + '</span>' + (wk ? '<span class="sub" style="display:block">' + esc(wk) + '</span>' : '') + '</span>' +
         '<button type="button" class="btn ghost" style="min-height:38px" data-a="eqrevoke" data-v="' + esc(k.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-link-off" aria-hidden="true"></i>' + esc(l.eqRevoke) + '</button></div>';
     }).join('') : '<p class="empty">' + esc(l.eqNone) + '</p>';
     if (EQ.link) {
       var msg = EQ_MSG[EQ.link.lang](EQ.link.name, EQ.link.url);
-      h += '<div class="panel"><span class="ttl">' + esc(EQ.link.name) + ' · ' + (EQ.link.lang === 'ar' ? 'العربية' : 'FR') + (EQ.link.role === 'kitchen' ? ' · ' + esc(l.eqKitchen) : '') + '</span><span class="sub" style="color:var(--wait)">' + esc(l.eqOnce) + '</span>' +
+      h += '<div class="panel"><span class="ttl">' + esc(EQ.link.name) + ' · ' + (EQ.link.lang === 'ar' ? 'العربية' : EQ.link.lang === 'en' ? 'EN' : 'FR') + (EQ.link.role === 'kitchen' ? ' · ' + esc(l.eqKitchen) : '') + '</span><span class="sub" style="color:var(--wait)">' + esc(l.eqOnce) + '</span>' +
         '<textarea class="t" id="eq-msg" dir="auto">' + esc(msg) + '</textarea><div class="row2">' +
         '<button type="button" class="btn gold" data-a="eqcopy"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' +
         (CAN_SHARE ? '<button type="button" class="btn ghost" data-a="eqshare"><i class="ti ti-share" aria-hidden="true"></i>' + esc(l.share) + '</button>' : '') +
@@ -2726,7 +2755,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       return card('users-group', l.eqTitle, h, (D.links || []).length ? String(D.links.length) : '');
     }
     h += '<div class="grid2"><label class="fl"><span>' + esc(l.eqWho) + '</span><select class="t" id="eq-who">' + names.map(function (n) { return '<option' + (n === EQ.name ? ' selected' : '') + '>' + esc(n) + '</option>'; }).join('') + '</select></label>' +
-      '<label class="fl"><span>' + esc(l.eqLang) + '</span><select class="t" id="eq-lang"><option value="fr"' + (EQ.lang === 'fr' ? ' selected' : '') + '>Français</option><option value="ar" lang="ar"' + (EQ.lang === 'ar' ? ' selected' : '') + '>العربية</option></select></label></div>' +
+      '<label class="fl"><span>' + esc(l.eqLang) + '</span><select class="t" id="eq-lang"><option value="fr"' + (EQ.lang === 'fr' ? ' selected' : '') + '>Français</option><option value="en"' + (EQ.lang === 'en' ? ' selected' : '') + '>English</option><option value="ar" lang="ar"' + (EQ.lang === 'ar' ? ' selected' : '') + '>العربية</option></select></label></div>' +
       '<button type="button" class="btn green full" data-a="eqcreate"' + (EQ.busy ? ' disabled' : '') + '><i class="ti ti-link" aria-hidden="true"></i>' + esc(l.eqCreate) + '</button>';
     return card('users-group', l.eqTitle, h, (D.links || []).length ? String(D.links.length) : '');
   }
@@ -2835,8 +2864,22 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function payoutLines(c) {
     return payoutsOf(c).map(function (x) { return L().payout(euro(x.amount_eur), x.expected_by ? fmtDay(dayNum(x.expected_by)) : ''); });
   }
+  /* 22/10 — la carte du séjour dans la langue de la page : ce que le client a écrit dans une autre langue (repas, boissons,
+     couchages, heures) est montré traduit (fr → details.fr, en → details.en, même mécanique que le brief), l'original replié
+     dessous. Rien n'est réécrit sur le séjour : ses mots restent la preuve. */
+  function shown(c, k, v) {
+    var lang = pageLang(), e = FR_KEYS.indexOf(k) > -1 ? trEntry(c, k, lang) : null;
+    return e ? { text: e[lang], orig: v } : { text: v, orig: '' };
+  }
+  function subTr(label, c, k, v) {
+    var l = L(), x = shown(c, k, v), st = TRD[pageLang()].mem[c.id];
+    var wait = !x.orig && st && st.busy && FR_KEYS.indexOf(k) > -1 && TRD[pageLang()].detect(v);
+    return '<span class="sub"><b>' + esc(label) + '</b> ' + esc(flat(x.text).slice(0, 300)) + (wait ? ' <i>' + esc(l.trWait) + '</i>' : '') +
+      (x.orig ? '<details class="more"><summary>' + esc(l.trOrig) + '</summary>' + esc(flat(x.orig).slice(0, 300)) + '</details>' : '') + '</span>';
+  }
   function stayDetail(c) {
     var l = L(), pn = U.panel[c.id] || '', h = '';
+    var pl = pageLang(); if (trTodo(c, pl).length && !(TRD[pl].mem[c.id] && TRD[pl].mem[c.id].busy)) setTimeout(function () { ensureTr(c, pl); }, 0); // la carte dans la langue de la page (22/10)
     var comp = l.composition(c.ad, c.ch, c.inf);
     if (comp) h += '<span class="sub">' + esc(comp) + '</span>';
     // Montant du séjour (propriétaire seulement : la vue équipe ne lit jamais ces champs).
@@ -2868,13 +2911,13 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var hist = otherStays(c);
     if (hist.length) h += '<span class="sub"><i class="ti ti-history" aria-hidden="true"></i> <b>' + esc(l.cl.other(hist.length) + colon) + '</b> ' +
       esc(hist.slice(0, 4).map(function (x) { return fmtDay(x.a) + ' → ' + fmtDay(x.d); }).join(' · ') + (hist.length > 4 ? ' …' : '')) + '</span>';
-    if (String(c.meals || '').trim()) h += '<span class="sub"><b>' + esc(l.mealsTxt) + colon + '</b> ' + esc(flat(c.meals).slice(0, 300)) + '</span>';
+    if (String(c.meals || '').trim()) h += subTr(l.mealsTxt + colon, c, 'meals', String(c.meals).trim());
     var notes = [c.notes, c.remarks].filter(function (x) { return x && String(x).trim(); }).map(flat).join(' · ');
     if (notes) h += '<span class="sub"><b>' + esc(l.notes) + colon + '</b> ' + esc(notes.slice(0, 300)) +
       (notes.length > 300 ? '<details class="more"><summary>' + esc(l.more) + '</summary>' + esc(notes.slice(300)) + '</details>' : '') + '</span>';
     [['arrival_time', l.arrTime], ['departure_time', l.depTime], ['beds', l.beds], ['drinks', l.drinksTxt], ['staff_note', l.staffNote]].forEach(function (p) {
       var v = String(c.details[p[0]] || '').trim();
-      if (v) h += '<span class="sub"><b>' + esc(p[1]) + colon + '</b> ' + esc(flat(v).slice(0, 300)) + '</span>';
+      if (v) h += subTr(p[1] + colon, c, p[0], v);
     });
     h += wlBlock(c);
     payoutLines(c).forEach(function (x) { h += '<span class="sub" style="color:var(--go)"><i class="ti ti-cash" aria-hidden="true"></i> ' + esc(x) + '</span>'; });
@@ -4740,7 +4783,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       return;
     }
     if (e.target && e.target.id === 'eq-who') EQ.name = e.target.value;
-    if (e.target && e.target.id === 'eq-lang') EQ.lang = e.target.value === 'ar' ? 'ar' : 'fr';
+    if (e.target && e.target.id === 'eq-lang') EQ.lang = e.target.value === 'ar' ? 'ar' : e.target.value === 'en' ? 'en' : 'fr';
     // fiche maison : cases à cocher (brief, cuisine)
     var fp = e.target && e.target.getAttribute && e.target.getAttribute('data-fe');
     if (fp && FE.on && e.target.type === 'checkbox') fePut(fp, !!e.target.checked);

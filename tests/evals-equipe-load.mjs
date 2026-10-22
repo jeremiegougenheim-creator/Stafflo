@@ -142,7 +142,7 @@ r = await open({ data: NOAR, lang: 'ar' });
 check('arabe sans traduction : le français reste, à puces, sans bloc d’origine', (await r.page.$$('article.card .row ul.v li')).length === 7 && !(await r.page.$('details.orig')) && !r.errs.length, r.errs);
 await r.ctx.close();
 r = await open({ data: NOAR, lang: 'fr' });
-await r.page.click('#langBtn'); await r.page.waitForTimeout(400);
+await r.page.click('#langBtn .lb[data-l="ar"]'); await r.page.waitForTimeout(400); // 22/10 : sélecteur FR · EN · عربية
 check('bascule FR → AR sans traductions en main : une nouvelle lecture avec lang = ar', r.views.length === 2 && r.views[1].lang === 'ar', r.views);
 await r.ctx.close();
 // 20/10/2026 — [REGRESSION — cas réel Seán] en français, ce que le client a écrit en anglais était affiché en anglais ; en arabe,
@@ -176,6 +176,17 @@ r = await open({ data: DATA });
 check('réponse sans `lines` (ancienne) : texte tel quel', /Heure de départ\s*vol retour 9h, départ de la villa 6h30/.test(await r.page.evaluate(() => document.getElementById('app').innerText)) && !(await r.page.$('article.card .row ul.v')));
 await r.ctx.close();
 
+// 22/10/2026 — anglais : la page en anglais (libellés, dates en-GB), les lignes `en` du serveur, l'original replié ; sélecteur à trois langues
+const ENED = { ...LINED, stays: [{ ...LINED.stays[0], en: { arrival_time: ['landing 14:00'], meals: ['Wednesday 21, dinner around 19:30: kefta tajine.', 'Thursday 22, lunch: kebabs.', 'No allergy.'] } }] };
+r = await open({ data: ENED, lang: 'en' });
+check('anglais : la page dit lang = en au serveur, titre et libellés anglais, date en anglais', r.views[0].lang === 'en' && (await r.page.innerText('#title')) === 'Villa schedule' && /Arrival/.test(await r.page.innerText('article.card .dates')) && /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) \d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December)\b/.test(await r.page.innerText('#hello')) && !r.errs.length, r.errs);
+const eli = await r.page.$$eval('article.card .row ul.v li', (xs) => xs.map((x) => x.innerText));
+check('anglais : les repas traduits en anglais, l’original français replié dessous ; les boissons (pas de version anglaise) restent en français', eli[0] === 'Wednesday 21, dinner around 19:30: kefta tajine.' && eli.includes('12 eaux plates') && !!(await r.page.$('details.orig')) && (await r.page.getAttribute('html', 'dir')) === 'ltr', eli);
+check('sélecteur : trois boutons, EN enfoncé', (await r.page.$$eval('#langBtn .lb', (bs) => bs.map((b) => b.getAttribute('data-l') + ':' + b.getAttribute('aria-pressed')).join(','))) === 'fr:false,en:true,ar:false');
+await r.page.click('#langBtn .lb[data-l="fr"]'); await r.page.waitForTimeout(300);
+check('EN → FR : libellés français, relecture avec lang = fr', (await r.page.innerText('#title')) === 'Planning de la villa' && r.views[r.views.length - 1].lang === 'fr');
+await r.ctx.close();
 await browser.close(); server.close();
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

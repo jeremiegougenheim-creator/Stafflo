@@ -160,8 +160,8 @@ check('même exclusion des demandes que l’Espace', (() => {
 const page = fs.readFileSync(path.join(root, 'equipe.html'), 'utf8');
 const script = page.slice(page.indexOf('<script>'));
 check('page non indexée, sans referrer', page.includes('<meta name="robots" content="noindex, nofollow">') && page.includes('<meta name="referrer" content="no-referrer">'));
-check('jeton lu dans le fragment (#k=), jamais dans l’URL envoyée', /location\.hash/.test(script) && !/location\.search/.test(script) && /body: JSON\.stringify\(\{ k: S\.k, lang: S\.lang === 'ar' \? 'ar' : 'fr', owner: ownerHere\(\) \}\)/.test(script));
-check('page : le propriétaire connecté sur cet appareil (stafflo_session) est signalé (owner) — ses vérifications ne comptent pas comme des ouvertures', /function ownerHere\(\) \{ try \{ var o = JSON\.parse\(localStorage\.getItem\('stafflo_session'\)/.test(script) && /lang: S\.lang === 'ar' \? 'ar' : 'fr', owner: ownerHere\(\) \}/.test(script));
+check('jeton lu dans le fragment (#k=), jamais dans l’URL envoyée', /location\.hash/.test(script) && !/location\.search/.test(script) && /body: JSON\.stringify\(\{ k: S\.k, lang: isLang\(S\.lang\) \? S\.lang : 'fr', owner: ownerHere\(\) \}\)/.test(script));
+check('page : le propriétaire connecté sur cet appareil (stafflo_session) est signalé (owner) — ses vérifications ne comptent pas comme des ouvertures', /function ownerHere\(\) \{ try \{ var o = JSON\.parse\(localStorage\.getItem\('stafflo_session'\)/.test(script) && /lang: isLang\(S\.lang\) \? S\.lang : 'fr', owner: ownerHere\(\) \}/.test(script));
 check('tout texte échappé', /var esc = function/.test(script) && !/innerHTML = [^;]*s\.(name|meals|note|beds)/.test(script));
 check('arabe : sens de lecture RTL et dates marocaines', /dir = S\.lang === 'ar' \? 'rtl' : 'ltr'/.test(script) && /'ar-MA'/.test(script));
 check('noms latins isolés en arabe (<bdi>)', /<bdi>' \+ esc\(s\.name\)/.test(script));
@@ -281,6 +281,23 @@ check('sw.js ne met pas equipe.html en cache', sw.includes("url.includes('equipe
   const m4 = (w4.find((w) => w.field === 'meals') || {}).lines || [];
   check('nombre changé : seconde chance pour cette ligne seule (nombres rappelés) → traduite cette fois, sans rien inventer', tries2 === 2 && m4.length === 5 && m4.every((x) => x.startsWith('FR ')), { tries2, m4 });
   check('« marocain » traduit « موريتاني » (mauritanien, vu le 20/10) : corrigé en « مغربي » ; un vrai « mauritanien » reste', M.fixAr('assortiment de pâtisseries marocaines', 'حلويات موريتانية') === 'حلويات مغربية' && M.fixAr('kebabs marocains', 'كباب الموريتاني') === 'كباب المغربي' && M.fixAr('thé mauritanien', 'أتاي موريتاني') === 'أتاي موريتاني' && M.fixAr('assorted Morrocon pastries', 'حلويات موريتانية') === 'حلويات مغربية');
+}
+
+// 22/10/2026 — troisième langue : l'anglais (équipe qui ne lit ni le français ni la darija, ex. villa en Thaïlande)
+{
+  const rows = [{ id: 'e1', name: 'Seán Hickey', arrival: '2026-10-25', departure: '2026-10-30', adults: 8, booking_status: 'confirmed',
+    meals: 'Mercredi 21, dîner vers 19h30 : tajine de kefta. Pas d’allergie.', details: { beds: 'There are 4 couples and 2 siblings.', drinks: 'Coke Zero, Iced tea, Waters', staff_note: 'Berceau dans la chambre du jardin.' } }];
+  const st = M.staffView(rows, '2026-10-20');
+  check('anglais : détecteur — le français (repas, consigne) est à traduire, l’anglais (couchages, boissons) non, l’arabe oui, une heure seule non',
+    M.notEnglish('Mercredi 21, dîner vers 19h30 : tajine de kefta.') && M.needsTr('en', st[0].lines.meals) && M.needsTr('en', st[0].lines.note) && !M.needsTr('en', st[0].lines.beds) && !M.needsTr('en', st[0].lines.drinks) &&
+    M.needsTr('en', ['غادي يوصلو مع 21:00 الليل']) && !M.needsTr('en', ['14:00']) && !M.notEnglish('tea coffee water'));
+  let sys = ''; const writes = [];
+  const en = async (sy, user) => { sys = sy; const req = JSON.parse(user).lines, o = {}; for (const k of Object.keys(req)) o[k] = 'EN ' + req[k].replace('19h30', '19:30'); return JSON.stringify({ lines: o }); };
+  const r = await M.withTr('en', st, 'o1', async () => [], async (w) => { writes.push(...w); }, en);
+  await r.job;
+  check('anglais : consigne anglaise, cache staff_i18n en lang en, empreinte versionnée en-1|, lignes reçues', /plain, faithful English/.test(sys) && writes.length === 2 && writes.every((w) => w.lang === 'en') && writes.find((w) => w.field === 'meals').lines[0] === 'EN Mercredi 21, dîner vers 19:30 : tajine de kefta.' && M.TR_V.en === 'en-1|', writes.map((w) => w.field));
+  check('service : body.lang = en accepté, lien créé en anglais → en', /body\.lang === "ar" \|\| body\.lang === "fr" \|\| body\.lang === "en" \? body\.lang : \(link\.lang === "ar" \? "ar" : link\.lang === "en" \? "en" : "fr"\)/.test(fnSrc));
+  check('page : trois langues (FR · EN · عربية), libellés anglais écrits à la main, locale en-GB', /var LANGS = \['fr', 'en', 'ar'\]/.test(script) && /title: 'Villa schedule'/.test(script) && /S\.lang === 'en' \? 'en-GB'/.test(script) && /data-l="' \+ x \+ '"/.test(page));
 }
 
 console.log(`\n${pass}/${pass + fail} PASS`);

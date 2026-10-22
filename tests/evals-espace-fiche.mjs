@@ -1255,12 +1255,15 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     const S2 = [{ id: 'e2', name: 'Élias', arrival: iso(5), departure: iso(12), adults: 10, children: 0, infants: 1, booking_status: 'confirmed', source: 'Airbnb', phone: '', meals: EN.meals, details: { drinks: EN.drinks, beds: EN.beds, arrival_time: EN.arrival_time } }];
     r = await open({ tab: 'sejours', villa: VF, stays: S2, ai });
     await r.page.waitForTimeout(250);
-    await r.page.click('[data-a="toggle"][data-id="e2"]');
-    const ai0 = r.calls.filter((x) => x.kind === 'ai').length;
-    await r.page.click('#st-e2 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(700);
-    const tq = r.calls.filter((x) => x.kind === 'ai').slice(ai0);
-    check('brief ouvert : UN appel de traduction en français, avec seulement ce que le client a écrit (4 champs) — jamais son nom, jamais un prix',
+    const aiB = r.calls.filter((x) => x.kind === 'ai').length;
+    await r.page.click('[data-a="toggle"][data-id="e2"]'); await r.page.waitForTimeout(700);
+    // 22/10 : la carte du séjour se lit dans la langue de la page — la traduction part dès l'ouverture du séjour, avant tout brief
+    const tq = r.calls.filter((x) => x.kind === 'ai').slice(aiB);
+    check('séjour ouvert : UN appel de traduction en français, avec seulement ce que le client a écrit (4 champs) — jamais son nom, jamais un prix',
       tq.length === 1 && /Tu traduis en français/.test(tq[0].body.system) && Object.keys(JSON.parse(tq[0].body.user).lines).map((k) => k.split('|')[0]).sort().join() === 'arrival_time,beds,drinks,meals' && !/Élias|MAD/.test(tq[0].body.user), tq.map((x) => x.body.user.slice(0, 160)));
+    const ai0 = aiB; // le brief ne redemande rien
+    await r.page.click('#st-e2 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(400);
+    check('brief ouvert ensuite : aucun nouvel appel (traduction gardée)', r.calls.filter((x) => x.kind === 'ai').length === ai0 + 1);
     const bt = await r.page.inputValue('#tx-e2'), rep = sect(bt, 'Repas') || { items: [] }, boi = sect(bt, 'Boissons') || { items: [] };
     check('repas en français, une puce par demande, puis Entrées / Plats / Desserts chacun sur sa ligne',
       rep.items.includes('Pourrions-nous dîner le lundi 26, le vendredi 30 et le samedi 31 ?') && rep.items.includes('Entrées - salade méchouia, zaalouk, salade de potiron à la cannelle') &&
@@ -1275,7 +1278,10 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     const fp = r.calls.filter((x) => x.kind === 'stay').pop();
     check('traduction gardée sur le séjour (details.fr : original + français) ; les mots du client intacts',
       !!fp && fp.body.details.fr.meals.src === EN.meals && fp.body.details.fr.meals.fr === FRV.meals && fp.body.details.fr.arrival_time.fr === FRV.arrival_time && fp.body.details.drinks === EN.drinks && fp.body.details.beds === EN.beds && fp.body.meals === undefined, fp && fp.body);
-    check('la fiche du séjour montre toujours les mots du client (preuve) ; le panneau dit que c’est traduit', /There are 4 couples and then 2 siblings/.test(await r.page.innerText('#st-e2')) && /traduit en français/.test(await r.page.innerText('#st-e2 .panel')));
+    // 22/10 : la carte montre la version française, les mots du client repliés dessous (« Texte d'origine ») ; le panneau dit que c'est traduit
+    const st2 = await r.page.innerText('#st-e2');
+    check('la carte du séjour se lit en français (couchages traduits), les mots du client repliés dessous (preuve) ; le panneau dit que c’est traduit',
+      /Il y a 4 couples puis 2 frères et sœurs/.test(st2) && /There are 4 couples and then 2 siblings/.test(await r.page.$eval('#st-e2', (e) => e.textContent)) && (await r.page.$$eval('#st-e2 details.more summary', (xs) => xs.filter((x) => x.textContent === 'Texte d’origine').length)) >= 3 && /traduit en français/.test(await r.page.innerText('#st-e2 .panel')), st2.slice(0, 400));
     await r.page.click('#st-e2 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(300);
     const kt = await r.page.inputValue('#tx-e2');
     check('brief prestataire : les mêmes textes en français, sans nouvel appel (traduction gardée)', /Pourrions-nous dîner le lundi 26/.test(kt) && !/\b(Could|dinner|the)\b/.test(kt) && r.calls.filter((x) => x.kind === 'ai').length === ai0 + 1, kt.slice(0, 300));
@@ -1740,6 +1746,28 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   r = await open({ villa: { ...V0, house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina' }, TEAM: [{ name: 'Omar', brief: true, phone: '+212 600 000 000', role: ['gardien', 'caretaker'] }] } } });
   await r.page.waitForTimeout(200);
   check('avec une équipe : sélecteur « Pour » (Omar) et « Créer le lien »', (await r.page.$eval('#eq-who', (x) => x.value)) === 'Omar' && !!(await r.page.$('[data-a="eqcreate"]')));
+  await r.ctx.close();
+}
+
+// ── 22/10 — L'Espace en anglais : la carte du séjour traduit en anglais ce que le client a écrit en français (details.en), l'original replié ──
+{
+  const KF2 = { VILLA: { name: 'Riad Zina', currency: 'MAD' }, TEAM: [{ name: 'Omar', brief: true, phone: '+212 600 000 000', role: ['gardien', 'caretaker'] }], MEALS: [], EXTRAS: [], PRACTICAL: [], TEXT: {}, MEAL_NOTES: [] };
+  const FRG = { meals: 'Pourrions-nous dîner le lundi 26 et le mardi 27 ? Tajine de kefta le lundi, couscous le mardi.', beds: 'Il y a 2 couples et une personne seule.' };
+  const ai = (b) => b.task === 'write_staff' && /plain, faithful English/.test(b.system) ? mapLines(b, (x) => x === FRG.meals ? 'Could we have dinner on Monday 26 and Tuesday 27? Kefta tajine on Monday, couscous on Tuesday.' : x === FRG.beds ? 'There are 2 couples and one single person.' : x) : { text: '' };
+  r = await open({ tab: 'sejours', villa: { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: KF2 }, ai,
+    stays: [{ id: 'g1', name: 'Paul Martin', arrival: iso(5), departure: iso(9), adults: 5, booking_status: 'confirmed', source: 'Airbnb', meals: FRG.meals, details: { beds: FRG.beds } }] });
+  await r.page.waitForTimeout(200);
+  await r.page.click('[data-a="lang"][data-v="en"]'); await r.page.waitForTimeout(150);
+  await r.page.click('[data-a="toggle"][data-id="g1"]'); await r.page.waitForTimeout(700);
+  const tq = r.calls.filter((x) => x.kind === 'ai');
+  check('Espace en anglais, séjour ouvert : UN appel « into English » avec les deux textes français (repas, couchages), jamais le nom', tq.length === 1 && /plain, faithful English/.test(tq[0].body.system) && Object.keys(linesOf(tq[0].body)).map((k) => k.split('|')[0]).sort().join() === 'beds,meals' && !/Paul/.test(tq[0].body.user), tq.map((x) => x.body.user));
+  const st = await r.page.innerText('#st-g1'), full = await r.page.$eval('#st-g1', (e) => e.textContent);
+  check('la carte se lit en anglais, l’original français replié (« Original text »)', /There are 2 couples and one single person/.test(st) && /Could we have dinner on Monday 26/.test(st) && /Il y a 2 couples et une personne seule/.test(full) && (await r.page.$$eval('#st-g1 details.more summary', (xs) => xs.filter((x) => x.textContent === 'Original text').length)) === 2, st.slice(0, 300));
+  const fp = r.calls.filter((x) => x.kind === 'stay').pop();
+  check('gardé sur le séjour dans details.en (src + en), details.fr intact, les mots du client jamais réécrits', !!fp && fp.body.details.en.meals.src === FRG.meals && /Kefta tajine on Monday/.test(fp.body.details.en.meals.en) && fp.body.details.en.beds.en === 'There are 2 couples and one single person.' && fp.body.details.beds === FRG.beds && fp.body.meals === undefined && !fp.body.details.fr, fp && fp.body);
+  await r.page.click('[data-a="lang"][data-v="fr"]'); await r.page.waitForTimeout(200);
+  check('retour en français : les mots du client tels quels (déjà en français), sans appel ni pli', /Il y a 2 couples et une personne seule/.test(await r.page.innerText('#st-g1')) && r.calls.filter((x) => x.kind === 'ai').length === 1 && !(await r.page.$('#st-g1 details.more')));
+  check('0 erreur', !r.errs.length, r.errs);
   await r.ctx.close();
 }
 

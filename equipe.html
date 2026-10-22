@@ -42,6 +42,10 @@ h1{font-family:"Cormorant Garamond",serif;font-weight:600;font-size:30px;line-he
 html[dir=rtl] h1{font-family:inherit;font-weight:700;font-size:25px}
 .date{font-size:15px;color:#D9D2C1}
 .lang{flex:none;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid rgba(201,150,58,.6);background:transparent;color:#F4EFE3;font:600 14px/1 inherit;font-family:inherit;cursor:pointer}
+/* 22/10 : trois langues — le bouton devient un sélecteur FR · EN · عربية */
+#langBtn{display:flex;padding:3px;gap:2px;cursor:default}
+#langBtn .lb{min-height:36px;padding:0 10px;border:0;border-radius:999px;background:transparent;color:#F4EFE3;font:600 13px/1 inherit;font-family:inherit;cursor:pointer}
+#langBtn .lb[aria-pressed="true"]{background:#C9963A;color:#0F2318}
 main{max-width:640px;margin:0 auto;padding:14px 16px calc(40px + env(safe-area-inset-bottom))}
 .band{display:flex;gap:8px;align-items:center;font-size:14px;padding:10px 12px;border-radius:12px;margin:0 0 12px;background:var(--wait-bg);color:var(--wait)}
 .band.err{background:var(--alert-bg);color:var(--alert)}
@@ -94,7 +98,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
 </style>
 </head>
 <body>
-<header class="top"><div class="in"><div class="tx"><div class="kick">Stafflo</div><h1 id="title"></h1><div class="date" id="hello"></div></div><button type="button" class="lang" id="langBtn"></button></div></header>
+<header class="top"><div class="in"><div class="tx"><div class="kick">Stafflo</div><h1 id="title"></h1><div class="date" id="hello"></div></div><div class="lang" id="langBtn" role="group" aria-label="Langue · Language · اللغة"></div></div></header>
 <main id="app" aria-live="polite"></main>
 <script>
 (function () {
@@ -123,6 +127,23 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       inDays: function (n) { return n === 1 ? 'Demain' : 'Dans ' + n + ' jours'; },
       dayOf: function (x, y) { return 'Sur place · jour ' + x + ' sur ' + y; }
     },
+    en: { // 22/10/2026 : anglais — une équipe qui ne lit ni le français ni la darija (villa hors du Maroc, ex. Thaïlande)
+      title: 'Villa schedule', hello: 'Hello', today: 'Today', next: 'Next arrivals', nextSub: 'next 30 days',
+      nobody: 'Nobody at the villa today.', noNext: 'No arrival in the next 30 days.',
+      arriveToday: 'Arriving today', leaveToday: 'Leaving today', sameDay: 'Departure and arrival the same day',
+      arrival: 'Arrival', departure: 'Departure', adults: 'Adults', children: 'Children', infants: 'Babies', people: 'People',
+      time: 'Arrival time', depTime: 'Departure time', drinks: 'Drinks', beds: 'Beds', meals: 'Meals', mealsNone: 'Not received yet', note: 'Instructions', extras: 'Ordered by the guest',
+      covers: 'Covers', kitchenTag: 'meal provider', orders: 'Meals ordered by the guest', houseOrdersK: 'Prepared by the house, not by you', houseOrders: 'To be prepared by the house',
+      nextArr: 'Next arrival after this departure', nextNone: 'no arrival planned', sameDayShort: 'the same day', mealsOk: 'Meals confirmed', mealsDone: 'Meals confirmed · ',
+      updated: 'Updated at ', refresh: 'Refresh', orig: 'Original text', trBusy: 'Translating…', personal: 'This link is personal: do not forward it.', loading: 'Loading…',
+      invalid: 'This link is no longer valid. Ask the villa owner for a new one.', noLink: 'Open the link you received on WhatsApp.', unknown: '?', arrow: '→',
+      offline: 'Offline — information from ', server: 'Service temporarily unavailable — information from ', langBtn: 'FR · EN · AR',
+      roomsReady: 'Rooms ready', roomsDone: 'Rooms ready · ', issueTitle: 'Report a problem', issueHelp: 'Something broken, missing or not working: the owner is told right away.',
+      issuePh: 'E.g. leak in the suite bathroom', send: 'Send', sending: 'Sending…', sent: 'Sent, thank you.', sendErr: 'Not sent — check the connection and try again.',
+      nights: function (n) { return n + (n > 1 ? ' nights' : ' night'); },
+      inDays: function (n) { return n === 1 ? 'Tomorrow' : 'In ' + n + ' days'; },
+      dayOf: function (x, y) { return 'On site · day ' + x + ' of ' + y; }
+    },
     ar: { // 19/10/2026 : darija marocaine (comme les messages WhatsApp de l'équipe), plus l'arabe standard
       title: 'البرنامج ديال الفيلا', hello: 'السلام', today: 'اليوم', next: 'الضيوف اللي جايين', nextSub: 'ف 30 يوم الجاية',
       nobody: 'ما كاين حتى ضيف ف الفيلا اليوم.', noNext: 'ما كاين حتى وصول ف 30 يوم الجاية.',
@@ -149,6 +170,10 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
     set: function (k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   };
   var L = function () { return TXT[S.lang] || TXT.fr; };
+  /* Trois langues (22/10/2026) : français, anglais, darija. La langue de la page = celle que le serveur traduit (lang). */
+  var LANGS = ['fr', 'en', 'ar'];
+  var isLang = function (x) { return LANGS.indexOf(x) > -1; };
+  var locale = function () { return S.lang === 'ar' ? 'ar-MA' : S.lang === 'en' ? 'en-GB' : 'fr-FR'; };
 
   /* Dates : jours calendaires (UTC), jamais d'heure locale. */
   function dayNum(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null; }
@@ -163,12 +188,12 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
     return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
   }
   function fmt(n, long) {
-    return new Date(n * 86400000).toLocaleDateString(S.lang === 'ar' ? 'ar-MA' : 'fr-FR',
+    return new Date(n * 86400000).toLocaleDateString(locale(),
       long ? { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' } : { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
   }
   function fmtTime(isoTs) {
     var d = new Date(isoTs); if (isNaN(d)) return '';
-    return d.toLocaleString(S.lang === 'ar' ? 'ar-MA' : 'fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString(locale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   }
 
   function readToken() {
@@ -187,13 +212,13 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
     S.busy = true; S.lastTry = Date.now(); render();
     // owner : le propriétaire, connecté à Stafflo sur cet appareil (même site, stafflo_session), vérifie le lien →
     // ce n'est pas une ouverture de l'équipe (« Ouvert » dans l'Espace, 18/10/2026).
-    fetch(FN, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + ANON }, body: JSON.stringify({ k: S.k, lang: S.lang === 'ar' ? 'ar' : 'fr', owner: ownerHere() }) })
+    fetch(FN, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + ANON }, body: JSON.stringify({ k: S.k, lang: isLang(S.lang) ? S.lang : 'fr', owner: ownerHere() }) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, status: r.status, d: d }; }); })
       .then(function (x) {
         if (x.ok && x.d && Array.isArray(x.d.stays)) {
           S.data = x.d; S.state = 'ok';
           store.set(C_KEY, JSON.stringify(x.d));
-          if (!store.get(L_KEY) && (x.d.lang === 'ar' || x.d.lang === 'fr')) S.lang = x.d.lang;
+          if (!store.get(L_KEY) && isLang(x.d.lang)) S.lang = x.d.lang;
           // 20/10 : le serveur traduit ce qui manque en arrière-plan (`pending`) → on relit quelques secondes après, 6 fois au plus.
           clearTimeout(S.poll);
           if (x.d.pending > 0 && x.d.tr === S.lang && S.tries < 6) { S.tries++; S.poll = setTimeout(load, 5000); } else S.tries = 0;
@@ -223,7 +248,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
   }
   function readyReport(stayId) { return reportOf('rooms_ready', stayId); }
   function isKitchen() { return !!(S.data && S.data.role === 'kitchen'); }
-  function fmtClock(isoTs) { var d = new Date(isoTs); return isNaN(d) ? '' : d.toLocaleTimeString(S.lang === 'ar' ? 'ar-MA' : 'fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+  function fmtClock(isoTs) { var d = new Date(isoTs); return isNaN(d) ? '' : d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' }); }
 
   function stayCard(s, t, tone, chips) {
     var l = L(), a = dayNum(s.a), d = dayNum(s.d), h = '';
@@ -283,14 +308,14 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
 
   function render() {
     var l = L(), app = document.getElementById('app');
-    document.documentElement.lang = S.lang === 'ar' ? 'ar' : 'fr';
+    document.documentElement.lang = isLang(S.lang) ? S.lang : 'fr';
     document.documentElement.dir = S.lang === 'ar' ? 'rtl' : 'ltr';
     document.title = l.title + ' · Stafflo';
     document.getElementById('title').textContent = l.title;
     var who = S.data && S.data.name ? l.hello + ' ' + S.data.name + (isKitchen() ? ' · ' + l.kitchenTag : '') + ' · ' : '';
     document.getElementById('hello').textContent = who + fmt(todayNum(), true);
-    document.getElementById('langBtn').textContent = l.langBtn;
-    document.getElementById('langBtn').setAttribute('lang', S.lang === 'ar' ? 'fr' : 'ar');
+    // Sélecteur FR · EN · عربية (22/10) : trois boutons, celui de la page enfoncé ; l'ancien bouton « autre langue » devient ce sélecteur.
+    document.getElementById('langBtn').innerHTML = LANGS.map(function (x) { return '<button type="button" class="lb" data-l="' + x + '" lang="' + x + '" aria-pressed="' + (S.lang === x) + '">' + (x === 'ar' ? 'عربية' : x.toUpperCase()) + '</button>'; }).join('');
 
     if (!S.k) { app.innerHTML = '<div class="band err" role="alert"><i class="ti ti-link-off" aria-hidden="true"></i>' + esc(l.noLink) + '</div>'; return; }
     if (S.state === 'invalid') { app.innerHTML = '<div class="band err" role="alert"><i class="ti ti-link-off" aria-hidden="true"></i>' + esc(l.invalid) + '</div>'; return; }
@@ -336,7 +361,8 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
       report(rb.getAttribute('data-kind') === 'meals_ok' ? 'meals_ok' : 'rooms_ready', rb.getAttribute('data-id')).then(function () { render(); }, function () { rb.disabled = false; alertBand(L().sendErr); });
       return;
     }
-    if (e.target.closest('#langBtn')) { S.lang = S.lang === 'ar' ? 'fr' : 'ar'; store.set(L_KEY, S.lang); S.tries = 0; render(); if (S.data && S.data.tr !== S.lang) load(); } // l'autre langue : ses traductions viennent du serveur
+    var lb = e.target.closest('#langBtn .lb');
+    if (lb) { var nl = lb.getAttribute('data-l'); if (isLang(nl) && nl !== S.lang) { S.lang = nl; store.set(L_KEY, S.lang); S.tries = 0; render(); if (S.data && S.data.tr !== S.lang) load(); } } // une autre langue : ses traductions viennent du serveur
   });
   function alertBand(msg) {
     var app = document.getElementById('app'), b = document.createElement('div');
@@ -359,7 +385,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none;color:var(--muted)
   S.k = readToken();
   S.lang = store.get(L_KEY);
   try { var c = JSON.parse(store.get(C_KEY) || 'null'); if (c && Array.isArray(c.stays)) { S.data = c; S.state = 'ok'; if (!S.lang) S.lang = c.lang; } } catch (e) {}
-  if (S.lang !== 'ar' && S.lang !== 'fr') S.lang = /^ar\b/i.test(navigator.language || '') ? 'ar' : 'fr';
+  if (!isLang(S.lang)) S.lang = /^ar\b/i.test(navigator.language || '') ? 'ar' : /^en\b/i.test(navigator.language || '') ? 'en' : 'fr';
   render();
   load();
 })();
