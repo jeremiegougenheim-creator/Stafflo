@@ -528,6 +528,10 @@ const T = {
   arrDone:['Merci, c’est transmis à l’équipe. Vous pouvez modifier et renvoyer à tout moment.','Thank you, the team has it. You can change and resend at any time.'],
   arrSentOn:['Transmis le','Sent on'],
   arrErr:['L’envoi n’a pas abouti. Vérifiez votre connexion et réessayez.','Sending failed. Check your connection and try again.'],
+  arrNothing:['Rien à envoyer : répondez à au moins une question, ou choisissez ce que vous souhaitez commander.','Nothing to send yet: answer at least one question, or choose what you would like to order.'],
+  arrNum:['Couples et personnes seules : un nombre entre 0 et 20.','Couples and single travellers: a number between 0 and 20.'],
+  regNothing:['Rien à envoyer : indiquez au moins le nom ou le prénom d’un voyageur.','Nothing to send yet: fill in at least the surname or first name of one guest.'],
+  regNoName:['indiquez le nom ou le prénom','please add the surname or first name'], regBadDate:['date de naissance incomplète','date of birth incomplete'],
   ordTitle:['Commander pour votre séjour','Order for your stay'],
   ordFree:['Soirs sans dîner : ','Evenings without dinner: '], ordFreeHint:['— cochez-les ci-dessus si vous le souhaitez.','— tick them above if you wish.'],
   regTitle:['Fiches voyageurs','Guest registration'],
@@ -737,7 +741,7 @@ function arrivalBlock(){
   const a = ctx.answers || {};
   const v = x => esc(x == null ? '' : x);
   const sentLine = a.at ? '<p class="st">' + ti(T.arrSentOn) + ' ' + esc(new Date(a.at).toLocaleDateString(LANG === 'en' ? 'en-GB' : 'fr-FR', {day:'numeric', month:'long'})) + '</p>' : '';
-  return '<form class="arrive" id="arrive" autocomplete="off">' +
+  return '<form class="arrive" id="arrive" autocomplete="off" novalidate>' +
     '<h3>' + ti(T.arrTitle) + '</h3><p class="why">' + t(T.arrWhy) + '</p>' +
     '<div id="prog-w">' + progBlock() + '</div>' +
     '<label for="ar-time">' + t(T.arrTime) + '</label><input id="ar-time" type="text" maxlength="120" value="' + v(a.arrival_time) + '" placeholder="' + ti(T.arrTimePh) + '">' +
@@ -900,13 +904,18 @@ document.addEventListener('click', e => {
 function sendArrival(form){
   const ctx = window.LIVRET_CTX, btn = form.querySelector('#ar-send'), st = form.querySelector('#ar-st');
   const g = id => form.querySelector('#' + id).value;
+  // 22/10/2026 : plus jamais un envoi muet — un nombre illisible (Safari laisse taper « 2 couples » dans un champ nombre) ou
+  // rien à envoyer : la page le dit sous le bouton (avant : le navigateur bloquait, ou la fonction sortait sans un mot).
+  const say = (pair, el) => { st.innerHTML = '<p class="st err">' + t(pair) + '</p>'; if (el && el.focus) el.focus(); };
+  const badNum = ['ar-c', 'ar-s'].map(id => form.querySelector('#' + id)).filter(el => (el.validity && el.validity.badInput) || (el.value.trim() !== '' && !/^\d{1,2}$/.test(el.value.trim())) || +el.value > 20)[0];
+  if (badNum) return say(T.arrNum, badNum);
   const answers = { arrival_time: g('ar-time').trim(), couples: g('ar-c').trim(), singles: g('ar-s').trim(), meals: g('ar-m').trim() };
   const hasMenu = orderMenu().length, lines = Object.keys(ORDER).filter(k => ORDER[k] > 0).map(k => {
     const w = WHEN[k] && WHEN[k].size && ordDays() ? [...WHEN[k]].sort().map(x => { const [d, s] = x.split('|'); return s ? { d, s } : { d }; }) : null;
     return w ? { id: k, q: isX(k) ? ORDER[k] : w.length, when: w } : { id: k, q: ORDER[k] }; // extra daté : q = nombre par case (livret-view)
   });
   const hadOrder = !!(ctx.orders && ctx.orders.items && ctx.orders.items.length);
-  if (!answers.arrival_time && !answers.couples && !answers.singles && !answers.meals && !lines.length && !hadOrder) return;
+  if (!answers.arrival_time && !answers.couples && !answers.singles && !answers.meals && !lines.length && !hadOrder) return say(T.arrNothing);
   const payload = { t: ctx.token, lang: LANG === 'en' ? 'en' : 'fr' };
   if (answers.arrival_time || answers.couples || answers.singles || answers.meals) payload.answers = answers;
   if (hasMenu && (lines.length || hadOrder)) payload.orders = lines;
@@ -941,7 +950,7 @@ function regCard(i){
 function regBlock(){
   if (!regOn()) return '';
   if (!REG.length) { const n = Math.max(1, Math.min(30, orderPax() || 1)); for (let i = 0; i < n; i++) REG.push({}); }
-  return '<form class="arrive reg" id="reg" autocomplete="off"><h3>' + ti(T.regTitle) + '</h3><p class="why">' + t(T.regWhy) + '</p>' +
+  return '<form class="arrive reg" id="reg" autocomplete="off" novalidate><h3>' + ti(T.regTitle) + '</h3><p class="why">' + t(T.regWhy) + '</p>' +
     REG.map((_, i) => regCard(i)).join('') +
     '<button type="button" class="add" data-a="regadd">+ ' + ti(T.regAdd) + '</button><br>' +
     '<button type="submit" class="send" id="rg-send">' + ti(T.regSend) + '</button><div id="rg-st">' + regSentLine((window.LIVRET_CTX || {}).reg) + '</div></form>';
@@ -955,8 +964,24 @@ document.addEventListener('click', e => {
 });
 function sendReg(form){
   const ctx = window.LIVRET_CTX, btn = form.querySelector('#rg-send'), st = form.querySelector('#rg-st');
-  const list = REG.filter(o => String(o.last || '').trim() || String(o.first || '').trim());
-  if (!list.length) return;
+  // 22/10/2026 : ce qui est écrit dans les champs fait foi (un remplissage automatique ne déclenche pas toujours « input ») ;
+  // une fiche commencée sans nom, une date de naissance incomplète, rien à envoyer : la page le dit (avant : rien, en silence).
+  form.querySelectorAll('[data-reg]').forEach(el => { const [i, f] = el.getAttribute('data-reg').split('.'); (REG[+i] = REG[+i] || {})[f] = el.value; });
+  const say = (html, i, f) => {
+    st.innerHTML = '<p class="st err">' + html + '</p>';
+    if (i == null) return;
+    const d = form.querySelectorAll('.reg-p')[i]; if (d) d.open = true;
+    const el = form.querySelector('#rg-' + i + '-' + f); if (el && el.focus) el.focus();
+  };
+  const named = o => String(o.last || '').trim() || String(o.first || '').trim();
+  for (let i = 0; i < REG.length; i++) {
+    const o = REG[i] || {}, bd = form.querySelector('#rg-' + i + '-birth_date');
+    if (!REG_F.some(([k]) => String(o[k] || '').trim()) && !(bd && bd.validity && bd.validity.badInput)) continue;
+    if (!named(o)) return say(ti(T.regWho) + ' ' + (i + 1) + ' : ' + ti(T.regNoName) + '.', i, 'last');
+    if (bd && bd.validity && bd.validity.badInput) return say(ti(T.regWho) + ' ' + (i + 1) + ' : ' + ti(T.regBadDate) + '.', i, 'birth_date');
+  }
+  const list = REG.filter(named);
+  if (!list.length) return say(t(T.regNothing), 0, 'last');
   btn.disabled = true; btn.textContent = ti(T.arrSending); st.innerHTML = '';
   fetch(ctx.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: ctx.token, lang: LANG === 'en' ? 'en' : 'fr', travellers: list }) })
     .then(r => r.ok ? r.json() : Promise.reject(r.status))

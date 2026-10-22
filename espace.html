@@ -1078,7 +1078,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var e = RPT[lang][r.id];
     if (e && e.src === txt) return e;
     if (!TRD[lang].detect(txt)) return null;
-    if (!e || e.src !== txt) { RPT[lang][r.id] = { src: txt, busy: true, text: '' }; aiPost({ task: 'write_staff', system: TR_SYS[lang], user: JSON.stringify({ lines: { t: txt.slice(0, 600) } }), max_tokens: 800 })
+    if (!e || e.src !== txt) { RPT[lang][r.id] = { src: txt, busy: true, text: '' }; aiPost({ task: 'write_staff', system: TR_SYS[lang], user: JSON.stringify({ lines: { t: txt.slice(0, 600) } }), max_tokens: 800, json: true })
       .then(function (x) { return x.json().then(function (j) { return x.ok && j && j.text ? String(j.text) : ''; }); })
       .then(function (t) { var got = parseJsonLoose(t); got = got && got.lines && typeof got.lines === 'object' ? got.lines : got; var v = got && typeof got.t === 'string' ? got.t.replace(/\*\*|__/g, '').trim() : '';
         RPT[lang][r.id] = { src: txt, busy: false, text: v && sameNums(txt, v) ? v : '' }; })
@@ -2458,14 +2458,29 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   function frOf(c, k) { return trOf(c, k, 'fr'); }
   function trTodo(c, lang) {
     var st = TRD[lang].mem[c.id], detect = TRD[lang].detect;
-    return FR_KEYS.filter(function (k) { var s = srcOf(c, k); return s && detect(s) && !trEntry(c, k, lang) && !(st && st.bad[k] && st.bad[k].src === s); });
+    // 22/10 : une panne (réseau, réponse illisible) se retente après 2 minutes ; des nombres changés, jamais dans la session.
+    return FR_KEYS.filter(function (k) { var s = srcOf(c, k), b = st && st.bad[k]; return s && detect(s) && !trEntry(c, k, lang) && !(b && b.src === s && (b.why !== 'fail' || Date.now() - (b.t || 0) < 120000)); });
   }
   function frTodo(c) { return trTodo(c, 'fr'); }
   function parseJsonLoose(t) {
     t = String(t || '').replace(/^\s*```\w*\s*/, '').replace(/\s*```\s*$/, '');
     var i = t.indexOf('{'), j = t.lastIndexOf('}');
     if (i < 0 || j <= i) return null;
-    try { return JSON.parse(t.slice(i, j + 1)); } catch (e) { return null; }
+    var s = t.slice(i, j + 1);
+    try { return JSON.parse(s); } catch (e) {}
+    // 22/10/2026 (cas réel, Seán) : ministral-14b mettait des retours à la ligne bruts DANS les chaînes (« avoir :⏎Entrées - … ») —
+    // JSON illisible, toute la traduction était jetée et le brief restait en anglais. On les échappe, dans les chaînes seulement ;
+    // rien d'autre n'est réparé (une réponse vraiment cassée reste illisible).
+    var out = '', inStr = false, bs = false;
+    for (var k = 0; k < s.length; k++) {
+      var ch = s.charAt(k);
+      if (!inStr) { if (ch === '"') inStr = true; out += ch; continue; }
+      if (bs) { bs = false; out += ch; continue; }
+      if (ch === '\\') { bs = true; out += ch; continue; }
+      if (ch === '"') { inStr = false; out += ch; continue; }
+      out += ch === '\n' ? '\\n' : ch === '\r' ? '\\r' : ch === '\t' ? '\\t' : ch;
+    }
+    try { return JSON.parse(out); } catch (e) { return null; }
   }
   var SYS_FR_FIELDS = 'Tu traduis en français des textes écrits par un client (dans sa langue) pour le brief de l’équipe d’une maison d’hôtes à Marrakech. ' +
     'Tu reçois un objet JSON {"lines": {"clé": "texte"}}. Traduis chaque texte en français simple et fidèle : ne rien ajouter, ne rien résumer, ne rien retirer, ne rien commenter. ' +
@@ -2490,7 +2505,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       plan[k].ls.forEach(function (x, i) { if (x.trim()) lines[k + '|' + i] = x.trim().slice(0, 3000); });
     });
     st.busy = true; st.fail = false; render();
-    aiPost({ task: 'write_staff', system: TR_SYS[lang], user: JSON.stringify({ lines: lines }), max_tokens: 3000 })
+    aiPost({ task: 'write_staff', system: TR_SYS[lang], user: JSON.stringify({ lines: lines }), max_tokens: 3000, json: true })
       .then(function (r) { return r.json().then(function (x) { return r.ok && x && x.text ? String(x.text) : ''; }); })
       .then(function (t) {
         var got = parseJsonLoose(t); got = got && got.lines && typeof got.lines === 'object' ? got.lines : got;
@@ -2504,12 +2519,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
             return v.replace(/\*\*|__/g, '').trim(); // ministral-14b met du gras markdown (**lundi 26**) : WhatsApp le montrerait tel quel
           }).join('\n');
           if (p.wrap) fr = p.wrap[0] + fr.replace(/^[«"“]\s*|\s*[»"”]$/g, '') + p.wrap[1];
-          if (!ok || !sameNums(p.src, fr) || fr.length > p.src.length * 3 + 200) { st.bad[k] = { src: p.src, why: ok ? 'num' : 'fail' }; return; }
+          if (!ok || !sameNums(p.src, fr) || fr.length > p.src.length * 3 + 200) { st.bad[k] = { src: p.src, why: ok ? 'num' : 'fail', t: Date.now() }; return; }
           var ent = { src: p.src, at: now }; ent[lang] = fr; out[k] = st.mem[k] = ent;
         });
         if (Object.keys(out).length) return saveTr(c, out, lang);
       })
-      .catch(function () { st.fail = true; todo.forEach(function (k) { if (!st.mem[k]) st.bad[k] = { src: srcOf(c, k), why: 'fail' }; }); })
+      .catch(function () { st.fail = true; todo.forEach(function (k) { if (!st.mem[k]) st.bad[k] = { src: srcOf(c, k), why: 'fail', t: Date.now() }; }); })
       .then(function () { st.busy = false; render(); });
   }
   function saveFr(c, out) { return saveTr(c, out, 'fr'); }
@@ -2577,7 +2592,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (!r.need.length) { TR[k] = { busy: false, src: fr, text: r.text, on: true }; render(); return; }
     var lines = {}; r.need.forEach(function (x, i) { lines[String(i)] = x; });
     TR[k] = { busy: true, src: fr, text: '', on: false }; render();
-    aiPost({ task: 'write_staff', system: lang === 'ar' ? SYS_AR_BRIEF : SYS_EN_BRIEF, user: JSON.stringify({ lines: lines }), max_tokens: 3500 })
+    aiPost({ task: 'write_staff', system: lang === 'ar' ? SYS_AR_BRIEF : SYS_EN_BRIEF, user: JSON.stringify({ lines: lines }), max_tokens: 3500, json: true })
       .then(function (res) { return res.json().then(function (x) { return res.ok && x && x.text ? String(x.text) : ''; }); })
       .then(function (t) {
         var got = parseJsonLoose(t); got = got && got.lines && typeof got.lines === 'object' ? got.lines : got;

@@ -1244,7 +1244,9 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
           // comme ministral-14b le 19/10 (essai réel sur les textes de Lise) : du gras markdown, un retour à la ligne après « : »
           if (f === 'meals') v = v.replace('le lundi 26, le vendredi 30', 'le **lundi 26**, le **vendredi 30**'); if (f === 'drinks') v = v.replace(" d'avoir : ", " d'avoir :\n");
           out[k] = v; }
-        return { text: '```json\n' + JSON.stringify({ lines: out }) + '\n```' }; // réponse entourée de ``` : lue quand même
+        // réponse entourée de ``` : lue quand même ; 22/10 (réponse réelle de ministral-14b pour Seán) : retours à la ligne BRUTS dans
+        // les chaînes — JSON illisible tel quel, toute la traduction était jetée et le brief restait en anglais
+        return { text: '```json\n' + JSON.stringify({ lines: out }).replace(/\\n/g, '\n') + '\n```' };
       }
       if (b.task === 'write_staff' && /into English/.test(b.system)) return mapLines(b, (x) => (enBad ? x.replace(/26/, '27') : 'EN ' + x));
       if (b.task === 'write_staff' && /darija/i.test(b.system) && dropLine) { const o = linesOf(b); delete o['1']; return { text: JSON.stringify({ lines: o }) }; }
@@ -1259,8 +1261,8 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     await r.page.click('[data-a="toggle"][data-id="e2"]'); await r.page.waitForTimeout(700);
     // 22/10 : la carte du séjour se lit dans la langue de la page — la traduction part dès l'ouverture du séjour, avant tout brief
     const tq = r.calls.filter((x) => x.kind === 'ai').slice(aiB);
-    check('séjour ouvert : UN appel de traduction en français, avec seulement ce que le client a écrit (4 champs) — jamais son nom, jamais un prix',
-      tq.length === 1 && /Tu traduis en français/.test(tq[0].body.system) && Object.keys(JSON.parse(tq[0].body.user).lines).map((k) => k.split('|')[0]).sort().join() === 'arrival_time,beds,drinks,meals' && !/Élias|MAD/.test(tq[0].body.user), tq.map((x) => x.body.user.slice(0, 160)));
+    check('séjour ouvert : UN appel de traduction en français, avec seulement ce que le client a écrit (4 champs) — jamais son nom, jamais un prix ; mode JSON demandé (json: true)',
+      tq.length === 1 && /Tu traduis en français/.test(tq[0].body.system) && tq[0].body.json === true && Object.keys(JSON.parse(tq[0].body.user).lines).map((k) => k.split('|')[0]).sort().join() === 'arrival_time,beds,drinks,meals' && !/Élias|MAD/.test(tq[0].body.user), tq.map((x) => x.body.user.slice(0, 160)));
     const ai0 = aiB; // le brief ne redemande rien
     await r.page.click('#st-e2 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(400);
     check('brief ouvert ensuite : aucun nouvel appel (traduction gardée)', r.calls.filter((x) => x.kind === 'ai').length === ai0 + 1);
@@ -1316,6 +1318,28 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     dropLine = true; // cas réel (ministral-14b, 19/10, brief entier) : une ligne avait disparu de la traduction
     await r.page.click('#st-e3 [data-a="briefar"]'); await r.page.waitForTimeout(400);
     check('traduction qui oublie une ligne : écartée, le brief reste en français, « Traduction impossible »', (await r.page.inputValue('#tx-e3')) === bt3 && /Traduction impossible/.test(await r.page.innerText('#toastHost')) && !(await r.page.getAttribute('#tx-e3', 'dir')));
+    await r.ctx.close();
+    // 22/10 : une panne (réponse vide ou illisible) n'est plus définitive pour la session — la traduction repart après 2 minutes.
+    let failFirst = true;
+    const ai4 = (b) => {
+      if (!(b.task === 'write_staff' && /Tu traduis en français/.test(b.system))) return { text: '' };
+      if (failFirst) { failFirst = false; return { text: 'désolé' }; }
+      const req = JSON.parse(b.user).lines, out = {};
+      for (const k of Object.keys(req)) out[k] = FRV[k.split('|')[0]].replace(/^«\s*|\s*»$/g, '');
+      return { text: JSON.stringify({ lines: out }) };
+    };
+    r = await open({ tab: 'sejours', villa: VF, stays: [{ ...S2[0], id: 'e4', meals: EN.meals, details: { drinks: EN.drinks, beds: EN.beds, arrival_time: EN.arrival_time } }], ai: ai4, clock: true });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="e4"]'); await r.page.click('#st-e4 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(600);
+    const trq = () => r.calls.filter((x) => x.kind === 'ai' && /Tu traduis en français/.test(x.body.system)).length;
+    const b4a = await r.page.inputValue('#tx-e4'), n4a = trq();
+    await r.page.click('#st-e4 [data-a="panel"][data-v="chef"]'); await r.page.click('#st-e4 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(300);
+    const n4b = trq();
+    await r.page.clock.fastForward(130000);
+    await r.page.click('#st-e4 [data-a="panel"][data-v="chef"]'); await r.page.click('#st-e4 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(600);
+    const b4c = await r.page.inputValue('#tx-e4');
+    check('traduction en panne (réponse illisible) : l’anglais reste et c’est dit ; pas de nouvel essai tout de suite ; 2 minutes plus tard, nouvel essai → brief en français',
+      n4a === 1 && /Could we do dinner/.test(b4a) && n4b === 1 && trq() === 2 && /Pourrions-nous dîner le lundi 26/.test(b4c) && !/\b(Could|dinner|Most|There)\b/.test(b4c) && !r.errs.length, { n4a, n4b, n: trq(), b4c: b4c.slice(0, 300), errs: r.errs });
     await r.ctx.close();
   }
   // 17/10/2026 — briefs nettoyés (brief de Thibaut) : l'heure dite par le client sur la ligne Arrivée, sans « (WhatsApp, date) »

@@ -22,6 +22,7 @@ let handler = null;
 globalThis.Deno = { env: { get: (k) => ENV[k] } };
 const CALLS = { auth: 0, mistral: [], log: [] };
 let mistralMode = 'ok';
+let mistralReplies = []; // réponses imposées, une par appel (sinon la réponse de test)
 globalThis.fetch = async (url, init = {}) => {
   url = String(url);
   if (url === 'https://sb.test/auth/v1/user') {
@@ -33,7 +34,8 @@ globalThis.fetch = async (url, init = {}) => {
   if (url === 'https://api.mistral.ai/v1/chat/completions') {
     const b = JSON.parse(init.body); CALLS.mistral.push(b);
     if (mistralMode === 'tier' && b.model === 'mistral-large-2512') return new Response('{"code":"1910","message":"tier_not_allowed"}', { status: 403 });
-    return new Response(JSON.stringify({ choices: [{ message: { content: 'Réponse de test suffisamment longue pour passer la validation.' } }] }), { status: 200 });
+    const content = mistralReplies.length ? mistralReplies.shift() : 'Réponse de test suffisamment longue pour passer la validation.';
+    return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
   }
   throw new Error('appel réseau inattendu : ' + url);
 };
@@ -97,6 +99,34 @@ mistralMode = 'tier';
 r = await call({ task: 'write_fr', user: 'Rédige la réponse' }, { auth: 'good' });
 d = await r.json();
 check('cascade : modèle refusé par l’abonnement → suivant', r.status === 200 && d.model_id === 'ministral-14b-2512');
+
+mistralMode = 'ok';
+
+// v48 (22/10) — traductions de l'Espace : une rédaction qui attend du JSON le dit (json: true). Cas réel (Seán) : ministral-14b,
+// à 0,7 sans mode JSON, mettait un retour à la ligne brut dans une chaîne → JSON illisible → brief resté en anglais.
+const TR = { task: 'write_staff', system: 'Tu traduis en français… Réponds UNIQUEMENT par un objet JSON {"lines": {...}}.', user: JSON.stringify({ lines: { 'meals|0': 'Could we do dinner on Monday 26th?' } }), max_tokens: 3000, json: true };
+let n1 = CALLS.mistral.length;
+mistralReplies = ['{"lines": {"meals|0": "Pourrions-nous dîner le lundi 26 ?"}}'];
+r = await call(TR, { auth: 'good' }); d = await r.json();
+let mb = CALLS.mistral.at(-1);
+check('write_staff + json:true : mode JSON de Mistral (response_format json_object), température 0,2, un seul appel', r.status === 200 && mb.response_format?.type === 'json_object' && mb.temperature === 0.2 && CALLS.mistral.length === n1 + 1 && JSON.parse(d.text).lines['meals|0'] === 'Pourrions-nous dîner le lundi 26 ?', JSON.stringify(mb).slice(0, 200));
+n1 = CALLS.mistral.length;
+mistralReplies = ['{"lines": {"meals|0": "Pourrions-nous dîner :\nle lundi 26 ?"}}', '{"lines": {"meals|0": "Pourrions-nous dîner le lundi 26 ?"}}'];
+r = await call(TR, { auth: 'good' }); d = await r.json();
+check('réponse JSON illisible (retour à la ligne brut dans une chaîne) → un second essai, c’est lui qui est rendu', r.status === 200 && CALLS.mistral.length === n1 + 2 && JSON.parse(d.text).lines['meals|0'] === 'Pourrions-nous dîner le lundi 26 ?', d.text);
+n1 = CALLS.mistral.length;
+mistralReplies = ['pas du JSON du tout, juste une phrase assez longue', 'toujours pas du JSON, encore une phrase assez longue'];
+r = await call(TR, { auth: 'good' });
+check('deux réponses illisibles → 503 (l’Espace le dit, rien d’inventé), deux appels seulement', r.status === 503 && CALLS.mistral.length === n1 + 2);
+n1 = CALLS.mistral.length;
+mistralReplies = ['```json\n{"lines": {"meals|0": "Pourrions-nous dîner le lundi 26 ?"}}\n```'];
+r = await call(TR, { auth: 'good' });
+check('objet JSON entouré de ``` : accepté (l’Espace retire les ```)', r.status === 200 && CALLS.mistral.length === n1 + 1);
+r = await call({ task: 'write_fr', user: 'Rédige la réponse au client' }, { auth: 'good' }); mb = CALLS.mistral.at(-1);
+check('rédaction sans json:true : inchangée (pas de mode JSON, température 0,7)', r.status === 200 && !mb.response_format && mb.temperature === 0.7);
+r = await call({ ...TR, task: 'chat_fr' }, { auth: 'good' }); mb = CALLS.mistral.at(-1);
+check('json:true ignoré hors rédaction (chat_fr)', r.status === 200 && !mb.response_format && mb.temperature === 0.7);
+check('isJsonObject : objet oui, tableau non, texte non, retour à la ligne brut dans une chaîne non', M.isJsonObject('{"a":1}') && !M.isJsonObject('[1]') && !M.isJsonObject('{"a":"x' + String.fromCharCode(10) + 'y"}') && !M.isJsonObject('bonjour'));
 
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

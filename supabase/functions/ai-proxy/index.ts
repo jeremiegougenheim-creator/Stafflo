@@ -1,4 +1,7 @@
-// ═══ STAFFLO AI ROUTER — Supabase Edge Function v47 ═══
+// ═══ STAFFLO AI ROUTER — Supabase Edge Function v48 ═══
+//
+// v48 (22/10/2026) — « json: true » sur une rédaction (write_*) : mode JSON de Mistral, température 0,2,
+//   un second essai si la réponse n'est pas un objet JSON lisible (traductions de l'Espace).
 //
 // v47 (13/10/2026, audit SaaS) — l'IA d'un SaaS, pas d'un compte :
 //   1. QUI APPELLE. Le jeton de session (Authorization: Bearer) est vérifié
@@ -347,6 +350,11 @@ function unwrapBriefArray(raw: string | null): string | null {
   return null;
 }
 
+export function isJsonObject(output: string): boolean {
+  const t = String(output || '').replace(/^\s*```\w*\s*/, '').replace(/\s*```\s*$/, '');
+  try { const o = JSON.parse(t); return !!o && typeof o === 'object' && !Array.isArray(o); } catch { return false; }
+}
+
 function validate(task: string, output: string | null, arrayMode: boolean): boolean {
   if (!output || typeof output !== 'string') return false;
   if (task === 'extract') return output.includes('{') && output.includes('}');
@@ -406,7 +414,7 @@ serve(async (req) => {
     return json({ error: 'rate_limited', retry_after_s: uid ? 300 : 3600, login_required: !uid }, 429);
   }
 
-  let payload: { task?: string; system?: string; user?: string; max_tokens?: number; json_shape?: string; attachment?: unknown };
+  let payload: { task?: string; system?: string; user?: string; max_tokens?: number; json_shape?: string; attachment?: unknown; json?: boolean };
   try {
     payload = await req.json();
   } catch {
@@ -444,7 +452,12 @@ serve(async (req) => {
   const probe = (system || '') + ' ' + (user || '');
   const arrayMode = task === 'brief' && (json_shape === 'array' || /json\s+array/i.test(probe));
 
-  const structured = (task === 'extract') || arrayMode;
+  // v48 (22/10/2026) — une rédaction qui attend du JSON (traductions de l'Espace : {"lines": {...}}) le dit (json: true) :
+  // mode JSON de Mistral, température basse, un second essai si la réponse n'est pas un objet JSON lisible. Cas réel :
+  // ministral-14b à 0,7 sans mode JSON mettait un retour à la ligne brut dans une chaîne (« … avoir :⏎Entrées - … ») —
+  // JSON illisible, l'Espace jetait toute la traduction et le brief de Seán restait en anglais.
+  const wantJson = payload.json === true && task.startsWith('write');
+  const structured = (task === 'extract') || arrayMode || wantJson;
   const temperature = structured ? TEMP_STRUCTURED : TEMP_PROSE;
   const SHAPE_RETRIES = structured ? 1 : 0;
 
@@ -468,7 +481,7 @@ serve(async (req) => {
         const raw = out ? out.text : null;
         const result = arrayMode ? (unwrapBriefArray(raw) ?? raw) : raw;
 
-        if (result && validate(task, result, arrayMode)) {
+        if (result && validate(task, result, arrayMode) && (!wantJson || isJsonObject(result))) {
           logUsage({ task, model_used: out ? out.model : null, tier: i + 1, latency_ms: Date.now() - started, success: true, error: null, owner_id: uid });
           return json({ text: result, provider_id: providerId, model_id: out ? out.model : null, tier: i + 1 });
         }

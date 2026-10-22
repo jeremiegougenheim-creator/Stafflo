@@ -205,6 +205,26 @@ await r.ctx.close();
   check('envoi : le jeton et les fiches remplies seulement (les vides restent ici), rien d’autre', pr && pr.body.t === TOK && pr.body.travellers.length === 1 && pr.body.travellers[0].doc_no === 'PAE123456' && pr.body.travellers[0].doc_type === 'passport' && pr.body.travellers[0].birth_date === '1990-04-02' && !('answers' in pr.body) && !('orders' in pr.body), pr && pr.body);
   check('après envoi : « Fiches transmises le 15 octobre · 1 voyageur »', /Fiches transmises le 15 octobre · 1 voyageur/.test(await r.page.innerText('#rg-st')));
   await r.ctx.close();
+  // 22/10 (cas réel : « j'ai essayé d'envoyer, ça n'a pas l'air de marcher » — aucune requête n'était partie) : plus jamais un envoi muet
+  const BOTH = (body) => body.travellers ? REG_OK(body) : { status: 200, body: JSON.stringify({ ok: true, answers: { ...body.answers, at: '2026-10-22T09:00:00Z' } }) };
+  r = await open('t=' + TOK + '&pax=3&lang=fr', { view: () => ({ status: 200, body: '{"facts":' + RFJ + '}' }), post: BOTH });
+  check('formulaires sans validation du navigateur (un champ invalide dans une fiche repliée bloquait l’envoi sans rien dire)', (await r.page.getAttribute('#arrive', 'novalidate')) !== null && (await r.page.getAttribute('#reg', 'novalidate')) !== null);
+  await r.page.click('#ar-send'); await r.page.waitForTimeout(150);
+  check('« Votre arrivée » vide : rien n’est envoyé, et la page le dit', !r.calls.some((c) => c.kind === 'post') && /Rien à envoyer/.test(await r.page.innerText('#ar-st')), await r.page.innerText('#ar-st'));
+  await r.page.fill('#ar-c', '25'); await r.page.click('#ar-send'); await r.page.waitForTimeout(150);
+  check('25 couples : refusé avec un mot (0 à 20), rien n’est envoyé, le champ reprend la main', !r.calls.some((c) => c.kind === 'post') && /un nombre entre 0 et 20/.test(await r.page.innerText('#ar-st')) && (await r.page.evaluate(() => document.activeElement && document.activeElement.id)) === 'ar-c');
+  await r.page.fill('#ar-c', '2'); await r.page.click('#ar-send'); await r.page.waitForTimeout(300);
+  check('2 couples : envoyé', r.calls.filter((c) => c.kind === 'post').length === 1 && r.calls.filter((c) => c.kind === 'post')[0].body.answers.couples === '2');
+  await r.page.click('#rg-send'); await r.page.waitForTimeout(150);
+  check('fiches vides : rien n’est envoyé, « Rien à envoyer : indiquez au moins le nom ou le prénom d’un voyageur »', r.calls.filter((c) => c.kind === 'post').length === 1 && /indiquez au moins le nom ou le prénom/.test(await r.page.innerText('#rg-st')));
+  await r.page.click('#reg .reg-p:nth-of-type(2) summary'); await r.page.fill('#rg-1-nationality', 'Irlandaise'); await r.page.click('#rg-send'); await r.page.waitForTimeout(150);
+  check('fiche commencée sans nom (voyageur 2) : rien n’est envoyé, « Voyageur 2 : indiquez le nom ou le prénom », curseur dans « Nom »',
+    r.calls.filter((c) => c.kind === 'post').length === 1 && /Voyageur 2 : indiquez le nom ou le prénom/.test(await r.page.innerText('#rg-st')) && (await r.page.evaluate(() => document.activeElement && document.activeElement.id)) === 'rg-1-last');
+  await r.page.evaluate(() => { document.getElementById('rg-1-last').value = 'Hickey'; document.getElementById('rg-1-first').value = 'Lise'; }); // remplissage automatique : aucun événement « input »
+  await r.page.click('#rg-send'); await r.page.waitForTimeout(300);
+  const pa = r.calls.filter((c) => c.kind === 'post').pop();
+  check('remplissage automatique (sans événement « input ») : la fiche part quand même, telle qu’affichée', pa && pa.body.travellers && pa.body.travellers.length === 1 && pa.body.travellers[0].last === 'Hickey' && pa.body.travellers[0].first === 'Lise' && pa.body.travellers[0].nationality === 'Irlandaise' && /Fiches transmises/.test(await r.page.innerText('#rg-st')) && !r.errs.length, [pa && pa.body, r.errs]);
+  await r.ctx.close();
   r = await open('t=' + TOK + '&pax=10&lang=en', { view: () => ({ status: 200, body: '{"facts":' + RFJ + ',"reg":{"count":10,"at":"2026-10-14T08:00:00Z"}}' }) });
   check('fiches déjà envoyées : « Forms sent on 14 October · 10 guests », fiches vides (jamais renvoyées), comment corriger', /Forms sent on 14 October · 10 guests/.test(await r.page.innerText('#rg-st')) && /resend all forms/.test(await r.page.innerText('#rg-st')) && (await r.page.inputValue('#rg-0-last')) === '');
   await r.ctx.close();
