@@ -87,6 +87,12 @@ html.guest .bar{display:none}
 .arrive .step output{min-width:24px;text-align:center;font-weight:600;font-size:15px}
 .arrive .ord-days{flex-direction:column;align-items:stretch}.arrive .ord-days .ord-h{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
 .arrive .ord-cal{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.arrive .ord-grid{display:grid;gap:5px 6px;align-items:center;margin-top:8px;max-width:520px}.arrive .og-h{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center}.arrive .og-d{font-size:13px;white-space:nowrap;padding-right:4px}.arrive .oc.cell{min-height:38px;padding:0;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1}.arrive .oc{min-height:36px;padding:0 12px;border-radius:18px;border:1px solid var(--rule);background:var(--paper);font:inherit;font-size:13px;color:var(--ink);cursor:pointer}.arrive .oc.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}.arrive .ord-q{font-weight:600;font-size:14px;white-space:nowrap}
+.arrive .ord-cat{margin:16px 0 2px;font-family:var(--serif);font-size:17px;font-weight:500}
+.arrive .ord-when{margin-top:6px}.arrive .ord-when .why{margin:4px 0 0}.arrive .ord-when .need{color:var(--terracotta)}
+.arrive .prog{margin:12px 0 14px;padding:12px 14px;border:1px solid var(--rule);border-radius:6px;background:var(--paper)}
+.arrive .prog h4{margin:0 0 2px;font-family:var(--serif);font-size:17px;font-weight:500}.arrive .prog .why{margin:0 0 8px}
+.arrive .pg-d{display:grid;grid-template-columns:76px 1fr;gap:8px;padding:6px 0;border-top:1px solid var(--rule);font-size:13.5px;line-height:1.5}
+.arrive .pg-d b{font-weight:600;white-space:nowrap}.arrive .pg-d ul{margin:0;padding:0;list-style:none}.arrive .pg-d li span{color:var(--muted)}
 .arrive .ord-tot{display:flex;justify-content:space-between;gap:12px;margin-top:12px;font-size:15px}.arrive .ord-tot b{white-space:nowrap}
 .arrive select{width:100%;box-sizing:border-box;border:1px solid var(--rule);border-radius:4px;padding:9px 10px;font:inherit;font-size:14px;color:var(--ink);background:var(--paper)}
 /* Fiches voyageurs (déclaration aux autorités) — écran seulement, jamais imprimé */
@@ -539,6 +545,11 @@ const T = {
   ordTotal:['Total indicatif','Indicative total'],
   ordPickDay:['Touchez les jours souhaités','Tap the days you would like'],
   ordPickSvc:['Cochez les services souhaités, jour par jour','Tick the services you would like, day by day'],
+  ordWhen:['Quand ? Cochez le jour et le moment — le nombre choisi vaut pour chaque case.','When? Tick the day and time of day — the number chosen applies to each box.'],
+  ordWhenNeed:['Choisissez au moins un jour, pour que le prestataire puisse s’organiser.','Pick at least one day, so the provider can get organised.'],
+  ordMeals:['Repas','Meals'], ordOther:['Autres','Other'],
+  progTitle:['Votre programme','Your programme'], progWhy:['Ce que vous avez commandé, jour par jour. Votre hôte vous confirme chaque demande.','What you ordered, day by day. Your host confirms each request.'],
+  progArr:['Arrivée','Arrival'], progDep:['Départ','Departure'], progNoDate:['Jour à convenir avec votre hôte','Day to agree with your host'],
   ordSent:['Commande transmise · total','Order sent · total']
 };
 
@@ -728,6 +739,7 @@ function arrivalBlock(){
   const sentLine = a.at ? '<p class="st">' + ti(T.arrSentOn) + ' ' + esc(new Date(a.at).toLocaleDateString(LANG === 'en' ? 'en-GB' : 'fr-FR', {day:'numeric', month:'long'})) + '</p>' : '';
   return '<form class="arrive" id="arrive" autocomplete="off">' +
     '<h3>' + ti(T.arrTitle) + '</h3><p class="why">' + t(T.arrWhy) + '</p>' +
+    '<div id="prog-w">' + progBlock() + '</div>' +
     '<label for="ar-time">' + t(T.arrTime) + '</label><input id="ar-time" type="text" maxlength="120" value="' + v(a.arrival_time) + '" placeholder="' + ti(T.arrTimePh) + '">' +
     '<div class="two"><div><label for="ar-c">' + t(T.arrCouples) + '</label><input id="ar-c" type="number" inputmode="numeric" min="0" max="20" value="' + v(a.couples) + '"></div>' +
     '<div><label for="ar-s">' + t(T.arrSingles) + '</label><input id="ar-s" type="number" inputmode="numeric" min="0" max="20" value="' + v(a.singles) + '"></div></div>' +
@@ -735,6 +747,33 @@ function arrivalBlock(){
     orderBlock() +
     '<button type="submit" class="send" id="ar-send">' + ti(T.arrSend) + '</button>' +
     '<div id="ar-st">' + sentLine + orderSentLine(ctx.orders) + '</div></form>';
+}
+/* « Votre programme » (22/10/2026) : la commande enregistrée (celle que le serveur a recalculée), jour par jour —
+   arrivée, repas et extras par moment, départ ; ce qui n'a pas de jour à part. Rien d'autre n'est ajouté. */
+const PG_ORD = { am: 0, b: 1, l: 2, pm: 3, d: 4, ev: 5, '': 6 };
+function progBlock(){
+  const ctx = window.LIVRET_CTX || {}, o = ctx.orders, days = ordDays();
+  const items = o && Array.isArray(o.items) ? o.items.filter(x => x && +x.q > 0) : [];
+  if (!items.length || !days) return '';
+  const nm = x => esc(String(Array.isArray(x.n) ? (LANG === 'en' ? (x.n[1] || x.n[0]) : x.n[0]) : x.n || '').replace(/\s*\((?:sur demande|on request)\)\s*$/i, ''));
+  const mom = s => s && (MOM[s] || SVC[s]) ? ti(MOM[s] || SVC[s]) : '';
+  const byDay = {}, undated = [];
+  items.forEach(x => {
+    const w = Array.isArray(x.when) && x.when.length ? x.when : null;
+    if (!w) { undated.push(x.q + ' × ' + nm(x)); return; }
+    const n = x.kind === 'extra' ? (+x.per || Math.max(1, Math.round(x.q / w.length))) : 1;
+    w.forEach(v => { (byDay[v.d] = byDay[v.d] || []).push({ k: PG_ORD[v.s || ''] == null ? 6 : PG_ORD[v.s || ''], h: (x.kind === 'extra' || n > 1 ? n + ' × ' : '') + nm(x) + (mom(v.s) ? ' <span>· ' + mom(v.s) + '</span>' : '') }); });
+  });
+  const a = ctx.answers && ctx.answers.arrival_time ? ' <span>— ' + esc(ctx.answers.arrival_time) + '</span>' : '';
+  let h = '<div class="prog" id="prog"><h4>' + ti(T.progTitle) + '</h4><p class="why">' + ti(T.progWhy) + '</p>';
+  days.forEach((d, i) => {
+    const li = (byDay[d] || []).sort((x, y) => x.k - y.k).map(x => '<li>' + x.h + '</li>');
+    if (i === 0) li.unshift('<li>' + ti(T.progArr) + a + '</li>');
+    if (i === days.length - 1) li.push('<li>' + ti(T.progDep) + '</li>');
+    if (li.length) h += '<div class="pg-d"><b>' + esc(dayLbl(d)) + '</b><ul>' + li.join('') + '</ul></div>';
+  });
+  if (undated.length) h += '<div class="pg-d"><b>—</b><ul>' + undated.map(x => '<li>' + x + ' <span>· ' + ti(T.progNoDate) + '</span></li>').join('') + '</ul></div>';
+  return h + '</div>';
 }
 /* ── Commande avant l'arrivée (15/10/2026) : repas chiffrés de la fiche + extras (fiche EXTRAS).
    Prix de la fiche ; le serveur (livret-view) les recalcule et ne garde que l'id et la quantité.
@@ -749,7 +788,7 @@ const mealOff = (m, pax) => !!(m && m.house && m.big === 'off') && pax >= 7;
 function orderMenu(){
   const pax = orderPax(), out = [];
   MEALS.forEach((m, i) => { if (mealOff(m, pax)) return; const unit = priceOf(pax >= 7 ? (m.b != null ? m.b : m.a) : m.a) || priceOf(m.a); if (unit) out.push({id:'m' + i, kind:'meal', n:m.n, unit}); });
-  (window.VILLA_FACTS.EXTRAS || []).forEach((x, i) => { const unit = priceOf(x && x.price); if (unit && x.n) out.push({id:'x' + i, kind:'extra', n:x.n, unit, per:x.unit, d:x.d}); });
+  (window.VILLA_FACTS.EXTRAS || []).forEach((x, i) => { const unit = priceOf(x && x.price); if (unit && x.n) out.push({id:'x' + i, kind:'extra', n:x.n, unit, per:x.unit, d:x.d, cat:x.cat}); });
   return out;
 }
 /* Commande datée (17/10/2026) : quand livret-view donne les dates du séjour (days), chaque repas se choisit
@@ -765,13 +804,20 @@ const ordDays = () => {
   return out.length ? out : null;
 };
 const dayLbl = iso => new Date(iso + 'T12:00:00Z').toLocaleDateString(LANG === 'en' ? 'en-GB' : 'fr-FR', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
+/* Extras datés (22/10/2026) : un extra choisi (nombre > 0) se date dans une grille jours × moments (matin, après-midi, soir) ;
+   le nombre vaut pour chaque case (2 massages mer. 21 après-midi ; un transfert jeu. 19 après-midi et lun. 23 matin).
+   Le prestataire reçoit le jour et le moment. Sans dates du séjour (lien sans jeton) : le compteur seul, comme avant. */
+const MOM = { am: ['matin', 'morning'], pm: ['après-midi', 'afternoon'], ev: ['soir', 'evening'] }, MOMK = ['am', 'pm', 'ev'];
+const isX = id => /^x/.test(String(id || ''));
 const ORDER = {}, WHEN = {};
 (((window.LIVRET_CTX || {}).orders || {}).items || []).forEach(x => {
   if (!x || !x.id) return;
-  ORDER[x.id] = +x.q || 0;
-  if (Array.isArray(x.when) && x.when.length) WHEN[x.id] = new Set(x.when.map(w => w.d + '|' + (w.s || '')));
+  const w = Array.isArray(x.when) && x.when.length ? x.when : null;
+  ORDER[x.id] = isX(x.id) && w ? (+x.per || Math.max(1, Math.round((+x.q || 0) / w.length))) : (+x.q || 0); // extra daté : le nombre par case
+  if (w) WHEN[x.id] = new Set(w.map(v => v.d + '|' + (v.s || '')));
 });
-const orderTotal = () => orderMenu().reduce((t, m) => t + m.unit * (ORDER[m.id] || 0), 0);
+const qtyOf = id => isX(id) ? (ORDER[id] || 0) * Math.max(1, WHEN[id] ? WHEN[id].size : 0) : (ORDER[id] || 0);
+const orderTotal = () => orderMenu().reduce((t, m) => t + m.unit * qtyOf(m.id), 0);
 /* Soirs libres (22/10/2026) : dès qu'un dîner est coché, les soirs du séjour sans dîner sont nommés sous la carte
    (« Soirs sans dîner : mer. 21, jeu. 22 — cochez-les ci-dessus si vous le souhaitez. »). Le soir du départ n'existe
    pas. Rien avant le premier dîner coché : la grille suffit, pas de relance à qui n'a rien choisi. */
@@ -791,8 +837,28 @@ function orderBlock(){
   const meals = menu.some(m => m.kind === 'meal');
   let h = '<div class="ord" id="ord"><h3>' + ti(T.ordTitle) + '</h3><p class="why">' + t(T.ordWhy) + (meals && MEAL_NOTES[0] ? '<br>' + t(MEAL_NOTES[0]) : '') + '</p>';
   const days = ordDays();
-  menu.forEach(m => {
+  // 22/10 : les extras rangés par rubrique (EXTRAS[i].cat, dans l'ordre de la fiche) ; sans rubrique nulle part, la liste d'avant
+  const xs = menu.filter(m => m.kind === 'extra'), keyOf = m => m.cat ? ti(m.cat) : '', cats = [];
+  xs.forEach(m => { if (!cats.includes(keyOf(m))) cats.push(keyOf(m)); });
+  const useCats = cats.some(Boolean), list = menu.filter(m => m.kind !== 'extra').concat(xs.slice().sort((a, b) => cats.indexOf(keyOf(a)) - cats.indexOf(keyOf(b))));
+  let lastCat = null;
+  list.forEach(m => {
+    if (useCats) {
+      const k = m.kind === 'extra' ? (keyOf(m) || ti(T.ordOther)) : ti(T.ordMeals);
+      if (k !== lastCat) { h += '<h4 class="ord-cat">' + k + '</h4>'; lastCat = k; }
+    }
     const per = m.kind === 'meal' ? ti(T.ordPerGroup) : (m.per ? ti(m.per) : '');
+    if (m.kind === 'extra' && days) {
+      const on = WHEN[m.id] || new Set(), q = ORDER[m.id] || 0;
+      h += '<div class="ord-row ord-days ord-x"><div class="ord-h"><div class="ord-n"><b>' + ti(m.n) + '</b><span>' + esc(money(m.unit)) + (per ? ' · ' + per : '') + (m.d ? '<br>' + ti(m.d) : '') + '</span></div>' +
+        '<div class="step"><button type="button" data-ord="-1" data-id="' + m.id + '" aria-label="−">−</button><output id="oq-' + m.id + '">' + q + '</output>' +
+        '<button type="button" data-ord="1" data-id="' + m.id + '" aria-label="+">+</button></div></div>' +
+        '<div class="ord-when" id="ow-' + m.id + '"' + (q ? '' : ' hidden') + '><p class="why">' + ti(T.ordWhen) + '</p>' +
+        '<div class="ord-grid" style="grid-template-columns:auto repeat(3,1fr)"><span class="og-h"></span>' + MOMK.map(s => '<span class="og-h">' + ti(MOM[s]) + '</span>').join('') +
+        days.map(d => '<span class="og-d">' + esc(dayLbl(d)) + '</span>' + MOMK.map(s => { const k = d + '|' + s, sel = on.has(k); return '<button type="button" class="oc cell' + (sel ? ' on' : '') + '" aria-pressed="' + sel + '" aria-label="' + esc(dayLbl(d)) + ' · ' + ti(MOM[s]) + '" data-ow="' + m.id + '" data-k="' + k + '">' + (sel ? '✓' : '') + '</button>'; }).join('')).join('') +
+        '</div><p class="why need" id="on-' + m.id + '"' + (q && !on.size ? '' : ' hidden') + '>' + ti(T.ordWhenNeed) + '</p></div></div>';
+      return;
+    }
     if (m.kind === 'meal' && days) {
       const sv = svcOf(MEALS[+m.id.slice(1)]), on = WHEN[m.id] || new Set();
       h += '<div class="ord-row ord-days"><div class="ord-h"><div class="ord-n"><b>' + ti(m.n) + '</b><span>' + esc(money(m.unit)) + ' · ' + per + '<br>' + ti(sv.length > 1 ? T.ordPickSvc : T.ordPickDay) + '</span></div>' +
@@ -818,8 +884,8 @@ document.addEventListener('click', e => {
   if (set.has(k)) set.delete(k); else if (set.size < 30) set.add(k);
   const sel = set.has(k); c.classList.toggle('on', sel); c.setAttribute('aria-pressed', String(sel));
   if (c.classList.contains('cell')) c.textContent = sel ? '✓' : '';
-  ORDER[id] = set.size;
-  const o = document.getElementById('oq-' + id); if (o) o.textContent = set.size;
+  if (isX(id)) { const nd = document.getElementById('on-' + id); if (nd) nd.hidden = !((ORDER[id] || 0) && !set.size); } // extra : le nombre ne change pas, la case date
+  else { ORDER[id] = set.size; const o = document.getElementById('oq-' + id); if (o) o.textContent = set.size; }
   const tt = document.getElementById('ord-tot'); if (tt) tt.textContent = money(orderTotal());
   const fl = document.getElementById('ord-free'); if (fl) { const fe = freeEveningsTxt(); fl.textContent = fe; fl.hidden = !fe; }
 });
@@ -827,6 +893,8 @@ document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-ord]'); if (!b) return;
   const id = b.getAttribute('data-id'); ORDER[id] = Math.max(0, Math.min(30, (ORDER[id] || 0) + (+b.getAttribute('data-ord'))));
   const o = document.getElementById('oq-' + id); if (o) o.textContent = ORDER[id];
+  const ow = document.getElementById('ow-' + id); if (ow) ow.hidden = !ORDER[id]; // extra choisi : « Quand ? »
+  const nd = document.getElementById('on-' + id); if (nd) nd.hidden = !(ORDER[id] && !(WHEN[id] && WHEN[id].size));
   const tt = document.getElementById('ord-tot'); if (tt) tt.textContent = money(orderTotal());
 });
 function sendArrival(form){
@@ -835,7 +903,7 @@ function sendArrival(form){
   const answers = { arrival_time: g('ar-time').trim(), couples: g('ar-c').trim(), singles: g('ar-s').trim(), meals: g('ar-m').trim() };
   const hasMenu = orderMenu().length, lines = Object.keys(ORDER).filter(k => ORDER[k] > 0).map(k => {
     const w = WHEN[k] && WHEN[k].size && ordDays() ? [...WHEN[k]].sort().map(x => { const [d, s] = x.split('|'); return s ? { d, s } : { d }; }) : null;
-    return w ? { id: k, q: w.length, when: w } : { id: k, q: ORDER[k] };
+    return w ? { id: k, q: isX(k) ? ORDER[k] : w.length, when: w } : { id: k, q: ORDER[k] }; // extra daté : q = nombre par case (livret-view)
   });
   const hadOrder = !!(ctx.orders && ctx.orders.items && ctx.orders.items.length);
   if (!answers.arrival_time && !answers.couples && !answers.singles && !answers.meals && !lines.length && !hadOrder) return;
@@ -845,7 +913,7 @@ function sendArrival(form){
   btn.disabled = true; btn.textContent = ti(T.arrSending); st.innerHTML = '';
   fetch(ctx.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
-    .then(b => { ctx.answers = b.answers || answers; if (b.orders) ctx.orders = b.orders; st.innerHTML = '<p class="st">' + t(T.arrDone) + '</p>' + orderSentLine(b.orders); })
+    .then(b => { ctx.answers = b.answers || answers; if (b.orders) ctx.orders = b.orders; st.innerHTML = '<p class="st">' + t(T.arrDone) + '</p>' + orderSentLine(b.orders); const pw = document.getElementById('prog-w'); if (pw) pw.innerHTML = progBlock(); })
     .catch(() => { st.innerHTML = '<p class="st err">' + t(T.arrErr) + '</p>'; })
     .then(() => { btn.disabled = false; btn.textContent = ti(T.arrSend); });
 }

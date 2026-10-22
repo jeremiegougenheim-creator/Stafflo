@@ -80,6 +80,10 @@ check('l’heure seulement, avec son rôle : atterrissage, départ de la villa (
   [M.teamTime('« We land at 2pm, and should be at the villa around 3:30pm »', 'a'), M.teamTime('Vol AT802 · « Our return flight is AT802 on Sunday at 6:05 pm »', 'd')]);
 check('repas nettoyés', f.meals === 'Dîner du 13 : tajine');
 check('extras commandés par le client : quoi et combien, jamais le prix ni les repas (déjà dans « repas »)', M.extrasLine({ items: [{ kind: 'meal', n: ['Dîner'], q: 2, unit: 850 }, { kind: 'extra', n: ['Transfert aéroport', 'Airport transfer'], q: 1, unit: 400, sub: 400 }, { kind: 'extra', n: ['Massage'], q: 2, unit: 600 }] }) === '1 × Transfert aéroport · 2 × Massage' && M.extrasLine(null) === '' && M.extrasLine({ items: 'x' }) === '' && !/400|600|MAD/.test(M.extrasLine({ items: [{ kind: 'extra', n: ['Transfert'], q: 1, unit: 400 }] })));
+check('22/10 — extras datés pour l’équipe : jour et moment, « (2 par créneau) » quand le même nombre revient, jamais un prix',
+  M.extrasLine({ items: [{ kind: 'extra', n: ['Massage 60 min'], q: 2, per: 2, unit: 550, when: [{ d: '2026-10-21', s: 'pm' }] }, { kind: 'extra', n: ['Transfert — van'], q: 2, per: 1, unit: 600, when: [{ d: '2026-10-20', s: 'pm' }, { d: '2026-10-23', s: 'am' }] }, { kind: 'extra', n: ['Massage 90 min'], q: 4, per: 2, when: [{ d: '2026-10-21', s: 'am' }, { d: '2026-10-22', s: 'ev' }] }, { kind: 'extra', n: ['Panier'], q: 1 }] })
+    === '2 × Massage 60 min — mer. 21 après-midi · 2 × Transfert — van — mar. 20 après-midi, ven. 23 matin · 4 × Massage 90 min — mer. 21 matin, jeu. 22 soir (2 par créneau) · 1 × Panier',
+  M.extrasLine({ items: [{ kind: 'extra', n: ['Massage 60 min'], q: 2, per: 2, when: [{ d: '2026-10-21', s: 'pm' }] }] }));
 check('nuits calculées', f.nights === 3 && V.find((s) => s.name === 'Seán').nights === 7);
 const th = V.find((s) => s.name === 'Arnaud D.');
 check('personnes = adultes + enfants (bébés à part)', th.pax === 10 && th.infants === 1);

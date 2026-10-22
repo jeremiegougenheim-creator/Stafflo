@@ -177,6 +177,22 @@ check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
       M.cleanOrders([{ id: 'm1', q: 3, when: [{ d: '2026-10-21', s: 'd' }] }], FD, 4, null).items.length === 0 && M.cleanOrders([{ id: 'm1', q: 3, when: [{ d: '2026-11-30', s: 'd' }] }], FD, 4, R).items.length === 0);
     check('ancienne page (quantités sans dates) → acceptée comme avant', M.cleanOrders([{ id: 'm1', q: 2 }], FD, 4, R).items[0].q === 2 && !('when' in M.cleanOrders([{ id: 'm1', q: 2 }], FD, 4, R).items[0]));
     check('repas résumés pour l’équipe avec le jour et le service, en français', M.applyOrders({ details: {} }, {}, o).meals === '2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi · 1 × Goûter — ven. 23', M.applyOrders({ details: {} }, {}, o).meals);
+    // 22/10 — extras datés : q = nombre par case, cases jour × moment (am / pm / ev) du séjour seulement
+    const FX = { ...FD, VILLA: { name: 'X', currency: 'MAD' }, EXTRAS: [{ n: ['Massage 60 min', ''], price: 550, cat: ['Bien-être', 'Wellness'] }, { n: ['Transfert — van', ''], price: 600 }, { n: ['Panier', ''], price: 150 }] };
+    const ox = M.cleanOrders([
+      { id: 'x0', q: 2, when: [{ d: '2026-10-21', s: 'pm' }, { d: '2026-10-21', s: 'pm' }, { d: '2026-10-25', s: 'pm' }, { d: '2026-10-22', s: 'd' }] },
+      { id: 'x1', q: 1, when: [{ d: '2026-10-23', s: 'am' }, { d: '2026-10-20', s: 'pm' }] },
+      { id: 'x2', q: 1 }], FX, 4, R);
+    const xi = ox && Object.fromEntries(ox.items.map((x) => [x.id, x]));
+    check('extras datés : nombre par case × cases valables (doublon, hors séjour, moment de repas → jetés), per et when gardés, prix de la fiche ; extra sans case = compteur comme avant',
+      ox && xi.x0.q === 2 && xi.x0.per === 2 && JSON.stringify(xi.x0.when) === JSON.stringify([{ d: '2026-10-21', s: 'pm' }]) && xi.x0.sub === 1100 &&
+      xi.x1.q === 2 && xi.x1.per === 1 && JSON.stringify(xi.x1.when) === JSON.stringify([{ d: '2026-10-20', s: 'pm' }, { d: '2026-10-23', s: 'am' }]) && xi.x1.sub === 1200 &&
+      xi.x2.q === 1 && !('when' in xi.x2) && !('per' in xi.x2) && ox.total === 1100 + 1200 + 150, ox && ox.items);
+    check('extra daté sans case valable → pas perdu : le compteur seul (sans when) ; nombre 0 → rien',
+      JSON.stringify(M.cleanOrders([{ id: 'x0', q: 2, when: [{ d: '2026-11-30', s: 'pm' }] }], FX, 4, R).items.map((x) => [x.q, 'when' in x])) === '[[2,false]]' && M.cleanOrders([{ id: 'x0', q: 0, when: [{ d: '2026-10-21', s: 'pm' }] }], FX, 4, R).items.length === 0);
+    check('extras datés : les extras ne vont jamais dans le résumé des repas de l’équipe ; même commande, autre moment → commande modifiée',
+      !/Massage|Transfert/.test(M.applyOrders({ details: {} }, {}, ox).meals || '') && !M.sameOrder(ox, M.cleanOrders([{ id: 'x0', q: 2, when: [{ d: '2026-10-21', s: 'ev' }] }, { id: 'x1', q: 1, when: [{ d: '2026-10-23', s: 'am' }, { d: '2026-10-20', s: 'pm' }] }, { id: 'x2', q: 1 }], FX, 4, R)));
+    check('publicFacts garde la rubrique (cat) : elle est faite pour le livret', JSON.stringify(M.publicFacts(FX).EXTRAS[0].cat) === '["Bien-être","Wellness"]');
     const o2 = M.cleanOrders([{ id: 'm1', when: [{ d: '2026-10-21', s: 'l' }, { d: '2026-10-22', s: 'l' }] }, { id: 'm2', when: [{ d: '2026-10-23' }] }], FD, 4, R);
     check('mêmes quantités, autres jours → commande modifiée (nouvelle alerte) ; mêmes cases → identique', !M.sameOrder(o, o2) && M.sameOrder(o, JSON.parse(JSON.stringify(o))));
     const s2 = DB.stays[DB.stays.length - 1]; s2.details = {}; s2.meals = '';

@@ -250,10 +250,14 @@ export function limited(key: string, max: number, windowMs: number, now = Date.n
   recent.push(now); hits.set(key, recent);
   return recent.length > max;
 }
+// 22/10 : un extra daté dit son jour et son moment (« 2 × Massage 60 min — mer. 21 après-midi ») ; « (2 par créneau) » quand
+// le même nombre revient sur plusieurs cases. Toujours sans prix.
 export function extrasLine(o: unknown): string {
   const items = o && typeof o === "object" && Array.isArray((o as Row).items) ? (o as Row).items : [];
   return items.filter((x: Row) => x && x.kind === "extra" && Number.isInteger(x.q) && x.q > 0)
-    .map((x: Row) => x.q + " × " + String(Array.isArray(x.n) ? x.n[0] : x.n || "").trim().slice(0, 80)).join(" · ").slice(0, 300);
+    .map((x: Row) => { const w = whenTxt(x.when), cells = Array.isArray(x.when) ? x.when.length : 0;
+      return x.q + " × " + String(Array.isArray(x.n) ? x.n[0] : x.n || "").trim().slice(0, 80) + (w ? " — " + w : "") + (cells > 1 && Number(x.per) > 1 ? " (" + x.per + " par créneau)" : ""); })
+    .join(" · ").slice(0, 600);
 }
 const int = (v: unknown): number | null => (v == null || v === "" || !isFinite(+v) || +v < 0 ? null : Math.round(+v));
 
@@ -262,7 +266,7 @@ const int = (v: unknown): number | null => (v == null || v === "" || !isFinite(+
 // « maison » dans la fiche (house) — et, à partir de 7 personnes, selon big : 'house' (la maison), 'kitchen' (le prestataire),
 // 'off' (plus proposé : absent). Une ligne par repas : « 2 × Déjeuner ou dîner — mer. 21 soir, jeu. 22 midi ». Sans fiche :
 // tout au prestataire. Les extras ne sont pas des repas (extrasLine).
-const SVC: Record<string, string> = { b: "brunch", l: "midi", d: "soir" };
+const SVC: Record<string, string> = { b: "brunch", l: "midi", d: "soir", am: "matin", pm: "après-midi", ev: "soir" }; // am/pm/ev : extras datés (22/10)
 export function whenTxt(w: unknown): string {
   return (Array.isArray(w) ? w : []).filter((x: Row) => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.d || ""))).map((x: Row) =>
     new Date(x.d + "T12:00:00Z").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", timeZone: "UTC" }) + (SVC[x.s] ? " " + SVC[x.s] : "")).join(", ");

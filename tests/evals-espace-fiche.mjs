@@ -1805,7 +1805,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     EXTRAS: [{ n: ['Massage 60 min', 'Massage 60 min'], price: 550, unit: ['par personne', 'per person'], who: 'Houda — Aura & Soul', wa: '+212 649 967 722', take: 100 },
       { n: ['Transfert aéroport — van', 'Airport transfer — van'], price: 600, unit: ['par trajet', 'per trip'], who: 'Abde' },
       { n: ['Panier de fruits', 'Fruit basket'], price: 150, unit: ['par panier', 'per basket'] }] } };
-  const ORDX = { items: [{ id: 'x0', kind: 'extra', n: ['Massage 60 min', 'Massage 60 min'], q: 2, unit: 550, sub: 1100 }, { id: 'x1', kind: 'extra', n: ['Transfert aéroport — van', 'Airport transfer — van'], q: 1, unit: 600, sub: 600 }, { id: 'x2', kind: 'extra', n: ['Panier de fruits', 'Fruit basket'], q: 1, unit: 150, sub: 150 }], total: 1850, cur: 'MAD', at: new Date(Date.now() - 3600e3).toISOString() };
+  const ORDX = { items: [{ id: 'x0', kind: 'extra', n: ['Massage 60 min', 'Massage 60 min'], q: 2, per: 2, when: [{ d: iso(7), s: 'pm' }], unit: 550, sub: 1100 }, { id: 'x1', kind: 'extra', n: ['Transfert aéroport — van', 'Airport transfer — van'], q: 1, unit: 600, sub: 600 }, { id: 'x2', kind: 'extra', n: ['Panier de fruits', 'Fruit basket'], q: 1, unit: 150, sub: 150 }], total: 1850, cur: 'MAD', at: new Date(Date.now() - 3600e3).toISOString() };
   const STX = { id: 's1', name: 'Thibaut Verlaine', arrival: iso(6), departure: iso(10), adults: 7, booking_status: 'confirmed', source: 'airbnb', nat: 'France', phone: '+33600000000', details: { guest_orders: ORDX, arrival_time: '« nous atterrissons à 14h »' } };
   r = await open({ tab: 'jour', villa: VX, stays: [STX] });
   await r.page.waitForTimeout(250);
@@ -1814,17 +1814,23 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('[data-a="goto"][data-v="prov"]'); await r.page.waitForTimeout(200);
   tp = await txt(r.page);
   check('Séjour : une ligne par prestataire (Houda : 2 × Massage · à transmettre ; Abde : 1 × Transfert · à transmettre), le panier sans prestataire n’a pas de ligne, bouton « Envoyer à Houda »',
-    /Houda — Aura & Soul : 2 × Massage 60 min · À transmettre à Houda — Aura & Soul/.test(tp) && /Abde : 1 × Transfert aéroport — van · À transmettre à Abde/.test(tp) && !/Panier de fruits · À transmettre/.test(tp) && /Envoyer à Houda — Aura & Soul/.test(tp), tp.slice(0, 700));
+    /Houda — Aura & Soul : 2 × Massage 60 min — \S+ \d+ après-midi · À transmettre à Houda — Aura & Soul/.test(tp) && /Abde : 1 × Transfert aéroport — van · À transmettre à Abde/.test(tp) && !/Panier de fruits · À transmettre/.test(tp) && /Envoyer à Houda — Aura & Soul/.test(tp), tp.slice(0, 700));
   const pm = await r.page.inputValue('#tx-s1');
   check('message au prestataire : en français, prénom + initiale du client, nombre, dates, lignes commandées (les siennes seulement), heure d’arrivée, jamais le téléphone du client ni un prix',
-    /^Bonjour Houda,\n\nCommande pour Riad Zina — séjour de Thibaut V\. \(7 pers\.\), du [^\n]+ au [^\n]+ :\n• 2 × Massage 60 min\nArrivée : atterrissage 14h\n\nMerci de me confirmer\.\nNadia$/.test(pm) && !/Transfert|Panier|550|1\s?850|0600000000|\+33/.test(pm), pm);
+    /^Bonjour Houda,\n\nCommande pour Riad Zina — séjour de Thibaut V\. \(7 pers\.\), du [^\n]+ au [^\n]+ :\n• 2 × Massage 60 min — \S+ \d+ après-midi\nArrivée : atterrissage 14h\n\nMerci de me confirmer\.\nNadia$/.test(pm) && !/Transfert|Panier|550|1\s?850|0600000000|\+33|à confirmer/.test(pm), pm);
+  const prog = await r.page.$eval('#main', (e) => e.textContent);
+  check('22/10 — « Programme jour par jour » sous la commande : le massage le bon jour, l’après-midi ; ce qui n’a pas de jour à part',
+    /Programme jour par jour/.test(prog) && /\S+ \d+ \S+ : 2 × Massage 60 min \(après-midi\)/.test(prog) && /Sans jour : 1 × Transfert aéroport — van · 1 × Panier de fruits/.test(prog), prog.slice(prog.indexOf('Programme'), prog.indexOf('Programme') + 300));
+  await r.page.click('[data-a="panel"][data-id="s1"][data-v="prov:abde"]'); await r.page.waitForTimeout(150);
+  check('22/10 — extra sans jour (le client ne l’a pas daté) : « Jour : à confirmer (pas indiqué par le client) », jamais un jour supposé', /• 1 × Transfert aéroport — van\n(?:Arrivée[^\n]*\n)?Jour : à confirmer \(pas indiqué par le client\)/.test(await r.page.inputValue('#tx-s1')), await r.page.inputValue('#tx-s1'));
+  await r.page.click('[data-a="panel"][data-id="s1"][data-v="prov:houda — aura & soul"]'); await r.page.waitForTimeout(150);
   const wab = await r.page.$('[data-a="sendprov"][data-v="houda — aura & soul"]');
   check('« Envoyer à Houda » (WhatsApp du prestataire, depuis la fiche) ; pour Abde sans WhatsApp dans la fiche : copier seulement', !!wab);
   await r.page.click('[data-a="provdone"][data-id="s1"]'); await r.page.waitForTimeout(250);
   const pd = r.calls.filter((c) => c.kind === 'stay').pop();
   check('« Marquer envoyé » → details.provSentAt[houda…] seulement, la commande reste', !!pd && Object.keys(pd.body).join() === 'details' && !!(pd.body.details.provSentAt || {})['houda — aura & soul'] && pd.body.details.guest_orders.total === 1850 && !pd.body.details.provSentAt.abde, pd && pd.body);
   tp = await txt(r.page);
-  check('après l’envoi : « Envoyé à Houda le … », Abde toujours à transmettre', /Houda — Aura & Soul : 2 × Massage 60 min · Envoyé à Houda — Aura & Soul le /.test(tp) && /À transmettre à Abde/.test(tp), tp.slice(0, 700));
+  check('après l’envoi : « Envoyé à Houda le … », Abde toujours à transmettre', /Houda — Aura & Soul : 2 × Massage 60 min — \S+ \d+ après-midi · Envoyé à Houda — Aura & Soul le /.test(tp) && /À transmettre à Abde/.test(tp), tp.slice(0, 700));
   // carte Extras du mois : votre part = 2 × 100 (massage seulement : le transfert et le panier n'ont pas « ce que vous gardez »)
   await r.page.click('[data-a="tab"][data-v="sejours"]').catch(() => {}); await r.page.waitForTimeout(150);
   for (let k = 0; k < 2 && !/Thibaut Verlaine[^\n]*\n?commande 1\s?850 MAD/.test(await r.page.innerText('#main')); k++) { await r.page.click('[data-a="exm"][data-v="1"]'); await r.page.waitForTimeout(120); }
@@ -1851,10 +1857,11 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('details[data-fold="fe:Extras à commander"] > summary'); await r.page.waitForTimeout(200); // la rubrique est repliée quand elle a déjà des lignes
   const fx = await txt(r.page);
   check('fiche › Extras : « Prestataire », « Son WhatsApp », « Ce que vous gardez, par unité (MAD) », et la mention « Jamais montré au client ni à l’équipe »', /Prestataire \(prénom ou société\)/.test(fx) && /Son WhatsApp/.test(fx) && /Ce que vous gardez, par unité \(MAD\)/.test(fx) && /Jamais montré au client ni à l’équipe/.test(fx) && (await r.page.inputValue('[data-fe="EXTRAS.0.who"]')) === 'Houda — Aura & Soul' && (await r.page.inputValue('[data-fe="EXTRAS.0.take"]')) === '100', fx.slice(0, 400));
-  await r.page.fill('[data-fe="EXTRAS.1.wa"]', '+212 661 000 000'); await r.page.fill('[data-fe="EXTRAS.1.take"]', '50');
+  check('fiche › Extras : « Rubrique dans le livret »', /Rubrique dans le livret \(ex\. : Transferts, Bien-être, Sorties\)/.test(fx));
+  await r.page.fill('[data-fe="EXTRAS.1.wa"]', '+212 661 000 000'); await r.page.fill('[data-fe="EXTRAS.1.take"]', '50'); await r.page.fill('[data-fe="EXTRAS.1.cat.0"]', 'Transferts');
   await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
   const sv = r.calls.filter((c) => c.kind === 'PATCH' && c.body && c.body.house_facts).pop();
-  check('enregistrer : who / wa / take gardés par extra (Abde : wa et take ajoutés ; le panier sans rien)', !!sv && sv.body.house_facts.EXTRAS[0].who === 'Houda — Aura & Soul' && sv.body.house_facts.EXTRAS[0].take === 100 && sv.body.house_facts.EXTRAS[1].wa === '+212 661 000 000' && sv.body.house_facts.EXTRAS[1].take === 50 && !('who' in sv.body.house_facts.EXTRAS[2]) && !('take' in sv.body.house_facts.EXTRAS[2]), sv && sv.body.house_facts.EXTRAS);
+  check('enregistrer : who / wa / take gardés par extra (Abde : wa et take ajoutés ; le panier sans rien)', !!sv && sv.body.house_facts.EXTRAS[0].who === 'Houda — Aura & Soul' && sv.body.house_facts.EXTRAS[0].take === 100 && sv.body.house_facts.EXTRAS[1].wa === '+212 661 000 000' && sv.body.house_facts.EXTRAS[1].take === 50 && !('who' in sv.body.house_facts.EXTRAS[2]) && !('take' in sv.body.house_facts.EXTRAS[2]) && sv.body.house_facts.EXTRAS[1].cat[0] === 'Transferts' && !('cat' in sv.body.house_facts.EXTRAS[0]), sv && sv.body.house_facts.EXTRAS);
   await r.ctx.close();
 }
 

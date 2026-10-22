@@ -127,7 +127,7 @@ await r.ctx.close();
     c1.length === 9 && c1[0] === 'mar. 20 · brunch' && c1[5] === 'mer. 21 · soir' && c2.length === 3 && c2[0] === 'mar. 20' && !!(await r.page.$('[data-ord="1"][data-id="x0"]')) && !(await r.page.$('[data-ord="1"][data-id="m1"]')), [c1, c2]);
   // 18/10 : plusieurs services → une grille jours × services (en-tête brunch / midi / soir, une ligne par jour, cases à cocher) ; un seul service → des jours à toucher
   check('grille jours × services : 3 en-têtes + 3 lignes de 3 cases ; le goûter garde ses jours en pastilles', (await r.page.$$eval('[data-ow="m1"]', (bs) => bs.every((b) => b.classList.contains('cell') && b.closest('.ord-grid')))) &&
-    (await r.page.$$eval('.ord-grid .og-h', (xs) => xs.map((x) => x.textContent).join('|'))) === '|brunch|midi|soir' && (await r.page.$$eval('.ord-grid .og-d', (xs) => xs.map((x) => x.innerText).join('|'))) === 'mar. 20|mer. 21|jeu. 22' &&
+    (await r.page.$$eval('.ord-days:not(.ord-x) .ord-grid .og-h', (xs) => xs.map((x) => x.textContent).join('|'))) === '|brunch|midi|soir' && (await r.page.$$eval('.ord-days:not(.ord-x) .ord-grid .og-d', (xs) => xs.map((x) => x.innerText).join('|'))) === 'mar. 20|mer. 21|jeu. 22' &&
     (await r.page.$$eval('[data-ow="m2"]', (bs) => bs.every((b) => !b.classList.contains('cell') && b.innerText === b.getAttribute('aria-label')))));
   check('soirs libres (22/10) : rien tant qu’aucun dîner n’est coché', await r.page.$eval('#ord-free', (e) => e.hidden && !e.textContent));
   for (const k of ['2026-10-21|d', '2026-10-22|l', '2026-10-22|l', '2026-10-22|l']) await r.page.click('[data-ow="m1"][data-k="' + k + '"]');
@@ -148,6 +148,45 @@ await r.ctx.close();
   r = await open('t=' + TOK + '&pax=4&lang=en', { view: DV(',"orders":{"items":[{"id":"m1","q":1,"when":[{"d":"2026-10-21","s":"d"}]}],"total":650,"cur":"MAD"}') });
   check('commande datée déjà envoyée → cases pré-cochées (en anglais : « Wed 21 · dinner »)', (await r.page.innerText('#oq-m1')) === '1' && (await chips('m1')).filter((x) => x.endsWith('*')).join() === 'Wed 21 · dinner*' && (await r.page.$$eval('[data-ow="m1"].on', (bs) => bs.map((b) => b.innerText).join(''))) === '✓', await chips('m1'));
   check('lien sans nom : « Dear, » — jamais un tiret (18/10)', /^Dear,$/m.test(await r.page.innerText('.hello')), await r.page.innerText('.hello'));
+  await r.ctx.close();
+}
+
+// ── 22/10 — extras datés (jour × moment), rangés par rubrique, et « Votre programme » ──
+{
+  const XV = JSON.stringify({ VILLA: { name: 'Riad Zina', host: 'Nadia', currency: 'MAD' }, MEALS: [{ n: ['Dîner', 'Dinner'], a: ['650 MAD', '650 MAD'], b: ['850 MAD', '850 MAD'] }],
+    EXTRAS: [{ n: ['Transfert aéroport — van', 'Airport transfer — van'], price: 600, unit: ['par trajet', 'per trip'], cat: ['Transferts', 'Transfers'] },
+      { n: ['Massage 60 min', 'Massage 60 min'], price: 550, unit: ['par personne', 'per person'], cat: ['Bien-être', 'Wellness'] },
+      { n: ['Panier de fruits', 'Fruit basket'], price: 150 }] });
+  const DX = (extra) => () => ({ status: 200, body: '{"facts":' + XV + ',"days":{"from":"2026-10-20","to":"2026-10-22"}' + (extra || '') + '}' });
+  // le serveur (livret-view) renvoie la commande recalculée : q = nombre × cases, per, when
+  const XPOST = (body) => ({ status: 200, body: JSON.stringify({ ok: true, answers: null, orders: { items: body.orders.map((x) => x.when && /^x/.test(x.id) ? { id: x.id, kind: 'extra', n: x.id === 'x0' ? ['Transfert aéroport — van', 'Airport transfer — van'] : ['Massage 60 min', 'Massage 60 min'], q: x.q * x.when.length, per: x.q, when: x.when } : { id: x.id, kind: 'extra', n: ['Panier de fruits', 'Fruit basket'], q: x.q }), total: 2450, cur: 'MAD', at: '2026-10-15T10:00:00Z' } }) });
+  r = await open('t=' + TOK + '&pax=4&lang=fr', { view: DX(), post: XPOST });
+  check('rubriques : « Repas », puis « Transferts », « Bien-être », « Autres » (extra sans rubrique)', (await r.page.$$eval('#ord .ord-cat', (xs) => xs.map((x) => x.textContent).join('|'))) === 'Repas|Transferts|Bien-être|Autres', await r.page.$$eval('#ord .ord-cat', (xs) => xs.map((x) => x.textContent)));
+  check('un extra non choisi : pas de grille ; « Quand ? » n’apparaît qu’au premier « + »', await r.page.$eval('#ow-x1', (e) => e.hidden) && !(await r.page.$('[data-ord="1"][data-id="m0"]')));
+  await r.page.click('[data-ord="1"][data-id="x1"]'); await r.page.click('[data-ord="1"][data-id="x1"]');
+  check('massage × 2 : la grille jours × matin / après-midi / soir s’ouvre, « Choisissez au moins un jour » tant qu’aucune case',
+    !(await r.page.$eval('#ow-x1', (e) => e.hidden)) && (await r.page.$$eval('#ow-x1 .og-h', (xs) => xs.map((x) => x.textContent).join('|'))) === '|matin|après-midi|soir' && (await r.page.$$('[data-ow="x1"]')).length === 9 && !(await r.page.$eval('#on-x1', (e) => e.hidden)));
+  await r.page.click('[data-ow="x1"][data-k="2026-10-21|pm"]');
+  check('une case cochée : le nombre reste 2 (par case), la remarque disparaît, total 2 × 550 = 1 100 MAD',
+    (await r.page.innerText('#oq-x1')) === '2' && await r.page.$eval('#on-x1', (e) => e.hidden) && /1\s?100 MAD/.test(await r.page.innerText('#ord-tot')), await r.page.innerText('#ord-tot'));
+  await r.page.click('[data-ord="1"][data-id="x0"]'); await r.page.click('[data-ow="x0"][data-k="2026-10-20|pm"]'); await r.page.click('[data-ow="x0"][data-k="2026-10-22|am"]');
+  await r.page.click('[data-ord="1"][data-id="x2"]');
+  check('transfert à l’arrivée et au départ (2 cases × 1) + panier sans date : total 1 100 + 1 200 + 150 = 2 450 MAD', /2\s?450 MAD/.test(await r.page.innerText('#ord-tot')), await r.page.innerText('#ord-tot'));
+  check('« Votre programme » n’existe pas avant la première commande enregistrée', !(await r.page.$('#prog')));
+  await r.page.click('#ar-send'); await r.page.waitForTimeout(400);
+  const px = r.calls.filter((c) => c.kind === 'post').pop();
+  check('envoi : extra daté = id + nombre par case + cases (jour, moment) ; extra sans case = id + nombre ; jamais un prix',
+    px && JSON.stringify(px.body.orders) === JSON.stringify([{ id: 'x1', q: 2, when: [{ d: '2026-10-21', s: 'pm' }] }, { id: 'x0', q: 1, when: [{ d: '2026-10-20', s: 'pm' }, { d: '2026-10-22', s: 'am' }] }, { id: 'x2', q: 1 }]), px && px.body.orders);
+  const pg = await r.page.innerText('#prog').catch(() => '');
+  check('après envoi : « Votre programme » jour par jour — arrivée, transfert l’après-midi ; massage × 2 mercredi après-midi ; transfert le matin, départ ; le panier « jour à convenir »',
+    /Votre programme/.test(pg) && /mar\. 20\s*Arrivée\s*1 × Transfert aéroport — van · après-midi/.test(pg) && /mer\. 21\s*2 × Massage 60 min · après-midi/.test(pg) && /jeu\. 22\s*1 × Transfert aéroport — van · matin\s*Départ/.test(pg) && /1 × Panier de fruits · Jour à convenir avec votre hôte/.test(pg) && !r.errs.length, [pg, r.errs]);
+  await r.ctx.close();
+  // commande datée déjà enregistrée : nombre par case et cases restitués, programme dès l’ouverture, en anglais
+  r = await open('t=' + TOK + '&pax=4&lang=en', { view: DX(',"answers":{"arrival_time":"flight AT801, around 4 pm","at":"2026-10-15T10:00:00Z"},"orders":{"items":[{"id":"x1","kind":"extra","n":["Massage 60 min","Massage 60 min"],"q":4,"per":2,"when":[{"d":"2026-10-21","s":"pm"},{"d":"2026-10-22","s":"am"}]},{"id":"m0","kind":"meal","n":["Dîner","Dinner"],"q":1,"when":[{"d":"2026-10-20"}]}],"total":2850,"cur":"MAD"}') });
+  const pe = await r.page.innerText('#prog').catch(() => '');
+  check('déjà enregistrée : « 2 » par case, deux cases cochées, grille ouverte ; programme en anglais avec l’heure d’arrivée du client',
+    (await r.page.innerText('#oq-x1')) === '2' && (await r.page.$$eval('[data-ow="x1"].on', (bs) => bs.map((b) => b.getAttribute('data-k')).join())) === '2026-10-21|pm,2026-10-22|am' && !(await r.page.$eval('#ow-x1', (e) => e.hidden)) &&
+    /Your programme/.test(pe) && /Tue 20\s*Arrival — flight AT801, around 4 pm\s*Dinner/.test(pe) && /Wed 21\s*2 × Massage 60 min · afternoon/.test(pe) && /Thu 22\s*2 × Massage 60 min · morning\s*Departure/.test(pe) && !r.errs.length, [pe, r.errs]);
   await r.ctx.close();
 }
 

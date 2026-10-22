@@ -39,6 +39,9 @@
 //   30 min, rechargements compris), first_opened_at, last_opened_at. Jamais quand c'est le propriétaire (&o=1 : la page
 //   l'envoie quand une session Stafflo est sur l'appareil, ou avec ?edit=1). Une panne d'écriture ne bloque jamais le
 //   livret. L'Espace en fait le parcours d'un séjour : envoyé → ouvert → commande → confirmée.
+// Extras datés (22/10/2026) : un extra peut porter when: [{ d, s }] — un jour du séjour et un moment (am matin, pm après-midi,
+//   ev soir) — et q = le nombre PAR case (2 massages mer. 21 après-midi). Enregistré : q = nombre × cases (prix), per = nombre
+//   par case, when. Le prestataire reçoit le jour et le moment. Un extra sans case (ancienne page) : le compteur seul, comme avant.
 // verify_jwt : off (le client n'a pas de compte) — l'accès, c'est le jeton.
 
 const SB_URL = Deno.env.get("SUPABASE_URL") || "";
@@ -183,7 +186,9 @@ export function cleanWhen(raw: unknown, svc: string[], range: Row | null): Row[]
   }
   return out.sort((a, b) => (a.d + (a.s || "")).localeCompare(b.d + (b.s || "")));
 }
-const SVC_FR: Record<string, string> = { b: "brunch", l: "midi", d: "soir" };
+const SVC_FR: Record<string, string> = { b: "brunch", l: "midi", d: "soir", am: "matin", pm: "après-midi", ev: "soir" };
+/** Moments d'un extra daté : matin, après-midi, soir. */
+export const XSVC = ["am", "pm", "ev"];
 /** « mer. 21 soir, jeu. 22 midi » — en français : c'est l'équipe qui le lit. */
 export function whenFr(when: Row[]): string {
   return (when || []).map((w) => new Date(w.d + "T12:00:00Z").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", timeZone: "UTC" }) + (w.s ? " " + SVC_FR[w.s] : "")).join(", ");
@@ -191,7 +196,7 @@ export function whenFr(when: Row[]): string {
 // Lignes envoyées par la page → commande propre. Seuls id, quantité et cases datées comptent ; tout le reste vient de la fiche.
 export function cleanOrders(raw: unknown, f: Row, pax: number, range: Row | null = null): Row | null {
   if (!Array.isArray(raw) || raw.length > 40) return null;
-  const menu = orderMenu(f, pax), qty: Record<string, number> = {}, when: Record<string, Row[]> = {};
+  const menu = orderMenu(f, pax), qty: Record<string, number> = {}, when: Record<string, Row[]> = {}, per: Record<string, number> = {};
   const meals = Array.isArray(f && f.MEALS) ? f.MEALS : [];
   for (const l of raw) {
     const id = l && typeof l.id === "string" ? l.id : "", q = Number(l && l.q);
@@ -202,9 +207,14 @@ export function cleanOrders(raw: unknown, f: Row, pax: number, range: Row | null
       continue;
     }
     if (!Number.isInteger(q) || q < 0 || q > 30) continue;
+    if (id[0] === "x" && Array.isArray(l.when)) { // extra daté : q par case, cases du séjour et moments connus seulement
+      const w = cleanWhen(l.when, XSVC, range);
+      if (w && w.length && q > 0) { qty[id] = q * w.length; per[id] = q; when[id] = w; continue; }
+      // aucune case valable (hors séjour, moment inconnu) : le compteur seul, la commande n'est pas perdue
+    }
     qty[id] = q;
   }
-  const items = menu.filter((m) => qty[m.id] > 0).map((m) => ({ id: m.id, kind: m.kind, n: m.n, q: qty[m.id], unit: m.unit, sub: Math.round(m.unit * qty[m.id] * 100) / 100, ...(when[m.id] ? { when: when[m.id] } : {}) }));
+  const items = menu.filter((m) => qty[m.id] > 0).map((m) => ({ id: m.id, kind: m.kind, n: m.n, q: qty[m.id], unit: m.unit, sub: Math.round(m.unit * qty[m.id] * 100) / 100, ...(when[m.id] ? { when: when[m.id] } : {}), ...(per[m.id] ? { per: per[m.id] } : {}) }));
   const total = Math.round(items.reduce((t, x) => t + x.sub, 0) * 100) / 100;
   return { items, total, cur: curOf(f), at: new Date().toISOString() };
 }
