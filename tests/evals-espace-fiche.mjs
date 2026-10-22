@@ -1191,6 +1191,142 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   check('Léa n’a pas de lien → le brief prestataire n’en parle pas', !/lien Stafflo/.test(await r.page.inputValue('#tx-k1')));
   await r.ctx.close();
+  // 22/10/2026 — [Prestataire ménage] À DarJ, l'équipe de Léa et Fatima fait aussi l'interlocation et la remise en état. Case « Prestataire
+  // ménage » dans la fiche (TEAM[].clean) → brief interlocation : le départ, et pour préparer la maison le séjour suivant (date, heure,
+  // le jour même, chambres prêtes, groupe, couchages, bébés) — jamais un prix, ni le nom, le téléphone ou les repas des suivants.
+  {
+    const CF = JSON.parse(JSON.stringify(KF));
+    CF.TEAM = KF.TEAM.concat([{ name: 'Fatima', brief: true, clean: true, phone: '+212 600 000 044', role: ['prestataire ménage', 'cleaning provider'] }]);
+    CF.PRACTICAL = [['Arrivée et départ : chambres prêtes à partir de 15h, départ avant 11h.', 'Check-in and check-out: rooms ready from 3 pm, check-out before 11 am.']].concat(KF.PRACTICAL || []);
+    const VC = { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: CF };
+    const NX = { id: 'n1', name: 'Thibaut Vernier', arrival: iso(5), departure: iso(9), adults: 4, children: 0, infants: 1, booking_status: 'confirmed', source: 'Direct', price: 3000, phone: '+33 6 11 22 33 44',
+      meals: 'Dîner le premier soir', details: { arrival_time: '15h30', beds: '2 couples' } };
+    r = await open({ tab: 'sejours', villa: VC, stays: [ST[0], NX] });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="k1"]');
+    check('prestataire ménage dans la fiche → trois briefs sur le séjour : prestataire, maison, ménage (interlocation)', !!(await r.page.$('#st-k1 [data-a="panel"][data-v="chef"]')) && !!(await r.page.$('#st-k1 [data-a="panel"][data-v="brief"]')) &&
+      !!(await r.page.$('#st-k1 [data-a="panel"][data-v="turn"]')) && /Brief ménage/.test(await r.page.innerText('#st-k1')));
+    await r.page.click('#st-k1 [data-a="panel"][data-v="turn"]'); await r.page.waitForTimeout(150);
+    const tt = await r.page.inputValue('#tx-k1');
+    check('brief interlocation : pour Fatima ; départ ; prochaine arrivée le jour même avec son heure et « chambres prêtes à partir de 15h » ; groupe, couchages et bébé des suivants',
+      /^\*Brief interlocation — Felipe Villalobos\*\npour Fatima\n\n🚪 \*Départ\* : /.test(tt) && /📍 \*Prochaine arrivée\* : [^\n]+ \(le jour même\)\n• 15h30\n• chambres prêtes à partir de 15h/.test(tt) &&
+      /👥 \*Prochain groupe\* : 4 personnes \(4 adultes, 1 bébé\)/.test(tt) && /🛏 \*Couchages\* : 2 couples/.test(tt) && /👶 \*Bébés \(1\)\* : lit bébé et chaise haute à installer/.test(tt), tt);
+    check('brief interlocation : jamais un prix, ni le nom, le téléphone ou les repas des clients suivants, ni le téléphone du client qui part', !/Thibaut|3 ?000|MAD|€|\+33 6 11|7700 900123|Dîner le premier soir|Repas/.test(tt), tt);
+    check('« Envoyer à Fatima » (son numéro) ; ni Léa ni Saïd sur ce brief', /Envoyer à Fatima/.test(await r.page.innerText('#st-k1')) && !!(await r.page.$('#st-k1 [data-a="sendclean"]')) && !/Léa|Saïd/.test(tt));
+    await r.page.evaluate(() => { window.__opens = []; window.open = (u, n) => { window.__opens.push({ u, n }); return { closed: false }; }; });
+    await r.page.click('#st-k1 [data-a="sendclean"]');
+    const wo = await r.page.evaluate(() => window.__opens[0] && window.__opens[0].u);
+    check('envoi : wa.me du prestataire ménage, le texte du brief', !!wo && wo.startsWith('https://wa.me/212600000044?text=') && /Brief%20interlocation/.test(wo), wo);
+    await r.page.click('#st-k1 [data-a="turndone"]'); await r.page.waitForTimeout(300);
+    const tsd = (r.calls.filter((x) => x.kind === 'stay').pop() || { body: {} }).body.details;
+    check('« Marquer le brief envoyé » → details.turnSent avec la prochaine arrivée connue (n1)', !!tsd && !!tsd.turnSent && tsd.turnSent.next === 'n1' && typeof tsd.turnSent.nd === 'number' && !!tsd.turnSent.at, tsd && tsd.turnSent);
+    await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
+    const kc = await r.page.inputValue('#tx-k1');
+    check('brief prestataire repas : plus d’interlocation (elle a son brief), toujours pour Léa', /^\*Brief prestataire — Felipe Villalobos\*\npour Léa\n/.test(kc) && !/Interlocation/.test(kc), kc.slice(0, 200));
+    await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+    const hc = await r.page.inputValue('#tx-k1');
+    check('brief maison : pour Saïd et Bouchra — ni Léa ni Fatima (prestataires) — et l’interlocation reste (Saïd accueille les suivants)', /^\*Brief maison — Felipe Villalobos\*\npour Saïd, Bouchra$/m.test(hc) && !/Fatima|Léa/.test(hc) && /🔄 \*Interlocation\* : prochaine arrivée/.test(hc), hc.slice(0, 300));
+    await r.ctx.close();
+    // À faire : 2 jours avant le départ ; envoyé puis prochaine arrivée changée → « à renvoyer »
+    const C2 = { id: 'c2', name: 'Ana Ruiz', arrival: iso(-2), departure: iso(1), adults: 2, booking_status: 'confirmed', source: 'Airbnb', details: {} };
+    const N2 = { id: 'n2', name: 'Paul Roy', arrival: iso(1), departure: iso(4), adults: 6, booking_status: 'confirmed', source: 'Airbnb', details: { beds: '3 couples' } };
+    r = await open({ tab: 'jour', villa: VC, stays: [C2, N2] });
+    await r.page.waitForTimeout(300);
+    check('À faire : « Envoyer le brief ménage (interlocation) » le jour d’avant le départ', /Envoyer le brief ménage \(interlocation\)\nAna Ruiz/.test(await txt(r.page)), (await txt(r.page)).slice(0, 400));
+    await r.page.click('[data-a="goto"][data-v="turn"]'); await r.page.waitForTimeout(300);
+    check('le clic ouvre le brief interlocation du séjour', /^\*Brief interlocation — Ana Ruiz\*/.test(await r.page.inputValue('#tx-c2').catch(() => '')) && /🛏 \*Couchages\* : 3 couples/.test(await r.page.inputValue('#tx-c2').catch(() => '')));
+    await r.ctx.close();
+    const dn = (x) => Date.UTC(+x.slice(0, 4), +x.slice(5, 7) - 1, +x.slice(8, 10)) / 86400000; // comme dayNum de la page
+    r = await open({ tab: 'jour', villa: VC, stays: [{ ...C2, details: { turnSent: { at: new Date().toISOString(), next: 'n2', nd: dn(iso(1)) } } }, N2] });
+    await r.page.waitForTimeout(300);
+    check('envoyé, prochaine arrivée inchangée (même séjour, même date) → plus dans À faire', !/Envoyer le brief ménage/.test(await txt(r.page)) && /Ana Ruiz/.test(await txt(r.page)), (await txt(r.page)).slice(0, 300));
+    await r.ctx.close();
+    r = await open({ tab: 'sejours', villa: VC, stays: [{ ...C2, details: { turnSent: { at: new Date().toISOString(), next: 'old', nd: 1 } } }, N2] });
+    await r.page.waitForTimeout(300);
+    await r.page.click('[data-a="toggle"][data-id="c2"]'); await r.page.click('#st-c2 [data-a="panel"][data-v="turn"]'); await r.page.waitForTimeout(150);
+    check('envoyé puis une autre prochaine arrivée → « Prochaine arrivée changée depuis l’envoi : à renvoyer », bouton « Marquer renvoyé »', /Prochaine arrivée changée depuis l’envoi : à renvoyer/.test(await r.page.innerText('#st-c2')) && /Marquer renvoyé/.test(await r.page.innerText('#st-c2')));
+    await r.ctx.close();
+    // Pas de suivant : dit tel quel ; pas de prestataire ménage dans la fiche : pas de bouton, brief prestataire inchangé (interlocation dedans)
+    r = await open({ tab: 'sejours', villa: VC, stays: [ST[0]] });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="turn"]'); await r.page.waitForTimeout(150);
+    check('aucun séjour après ce départ → « Prochaine arrivée : aucune arrivée prévue après ce départ », rien de supposé', /📍 \*Prochaine arrivée\* : aucune arrivée prévue après ce départ/.test(await r.page.inputValue('#tx-k1')) && !/Prochain groupe|Couchages/.test(await r.page.inputValue('#tx-k1')));
+    await r.ctx.close();
+    // Fiche : la case « Prestataire ménage », son explication, la note sur Fatima ; gardée à l'enregistrement
+    r = await open({ tab: 'maison', villa: VC });
+    await r.page.waitForTimeout(250);
+    await r.page.$eval('[data-a="feopen"][data-v="team"]', (b) => b.click()); await r.page.waitForTimeout(300);
+    const fe2 = await txt(r.page);
+    check('fiche › Équipe : « Prestataire ménage » expliqué (entreprise extérieure, pas le ménage de la maison), note sur Fatima', /Prestataire ménage/.test(fe2) && /Une entreprise extérieure qui fait l’interlocation et la remise en état, pas le ménage de la maison/.test(fe2) &&
+      (fe2.match(/Cette personne reçoit le brief interlocation, pas le brief maison/g) || []).length === 1, fe2.slice(0, 200));
+    await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
+    const fsv = r.calls.filter((x) => x.kind === 'PATCH').pop();
+    const fsT = fsv && fsv.body && fsv.body.house_facts ? fsv.body.house_facts.TEAM : null;
+    check('enregistrer la fiche garde la case : Fatima clean, Léa kitchen, Saïd ni l’un ni l’autre', !!fsT && fsT.some((m) => m.name === 'Fatima' && m.clean === true && m.brief === true) && fsT.some((m) => m.name === 'Léa' && m.kitchen === true && !m.clean) && fsT.some((m) => m.name === 'Saïd' && !m.kitchen && !m.clean), fsT);
+    await r.ctx.close();
+  }
+  // 22/10/2026 — [Remise en état] Le grand ménage tous les 3 mois (villa_settings.upkeep) : rien sans la date de la dernière ; échéance,
+  // jours où la maison est vide (séjours, arrivée et départ compris, et calendriers reliés), message au prestataire ménage, À faire.
+  {
+    const CF = JSON.parse(JSON.stringify(KF));
+    CF.TEAM = KF.TEAM.concat([{ name: 'Fatima', brief: true, clean: true, phone: '+212 600 000 044', role: ['prestataire ménage', 'cleaning provider'] }]);
+    const back3 = (x) => { const d = new Date(Date.UTC(+x.slice(0, 4), +x.slice(5, 7) - 1 - 3, +x.slice(8, 10))); return d.toISOString().slice(0, 10); }; // échéance dans ~10 jours
+    const VU = (up) => ({ villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: CF, upkeep: up,
+      ical_feeds: [{ id: 'f1', label: 'Booking.com', url: 'https://admin.booking.com/x.ics', added_at: iso(-30) }] });
+    const SU = [{ id: 'u1', name: 'Marc Petit', arrival: iso(5), departure: iso(12), adults: 2, booking_status: 'confirmed', source: 'Airbnb', details: {} },
+      { id: 'u2', name: 'Eva Lind', arrival: iso(15), departure: iso(20), adults: 2, booking_status: 'confirmed', source: 'Airbnb', details: {} }];
+    const ICU = [{ id: 'e1', feed_id: 'f1', start_date: iso(22), end_date: iso(24), kind: 'blocked', code: null, label: 'Booking.com', hidden_at: null }];
+    // sans date : la carte demande la date, aucun rappel
+    r = await open({ tab: 'maison', villa: VU(null), stays: SU });
+    await r.page.waitForTimeout(250);
+    let mt = await r.page.$eval('#main', (e) => e.textContent);
+    check('remise en état sans date : la carte « Remise en état » (par Fatima) demande « Date de la dernière : ? », rien d’autre', /Remise en état/.test(mt) && /Par Fatima\./.test(mt) && /Date de la dernière : \?/.test(mt) && !/Prochaine : vers le/.test(mt), mt.slice(0, 200));
+    await r.page.$eval('details.card.fold', () => {}).catch(() => {});
+    await r.page.evaluate(() => { document.querySelectorAll('details.fold').forEach((d) => { d.open = true; }); });
+    await r.page.fill('#up-last', iso(-20)); await r.page.selectOption('#up-every', '4'); await r.page.click('[data-a="upsave"]'); await r.page.waitForTimeout(300);
+    const up1 = (r.calls.filter((x) => x.kind === 'PATCH').pop() || { body: {} }).body;
+    check('« Enregistrer » : villa_settings.upkeep = {last, every: 4} sur la ligne du compte, rien dans la fiche', !!up1.upkeep && up1.upkeep.last === iso(-20) && up1.upkeep.every === 4 && !('house_facts' in up1), up1);
+    await r.ctx.close();
+    // échéance dans ~10 jours : carte ouverte, jours vides, message, À faire
+    r = await open({ tab: 'jour', villa: VU({ every: 3, last: back3(iso(10)) }), stays: SU, ical: ICU });
+    await r.page.waitForTimeout(300);
+    const jt = await txt(r.page);
+    check('À faire : « Prévoir la remise en état · Prochaine : vers le … » avec « dans N jours »', /Prévoir la remise en état\nProchaine : vers le [^\n]+\n(dans \d+ jours?|aujourd’hui)/.test(jt), jt.slice(0, 500));
+    await r.page.click('[data-a="tab"][data-v="maison"].todo'); await r.page.waitForTimeout(300);
+    mt = await txt(r.page);
+    check('Maison : carte ouverte, « dernière le … · 3 mois », « Prochaine : vers le … »', /Remise en état/i.test(mt) && /dernière le [^\n]+ · 3 mois/.test(mt) && /Prochaine : vers le /.test(mt), (mt.match(/REMISE EN ÉTAT[\s\S]{0,400}|Remise en état[\s\S]{0,400}/i) || [mt.slice(0, 300)])[0]);
+    check('jours vides : avant le premier séjour (4 jours), entre les deux (2 jours), puis un seul jour avant la nuit prise dans Booking.com — arrivées et départs comptés pris', /Maison vide\n• [^\n]+ \(4 jours\)\n• [^\n]+ \(2 jours\)\n• [a-zé]+\. \d+ [a-zéû]+\.?\n/.test(mt), (mt.match(/Maison vide[\s\S]{0,200}/) || [''])[0]);
+    await r.page.click('[data-a="uppanel"]'); await r.page.waitForTimeout(150);
+    const um = await r.page.inputValue('#tx-upkeep');
+    check('message à Fatima : la remise en état de la villa, la dernière, les jours vides, la question — signé du propriétaire, ni client ni prix', /^Bonjour Fatima,\n\nC’est bientôt le moment de la remise en état de Villa Dar J \(la dernière : [^)]+\)\.\nLa maison est vide :\n• [^\n]+\(4 jours\)\n• [^\n]+\(2 jours\)\n• [^\n]+\n\nQuel jour vous convient \?\n\nJérémie$/.test(um) && !/Marc|Eva|MAD|€/.test(um), um);
+    await r.page.evaluate(() => { window.__opens = []; window.open = (u, n) => { window.__opens.push({ u, n }); return { closed: false }; }; });
+    await r.page.click('[data-a="upsend"]');
+    const uo = await r.page.evaluate(() => window.__opens[0] && window.__opens[0].u);
+    check('« Envoyer à Fatima » : wa.me du prestataire ménage', !!uo && uo.startsWith('https://wa.me/212600000044?text=Bonjour%20Fatima'), uo);
+    await r.page.click('[data-a="upsent"]'); await r.page.waitForTimeout(300);
+    const up2 = (r.calls.filter((x) => x.kind === 'PATCH').pop() || { body: {} }).body;
+    check('« Marquer envoyé » : sentAt + sentFor (l’échéance), last et every gardés ; « Dates proposées le … »', !!up2.upkeep && !!up2.upkeep.sentAt && /^\d{4}-\d{2}-\d{2}$/.test(up2.upkeep.sentFor) && up2.upkeep.last === back3(iso(10)) && up2.upkeep.every === 3 &&
+      /Dates proposées le /.test(await r.page.$eval('#main', (e) => e.textContent)), up2); // la carte se replie : plus rien à faire
+    await r.page.click('[data-a="tab"][data-v="jour"]'); await r.page.waitForTimeout(200);
+    check('dates proposées pour cette échéance → plus dans À faire', !/Prévoir la remise en état/.test(await txt(r.page)));
+    await r.page.click('[data-a="tab"][data-v="maison"]'); await r.page.waitForTimeout(200);
+    await r.page.evaluate(() => { document.querySelectorAll('details.fold').forEach((d) => { d.open = true; }); });
+    await r.page.click('[data-a="updone"]'); await r.page.waitForTimeout(300);
+    const up3 = (r.calls.filter((x) => x.kind === 'PATCH').pop() || { body: {} }).body;
+    check('« Faite aujourd’hui » : last = aujourd’hui, sentAt / sentFor retirés, prochaine dans 3 mois', !!up3.upkeep && up3.upkeep.last === iso(0) && !('sentAt' in up3.upkeep) && !('sentFor' in up3.upkeep) && up3.upkeep.every === 3 && !r.errs.length, [up3, r.errs]);
+    await r.ctx.close();
+    // en retard
+    r = await open({ tab: 'maison', villa: VU({ every: 3, last: back3(iso(-5)) }), stays: SU });
+    await r.page.waitForTimeout(250);
+    mt = await txt(r.page);
+    check('échéance passée : « en retard de N jours », pastille « en retard »', /en retard de \d+ jours?/.test(mt) && /^en retard$/.test(await r.page.$eval('section.card .ti-sparkles', (i) => i.closest('.card').querySelector('.pill').textContent).catch(() => '')), (mt.match(/REMISE EN ÉTAT[\s\S]{0,300}/i) || [mt.slice(0, 300)])[0]);
+    await r.ctx.close();
+    // pas de prestataire ménage ni de date : pas de carte
+    r = await open({ tab: 'maison', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, stays: SU });
+    await r.page.waitForTimeout(250);
+    check('sans prestataire ménage ni date : aucune carte « Remise en état »', !/Remise en état/.test(await r.page.$eval('#main', (e) => e.textContent)));
+    await r.ctx.close();
+  }
   // 18/10 — brief en arabe : un geste « العربية », le texte arabe remplace le français dans la zone (c'est lui qu'on envoie), « Français » y revient.
   // 19/10 : en darija marocaine ; titres, destinataires, groupe, dates, heures et téléphone écrits par l'Espace (prénoms intacts) —
   // seul le texte libre (repas, consigne, commande) part à l'IA (write_staff), élément par élément, chaque nombre gardé.
