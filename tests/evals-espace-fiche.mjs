@@ -1774,7 +1774,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
 // ── 22/10 — Accès équipe : une ligne par personne (lien actif · langue · ouverture, « Créer le lien » / « Nouveau lien »), lien en anglais, « comment ça marche » ; fiche : cases expliquées ──
 {
   const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' }, MEALS: [],
-    TEAM: [{ name: 'Omar', role: ['gardien', ''], phone: '+212600000000', brief: true }, { name: 'Lea', role: ['prestataire repas', ''], brief: true, kitchen: true }, { name: 'Nok', role: ['ménage', ''], brief: true, phone: '+66800000000' }] } };
+    TEAM: [{ name: 'Omar', role: ['gardien', ''], phone: '+212600000000', brief: true }, { name: 'Lea', role: ['prestataire repas', ''], brief: true, kitchen: true }, { name: 'Nok', role: ['ménage', ''], brief: true, phone: '+66800000000' }, { name: 'Ali', role: ['traiteur', ''], kitchen: true }] } };
   r = await open({ tab: 'maison', villa: V, teamLinks: [{ id: 'l1', name: 'Omar', lang: 'fr', role: 'house', created_at: iso(-3), last_seen_at: new Date(Date.now() - 3600e3).toISOString() }] });
   await r.page.waitForTimeout(250);
   let tm = await txt(r.page);
@@ -1786,7 +1786,8 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   check('lien en anglais pour Nok : lang en, rôle maison, message d’envoi en anglais, panneau « Nok · EN »', !!mk && mk.body.lang === 'en' && mk.body.name === 'Nok' && mk.body.role === 'house' && /^Hello Nok, here is your Stafflo link/.test(await r.page.inputValue('#eq-msg')) && /Nok · EN/.test(await r.page.innerText('#main')) && !r.errs.length, [mk && mk.body, r.errs]);
   await r.page.$eval('[data-a="feopen"][data-v="team"]', (b) => b.click()); await r.page.waitForTimeout(300); // bouton dans une carte repliée
   const fe = await txt(r.page);
-  check('fiche › Équipe : « Prestataire repas » (plus « Cuisine ») avec son explication, « Reçoit le brief » expliqué, alerte sur Lea (brief + prestataire)', /Prestataire repas/.test(fe) && !/\nCuisine\n/.test(fe) && /Brief maison \(arrivée, couchages, départ, boissons\)/.test(fe) && /jamais les couchages, les boissons, les extras ni un prix/.test(fe) && (fe.match(/cette personne reçoit le brief prestataire, pas le brief maison/g) || []).length === 1, fe.slice(0, 300));
+  check('fiche › Équipe : « Prestataire repas » (plus « Cuisine ») avec son explication, « Reçoit le brief » expliqué, note sur Lea (brief + prestataire), alerte sur Ali (prestataire sans brief : rien)', /Prestataire repas/.test(fe) && !/\nCuisine\n/.test(fe) && /Obligatoire pour un brief et un lien\. Seule : brief maison \(arrivée, couchages, départ, boissons\)/.test(fe) && /jamais les couchages, les boissons, les extras ni un prix/.test(fe) && (fe.match(/Cette personne reçoit le brief prestataire, pas le brief maison/g) || []).length === 1 && (fe.match(/Sans « Reçoit le brief », cette personne ne reçoit rien/g) || []).length === 1, fe.slice(0, 300));
+  check('Accès équipe : Ali (prestataire sans brief) n’a pas de ligne ni de lien possible — la fiche décide (3 boutons, pas 4)', !/Ali/.test(tm));
   await r.ctx.close();
   // Retour de l'équipe en darija → dans la langue de la page, original replié
   const REP = [{ id: 'rp9', link_id: 'l1', client_id: null, kind: 'issue', text: 'الما كيقطر ف الحمام ديال السويت، خاص بلومبي', created_at: new Date().toISOString(), seen_at: null }];
