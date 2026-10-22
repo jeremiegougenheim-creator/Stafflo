@@ -300,5 +300,21 @@ check('sw.js ne met pas equipe.html en cache', sw.includes("url.includes('equipe
   check('page : trois langues (FR · EN · عربية), libellés anglais écrits à la main, locale en-GB', /var LANGS = \['fr', 'en', 'ar'\]/.test(script) && /title: 'Villa schedule'/.test(script) && /S\.lang === 'en' \? 'en-GB'/.test(script) && /data-l="' \+ x \+ '"/.test(page));
 }
 
+// 22/10/2026 — même texte, même traduction : la « prochaine arrivée » (next_time) reprend la traduction de l'heure d'arrivée du séjour suivant (cas réel : page française de Saïd, anglais de Seán)
+{
+  const q = '« Most of the group will arrive quite late on the 25th (likely after 9pm) »';
+  const rows = [{ id: 'th', name: 'Thibaut V', arrival: '2026-10-19', departure: '2026-10-23', adults: 10, booking_status: 'confirmed', meals: 'Mercredi 21, dîner.', details: {} },
+    { id: 'se', name: 'Seán', arrival: '2026-10-25', departure: '2026-11-01', adults: 8, booking_status: 'confirmed', details: { arrival_time: q } }];
+  const st = M.staffView(rows, '2026-10-22');
+  const h = await M.hashOf(M.TR_V.fr + q);
+  const cache = [{ client_id: 'se', field: 'arrival_time', lang: 'fr', src_hash: h, lines: ['« La plupart du groupe arrivera tard le 25 (probablement après 21h) »'] }];
+  let calls = 0;
+  const r = await M.withTr('fr', st, 'o1', async () => cache, async () => {}, async (sy, u) => { calls++; return null; });
+  const th = r.stays.find((x) => x.id === 'th'), se = r.stays.find((x) => x.id === 'se');
+  check('next_time de Thibaut traduit tout de suite depuis l’heure d’arrivée de Seán (même empreinte), aucun appel', !r.job && calls === 0 && th.fr && th.fr.next_time[0] === '« La plupart du groupe arrivera tard le 25 (probablement après 21h) »' && se.fr && se.fr.arrival_time[0].startsWith('« La plupart'), th.fr);
+  const r2 = await M.withTr('fr', st, 'o1', async () => [], async () => {}, async () => null);
+  check('sans cache : les deux champs partent (une seule fois chacun), rien d’inventé', r2.pending === 2 && !th.en);
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

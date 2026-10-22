@@ -411,13 +411,17 @@ export function needsTr(lang: TrLang, lines: string[]): boolean {
 export async function hashOf(s: string): Promise<string> { return (await sha256hex(s)).slice(0, 16); }
 type Item = { id: string; field: keyof Lines; lines: string[] };
 /** Ce qui manque au cache : une entrée par (séjour, champ) à traduire dont le texte a changé ou n'a jamais été traduit. */
+/** 22/10 : une traduction déjà en cache pour le MÊME texte (même empreinte, même langue) sert à tout champ qui le porte — la
+ *  « prochaine arrivée après ce départ » (next_time) est l'heure d'arrivée du séjour suivant, déjà traduite sur son propre
+ *  séjour : elle s'affiche tout de suite, sans second appel (cas réel : la page française de Saïd montrait l'anglais de Seán). */
+export function cachedFor(cache: Row[], hash: string, n: number): Row | null {
+  return cache.find((r) => r.src_hash === hash && Array.isArray(r.lines) && r.lines.length === n) || null;
+}
 export function missingTr(lang: TrLang, stays: StaffStay[], cache: Row[], hashes: Record<string, string>): Item[] {
-  const have = new Map(cache.map((r) => [r.client_id + "|" + r.field, r]));
   const out: Item[] = [];
   for (const s of stays) for (const f of LINE_FIELDS) {
     const src = s.lines[f]; if (!src.length || !needsTr(lang, src)) continue;
-    const r = have.get(s.id + "|" + f);
-    if (r && r.src_hash === hashes[s.id + "|" + f] && Array.isArray(r.lines) && r.lines.length === src.length) continue;
+    if (cachedFor(cache, hashes[s.id + "|" + f], src.length)) continue;
     out.push({ id: s.id, field: f, lines: src });
   }
   return out;
@@ -513,7 +517,11 @@ export async function withTr(lang: TrLang, stays: StaffStay[], owner: string, re
   const cache = await read(stays.map((s) => s.id)).catch((e) => { console.error("[staff-view] tr read", String(e).slice(0, 120)); return [] as Row[]; });
   const attach = (rows: Row[]) => stays.map((s) => {
     const tr: Partial<Lines> = {};
-    for (const r of rows) if (r.client_id === s.id && LINE_FIELDS.includes(r.field) && hashes[s.id + "|" + r.field] === r.src_hash && Array.isArray(r.lines) && r.lines.length === s.lines[r.field as keyof Lines].length && needsTr(lang, s.lines[r.field as keyof Lines])) tr[r.field as keyof Lines] = r.lines;
+    for (const f of LINE_FIELDS) { // le cache du champ, sinon celui d'un autre champ portant le même texte (même empreinte)
+      const src = s.lines[f]; if (!src.length || !needsTr(lang, src)) continue;
+      const r = cachedFor(rows, hashes[s.id + "|" + f], src.length);
+      if (r) tr[f] = r.lines;
+    }
     return Object.keys(tr).length ? { ...s, [lang]: tr } : s;
   });
   const now = Date.now(), all = missingTr(lang, stays, cache, hashes), K = (it: Item) => keyOf(owner, lang, it, hashes[it.id + "|" + it.field]);

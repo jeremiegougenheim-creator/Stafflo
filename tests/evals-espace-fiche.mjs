@@ -1771,6 +1771,33 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.ctx.close();
 }
 
+// ── 22/10 — Accès équipe : une ligne par personne (lien actif · langue · ouverture, « Créer le lien » / « Nouveau lien »), lien en anglais, « comment ça marche » ; fiche : cases expliquées ──
+{
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: { VILLA: { name: 'Riad Zina', host: 'Nadia' }, MEALS: [],
+    TEAM: [{ name: 'Omar', role: ['gardien', ''], phone: '+212600000000', brief: true }, { name: 'Lea', role: ['prestataire repas', ''], brief: true, kitchen: true }, { name: 'Nok', role: ['ménage', ''], brief: true, phone: '+66800000000' }] } };
+  r = await open({ tab: 'maison', villa: V, teamLinks: [{ id: 'l1', name: 'Omar', lang: 'fr', role: 'house', created_at: iso(-3), last_seen_at: new Date(Date.now() - 3600e3).toISOString() }] });
+  await r.page.waitForTimeout(250);
+  let tm = await txt(r.page);
+  check('une ligne par personne : Omar « 1 lien actif · FR · ouvert … » + Nouveau lien ; Lea (prestataire) et Nok « pas de lien » + Créer le lien', /Omar\n1 lien actif · FR · ouvert /.test(tm) && /Lea · prestataire\npas de lien/.test(tm) && /Nok\npas de lien/.test(tm) && (await r.page.$$('[data-a="eqfor"]')).length === 3 && (await r.page.innerText('[data-a="eqfor"][data-v="Omar"]')).includes('Nouveau lien') && (await r.page.innerText('[data-a="eqfor"][data-v="Nok"]')).includes('Créer le lien'), tm.slice(0, 500));
+  const how = await r.page.$eval('#main', (e) => e.textContent); // replié (details) : textContent
+  check('« Comment ça marche » : adresse secrète, empreinte seule, montré une fois, ouvertures notées, Retirer, rôle depuis la fiche', /adresse secrète \(43 caractères\)/.test(how) && /empreinte/.test(how) && /s’affiche une seule fois/.test(how) && /« Retirer » coupe l’accès/.test(how) && /case « Prestataire repas »/.test(how));
+  await r.page.selectOption('#eq-lang', 'en'); await r.page.click('[data-a="eqfor"][data-v="Nok"]'); await r.page.waitForSelector('#eq-msg', { timeout: 8000 });
+  const mk = r.calls.find((x) => x.kind === 'eqcreate');
+  check('lien en anglais pour Nok : lang en, rôle maison, message d’envoi en anglais, panneau « Nok · EN »', !!mk && mk.body.lang === 'en' && mk.body.name === 'Nok' && mk.body.role === 'house' && /^Hello Nok, here is your Stafflo link/.test(await r.page.inputValue('#eq-msg')) && /Nok · EN/.test(await r.page.innerText('#main')) && !r.errs.length, [mk && mk.body, r.errs]);
+  await r.page.$eval('[data-a="feopen"][data-v="team"]', (b) => b.click()); await r.page.waitForTimeout(300); // bouton dans une carte repliée
+  const fe = await txt(r.page);
+  check('fiche › Équipe : « Prestataire repas » (plus « Cuisine ») avec son explication, « Reçoit le brief » expliqué, alerte sur Lea (brief + prestataire)', /Prestataire repas/.test(fe) && !/\nCuisine\n/.test(fe) && /Brief maison \(arrivée, couchages, départ, boissons\)/.test(fe) && /jamais les couchages, les boissons, les extras ni un prix/.test(fe) && (fe.match(/cette personne reçoit le brief prestataire, pas le brief maison/g) || []).length === 1, fe.slice(0, 300));
+  await r.ctx.close();
+  // Retour de l'équipe en darija → dans la langue de la page, original replié
+  const REP = [{ id: 'rp9', link_id: 'l1', client_id: null, kind: 'issue', text: 'الما كيقطر ف الحمام ديال السويت، خاص بلومبي', created_at: new Date().toISOString(), seen_at: null }];
+  const ai = (b) => b.task === 'write_staff' && /Tu traduis en français/.test(b.system) ? mapLines(b, () => 'Il y a une fuite d’eau dans la salle de bain de la suite, il faut un plombier') : { text: '' };
+  r = await open({ tab: 'jour', villa: V, teamLinks: [{ id: 'l1', name: 'Omar', lang: 'ar', role: 'house', created_at: iso(-3) }], reports: REP, ai });
+  await r.page.waitForTimeout(700);
+  const dj = await txt(r.page), full = await r.page.$eval('#main', (e) => e.textContent);
+  check('De l’équipe : le problème signalé en darija est montré en français, l’original replié, un appel de traduction', /Omar · signale : Il y a une fuite d’eau dans la salle de bain de la suite, il faut un plombier/.test(dj) && /الما كيقطر/.test(full) && r.calls.filter((x) => x.kind === 'ai').length === 1 && !r.errs.length, [dj.slice(0, 300), r.errs]);
+  await r.ctx.close();
+}
+
 await browser.close(); server.close();
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
