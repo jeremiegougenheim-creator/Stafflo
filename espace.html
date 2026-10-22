@@ -2722,7 +2722,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     ar: function (n, u) { return 'مرحبا ' + n + '، هذا رابط Stafflo لمتابعة مواعيد الوصول والمغادرة والوجبات في الفيلا:\n' + u + '\nهذا الرابط خاص بك.'; }
   };
   function teamNames() { return teamList().map(function (m) { return m.name; }); }
-  function isKitchenName(name) { return kitchenTeam().some(function (m) { return String(m.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase(); }); }
+  function nameKey(n) { return String(n || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } // 22/10 : sans accents ni casse
+  function isKitchenName(name) { return kitchenTeam().some(function (m) { return nameKey(m.name) === nameKey(name); }); }
   function teamPhone(name) { var m = teamList().filter(function (x) { return x.name === name && x.phone; })[0]; return m ? waDigits(m.phone) : ''; }
   function b64u(bytes) { var s = ''; for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
   function sha256hex(s) { return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function (b) { return Array.prototype.map.call(new Uint8Array(b), function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }); }
@@ -2776,7 +2777,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     // 22/10 : une ligne par personne de l'équipe — a-t-elle un lien, dans quelle langue, ouvert quand — et le geste pour en créer un
     if (names.length) {
       h += '<div class="line" style="border:0;padding-bottom:0"><b>' + esc(l.eqPeople) + '</b></div>' + teamList().map(function (m) {
-        var ks = (D.links || []).filter(function (k) { return String(k.name || '').trim().toLowerCase() === String(m.name || '').trim().toLowerCase(); });
+        var ks = (D.links || []).filter(function (k) { return nameKey(k.name) === nameKey(m.name); }); // « Léa » dans la fiche = lien « Lea »
         var st = ks.length ? l.eqHas(ks.length) + ' · ' + ks.map(function (k) { return (k.lang === 'ar' ? 'AR' : k.lang === 'en' ? 'EN' : 'FR') + (k.last_seen_at ? ' · ' + l.eqSeen + seenAt(k.last_seen_at, null, true) : ' · ' + l.eqNever); }).join(' / ') : l.eqNoLink;
         return '<div class="line" style="align-items:center"><span><b>' + esc(m.name) + '</b>' + (m.kitchen ? ' · <span class="pill gold">' + esc(l.eqKitchen) + '</span>' : '') + '<br><span class="sub">' + esc(st) + '</span></span>' +
           '<button type="button" class="btn ghost" style="min-height:38px" data-a="eqfor" data-v="' + esc(m.name) + '"' + (EQ.busy ? ' disabled' : '') + '><i class="ti ti-link" aria-hidden="true"></i>' + esc(ks.length ? l.eqAgain : l.eqMake) + '</button></div>';
