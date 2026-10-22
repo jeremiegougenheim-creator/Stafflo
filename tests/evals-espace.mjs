@@ -221,7 +221,7 @@ for (const f of ['espace.html', 'livret.html', 'equipe.html']) { const s = fs.re
     P: (pair, i) => Array.isArray(pair) ? String(pair[i == null ? 0 : i] || pair[0]) : String(pair || ''), mealsRow: (c) => (c.pax >= 7 ? 'b' : 'a'), bigMode: (r) => (r && (r.big === 'kitchen' || r.big === 'off') ? r.big : 'house'),
     unitPrice: (meal, col) => { const v = parseInt(String(meal[col][0]).replace(/\D/g, ''), 10); return isFinite(v) && v > 0 ? v : null; },
     dayNum: (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null; },
-    fmtDay: (n) => 'J' + n, fmtLongDay: (n) => 'jour ' + n, seenAt: () => 'hier 21:14', money: (v, c) => v + ' ' + c, guestLang: () => 'fr', firstName: () => 'Claire', auVilla: () => 'au Riad Test', atVilla: () => 'Riad Test', owner: () => 'Jérémie', livretAbs: () => 'https://x/livret.html?t=tok', orderable: () => [],
+    fmtDay: (n) => 'J' + n, fmtLongDay: (n) => 'jour ' + n, seenAt: () => 'hier 21:14', money: (v, c) => v + ' ' + c, guestLang: () => 'fr', firstName: () => 'Claire', hiName: () => 'Claire', auVilla: () => 'au Riad Test', atVilla: () => 'Riad Test', owner: () => 'Jérémie', livretAbs: () => 'https://x/livret.html?t=tok', orderable: () => [],
     orderOf: (c) => { const o = c.details && c.details.guest_orders; return o && +o.total > 0 && Array.isArray(o.items) ? o : null; },
     orderOpen: (c) => { const o = c.details && c.details.guest_orders; return !!o && !(c.details.orderConfirmedAt && String(c.details.orderConfirmedAt) >= String(o.at || '')); }
   };

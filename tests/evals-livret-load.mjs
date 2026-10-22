@@ -400,6 +400,24 @@ await r.ctx.close();
   await r.ctx.close();
 }
 
+// ── 22/10/2026 : contact ≠ réservant (« Seán & Lise ») ; commande notée par l'hôte d'après les messages du client, avec l'heure ──
+{
+  const DV2 = (extra) => () => ({ status: 200, body: '{"facts":' + FACTS + ',"days":{"from":"2026-10-20","to":"2026-10-22"}' + (extra || '') + '}' });
+  const OWN = ',"stay":{"name":"Seán","pax":10,"contact":"Lise"},"orders":{"by":"owner","total":2100,"cur":"MAD","at":"2026-10-22T10:00:00Z","items":[' +
+    '{"id":"m1","kind":"meal","n":["Brunch, déjeuner ou dîner (sur demande)","Brunch, lunch or dinner (on request)"],"q":2,"unit":850,"sub":1700,"when":[{"d":"2026-10-20","s":"d"},{"d":"2026-10-22","s":"d"}]},' +
+    '{"id":"m2","kind":"meal","n":["Goûter (sur demande)","Afternoon tea (on request)"],"q":1,"unit":400,"sub":400,"when":[{"d":"2026-10-21","t":"14:00"}]}]}';
+  r = await open('t=' + TOK + '&lang=en', { view: DV2(OWN) });
+  const st = await r.page.innerText('#ar-st'), pg = await r.page.innerText('#prog').catch(() => '');
+  check('contact ≠ réservant : « Dear Seán & Lise, » (lien court : le prénom du contact vient de livret-view)', /^Dear Seán & Lise,$/m.test(await r.page.innerText('.hello')), await r.page.innerText('.hello'));
+  check('commande notée par l’hôte : « Noted from your messages · total 2,100 MAD — Change it above and resend if needed. » ; cases cochées (dîners mar. 20 et jeu. 22, goûter mer. 21)',
+    /Noted from your messages · total 2,100 MAD — Change it above and resend if needed\./.test(st) && (await r.page.$$eval('[data-ow="m1"].on', (b) => b.length)) === 2 && (await r.page.$$eval('[data-ow="m2"].on', (b) => b.length)) === 1, st);
+  check('programme : l’heure notée (« Afternoon tea · 14:00 » le mer. 21)', /Wed 21\s*Afternoon tea · 14:00/.test(pg) && !r.errs.length, [pg, r.errs]);
+  await r.ctx.close();
+  r = await open('t=' + TOK + '&lang=fr', { view: DV2(OWN) });
+  check('en français : « Bonjour Seán & Lise, », « Noté d’après vos messages », « Goûter · 14h »', /^Bonjour Seán & Lise,$/m.test(await r.page.innerText('.hello')) && /Noté d’après vos messages · total 2\s?100 MAD/.test(await r.page.innerText('#ar-st')) && /Goûter · 14h/.test(await r.page.innerText('#prog').catch(() => '')) && !r.errs.length, await r.page.innerText('.hello'));
+  await r.ctx.close();
+}
+
 await browser.close(); server.close();
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

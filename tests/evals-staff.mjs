@@ -320,5 +320,26 @@ check('sw.js ne met pas equipe.html en cache', sw.includes("url.includes('equipe
   check('sans cache : les deux champs partent (une seule fois chacun), rien d’inventé', r2.pending === 2 && !th.en);
 }
 
+// 22/10/2026 (v23) — commande notée d'après le message du client (Lise) : l'heure sur la case, et sous Repas plus les phrases
+// qui ne disent que le jour et le repas (même règle que les briefs de l'Espace, schedOnly).
+{
+  const FX = { MEALS: [{ n: ['Petit-déjeuner', 'Breakfast'] }, { n: ['Déjeuner ou dîner (sur demande)', 'Lunch or dinner (on request)'] }, { n: ['Goûter (sur demande)', 'Afternoon tea (on request)'], house: true }] };
+  const OW = { by: 'owner', total: 3000, items: [{ id: 'm1', kind: 'meal', n: ['Déjeuner ou dîner (sur demande)'], q: 3, when: [{ d: '2026-10-26', s: 'd' }, { d: '2026-10-30', s: 'd' }, { d: '2026-10-31', s: 'd' }] },
+    { id: 'm2', kind: 'meal', n: ['Goûter (sur demande)'], q: 1, when: [{ d: '2026-10-26', t: '14:00' }] }] };
+  const ol = M.orderLines(OW, FX, 10);
+  check('heure notée : « 1 × Goûter — lun. 26 · 14h » (maison) ; dîners au prestataire', ol.house[0] === '1 × Goûter — lun. 26 · 14h' && ol.kitchen[0] === '3 × Déjeuner ou dîner — lun. 26 soir, ven. 30 soir, sam. 31 soir', ol);
+  const S = (x) => M.schedOnly(x, OW, FX, 10);
+  check('retirées : « Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? », « Would it be possible do this closer to lunch time around 2pm? », « Pourrions-nous dîner le lundi 26, le vendredi 30 et le samedi 31 ? »',
+    S('Could we do dinner on Monday 26th, Friday 30th and Saturday 31st?') && S('Would it be possible do this closer to lunch time around 2pm?') && S('Pourrions-nous dîner le lundi 26, le vendredi 30 et le samedi 31 ?') && S('Serait-il possible de le faire plutôt vers l’heure du déjeuner, vers 14h ?'));
+  check('gardées : le goûter avec le gâteau et la piscine, l’annonce du menu (« : »), le menu, un nombre que la commande ne porte pas, un repas absent de la commande, une phrase sans repas',
+    !S('please could we do the afternoon tea by the pool on Monday 26th with a birthday cake (something either vanilla or lemon flavoured)?') && !S('For the 3 dinners could we have:') && !S('Starters - mechouia salad, zaalouk') &&
+    !S('Could we do dinner on Monday 26th for 12 people?') && !S('Could we do brunch on Monday 26th?') && !S('Merci beaucoup !') && !M.schedOnly('Could we do dinner on Monday 26th?', null, FX, 10));
+  const rowsX = [{ id: 's1', name: 'Seán', arrival: '2026-10-25', departure: '2026-11-01', adults: 10, booking_status: 'confirmed',
+    meals: 'Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? For the 3 dinners could we have: Starters - mechouia salad, zaalouk',
+    details: { guest_orders: OW } }];
+  const sv = M.staffView(rowsX, '2026-10-24', FX)[0];
+  check('vue équipe : sous Repas, l’annonce du menu et le menu — plus la phrase des jours (dans la commande)', JSON.stringify(sv.lines.meals) === JSON.stringify(['For the 3 dinners could we have:', 'Starters - mechouia salad, zaalouk']), sv.lines.meals);
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);

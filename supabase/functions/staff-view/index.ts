@@ -269,7 +269,8 @@ const int = (v: unknown): number | null => (v == null || v === "" || !isFinite(+
 const SVC: Record<string, string> = { b: "brunch", l: "midi", d: "soir", am: "matin", pm: "après-midi", ev: "soir" }; // am/pm/ev : extras datés (22/10)
 export function whenTxt(w: unknown): string {
   return (Array.isArray(w) ? w : []).filter((x: Row) => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.d || ""))).map((x: Row) =>
-    new Date(x.d + "T12:00:00Z").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", timeZone: "UTC" }) + (SVC[x.s] ? " " + SVC[x.s] : "")).join(", ");
+    new Date(x.d + "T12:00:00Z").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", timeZone: "UTC" }) + (SVC[x.s] ? " " + SVC[x.s] : "") +
+    (/^\d\d:\d\d$/.test(String(x.t || "")) ? " · " + (+x.t.slice(0, 2)) + "h" + (x.t.slice(3) === "00" ? "" : x.t.slice(3)) : "")).join(", "); // v23 : l'heure notée (« lun. 26 · 14h »)
 }
 const mealName = (n: unknown) => String(Array.isArray(n) ? n[0] : n || "").replace(/\s*\((?:sur demande|on request)\)\s*$/i, "").trim().slice(0, 80);
 export function orderLines(o: unknown, facts: Row | null, pax: number | null): { kitchen: string[]; house: string[] } {
@@ -286,6 +287,54 @@ export function orderLines(o: unknown, facts: Row | null, pax: number | null): {
     if (out[to].length < 20) out[to].push(line.slice(0, 200));
   }
   return out;
+}
+
+// ── v23 (22/10/2026, mêmes règles que les briefs de l'Espace : schedOnly) ─────────────────────────────────────────────
+// Commande enregistrée avec ses jours (livret, ou notée par l'hôte d'après le message du client) : une phrase du client qui
+// ne dit rien de plus — un repas, ses jours, son heure, une formule de politesse (« Could we do dinner on Monday 26th, Friday
+// 30th and Saturday 31st? ») — n'est pas répétée sous Repas. Un nombre que la commande ne porte pas, un mot de plus : gardée.
+const MP_W = "(sunday|monday|tuesday|wednesday|thursday|friday|saturday|dimanche|lundi|mardi|mercredi|jeudi|vendredi|samedi)s?";
+const MP_MO = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "jan", "feb", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+  "janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre", "janv", "fevr", "juil"];
+const MP_M = "(" + MP_MO.slice().sort((a, b) => b.length - a.length).join("|") + ")\\.?";
+const MP_NOT = /\b(?:lunch|dinner|tea)\s*times?\b|\bheure du (?:dejeuner|diner|gouter)\b|\b(?:before|after|avant|apres)\s+(?:the\s+|le\s+)?(?:lunch|dinner|diner|dejeuner)\b|\bpetit[- ]?dejeuners?\b|\bbreakfasts?\b/g;
+const MP_KIND: [string, RegExp][] = [["t", /\b(?:afternoon teas?|high teas?|cream teas?|gouters?)\b/g], ["b", /\bbrunch(?:es)?\b/g], ["l", /\b(?:lunch(?:es)?|dejeuners?)\b/g], ["d", /\b(?:dinners?|diners?|suppers?)\b/g]];
+const MP_ANA = /\b(?:this|it|that|them|ca|cela|le faire|la faire|les faire)\b/;
+const mpFold = (x: unknown) => String(x ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’'`]/g, " ");
+const MP_FILL = new Set(("the a an on at for and of to this that it its is be we us our you your i my me could would can may please possible also do have get organise organize arrange prepare book like around about approximately closer near nearer time times clock oclock pm am day evening evenings night nights noon midday meal meals too as well will shall want wish then " +
+  "le la les l un une des de du d et a au aux pour par ce cet cette ca cela il elle on nous vous je j me m possible serait sera seraient pourriez pourrions pourrait pouvez pouvons peut faire prevoir organiser preparer reserver avoir aimerions voudrions souhaitons souhaiterions egalement aussi svp merci vers environ autour heure heures proche pres plus plutot soir soirs midi jour jours repas est sont rather instead").split(" "));
+function mpKinds(s: string): string[] {
+  const t = s.replace(MP_NOT, (x) => " ".repeat(x.length)), out: string[] = [];
+  for (const [k, rx] of MP_KIND) if (new RegExp(rx.source).test(t)) out.push(k);
+  return out;
+}
+function mpHasTime(s: string): boolean { return /\b\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm)\b|\b\d{1,2}\s*h\s*(?:\d{2})?(?![a-z])|\b\d{1,2}:\d{2}\b/.test(s); }
+const mpSvc = (r: Row): string[] => { const n = ([] as unknown[]).concat((r && r.n) || []).join(" "), s: string[] = []; if (/brunch/i.test(n)) s.push("b"); if (/d[ée]jeuner|lunch/i.test(n)) s.push("l"); if (/d[îi]ner|dinner/i.test(n)) s.push("d"); return s.length > 1 ? s : [""]; };
+function mpRowIds(k: string, meals: Row[], pax: number | null): string[] { // les lignes de la fiche qu'un mot de repas peut désigner
+  const nm = (r: Row) => mpFold(([] as unknown[]).concat((r && r.n) || []).join(" ")), out: string[] = [];
+  meals.forEach((r, i) => {
+    if (!r || !r.n || (r.house && r.big === "off" && (pax || 0) >= 7)) return;
+    const sv = mpSvc(r);
+    if (k === "t" ? /gouter|tea\b/.test(nm(r)) : (sv.length > 1 ? sv.includes(k) : (k === "b" ? /brunch/ : k === "l" ? /dejeuner|lunch/ : /diner|dinner/).test(nm(r)))) out.push("m" + i);
+  });
+  return out;
+}
+export function schedOnly(sent: string, order: unknown, facts: Row | null, pax: number | null): boolean {
+  if (/:\s*$/.test(String(sent || "").trim())) return false; // annonce une liste (le menu) : gardée
+  const items: Row[] = order && typeof order === "object" && Array.isArray((order as Row).items) ? (order as Row).items : [];
+  const cells: { id: string; w: Row }[] = [];
+  for (const x of items) if (x && x.kind === "meal" && Array.isArray(x.when)) for (const w of x.when) if (w && typeof w.d === "string") cells.push({ id: String(x.id), w });
+  if (!cells.length) return false;
+  const s = mpFold(sent), kinds = mpKinds(s);
+  if (!kinds.length && !(MP_ANA.test(s) && mpHasTime(s))) return false;
+  const meals: Row[] = facts && Array.isArray(facts.MEALS) ? facts.MEALS : [], ids = new Set(cells.map((z) => z.id));
+  if (!kinds.every((k) => mpRowIds(k, meals, pax).some((id) => ids.has(id)))) return false;
+  const days = new Set<number>(), hours = new Set<number>();
+  for (const z of cells) { days.add(+String(z.w.d).slice(8)); if (/^\d\d:\d\d$/.test(String(z.w.t || ""))) { const h = +z.w.t.slice(0, 2); hours.add(h); hours.add(h % 12 || 12); } }
+  if ((s.match(/\d+/g) || []).map(Number).some((n) => !days.has(n) && !hours.has(n) && n !== cells.length)) return false;
+  let rest = s.replace(MP_NOT, " ").replace(new RegExp("\\b" + MP_W + "\\b", "g"), " ").replace(new RegExp("\\b" + MP_M + "(?![a-z])", "g"), " ").replace(/\b\d+(?:st|nd|rd|th|er|eme|h\d*|am|pm)?\b/g, " ");
+  for (const [, rx] of MP_KIND) rest = rest.replace(new RegExp(rx.source, "g"), " ");
+  return !(rest.match(/[a-z]{3,}/g) || []).some((w) => !MP_FILL.has(w));
 }
 
 export function staffView(rows: Row[], todayIso: string, facts: Row | null = null): StaffStay[] {
@@ -318,7 +367,9 @@ export function staffView(rows: Row[], todayIso: string, facts: Row | null = nul
         next: nx ? { d: iso(nx.a), same_day: nx.a === d } : null,
         next_time: nx ? teamTime(txt(frv(detOf(nx.c), "arrival_time", detOf(nx.c).arrival_time), 400), "a") : "",
       };
-      return { ...base, lines: linesOf(base) };
+      const lines = linesOf(base);
+      lines.meals = lines.meals.filter((x) => !schedOnly(x, det.guest_orders, facts, pax || null)); // v23 : rien que la commande ne dise déjà
+      return { ...base, lines };
     });
 }
 

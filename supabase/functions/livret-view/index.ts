@@ -166,7 +166,16 @@ export function paxOf(stay: Row): number {
   return (ad + ch) || parseInt(stay && stay.guests, 10) || 0;
 }
 // En-tête du livret (prénom, nombre) : lu du séjour par le jeton — plus dans l'adresse du lien (lien court, 18/10). Les dates : `days`.
-export const stayHead = (stay: Row): Row => ({ name: String((stay && stay.name) || "").trim().slice(0, 80), pax: paxOf(stay) || null });
+// 22/10/2026 (v14) : le contact du séjour quand ce n'est pas le réservant (details.contact — Lise pour le séjour de Seán) :
+// son prénom seulement, pour « Bonjour Seán & Lise ». Rien d'autre du séjour ne part dans la réponse.
+export function contactFirst(stay: Row): string {
+  const c = stay && stay.details && typeof stay.details === "object" ? stay.details.contact : null;
+  return c && typeof c === "object" ? String(c.name || "").replace(/^~\s*/, "").trim().split(/\s+/)[0].slice(0, 40) : "";
+}
+export const stayHead = (stay: Row): Row => {
+  const contact = contactFirst(stay);
+  return { name: String((stay && stay.name) || "").trim().slice(0, 80), pax: paxOf(stay) || null, ...(contact ? { contact } : {}) };
+};
 // Services d'une ligne de repas, lus dans son nom : « Déjeuner ou dîner » → midi / soir ; une ligne d'un seul service → [""].
 export function svcOf(m: Row): string[] {
   const n = ([] as unknown[]).concat((m && m.n) || []).join(" "), s: string[] = [];
@@ -228,6 +237,17 @@ export function applyOrders(stay: Row, body: Row, o: Row): Row {
   return out;
 }
 
+// v14 (22/10/2026) : une commande notée par l'hôte d'après les messages du client (Espace, by: 'owner') porte l'heure demandée
+// sur une case (« goûter lun. 26 vers 14h » → when [{ d, t: '14:00' }]). La page du livret ne renvoie pas les heures : quand le
+// client renvoie sa commande, une case identique (même repas, même jour, même service) garde son heure. Rien d'autre.
+export function keepTimes(prev: Row | null, o: Row): Row {
+  const tOf = new Map<string, string>();
+  for (const x of (prev && Array.isArray(prev.items) ? prev.items : [])) {
+    for (const w of (x && Array.isArray(x.when) ? x.when : [])) if (w && /^\d\d:\d\d$/.test(String(w.t || ""))) tOf.set(x.id + "|" + w.d + "|" + (w.s || ""), w.t);
+  }
+  if (!tOf.size) return o;
+  return { ...o, items: o.items.map((x: Row) => Array.isArray(x.when) ? { ...x, when: x.when.map((w: Row) => { const t = tOf.get(x.id + "|" + w.d + "|" + (w.s || "")); return t ? { ...w, t } : w; }) } : x) };
+}
 // Même commande qu'avant (mêmes lignes, mêmes quantités) : pas de nouvelle alerte.
 export function sameOrder(a: Row | null, b: Row | null): boolean {
   const k = (o: Row | null) => o && Array.isArray(o.items) ? o.items.map((x: Row) => x.id + "×" + x.q + (x.when ? "@" + x.when.map((w: Row) => w.d + (w.s || "")).join("+") : "")).sort().join(",") : "";
@@ -357,7 +377,8 @@ Deno.serve(async (req: Request) => {
       if (String(r.stay.departure || "").slice(0, 10) < today) return out({ error: "expired" }, 410); // séjour terminé : plus rien à transmettre
       let patch: Row = a ? applyAnswers(r.stay, a) : {};
       const f = wantsOrder || wantsReg ? await factsOf(String(r.owner)) : null;
-      const o = f && wantsOrder ? cleanOrders(body.orders, f, paxOf(r.stay), daysOf(r.stay)) : null;
+      const o0 = f && wantsOrder ? cleanOrders(body.orders, f, paxOf(r.stay), daysOf(r.stay)) : null;
+      const o = o0 ? keepTimes(ordersOf(r.stay), o0) : null; // v14 : l'heure notée par l'hôte reste sur la même case
       if (o) patch = applyOrders(r.stay, patch, o);
       const tr = wantsReg && regOn(f) ? cleanTravellers(body.travellers) : null;
       if (!Object.keys(patch).length && !tr) return out({ error: "empty" }, 400);

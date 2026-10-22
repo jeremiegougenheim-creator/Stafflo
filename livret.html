@@ -554,7 +554,7 @@ const T = {
   ordMeals:['Repas','Meals'], ordOther:['Autres','Other'],
   progTitle:['Votre programme','Your programme'], progWhy:['Ce que vous avez commandé, jour par jour. Votre hôte vous confirme chaque demande.','What you ordered, day by day. Your host confirms each request.'],
   progArr:['Arrivée','Arrival'], progDep:['Départ','Departure'], progNoDate:['Jour à convenir avec votre hôte','Day to agree with your host'],
-  ordSent:['Commande transmise · total','Order sent · total']
+  ordSent:['Commande transmise · total','Order sent · total'], ordNoted:['Noté d’après vos messages · total','Noted from your messages · total'], ordNotedWhy:['Corrigez ci-dessus et renvoyez si besoin.','Change it above and resend if needed.']
 };
 
 /* Tarif negocie (champ « Tarif négocié » ou ?tarifs=400/400/500[/400]) :
@@ -734,7 +734,7 @@ function kidsBoxHtml(){
 
 /* « Votre arrivée » — seulement avec un lien personnel (jeton) : sans jeton, personne à qui transmettre.
    Les réponses partent à livret-view, qui les range sur CE séjour. Jamais à l'impression. */
-function orderSentLine(o){ return o && o.total > 0 ? '<p class="st">' + ti(T.ordSent) + ' ' + esc((Math.round(o.total * 100) / 100).toLocaleString(LANG === 'en' ? 'en-GB' : 'fr-FR') + (o.cur ? ' ' + o.cur : '')) + '</p>' : ''; }
+function orderSentLine(o){ return o && o.total > 0 ? '<p class="st">' + ti(o.by === 'owner' ? T.ordNoted : T.ordSent) + ' ' + esc((Math.round(o.total * 100) / 100).toLocaleString(LANG === 'en' ? 'en-GB' : 'fr-FR') + (o.cur ? ' ' + o.cur : '')) + (o.by === 'owner' ? ' — ' + ti(T.ordNotedWhy) : '') + '</p>' : ''; } // 22/10 : commande notée par l'hôte d'après les messages du client
 function arrivalBlock(){
   const ctx = window.LIVRET_CTX;
   if (!ctx || !ctx.token) return '';
@@ -766,7 +766,7 @@ function progBlock(){
     const w = Array.isArray(x.when) && x.when.length ? x.when : null;
     if (!w) { undated.push(x.q + ' × ' + nm(x)); return; }
     const n = x.kind === 'extra' ? (+x.per || Math.max(1, Math.round(x.q / w.length))) : 1;
-    w.forEach(v => { (byDay[v.d] = byDay[v.d] || []).push({ k: PG_ORD[v.s || ''] == null ? 6 : PG_ORD[v.s || ''], h: (x.kind === 'extra' || n > 1 ? n + ' × ' : '') + nm(x) + (mom(v.s) ? ' <span>· ' + mom(v.s) + '</span>' : '') }); });
+    w.forEach(v => { (byDay[v.d] = byDay[v.d] || []).push({ k: PG_ORD[v.s || ''] == null ? 6 : PG_ORD[v.s || ''], h: (x.kind === 'extra' || n > 1 ? n + ' × ' : '') + nm(x) + (mom(v.s) ? ' <span>· ' + mom(v.s) + '</span>' : '') + (/^\d\d:\d\d$/.test(String(v.t || '')) ? ' <span>· ' + esc(LANG === 'en' ? v.t : +v.t.slice(0, 2) + 'h' + (v.t.slice(3) === '00' ? '' : v.t.slice(3))) + '</span>' : '') }); });
   });
   const a = ctx.answers && ctx.answers.arrival_time ? ' <span>— ' + esc(ctx.answers.arrival_time) + '</span>' : '';
   let h = '<div class="prog" id="prog"><h4>' + ti(T.progTitle) + '</h4><p class="why">' + ti(T.progWhy) + '</p>';
@@ -1174,7 +1174,8 @@ function render(){
   /* Lien court (jeton seul, 18/10) : prénom, dates et nombre viennent du séjour (livret-view), plus de l'adresse.
      Un paramètre présent dans l'adresse garde la main (anciens liens, propriétaire qui essaie). */
   const C = window.LIVRET_CTX || {}, st = C.stay || {}, dy = C.days || {};
-  if (!q.get('guest') && st.name) document.getElementById('g').value = st.name;
+  // 22/10/2026 : le contact du séjour quand ce n'est pas le réservant (« Seán & Lise » — c'est Lise qui organise)
+  if (!q.get('guest') && st.name) { const f0 = String(st.name).trim().split(/\s+/)[0]; document.getElementById('g').value = st.contact && String(st.contact).toLowerCase() !== f0.toLowerCase() ? f0 + ' & ' + st.contact : st.name; }
   if (!q.get('pax') && st.pax > 0) document.getElementById('p').value = String(st.pax);
   if (!q.get('dates') && /^\d{4}-\d{2}-\d{2}$/.test(dy.from || '') && /^\d{4}-\d{2}-\d{2}$/.test(dy.to || '')) {
     const M = ['JAN','FEV','MAR','AVR','MAI','JUN','JUL','AOU','SEP','OCT','NOV','DEC'], a = new Date(dy.from + 'T12:00:00'), d = new Date(dy.to + 'T12:00:00');

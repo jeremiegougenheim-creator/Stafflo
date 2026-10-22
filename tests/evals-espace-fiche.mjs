@@ -118,7 +118,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     // share : un téléphone qui propose la feuille de partage (navigator.share, fichiers compris) ; ce qui est partagé est noté dans window.__shared
     if (sh) { window.__shared = []; navigator.share = function (d) { window.__shared.push({ text: d.text || '', title: d.title || '', files: (d.files || []).map(function (f) { return { name: f.name, type: f.type, size: f.size }; }) }); return Promise.resolve(); }; navigator.canShare = function () { return true; }; } }, [clock ? { ...SESSION, expires_at: Math.floor(Date.now() / 1000) + 8 * 3600 } : SESSION, emailIn, once, waMeta, share]); // horloge avancée : une session qui couvre le saut
   // clock : horloge de la page simulée (onglet laissé des heures) ; vis : visibilité de l'onglet pilotée par window.__vis
-  if (clock) await page.clock.install({ time: new Date() });
+  if (clock) await page.clock.install({ time: clock === true ? new Date() : new Date(clock) }); // 22/10 : une date fixe (repas demandés, jours écrits en toutes lettres)
   if (vis) await page.addInitScript(() => { Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get() { return window.__vis || 'visible'; } }); });
   await page.goto(`http://127.0.0.1:${PORT}/espace.html#${tab}`);
   await page.waitForSelector(tab === 'maison' ? '[data-a="feopen"]:not([data-v])' : 'article, .card', { timeout: 8000 });
@@ -754,8 +754,11 @@ await r.ctx.close();
     check('questions d’information jamais proposées : parking, douche, « anything missing », restaurant ; rien de l’hôte (« Bedroom 4… »)', !P.some((x) => /parking|shower|anything missing|recommend|Bedroom 4|by default/.test(x.v)), P);
     check('le gâteau (« birthday ») n’est pas proposé deux fois : il est dans les repas, pas en note privée', !P.some((x) => /^À noter/.test(x.k) && /birthday cake/.test(x.v)), P);
     check('zéro invention : chaque morceau de chaque valeur proposée est mot pour mot dans la conversation', P.every((x) => literal(x.v)), P.filter((x) => !literal(x.v)));
+    // 22/10 : c'est Ana qui écrit pour le séjour d'Élias → proposée comme contact du séjour (les messages au client s'adresseront à elle)
+    check('contact du séjour proposé : la personne qui écrit (« Ana Martin », sans le « ~ »), en dernier — jamais un numéro de téléphone', P.length && P[P.length - 1].v === 'Ana Martin' && /^Contact du séjour/.test(P[P.length - 1].k), P.map((x) => x.k + '=' + x.v.slice(0, 20)));
     await r.page.click('[data-a="waapply"][data-id="e1"]'); await r.page.waitForTimeout(400);
     const ep = r.calls.filter((x) => x.kind === 'stay').pop();
+    check('enregistrer : details.contact = « Ana Martin » (le séjour garde le nom du réservant)', !!ep && ep.body.details.contact && ep.body.details.contact.name === 'Ana Martin' && !('name' in ep.body), ep && ep.body.details.contact);
     check('enregistrer : repas, boissons, couchages et arrivée écrits sur le séjour ; aucun message stocké', !!ep && ep.body.meals === mv && ep.body.details.drinks === dv && ep.body.details.beds === bv && ep.body.details.arrival_time === av && ep.body.details.whatsapp && !JSON.stringify(ep.body).includes('parking') && !r.errs.length, ep && { meals: ep.body.meals, det: ep.body.details, errs: r.errs });
     await r.ctx.close();
   }
@@ -1341,6 +1344,67 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     check('traduction en panne (réponse illisible) : l’anglais reste et c’est dit ; pas de nouvel essai tout de suite ; 2 minutes plus tard, nouvel essai → brief en français',
       n4a === 1 && /Could we do dinner/.test(b4a) && n4b === 1 && trq() === 2 && /Pourrions-nous dîner le lundi 26/.test(b4c) && !/\b(Could|dinner|Most|There)\b/.test(b4c) && !r.errs.length, { n4a, n4b, n: trq(), b4c: b4c.slice(0, 300), errs: r.errs });
     await r.ctx.close();
+    // 22/10/2026 — [Repas demandés, jour par jour — cas réel : Lise, pour le séjour de Seán (noms changés : Ana pour Élias)]
+    // Le message des repas est lu par règles : jour (dans le séjour, jour de la semaine vérifié), repas de la fiche, heure
+    // (« do this … around 2pm » → le goûter), menu et gâteau repris tels quels. Rien n'est enregistré sans « Enregistrer comme
+    // commande » ; la commande notée (by: 'owner') suit le chemin de celle du livret. Et le contact n'est pas le réservant.
+    {
+      const SP = [{ id: 'p1', name: 'Élias', arrival: '2026-10-25', departure: '2026-11-01', adults: 10, children: 0, infants: 1, booking_status: 'confirmed', source: 'Airbnb', phone: '', meals: EN.meals,
+          details: { drinks: EN.drinks, beds: EN.beds, arrival_time: EN.arrival_time, contact: { name: 'Ana Martin', at: '2026-10-20T10:00:00Z' } } },
+        { id: 'p2', name: 'Zoé Noël', arrival: '2026-11-03', departure: '2026-11-08', adults: 4, booking_status: 'confirmed', source: 'Direct', phone: '+33 6 00 00 00 09', details: {},
+          meals: 'Could we do dinner on Tuesday 4th? Brunch on the 20th please. And dinner on the first evening, around lunch time if possible.' },
+        { id: 'p3', name: 'Inès Caron', arrival: '2026-11-03', departure: '2026-11-08', adults: 4, booking_status: 'confirmed', source: 'Direct', phone: '+33 6 00 00 00 08', details: {},
+          meals: 'Nous aimerions un dîner le mercredi 4 novembre vers 20h, et un brunch le 6. Pour 4 personnes.' }];
+      r = await open({ tab: 'sejours', villa: VF, stays: SP, ai, clock: '2026-10-22T10:00:00Z' });
+      await r.page.waitForTimeout(250);
+      await r.page.click('[data-a="toggle"][data-id="p1"]'); await r.page.waitForTimeout(700);
+      const pc = await r.page.innerText('#st-p1 .mplan').catch(() => '');
+      check('repas demandés, jour par jour : goûter lun. 26 à 14h (« do this … around 2pm »), dîners lun. 26, ven. 30, sam. 31 — dans l’ordre des jours',
+        /Repas demandés, jour par jour\n• lun\. 26 · 14h — Goûter\n• lun\. 26 — Dîner\n• ven\. 30 — Dîner\n• sam\. 31 — Dîner/.test(pc), pc.slice(0, 300));
+      check('zéro invention : « lunch time » n’est pas un déjeuner, « the 3 dinners » n’est pas un jour 3, le petit-déjeuner n’est rien', !/Déjeuner|mar\. 3\b|Brunch/.test(pc.split('Menu demandé')[0]), pc.slice(0, 300));
+      check('menu (dans la langue de la page) repris tel quel, « 3 entrées, 3 plats, 3 desserts pour 3 dîners » ; gâteau d’anniversaire hors carte ; total du groupe (10 pers. : 3 × 850 + 400)',
+        /• Entrées - salade méchouia, zaalouk, salade de potiron à la cannelle/.test(pc) && /3 entrées, 3 plats, 3 desserts pour 3 dîners/.test(pc) && /• un gâteau d'anniversaire \(vanille ou citron\)/.test(pc) && /Total indicatif : 2\s?950 MAD/.test(pc), pc);
+      check('rien n’est enregistré à l’ouverture (planning lu, pas de commande)', !r.calls.some((x) => x.kind === 'stay' && x.body.details && x.body.details.guest_orders));
+      const pc2 = await r.page.innerText('#st-p1');
+      check('contact ≠ réservant : « Contact : Ana Martin · réservé par Élias » sur le séjour', /Contact : Ana Martin · réservé par Élias/.test(pc2), pc2.slice(0, 400));
+      await r.page.click('#st-p1 [data-a="panel"][data-v="mrecap"]'); await r.page.waitForTimeout(200);
+      const rc = await r.page.inputValue('#tx-p1');
+      check('récap au client : à Ana (le contact), les 4 repas avec jour, heure et prix de la fiche, le total, une entrée / un plat / un dessert proposés par soir, le gâteau repris et la question posée',
+        /^(Hello|Bonjour) Ana,/.test(rc) && /26 [Oo]ct\.? · (14:00|14h) — (Afternoon tea|Goûter)/.test(rc) && (rc.match(/— (Dinner|Dîner)/g) || []).length === 3 && /2\s?,?950 MAD/.test(rc) &&
+        /mechouia salad · fish with chermoula · assorted Moroccan pastries|salade méchouia · poisson à la chermoula/.test(rc) && /pumpkin salad with cinnamon · chicken couscous · gazelle horns|salade de potiron à la cannelle · couscous au poulet · cornes de gazelle/.test(rc) &&
+        /birthday cake \(something either vanilla or lemon flavoured\)|gâteau d'anniversaire \(vanille ou citron\)/.test(rc) && !/Élias/.test(rc), rc);
+      await r.page.click('#st-p1 [data-a="mpsave"]'); await r.page.waitForTimeout(400);
+      const mo = (r.calls.filter((x) => x.kind === 'stay').pop() || { body: {} }).body.details?.guest_orders;
+      check('« Enregistrer comme commande » : la commande du séjour, prix de la fiche, jours, service, heure ; notée par l’hôte d’après le message (by owner) — le contact reste',
+        !!mo && mo.by === 'owner' && mo.total === 2950 && mo.cur === 'MAD' && JSON.stringify(mo.items.map((x) => [x.id, x.q, x.unit, x.when])) === JSON.stringify([['m1', 3, 850, [{ d: '2026-10-26', s: 'd' }, { d: '2026-10-30', s: 'd' }, { d: '2026-10-31', s: 'd' }]], ['m2', 1, 400, [{ d: '2026-10-26', t: '14:00' }]]]), mo);
+      await r.page.waitForTimeout(200);
+      const pc3 = await r.page.innerText('#st-p1');
+      check('après : « Commande du client d’après son message » avec jours et heure, le planning lu n’est plus proposé, « Récap au client » reste à côté de la confirmation',
+        /Commande du client d’après son message · [^:]+: 3 × Brunch, déjeuner ou dîner \(sur demande\) — lun\. 26 soir, ven\. 30 soir, sam\. 31 soir · 1 × Goûter \(sur demande\) — lun\. 26 · 14h — 2\s?950 MAD/.test(pc3) && !(await r.page.$('#st-p1 .mplan')) && !!(await r.page.$('#st-p1 [data-a="panel"][data-v="mrecap"]')), pc3.slice(0, 700));
+      await r.page.click('#st-p1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(300);
+      const kp = await r.page.inputValue('#tx-p1'), kr = sect(kp, 'Repas') || { items: [] };
+      check('brief prestataire : « Repas commandés » (pas « Commande du livret ») jour par service, heure du goûter ; sous Repas, plus les phrases qui ne disent que jour et repas — le gâteau, la piscine et le menu restent',
+        JSON.stringify((sect(kp, 'Repas commandés') || {}).items) === '["3 × Brunch, déjeuner ou dîner (sur demande) — lun. 26 soir, ven. 30 soir, sam. 31 soir","1 × Goûter (sur demande) — lun. 26 · 14h"]' && !sect(kp, 'Commande du livret') &&
+        !kr.items.some((x) => /^Pourrions-nous dîner le lundi 26|vers 14h \?$/.test(x)) && kr.items.some((x) => /gâteau d'anniversaire \(vanille ou citron\)/.test(x)) && kr.items.includes('Pour les 3 dîners, pourrions-nous avoir :') && kr.items.some((x) => /^Entrées - salade méchouia/.test(x)), kp);
+      await r.page.click('#st-p1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(300);
+      const bp = await r.page.inputValue('#tx-p1');
+      check('brief maison : « 📞 Client : Ana · pas encore de numéro » — le contact, pas le réservant', /📞 \*Client\* : Ana · pas encore de numéro/.test(bp), (bp.match(/^📞.*$/m) || [])[0]);
+      // zéro invention : jour de la semaine faux, jour hors séjour, « first evening » sans jour → rien ; en français : jour + mois, heure, « le 6 »
+      await r.page.click('[data-a="toggle"][data-id="p2"]'); await r.page.click('[data-a="toggle"][data-id="p3"]'); await r.page.waitForTimeout(400);
+      check('« Tuesday 4th » (le 4 novembre est un mercredi), « the 20th » (hors séjour), « the first evening » (pas de jour) : aucun planning — rien d’inventé', !(await r.page.$('#st-p2 .mplan')));
+      const p3 = await r.page.innerText('#st-p3 .mplan').catch(() => '');
+      check('en français : « un dîner le mercredi 4 novembre vers 20h, et un brunch le 6 » → mer. 4 · 20h — Dîner ; ven. 6 — Brunch ; « Pour 4 personnes » n’est pas un jour',
+        /• mer\. 4 · 20h — Dîner\n• ven\. 6 — Brunch\n/.test(p3 + '\n') && !/• \w+\. 4 — /.test(p3), p3);
+      // contact : modifier, retrouver par son nom
+      await r.page.click('#st-p1 [data-a="panel"][data-v="edit"]'); await r.page.waitForTimeout(150);
+      check('Modifier : champ « Contact, s’il n’est pas le réservant » prérempli', (await r.page.inputValue('#ed-contact-p1')) === 'Ana Martin');
+      await r.page.fill('#ed-contact-p1', 'Lise'); await r.page.click('#st-p1 [data-a="editsave"]'); await r.page.waitForTimeout(400);
+      const cp = r.calls.filter((x) => x.kind === 'stay').pop();
+      check('Modifier : le contact enregistré dans details.contact, le nom du séjour inchangé, le reste de details intact', !!cp && cp.body.details && cp.body.details.contact.name === 'Lise' && !('name' in cp.body) && !!cp.body.details.guest_orders && cp.body.details.beds === EN.beds, cp && cp.body);
+      await r.page.fill('#q-stays', 'lise'); await r.page.waitForTimeout(250);
+      check('Retrouver un client : par le nom du contact (« lise » → Élias)', /Élias/.test(await r.page.innerText('#main')) && !r.errs.length, r.errs);
+      await r.ctx.close();
+    }
   }
   // 17/10/2026 — briefs nettoyés (brief de Thibaut) : l'heure dite par le client sur la ligne Arrivée, sans « (WhatsApp, date) »
   // ni tiret ; départ et boissons ; « 10 adultes » ; pas de nuits, pas de « à demander au client », jamais les notes privées.

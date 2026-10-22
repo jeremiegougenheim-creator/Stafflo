@@ -280,5 +280,17 @@ check('réponse jamais mise en cache', /"Cache-Control": "no-store"/.test(src));
   check('factsOf passe par publicFacts, et c’est la seule lecture de house_facts du service', /return f && typeof f === "object" && f\.VILLA \? publicFacts\(f\) : null;/.test(src) && (src.match(/select=house_facts/g) || []).length === 1 && (src.match(/await factsOf\(/g) || []).length >= 3);
 }
 
+// 22/10/2026 (v14) — contact ≠ réservant (Lise pour Seán) ; heure notée par l'hôte gardée quand le client renvoie sa commande
+{
+  check('en-tête du livret : le prénom du contact (details.contact), seul — rien d’autre du séjour', JSON.stringify(M.stayHead({ name: 'Seán', adults: 10, details: { contact: { name: '~Lise Hickey', at: 'x' }, notes: 'privé' } })) === JSON.stringify({ name: 'Seán', pax: 10, contact: 'Lise' }) &&
+    JSON.stringify(M.stayHead({ name: 'Seán', adults: 2, details: {} })) === JSON.stringify({ name: 'Seán', pax: 2 }) && M.contactFirst({ details: { contact: 'Lise' } }) === '');
+  const prev = { by: 'owner', items: [{ id: 'm2', kind: 'meal', q: 1, when: [{ d: '2026-10-26', t: '14:00' }] }, { id: 'm1', kind: 'meal', q: 3, when: [{ d: '2026-10-26', s: 'd' }, { d: '2026-10-30', s: 'd' }] }] };
+  const now = { items: [{ id: 'm2', kind: 'meal', q: 1, when: [{ d: '2026-10-26' }] }, { id: 'm1', kind: 'meal', q: 2, when: [{ d: '2026-10-26', s: 'd' }, { d: '2026-10-31', s: 'd' }] }, { id: 'x0', kind: 'extra', q: 1 }], total: 1, cur: 'MAD' };
+  const kt = M.keepTimes(prev, now);
+  check('le client renvoie sa commande : la case identique garde l’heure notée (goûter lun. 26 · 14h), une case nouvelle n’en invente pas, le reste inchangé',
+    kt.items[0].when[0].t === '14:00' && !kt.items[1].when.some((w) => w.t) && kt.items[2].q === 1 && kt.total === 1 && M.keepTimes(null, now) === now && !now.items[0].when[0].t);
+  check('POST : keepTimes appliqué à la commande nettoyée, avant l’enregistrement et l’alerte', /const o = o0 \? keepTimes\(ordersOf\(r\.stay\), o0\) : null;/.test(src));
+}
+
 console.log(`\n${pass}/${pass + fail} PASS`);
 process.exit(fail ? 1 : 0);
