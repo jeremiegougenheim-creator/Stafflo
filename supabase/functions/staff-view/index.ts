@@ -12,6 +12,8 @@
 //   le voit dans l'Espace et reçoit une alerte. 30 par heure et par lien. Rien d'autre
 //   n'est modifiable depuis ce lien.
 //
+// v24 (23/10/2026) : menus par repas (details.menus, enregistrés dans l'Espace) sur le lien maison et prestataire ; sous Repas, plus les
+// lignes du menu qu'ils portent ; le prestataire ne lit plus une phrase qui ne parle que d'un repas fait par la maison.
 // Lien prestataire (20/10/2026, staff_links.role = 'kitchen' — Lea, le prestataire repas) :
 //   la même page, mais ce qui le concerne : couverts, repas et commande du livret jour par
 //   jour (ses repas seulement — un repas « maison » de la fiche lui est montré « préparé par
@@ -57,7 +59,7 @@ function cors(req: Request): Record<string, string> {
 // ── Calcul (pur, testé par tests/evals-staff.mjs) ─────────────────────────────────────────
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
-export type Lines = { arrival_time: string[]; departure_time: string[]; beds: string[]; meals: string[]; drinks: string[]; note: string[]; extras: string[]; orders: string[]; house_orders: string[]; next_time: string[] };
+export type Lines = { arrival_time: string[]; departure_time: string[]; beds: string[]; meals: string[]; drinks: string[]; note: string[]; extras: string[]; orders: string[]; house_orders: string[]; next_time: string[]; menus: string[] };
 export type StaffStay = {
   id: string; name: string; a: string; d: string; nights: number;
   adults: number | null; children: number | null; infants: number | null; pax: number | null;
@@ -65,6 +67,8 @@ export type StaffStay = {
   /* 20/10 : commande du livret jour par jour — repas du prestataire (orders) et repas « maison » (house_orders), une ligne par
      repas ; la prochaine arrivée après ce départ (next : date, « le jour même ») et son heure (next_time), pour l'interlocation. */
   orders: string; house_orders: string; next: { d: string; same_day: boolean } | null; next_time: string;
+  /* 23/10 (v24) : les menus par repas enregistrés dans l'Espace (details.menus) — « lun. 26 soir : Salade mechouia · … ». */
+  menus: string; ho?: string[];
   lines: Lines; ar?: Partial<Lines>; fr?: Partial<Lines>;
 };
 export type LinkRole = "house" | "kitchen";
@@ -124,12 +128,12 @@ export function orderDedup(lines: string[], drop: string[]): string[] {
   const set = new Set(drop.map(orderKey));
   return lines.filter((x) => !set.has(orderKey(x)));
 }
-export const LINE_FIELDS: (keyof Lines)[] = ["arrival_time", "departure_time", "beds", "meals", "drinks", "note", "extras", "orders", "house_orders", "next_time"];
+export const LINE_FIELDS: (keyof Lines)[] = ["arrival_time", "departure_time", "beds", "meals", "drinks", "note", "extras", "orders", "house_orders", "next_time", "menus"];
 const nl = (t: string) => String(t || "").split("\n").map((x) => x.trim()).filter(Boolean);
 export function linesOf(s: Omit<StaffStay, "lines">): Lines {
   return { arrival_time: s.arrival_time ? [s.arrival_time] : [], departure_time: s.departure_time ? [s.departure_time] : [], beds: s.beds ? [s.beds] : [],
     meals: bulletsOf(s.meals, "sentences"), drinks: bulletsOf(s.drinks, "list"), note: bulletsOf(s.note, "sentences"), extras: s.extras ? s.extras.split(" · ").map((x) => x.trim()).filter(Boolean) : [],
-    orders: nl(s.orders), house_orders: nl(s.house_orders), next_time: s.next_time ? [s.next_time] : [] };
+    orders: nl(s.orders), house_orders: nl(s.house_orders), next_time: s.next_time ? [s.next_time] : [], menus: nl(s.menus) };
 }
 /** Ce qu'un lien ne doit pas voir, selon son rôle (20/10) : vidé AVANT toute traduction, rien ne part. Prestataire : ni couchages,
  *  ni boissons, ni extras. Maison : pas la commande du prestataire (elle a la sienne, house_orders, et les extras). */
@@ -140,6 +144,8 @@ export function forRole(stays: StaffStay[], role: LinkRole): StaffStay[] {
     for (const f of drop) { (o as Row)[f] = ""; o.lines[f] = []; }
     // les lignes de commande montrées à part ne se répètent pas sous Repas (prestataire : les siennes et celles de la maison ; maison : les siennes)
     o.lines.meals = orderDedup(o.lines.meals, role === "kitchen" ? s.lines.orders.concat(s.lines.house_orders) : s.lines.house_orders);
+    // v24 : le prestataire ne lit pas une phrase qui ne parle que d'un repas fait par la maison (le goûter de Lise)
+    if (role === "kitchen" && s.ho && s.ho.length) { const ho = new Set(s.ho); o.lines.meals = o.lines.meals.filter((x) => !ho.has(x)); }
     return o;
   });
 }
@@ -337,6 +343,33 @@ export function schedOnly(sent: string, order: unknown, facts: Row | null, pax: 
   return !(rest.match(/[a-z]{3,}/g) || []).some((w) => !MP_FILL.has(w));
 }
 
+// ── v24 (23/10/2026, mêmes règles que l'Espace : menuSection, mnCourseLine, houseOnlySent) ─────────────────────────────────
+// Menus par repas enregistrés par le propriétaire (details.menus.cells : {d, s?, st, mn, ds}, chaque plat {fr, en} ou {t}) → une
+// ligne par repas. Quand ils existent, les lignes « Entrées - … / Plats - … / Desserts - … » du client et la phrase qui les annonce
+// (« Pour les 3 dîners, pourrions-nous avoir : ») ne sont plus répétées sous Repas.
+export function menusLines(m: unknown): string[] {
+  const cells: Row[] = m && typeof m === "object" && Array.isArray((m as Row).cells) ? (m as Row).cells : [];
+  const nm = (r: Row | null) => (r && typeof r === "object" ? String(r.fr || r.t || "?") : "?").slice(0, 120);
+  return cells.filter((x) => x && /^\d{4}-\d{2}-\d{2}$/.test(String(x.d || "")) && (x.st || x.mn || x.ds))
+    .sort((a, b) => (String(a.d) + (a.s || "")).localeCompare(String(b.d) + (b.s || "")))
+    .slice(0, 30).map((x) => whenTxt([{ d: x.d, s: x.s }]) + " : " + [x.st, x.mn, x.ds].map(nm).join(" · "));
+}
+const MN_LAB = /^(?:starters?|entrees?|mains?|main (?:courses?|dishes)|plats?(?: principaux)?|desserts?)\b[^-–:]{0,24}[-–:]/;
+export const courseLine = (x: string) => MN_LAB.test(mpFold(x).trim());
+export function dropMenuLines(lines: string[]): string[] {
+  return lines.filter((x, i, a) => !courseLine(x) && !(/:\s*$/.test(x.trim()) && a[i + 1] && courseLine(a[i + 1])));
+}
+function rowToHouse(row: Row | undefined, pax: number | null): boolean {
+  if (!row || !row.house) return false;
+  if (pax != null && pax >= 7) return !(row.big === "kitchen" || row.big === "off");
+  return true;
+}
+export function houseOnly(sent: string, facts: Row | null, pax: number | null): boolean {
+  const meals: Row[] = facts && Array.isArray(facts.MEALS) ? facts.MEALS : [], ks = mpKinds(mpFold(sent));
+  if (!ks.length) return false;
+  return ks.every((k) => { const ids = mpRowIds(k, meals, pax); return ids.length > 0 && ids.every((id) => rowToHouse(meals[+id.slice(1)], pax)); });
+}
+
 export function staffView(rows: Row[], todayIso: string, facts: Row | null = null): StaffStay[] {
   const t = day(todayIso);
   if (t == null) return [];
@@ -366,10 +399,15 @@ export function staffView(rows: Row[], todayIso: string, facts: Row | null = nul
         orders: ord.kitchen.join("\n"), house_orders: ord.house.join("\n"),
         next: nx ? { d: iso(nx.a), same_day: nx.a === d } : null,
         next_time: nx ? teamTime(txt(frv(detOf(nx.c), "arrival_time", detOf(nx.c).arrival_time), 400), "a") : "",
+        menus: menusLines(det.menus).join("\n"),
       };
       const lines = linesOf(base);
       lines.meals = lines.meals.filter((x) => !schedOnly(x, det.guest_orders, facts, pax || null)); // v23 : rien que la commande ne dise déjà
-      return { ...base, lines };
+      if (lines.menus.length) lines.meals = dropMenuLines(lines.meals); // v24 : les menus portent les plats
+      const out: StaffStay = { ...base, lines };
+      // les phrases « maison » seules, pour forRole (prestataire) : propriété cachée, jamais dans la réponse
+      Object.defineProperty(out, "ho", { value: lines.meals.filter((x) => houseOnly(x, facts, pax || null)), enumerable: false });
+      return out;
     });
 }
 

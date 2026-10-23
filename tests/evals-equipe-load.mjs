@@ -112,6 +112,16 @@ r = await open({ data: KDATA, lang: 'ar' });
 const kar = await r.page.evaluate(() => document.getElementById('app').innerText);
 check('prestataire en arabe : libellés en darija (couverts, repas commandés, maison, vossul jay, repas confirmés)', /عدد الناس ف الماكلة/.test(kar) && /الماكلة اللي طلب الكليان/.test(kar) && /كتوجدها الدار، ماشي نتوما/.test(kar) && /الوصول الجاي من بعد هاد الخروج/.test(kar) && /الماكلة مأكدة/.test(kar) && !/النعاس|المشروبات/.test(kar), kar);
 await r.ctx.close();
+// 23/10 — menus par repas (staff-view v24 : details.menus enregistrés dans l'Espace) : une ligne par repas, prestataire et maison
+const MSTAY = { ...KSTAY, menus: 'mer. 21 soir : Salade mechouia · Poisson à la charmoula · Cornes de gazelle\njeu. 22 midi : Zaalouk · Couscous (poulet) · ?',
+  lines: { ...KSTAY.lines, menus: ['mer. 21 soir : Salade mechouia · Poisson à la charmoula · Cornes de gazelle', 'jeu. 22 midi : Zaalouk · Couscous (poulet) · ?'] } };
+r = await open({ data: { ...KDATA, stays: [MSTAY] } });
+kt = await r.page.evaluate(() => document.getElementById('app').innerText);
+check('prestataire : « Menus » — un repas par ligne, juste sous ses repas commandés', /Repas commandés par le client[\s\S]*Menus\s*mer\. 21 soir : Salade mechouia · Poisson à la charmoula · Cornes de gazelle\s*jeu\. 22 midi : Zaalouk · Couscous \(poulet\) · \?/.test(kt) && !r.errs.length, [r.errs, kt]);
+await r.ctx.close();
+r = await open({ data: { ...DATA, role: 'house', stays: [{ ...MSTAY, orders: '', lines: { ...MSTAY.lines, orders: [] } }] } });
+check('maison : les menus aussi (courses, service)', /Menus\s*mer\. 21 soir : Salade mechouia/.test(await r.page.evaluate(() => document.getElementById('app').innerText)));
+await r.ctx.close();
 // Lien maison : les repas « maison » commandés et la prochaine arrivée en plus, le reste inchangé
 r = await open({ data: { ...DATA, role: 'house', stays: [{ ...KSTAY, beds: '4 couples', orders: '', lines: { ...KSTAY.lines, beds: ['4 couples'], orders: [] } }] } });
 const ht = await r.page.evaluate(() => document.getElementById('app').innerText);

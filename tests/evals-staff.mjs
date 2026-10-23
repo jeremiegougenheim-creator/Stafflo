@@ -58,7 +58,7 @@ check('séjour terminé hier exclu, départ du jour inclus', !names.includes('Pa
 check('au-delà de 30 jours exclu', !names.includes('Trop L.'), names);
 check('dates incohérentes exclues', !names.includes('Dates F.'), names);
 check('ordre par arrivée', names.join('|') === 'Part A.|Tomas H.|Arnaud D.|Rotation J.|Seán', names.join('|'));
-const KEYS = ['id', 'name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'departure_time', 'beds', 'meals', 'drinks', 'note', 'extras', 'same_day', 'orders', 'house_orders', 'next', 'next_time', 'lines'];
+const KEYS = ['id', 'name', 'a', 'd', 'nights', 'adults', 'children', 'infants', 'pax', 'arrival_time', 'departure_time', 'beds', 'meals', 'drinks', 'note', 'extras', 'same_day', 'orders', 'house_orders', 'next', 'next_time', 'menus', 'lines'];
 check('champs exactement ceux prévus (aucun prix, note, téléphone, email, code)', V.every((s) => Object.keys(s).join(',') === KEYS.join(',')), Object.keys(V[0]).join(','));
 const flat = JSON.stringify(V);
 for (const bad of ['1298', 'TARIFS', '+44', 'f@x.com', 'Royaume', 'HMX', 'privé', 'Herrera'])
@@ -339,6 +339,34 @@ check('sw.js ne met pas equipe.html en cache', sw.includes("url.includes('equipe
     details: { guest_orders: OW } }];
   const sv = M.staffView(rowsX, '2026-10-24', FX)[0];
   check('vue équipe : sous Repas, l’annonce du menu et le menu — plus la phrase des jours (dans la commande)', JSON.stringify(sv.lines.meals) === JSON.stringify(['For the 3 dinners could we have:', 'Starters - mechouia salad, zaalouk']), sv.lines.meals);
+}
+
+// 23/10/2026 (v24) — menus par repas enregistrés dans l'Espace (details.menus) : une ligne par repas sur le lien, maison et prestataire ;
+// sous Repas, plus les lignes du menu ni la phrase qui l'annonce ; le prestataire ne lit plus la phrase du goûter (repas fait par la maison).
+{
+  const FX = { MEALS: [{ n: ['Petit-déjeuner', 'Breakfast'] }, { n: ['Déjeuner ou dîner (sur demande)', 'Lunch or dinner (on request)'], a: ['650 MAD'], b: ['850 MAD'] }, { n: ['Goûter (sur demande)', 'Afternoon tea (on request)'], house: true, a: ['450 MAD'], b: ['450 MAD'] }] };
+  const OW = { by: 'owner', total: 3000, items: [{ id: 'm1', kind: 'meal', n: ['Déjeuner ou dîner (sur demande)'], q: 3, when: [{ d: '2026-10-26', s: 'd' }, { d: '2026-10-30', s: 'd' }, { d: '2026-10-31', s: 'd' }] },
+    { id: 'm2', kind: 'meal', n: ['Goûter (sur demande)'], q: 1, when: [{ d: '2026-10-26', t: '14:00' }] }] };
+  const d = (fr, extra) => ({ key: 'X', i: 0, fr, en: fr, ...(extra || {}) });
+  const MENUS = { at: '2026-10-23T08:00:00Z', by: 'owner', cells: [
+    { d: '2026-10-30', s: 'd', st: d('Zaalouk'), mn: d('Tajine d’agneau aux pruneaux & amandes'), ds: d('Pastilla au lait') },
+    { d: '2026-10-26', s: 'd', st: d('Salade mechouia'), mn: d('Poisson à la charmoula douce'), ds: d('Pâtisseries marocaines assorties') },
+    { d: '2026-10-31', s: 'd', st: { t: 'pumpkin salad' }, mn: d('Couscous (poulet)'), ds: null }] };
+  const ML = M.menusLines(MENUS);
+  check('menus : une ligne par repas, dans l’ordre des jours, noms français de la carte, mots du client si hors carte, « ? » si vide',
+    JSON.stringify(ML) === JSON.stringify(['lun. 26 soir : Salade mechouia · Poisson à la charmoula douce · Pâtisseries marocaines assorties', 'ven. 30 soir : Zaalouk · Tajine d’agneau aux pruneaux & amandes · Pastilla au lait', 'sam. 31 soir : pumpkin salad · Couscous (poulet) · ?']), ML);
+  check('menus absents ou illisibles → rien', M.menusLines(null).length === 0 && M.menusLines({ cells: [{ d: 'x' }] }).length === 0 && M.menusLines({ cells: 'x' }).length === 0);
+  const meals = 'please could we do the afternoon tea by the pool on Monday 26th with a birthday cake? Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? For the 3 dinners could we have: Starters - mechouia salad, zaalouk Mains - fish with charmoula Desserts - gazelle horns. 1 vegetarian, nothing spicy.';
+  const rows = [{ id: 's1', name: 'Seán', arrival: '2026-10-25', departure: '2026-11-01', adults: 10, booking_status: 'confirmed', meals, details: { guest_orders: OW, menus: MENUS } }];
+  const all = M.staffView(rows, '2026-10-24', FX);
+  const kv = M.forRole(all, 'kitchen')[0], hv = M.forRole(all, 'house')[0];
+  check('lien prestataire : menus présents ; sous Repas plus l’annonce ni « Starters / Mains / Desserts », plus le goûter (maison) ; « 1 vegetarian » gardé',
+    kv.lines.menus.length === 3 && JSON.stringify(kv.lines.meals) === JSON.stringify(['1 vegetarian, nothing spicy.']) && !('ho' in kv), kv.lines.meals);
+  check('lien maison : menus présents ; le goûter avec le gâteau gardé (c’est la maison qui le fait) ; jamais de prix', hv.lines.menus.length === 3 && hv.lines.meals.some((x) => /afternoon tea by the pool/.test(x)) && !hv.lines.meals.some((x) => /^Starters/.test(x)) && !JSON.stringify(hv).includes('MAD') && !('ho' in hv), hv.lines.meals);
+  const nomenu = M.forRole(M.staffView([{ ...rows[0], details: { guest_orders: OW } }], '2026-10-24', FX), 'kitchen')[0];
+  check('sans menus enregistrés : les lignes du client restent (rien n’est retiré sans menus)', nomenu.lines.menus.length === 0 && nomenu.lines.meals.some((x) => /^Starters - /.test(x)) && nomenu.lines.meals.includes('For the 3 dinners could we have:'), nomenu.lines.meals);
+  check('« menus » traduit et mis en cache comme les autres champs', M.LINE_FIELDS.includes('menus'));
+  check('phrase « maison » seule : goûter oui, dîner non, phrase sans repas non', M.houseOnly('could we do the afternoon tea on Monday 26th?', FX, 10) && !M.houseOnly('Could we do dinner on Monday 26th?', FX, 10) && !M.houseOnly('1 vegetarian', FX, 10));
 }
 
 console.log(`\n${pass}/${pass + fail} PASS`);

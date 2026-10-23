@@ -1506,8 +1506,8 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
       await r.page.click('#st-p1 [data-a="panel"][data-v="mrecap"]'); await r.page.waitForTimeout(200);
       const rc = await r.page.inputValue('#tx-p1');
       check('récap au client : à Ana (le contact), les 4 repas avec jour, heure et prix de la fiche, le total, une entrée / un plat / un dessert proposés par soir, le gâteau repris et la question posée',
-        /^(Hello|Bonjour) Ana,/.test(rc) && /26 [Oo]ct\.? · (14:00|14h) — (Afternoon tea|Goûter)/.test(rc) && (rc.match(/— (Dinner|Dîner)/g) || []).length === 3 && /2\s?,?950 MAD/.test(rc) &&
-        /mechouia salad · fish with chermoula · assorted Moroccan pastries|salade méchouia · poisson à la chermoula/.test(rc) && /pumpkin salad with cinnamon · chicken couscous · gazelle horns|salade de potiron à la cannelle · couscous au poulet · cornes de gazelle/.test(rc) &&
+        /^(Hello|Bonjour) Ana,/.test(rc) && /26 [Oo]ct\.? · (14:00|14h) — (Afternoon tea|Goûter)/.test(rc) && (rc.match(/— (Dinner|Dîner) ?: 850/g) || []).length === 3 && /2\s?,?950 MAD/.test(rc) &&
+        /Mechouia salad · Fish with charmoula · Assorted Moroccan pastries|Salade mechouia · Poisson à la charmoula · Pâtisseries marocaines assorties/.test(rc) && /Pumpkin salad with cinnamon · Couscous \(chicken\) · Gazelle horns|Salade de potiron à la cannelle · Couscous \(poulet\) · Cornes de gazelle/.test(rc) && // 23/10 : les noms de la carte
         /birthday cake \(something either vanilla or lemon flavoured\)|gâteau d'anniversaire \(vanille ou citron\)/.test(rc) && !/Élias/.test(rc), rc);
       await r.page.click('#st-p1 [data-a="mpsave"]'); await r.page.waitForTimeout(400);
       const mo = (r.calls.filter((x) => x.kind === 'stay').pop() || { body: {} }).body.details?.guest_orders;
@@ -1519,9 +1519,10 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
         /Commande du client d’après son message · [^:]+: 3 × Brunch, déjeuner ou dîner \(sur demande\) — lun\. 26 soir, ven\. 30 soir, sam\. 31 soir · 1 × Goûter \(sur demande\) — lun\. 26 · 14h — 2\s?950 MAD/.test(pc3) && !(await r.page.$('#st-p1 .mplan')) && !!(await r.page.$('#st-p1 [data-a="panel"][data-v="mrecap"]')), pc3.slice(0, 700));
       await r.page.click('#st-p1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(300);
       const kp = await r.page.inputValue('#tx-p1'), kr = sect(kp, 'Repas') || { items: [] };
-      check('brief prestataire : « Repas commandés » (pas « Commande du livret ») jour par service, heure du goûter ; sous Repas, plus les phrases qui ne disent que jour et repas — le gâteau, la piscine et le menu restent',
+      check('brief prestataire : « Repas commandés » (pas « Commande du livret ») jour par service, heure du goûter ; sous Repas, plus les phrases qui ne disent que jour et repas — le gâteau et la piscine restent ; le menu passe en « Menus » (23/10)',
         JSON.stringify((sect(kp, 'Repas commandés') || {}).items) === '["3 × Brunch, déjeuner ou dîner (sur demande) — lun. 26 soir, ven. 30 soir, sam. 31 soir","1 × Goûter (sur demande) — lun. 26 · 14h"]' && !sect(kp, 'Commande du livret') &&
-        !kr.items.some((x) => /^Pourrions-nous dîner le lundi 26|vers 14h \?$/.test(x)) && kr.items.some((x) => /gâteau d'anniversaire \(vanille ou citron\)/.test(x)) && kr.items.includes('Pour les 3 dîners, pourrions-nous avoir :') && kr.items.some((x) => /^Entrées - salade méchouia/.test(x)), kp);
+        !kr.items.some((x) => /^Pourrions-nous dîner le lundi 26|vers 14h \?$/.test(x)) && kr.items.some((x) => /gâteau d'anniversaire \(vanille ou citron\)/.test(x)) && !kr.items.includes('Pour les 3 dîners, pourrions-nous avoir :') && !kr.items.some((x) => /^Entrées - /.test(x)) &&
+        (sect(kp, 'Menus (à confirmer par le client)') || { items: [] }).items.length === 3, kp);
       await r.page.click('#st-p1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(300);
       const bp = await r.page.inputValue('#tx-p1');
       check('brief maison : « 📞 Client : Ana · pas encore de numéro » — le contact, pas le réservant', /📞 \*Client\* : Ana · pas encore de numéro/.test(bp), (bp.match(/^📞.*$/m) || [])[0]);
@@ -1541,6 +1542,85 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
       check('Retrouver un client : par le nom du contact (« lise » → Élias)', /Élias/.test(await r.page.innerText('#main')) && !r.errs.length, r.errs);
       await r.ctx.close();
     }
+  }
+  // 23/10/2026 — [Menus par repas — cas réel : Lise, fautes de frappe comprises] Le propriétaire a donné la règle (une entrée, un plat, un
+  // dessert par repas), Lise a choisi 3 entrées, 3 plats, 3 desserts « for the 3 dinners ». Chaque plat est retrouvé dans la carte de la
+  // fiche (« zaolouk », « Morrocon », « charmoula »), un par dîner dans l'ordre de sa liste ; briefs, récap et lien de l'équipe suivent.
+  {
+    const KM = JSON.parse(JSON.stringify(KF)); KM.MEALS[2] = { ...KM.MEALS[2], house: true };
+    KM.TEAM = [{ name: 'Saïd', brief: true, phone: '+212 600 000 011', role: ['majordome', 'house manager'] }, { name: 'Léa', brief: true, kitchen: true, phone: '+33 6 20 80 11 27', role: ['prestataire repas', 'meal provider'] }];
+    const VM = { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KM };
+    const LISE = 'I have had a look at the pack you have sent us, and please could we do the afternoon tea by the pool on Monday 26th with a birthday cake (something either vanilla or lemon flavoured)? Would it be possible do this closer to lunch time around 2pm? Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? For the 3 dinners could we have: Starters - mechouia salad, zaolouk, pumpkin salad with cinnamon Mains - fish with charmoula, lamb tajine, chicken couscous Desserts - assorted Morrocon pastries, pastilla au lait, gazelle horns';
+    const GO = { at: '2026-10-22T23:22:55.932Z', by: 'owner', src: 'message', cur: 'MAD', total: 3000, items: [
+      { id: 'm1', kind: 'meal', n: ['Brunch, déjeuner ou dîner (sur demande)', 'Brunch, lunch or dinner (on request)'], q: 3, unit: 850, sub: 2550, when: [{ d: '2026-10-26', s: 'd' }, { d: '2026-10-30', s: 'd' }, { d: '2026-10-31', s: 'd' }] },
+      { id: 'm2', kind: 'meal', n: ['Goûter (sur demande)', 'Afternoon tea (on request)'], q: 1, unit: 450, sub: 450, when: [{ d: '2026-10-26', t: '14:00' }] }] };
+    const SM = (meals, det) => [{ id: 'q1', name: 'Seán', arrival: '2026-10-25', departure: '2026-11-01', adults: 10, children: 0, infants: 1, booking_status: 'confirmed', source: 'Airbnb', phone: '', meals,
+      details: { guest_orders: GO, contact: { name: 'Lise Hickey', at: '2026-10-20T10:00:00Z' }, ...(det || {}) } }];
+    let menuAi = null;
+    r = await open({ tab: 'sejours', villa: VM, stays: SM(LISE), clock: '2026-10-22T10:00:00Z', ai: (b) => (b.task === 'write_staff' && /composes les menus/.test(b.system) && menuAi ? menuAi(b) : { text: '' }) });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="q1"]'); await r.page.waitForTimeout(400);
+    const mb = await r.page.innerText('#st-q1 .mnu').catch(() => '');
+    check('menus par repas : chaque plat de Lise retrouvé dans la carte (« zaolouk », « Morrocon », « chicken couscous » → Couscous (poulet)), un par dîner dans l’ordre de sa liste',
+      /• lun\. 26 soir : Salade mechouia · Poisson à la charmoula · Pâtisseries marocaines assorties\n• ven\. 30 soir : Zaalouk · Tajine d'agneau aux pruneaux & amandes · Pastilla au lait\n• sam\. 31 soir : Salade de potiron à la cannelle · Couscous \(poulet\) · Cornes de gazelle/.test(mb) &&
+      /Les plats choisis par Lise/.test(mb) && !r.calls.some((x) => x.kind === 'stay'), mb);
+    await r.page.click('#st-q1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(250);
+    const kb = await r.page.inputValue('#tx-q1');
+    check('brief prestataire : « 📋 Menus (à confirmer par le client) », un repas par puce ; sous Repas plus le menu brut, ni l’annonce, ni le goûter (fait par la maison)',
+      JSON.stringify((sect(kb, 'Menus (à confirmer par le client)') || {}).items) === JSON.stringify(["lun. 26 soir : Salade mechouia · Poisson à la charmoula · Pâtisseries marocaines assorties", "ven. 30 soir : Zaalouk · Tajine d'agneau aux pruneaux & amandes · Pastilla au lait", "sam. 31 soir : Salade de potiron à la cannelle · Couscous (poulet) · Cornes de gazelle"]) &&
+      !/Starters|Entrées -|For the 3 dinners|Pour les 3 dîners|afternoon tea|goûter de l/.test(kb), kb);
+    await r.page.click('#st-q1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(250);
+    const hb = await r.page.inputValue('#tx-q1');
+    check('brief maison : les menus aussi (courses, service) ; le goûter et le gâteau restent sous Repas', !!sect(hb, 'Menus (à confirmer par le client)') && /birthday cake/.test(hb) && !/Starters -/.test(hb), hb);
+    await r.page.click('#st-q1 [data-a="panel"][data-v="mrecap"]'); await r.page.waitForTimeout(250);
+    const rc = await r.page.inputValue('#tx-q1');
+    check('récap à Lise : « For your 3 dinners, … from your choices. Our suggestion: », noms anglais de la carte (Couscous (chicken)), « another order »',
+      /For your 3 dinners, one starter, one main and one dessert each time, from your choices\. Our suggestion:\n• Mon, 26 Oct — Dinner: Mechouia salad · Fish with charmoula · Assorted Moroccan pastries\n• Fri, 30 Oct — Dinner: Zaalouk · Lamb tajine with prunes & almonds · Pastilla au lait\n• Sat, 31 Oct — Dinner: Pumpkin salad with cinnamon · Couscous \(chicken\) · Gazelle horns\nTell us if you would like them in another order\./.test(rc), rc);
+    await r.page.click('#st-q1 [data-a="mnsave"]'); await r.page.waitForTimeout(300);
+    const ms = (r.calls.filter((x) => x.kind === 'stay').pop() || { body: {} }).body.details;
+    check('« Enregistrer les menus » → details.menus : 3 repas, plats de la carte (clé, rang, variante) avec noms FR / EN pour le lien de l’équipe ; la commande intacte',
+      !!ms && !!ms.menus && ms.menus.by === 'client' && ms.menus.cells.length === 3 && ms.menus.cells[2].mn.key === 'MAINS' && ms.menus.cells[2].mn.v === 0 && ms.menus.cells[2].mn.fr === 'Couscous (poulet)' && ms.menus.cells[2].mn.en === 'Couscous (chicken)' && ms.menus.cells[0].d === '2026-10-26' && ms.menus.cells[0].s === 'd' && !!ms.guest_orders, ms && ms.menus);
+    // Modifier : un dessert changé à la main
+    await r.page.click('#st-q1 [data-a="mnedit"]'); await r.page.waitForTimeout(200);
+    const bou = await r.page.$eval('#mn-q1-2-ds', (sel) => [...sel.options].find((o) => /Bousboussa/.test(o.textContent)).value);
+    await r.page.selectOption('#mn-q1-2-ds', bou); await r.page.click('#st-q1 [data-a="mnok"]'); await r.page.waitForTimeout(300);
+    const me = (r.calls.filter((x) => x.kind === 'stay').pop() || { body: {} }).body.details;
+    check('Modifier : le dessert du samedi devient Bousboussa (by owner), le reste inchangé', !!me && me.menus.by === 'owner' && me.menus.cells[2].ds.key === 'DESSERTS' && me.menus.cells[2].ds.fr === 'Bousboussa' && me.menus.cells[0].st.fr === 'Salade mechouia' && me.menus.cells[2].mn.fr === 'Couscous (poulet)', me && me.menus.cells[2]);
+    await r.ctx.close();
+    // Sans menu dans le message : « Composer avec ARIA » — seulement des plats de la carte, validés un par un
+    const NOMENU = 'Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? One of us is vegetarian.';
+    let reply = null;
+    r = await open({ tab: 'sejours', villa: VM, stays: SM(NOMENU), clock: '2026-10-22T10:00:00Z', ai: (b) => (b.task === 'write_staff' && /composes les menus/.test(b.system) ? reply(b) : { text: '' }) });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="q1"]'); await r.page.waitForTimeout(300);
+    check('sans menu : « Aucun menu choisi », bouton « Composer avec ARIA », rien d’inventé dans les briefs', /Aucun menu choisi/.test(await r.page.innerText('#st-q1 .mnu')) && !!(await r.page.$('#st-q1 [data-a="mnaria"]')));
+    reply = () => ({ text: JSON.stringify({ menus: [{ cell: 'c0', st: 'S1', mn: 'M8', ds: 'D2' }, { cell: 'c1', st: 'S5', mn: 'M6', ds: 'D5' }, { cell: 'c2', st: 'S99', mn: 'M3', ds: 'D1' }] }) });
+    await r.page.click('#st-q1 [data-a="mnaria"]'); await r.page.waitForTimeout(400);
+    const aq = r.calls.filter((x) => x.kind === 'ai').pop();
+    const au = aq ? JSON.parse(aq.body.user) : {};
+    check('ARIA reçoit les listes de la carte (identifiants), les 3 repas, ce qu’a écrit le client (végétarien) — et un plat hors liste (S99) fait tout rejeter',
+      !!aq && aq.body.json === true && au.meals.length === 3 && au.starters.some((x) => /^S1 = Salade mechouia/.test(x)) && /vegetarian/.test(au.client_text) && /n’a pas pu composer/.test(await r.page.innerText('#toastHost')) && /Aucun menu choisi/.test(await r.page.innerText('#st-q1 .mnu')), au);
+    reply = () => ({ text: JSON.stringify({ menus: [{ cell: 'c0', st: 'S1', mn: 'M8', ds: 'D2' }, { cell: 'c1', st: 'S5', mn: 'M6', ds: 'D5' }, { cell: 'c2', st: 'S6', mn: 'M3', ds: 'D1' }] }) });
+    await r.page.click('#st-q1 [data-a="mnaria"]'); await r.page.waitForTimeout(400);
+    const ab = await r.page.innerText('#st-q1 .mnu');
+    check('réponse valide : brouillon « Proposé par ARIA … relisez, puis Enregistrer », plats de la carte ; rien d’écrit avant le geste',
+      /Proposé par ARIA/.test(ab) && /• lun\. 26 soir : Salade mechouia · Poisson à la charmoula · Pâtisseries marocaines assorties/.test(ab) && /• ven\. 30 soir : Zaalouk · Tajine de légumes · Pastilla au lait/.test(ab) && !r.calls.some((x) => x.kind === 'stay'), ab);
+    await r.page.click('#st-q1 [data-a="mnsave"]'); await r.page.waitForTimeout(300);
+    const ma = (r.calls.filter((x) => x.kind === 'stay').pop() || { body: {} }).body.details;
+    check('« Enregistrer les menus » : by aria, 3 repas', !!ma && ma.menus.by === 'aria' && ma.menus.cells.length === 3 && ma.menus.cells[1].mn.fr === 'Tajine de légumes', ma && ma.menus);
+    await r.ctx.close();
+    // ARIA ne doit pas jeter les choix du client ; « couscous » seul (deux couscous à la carte) n'est pas deviné ; 2 entrées pour 3 dîners → « ? »
+    const UNEVEN = 'Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? For the 3 dinners could we have: Starters - mechouia salad, zaolouk Mains - couscous, lamb tajine, fish with charmoula Desserts - gazelle horns';
+    r = await open({ tab: 'sejours', villa: VM, stays: SM(UNEVEN), clock: '2026-10-22T10:00:00Z', ai: (b) => (b.task === 'write_staff' && /composes les menus/.test(b.system) ? reply(b) : { text: '' }) });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="q1"]'); await r.page.waitForTimeout(300);
+    const ub = await r.page.innerText('#st-q1 .mnu');
+    check('2 entrées pour 3 dîners → « ? » ; « couscous » seul gardé tel quel (pas deviné) ; un seul dessert → le même chaque soir',
+      /• lun\. 26 soir : \? · couscous · Cornes de gazelle\n• ven\. 30 soir : \? · Tajine d'agneau aux pruneaux & amandes · Cornes de gazelle\n• sam\. 31 soir : \? · Poisson à la charmoula · Cornes de gazelle/.test(ub) && /n’a pas donné autant de plats que de repas/.test(ub), ub);
+    reply = () => ({ text: JSON.stringify({ menus: [{ cell: 'c0', st: 'S0', mn: 'M7', ds: 'D1' }, { cell: 'c1', st: 'S2', mn: 'M7', ds: 'D1' }, { cell: 'c2', st: 'S3', mn: 'M8', ds: 'D1' }] }) });
+    await r.page.click('#st-q1 [data-a="mnaria"]'); await r.page.waitForTimeout(400);
+    check('ARIA qui laisse tomber un plat choisi par le client (salade mechouia, tajine d’agneau) → rejeté, rien ne change', /n’a pas pu composer/.test(await r.page.innerText('#toastHost')) && !/Proposé par ARIA/.test(await r.page.innerText('#st-q1 .mnu')) && !r.errs.length, r.errs);
+    await r.ctx.close();
   }
   // 17/10/2026 — briefs nettoyés (brief de Thibaut) : l'heure dite par le client sur la ligne Arrivée, sans « (WhatsApp, date) »
   // ni tiret ; départ et boissons ; « 10 adultes » ; pas de nuits, pas de « à demander au client », jamais les notes privées.
