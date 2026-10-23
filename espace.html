@@ -2113,16 +2113,19 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return card('shopping-bag', x.title, body);
   }
   function reviewWindowEnd(c) { return c.d + 14; } /* Airbnb : 14 jours après le départ */
-  function reviewOpen(c) { var t = todayNum(); return /airbnb/i.test(String(c.source || '')) && !c.is_comp && !c.details.reviewDoneAt && t > c.d && t <= reviewWindowEnd(c); }
+  /* 23/10/2026 : dès le jour du départ (avant : le lendemain). Airbnb ouvre l'avis le jour même — l'email « Write a review
+     for … » arrivait entre 14h et 18h le jour du départ (Eline, Helen, Felipe, Thibaut) et l'Espace attendait le lendemain. */
+  function reviewOpen(c) { var t = todayNum(); return /airbnb/i.test(String(c.source || '')) && !c.is_comp && !c.details.reviewDoneAt && t >= c.d && t <= reviewWindowEnd(c); }
   /* 18/10/2026 : « Ouvrir les avis Airbnb » menait à airbnb.com/hosting/reviews — une page 404 chez Airbnb. Le bon lien est
      dans l'email d'Airbnb « Write a review for Felipe’s group » / « Felipe is waiting for your review » :
      /hosting/reviews/<id>/edit, le formulaire de CET avis. On le lit dans les emails reçus entre la veille du départ et la
      fin des 14 jours, dont l'objet porte le prénom du séjour ; un seul avis possible, sinon aucun (jamais deviné).
      Repli : /users/reviews (la page des avis du compte, celle des emails « X has left a review »). */
-  var RVL = {}, RV_ALL = 'https://www.airbnb.com/users/reviews';
+  var RVL = {}, RVL_AT = {}, RV_ALL = 'https://www.airbnb.com/users/reviews';
   function reviewLink(c) {
-    if (Object.prototype.hasOwnProperty.call(RVL, c.id)) return;
-    RVL[c.id] = '';
+    // 23/10 : l'avis s'ouvre le jour du départ, l'email d'Airbnb arrive l'après-midi — pas encore trouvé → nouvelle lecture après 10 min
+    if (Object.prototype.hasOwnProperty.call(RVL, c.id) && (RVL[c.id] || Date.now() - (RVL_AT[c.id] || 0) < 600000)) return;
+    RVL[c.id] = ''; RVL_AT[c.id] = Date.now();
     var first = fold(String(c.name || '').split(/[\s,&/]+/)[0]).replace(/[^a-z'-]/g, '');
     if (first.length < 2) return;
     var iso = function (n) { return new Date(n * 86400000).toISOString(); };
@@ -3526,6 +3529,9 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (mo) h += '<p class="state go"><i class="ti ti-chef-hat" aria-hidden="true"></i><span>' + esc(l.mealsOkAt + (linkName(mo.link_id) ? linkName(mo.link_id) + ' · ' : '') + new Date(mo.created_at).toLocaleString(U.lang === 'en' ? 'en-GB' : 'fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</span></p>';
     var rr = readyReport(c);
     if (rr) h += '<p class="state go"><i class="ti ti-bed" aria-hidden="true"></i><span>' + esc(l.roomsReadyAt + (linkName(rr.link_id) ? linkName(rr.link_id) + ' · ' : '') + new Date(rr.created_at).toLocaleString(U.lang === 'en' ? 'en-GB' : 'fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</span></p>';
+    // 23/10 : le jour du départ, l'avis Airbnb est sur la carte du séjour (demain, il passe dans « Partis récemment »)
+    var rvb = c.d === t ? reviewBlock(c) : '';
+    if (rvb) h += '<div class="rvday" id="rd-' + esc(c.id) + '" style="display:flex;flex-direction:column;gap:6px">' + rvb + '</div>';
     if (open) h += stayDetail(c);
     return h + '</article>';
   }
@@ -3714,6 +3720,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     if (c.details.reviewDoneAt) return '<span class="sub" style="color:var(--go)"><i class="ti ti-star" aria-hidden="true"></i> ' + esc(l.rvDoneOn + fmtDay(dayNum(String(c.details.reviewDoneAt).slice(0, 10)))) + '</span>';
     if (!reviewOpen(c)) return '';
     var pv = RV[c.id] || '', dr = DR['rv-' + c.id], thread = c.details.airbnb_thread_id;
+    if (pv === 'host' && !RVL[c.id]) setTimeout(function () { reviewLink(c); }, 0);
     var h = '<span class="sub" style="color:var(--wait)"><i class="ti ti-star" aria-hidden="true"></i> ' + esc(l.rvUntil(fmtDay(reviewWindowEnd(c)))) + '</span>' +
       '<div class="acts">' +
       '<button type="button" class="act" data-a="rv" data-id="' + id + '" data-v="ask" aria-pressed="' + (pv === 'ask') + '"><i class="ti ti-message" aria-hidden="true"></i>' + esc(l.rvAsk) + '</button>' +
@@ -5354,11 +5361,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'goto' && (c = c || pastById(id))) {
       // départ et avis : leur carte est dans Séjours (un départ du jour n'est plus « en ce moment »)
       U.tab = (v === 'depart' || v === 'turn' || v === 'review' || v === 'order' || v === 'complete' || v === 'prov') ? 'sejours' : 'jour';
-      if (v === 'review') { RV[c.id] = RV[c.id] || 'ask'; }
+      if (v === 'review') { RV[c.id] = RV[c.id] || 'ask'; U.panel[c.id] = ''; }
       else { U.open[c.id] = true; U.panel[c.id] = { phone: waDigits(c.phone) ? '' : 'phone', meals: 'meals', brief: 'brief', turn: 'turn', depart: 'depart', team: 'edit', complete: 'edit', livret: LINKS && LINKS.get(c.id) ? 'livret' : '', reg: regOf(c) ? 'reg' : '', extra: 'extra', lnudge: 'lnudge', prov: provPending(c).length ? 'prov:' + provPending(c)[0].key : '' }[v] || ''; }
       if (v === 'order') U.open[c.id] = true;
+      if (v !== 'review' && U.panel[c.id]) RV[c.id] = '';
       render();
-      var el2 = document.getElementById((v === 'review' ? 'pa-' : 'st-') + c.id);
+      var el2 = document.getElementById((v === 'review' && c.d < todayNum() ? 'pa-' : 'st-') + c.id); // 23/10 : le jour du départ, l'avis est sur la carte
       if (el2 && el2.scrollIntoView) el2.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     else if (a === 'departdone' && c && !c.details.departMsgAt) { setDetail(c, 'departMsgAt', new Date().toISOString()); }
@@ -5387,10 +5395,10 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         MND[c.id] = { by: 'owner', cells: cells9 }; U.mnEdit = ''; mnSave(c, 'owner');
       }
     }
-    else if (a === 'rv') { var cr = byId(id) || pastById(id); if (cr) { RV[cr.id] = RV[cr.id] === v ? '' : v; if (v === 'host') reviewLink(cr); if (v === 'host' && !(DR['rv-' + cr.id] && DR['rv-' + cr.id].text)) reviewDraft(cr); render(); } }
+    else if (a === 'rv') { var cr = byId(id) || pastById(id); if (cr) { RV[cr.id] = RV[cr.id] === v ? '' : v; if (RV[cr.id]) U.panel[cr.id] = ''; if (v === 'host') reviewLink(cr); if (v === 'host' && !(DR['rv-' + cr.id] && DR['rv-' + cr.id].text)) reviewDraft(cr); render(); } }
     else if (a === 'rvre') { var cre = byId(id) || pastById(id) || allById(id); if (cre) reviewDraft(cre); }
     else if (a === 'rvdone') { var cd = byId(id) || pastById(id); if (cd && !cd.details.reviewDoneAt) { RV[cd.id] = ''; setDetail(cd, 'reviewDoneAt', new Date().toISOString()); } }
-    else if (a === 'panel' && c) { U.panel[c.id] = U.panel[c.id] === v ? '' : v; render(); }
+    else if (a === 'panel' && c) { U.panel[c.id] = U.panel[c.id] === v ? '' : v; if (U.panel[c.id]) RV[c.id] = ''; render(); } // 23/10 : un seul panneau à la fois (avis du jour du départ)
     else if (a === 'nsopen') { U.newStay = true; U.ns = U.ns || {}; U.tab = 'sejours'; try { history.replaceState(null, '', '#sejours'); } catch (er) {} render(); var nf = document.getElementById('ns-name'); if (nf) { nf.focus(); if (nf.scrollIntoView) nf.scrollIntoView({ block: 'center' }); } }
     else if (a === 'nscancel') { U.newStay = false; U.ns = null; render(); }
     else if (a === 'nspaste') { U.ns = Object.assign(nsRead(), { pasteOpen: true }); render(); var pe = document.getElementById('ns-paste'); if (pe) pe.focus(); }
