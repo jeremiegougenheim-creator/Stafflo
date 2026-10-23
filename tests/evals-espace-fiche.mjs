@@ -1895,6 +1895,39 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.ctx.close();
 }
 
+// ── Avis le jour du départ (23/10/2026) : Airbnb ouvre l'avis le jour même (email « Write a review for … » entre 14h et 18h) ──
+{
+  const ST = () => [
+    { id: 'dj1', name: 'Thibaut Vauclare', arrival: iso(-4), departure: iso(0), adults: 10, booking_status: 'confirmed', source: 'Airbnb', phone: '+33 6 00 00 00 01', price: 2198, details: {} },
+    { id: 'dj2', name: 'Paul Direct', arrival: iso(-3), departure: iso(0), adults: 2, booking_status: 'confirmed', source: 'Direct', phone: '+33 6 00 00 00 02', price: 900, details: {} },
+    { id: 'dj3', name: 'Marie Demain', arrival: iso(-2), departure: iso(1), adults: 2, booking_status: 'confirmed', source: 'Airbnb', phone: '+33 6 00 00 00 03', price: 900, details: {} }];
+  const V = { villa_name: 'Riad Zina', owner_name: 'Nadia', house_facts_ref: 'villa-facts.js', house_facts: PILOT };
+  const RQ = [{ subject: 'Write a review for Thibaut’s group', body: 'Write a review https://www.airbnb.co.uk/hosting/reviews/1800000000000000001/edit?c=x' }];
+  r = await open({ tab: 'sejours', villa: V, stays: ST(), rvReq: RQ, ai: () => ({ text: 'Thibaut and his family were wonderful guests.' }) });
+  await r.page.waitForTimeout(250);
+  const t1 = await r.page.$eval('#st-dj1 #rd-dj1', (e) => e.innerText).catch(() => '');
+  check('jour du départ : l’avis Airbnb est sur la carte du séjour, sans l’ouvrir — pas encore dans « Partis récemment »', /avis possible jusqu’au/.test(t1) && /Demander un avis/.test(t1) && /Avis hôte/.test(t1) && /Avis laissé/.test(t1) && !(await r.page.$('#pa-dj1')), t1);
+  check('jour du départ : rien pour un séjour direct, rien pour un départ demain', !(await r.page.$('#rd-dj2')) && !(await r.page.$('#rd-dj3')));
+  await r.page.click('#rd-dj1 [data-a="rv"][data-v="host"]');
+  await r.page.waitForFunction(() => { const t = document.getElementById('tx-dj1'); return t && t.value; }, null, { timeout: 5000 });
+  const a1 = await r.page.$eval('#rd-dj1 a[href*="airbnb"][href*="review"]', (a) => ({ href: a.href, t: a.innerText })).catch(() => null);
+  check('jour du départ : « Écrire l’avis sur Airbnb » ouvre le formulaire de l’email du jour', !!a1 && a1.href === 'https://www.airbnb.co.uk/hosting/reviews/1800000000000000001/edit' && /Écrire l’avis sur Airbnb/.test(a1.t) && (await r.page.inputValue('#tx-dj1')) === 'Thibaut and his family were wonderful guests.', a1);
+  // un seul panneau à la fois sur la carte : Copier / Partager lisent tx-<id>
+  await r.page.click('[data-a="toggle"][data-id="dj1"]'); await r.page.waitForTimeout(100);
+  await r.page.click('#st-dj1 [data-a="panel"][data-v="depart"]'); await r.page.waitForTimeout(150);
+  check('un panneau du séjour ouvert ferme celui de l’avis (un seul tx-<id>)', (await r.page.$$('#tx-dj1')).length === 1 && !(await r.page.$('#rd-dj1 #tx-dj1')));
+  await r.page.click('#rd-dj1 [data-a="rv"][data-v="ask"]'); await r.page.waitForTimeout(150);
+  check('et l’inverse : « Demander un avis » ferme le panneau du séjour', (await r.page.$$('#tx-dj1')).length === 1 && !!(await r.page.$('#rd-dj1 #tx-dj1')) && !r.errs.length, r.errs);
+  await r.ctx.close();
+  // « À faire » › Laisser l'avis, le jour du départ : mène à la carte du séjour, panneau « Demander un avis » ouvert
+  r = await open({ tab: 'jour', villa: V, stays: ST(), rvReq: RQ });
+  await r.page.waitForTimeout(250);
+  const gt = await r.page.$('[data-a="goto"][data-id="dj1"][data-v="review"]');
+  if (gt) { await gt.click(); await r.page.waitForTimeout(250); }
+  check('« À faire » le jour du départ : l’avis mène à la carte du séjour (Séjours), panneau ouvert', !!gt && !!(await r.page.$('#st-dj1 #rd-dj1 #tx-dj1')) && !r.errs.length, r.errs);
+  await r.ctx.close();
+}
+
 // ── 5 sexdecies. Calendriers iCal (17/10/2026) : liens sur le compte, lus par le serveur, jamais un séjour sans geste ──
 {
   const isoD = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
