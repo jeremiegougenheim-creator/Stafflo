@@ -1947,6 +1947,20 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     check('« Demander un avis » retouché : gardé aussi', (await r.page.inputValue('#tx-dj1')) === 'Merci Thibaut ! Un petit avis nous aiderait beaucoup.');
   }
   await r.ctx.close();
+  // 24/10 (choix du propriétaire) : le jour du départ, rien tant que l'email d'Airbnb n'est pas arrivé ; dès le lendemain, même sans email
+  r = await open({ tab: 'jour', villa: V, stays: ST(), rvReq: [] });
+  await r.page.waitForTimeout(300);
+  check('jour du départ, email d’Airbnb pas encore arrivé : pas de « Laisser l’avis » dans À faire ; la boîte a été lue', !(await r.page.$('[data-a="goto"][data-id="dj1"][data-v="review"]')) && r.reads.some((x) => x.kind === 'rvreq'));
+  await r.page.click('[data-a="tab"][data-v="sejours"]'); await r.page.waitForTimeout(250);
+  check('jour du départ, sans email : pas d’avis sur la carte du séjour', !(await r.page.$('#rd-dj1')));
+  await r.ctx.close();
+  {
+    const PAST = [{ id: 'dj4', name: 'Thibaut Vauclare', arrival: iso(-5), departure: iso(-1), adults: 10, booking_status: 'confirmed', source: 'Airbnb', phone: '+33 6 00 00 00 01', price: 2198, details: {} }];
+    r = await open({ tab: 'jour', villa: V, stays: PAST, rvReq: [] });
+    await r.page.waitForTimeout(300);
+    check('le lendemain du départ, même sans email : « Laisser l’avis » (Airbnb a ouvert l’avis)', !!(await r.page.$('[data-a="goto"][data-id="dj4"][data-v="review"]')));
+    await r.ctx.close();
+  }
   // « À faire » › Laisser l'avis, le jour du départ : mène à la carte du séjour, panneau « Demander un avis » ouvert
   r = await open({ tab: 'jour', villa: V, stays: ST(), rvReq: RQ });
   await r.page.waitForTimeout(250);

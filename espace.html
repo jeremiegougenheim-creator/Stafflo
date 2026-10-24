@@ -2186,8 +2186,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   }
   function reviewWindowEnd(c) { return c.d + 14; } /* Airbnb : 14 jours après le départ */
   /* 23/10/2026 : dès le jour du départ (avant : le lendemain). Airbnb ouvre l'avis le jour même — l'email « Write a review
-     for … » arrivait entre 14h et 18h le jour du départ (Eline, Helen, Felipe, Thibaut) et l'Espace attendait le lendemain. */
-  function reviewOpen(c) { var t = todayNum(); return /airbnb/i.test(String(c.source || '')) && !c.is_comp && !c.details.reviewDoneAt && t >= c.d && t <= reviewWindowEnd(c); }
+     for … » arrivait l’après-midi du jour du départ (Eline, Helen, Felipe, Thibaut) et l'Espace attendait le lendemain. */
+  /* 24/10/2026 (choix du propriétaire) : le jour du départ, seulement quand l'email d'Airbnb « Write a review for … » est arrivé
+     (RVL : le lien du formulaire, lu dans cet email) ; dès le lendemain, même sans email (Airbnb a ouvert l'avis, l'email
+     peut manquer à la boîte : Gmail pas relié, prénom différent) — comme avant le 23/10. */
+  function reviewDue(c) { var t = todayNum(); return /airbnb/i.test(String(c.source || '')) && !c.is_comp && !c.details.reviewDoneAt && t >= c.d && t <= reviewWindowEnd(c); }
+  function reviewOpen(c) { return reviewDue(c) && (todayNum() > c.d || !!RVL[c.id]); }
   /* 18/10/2026 : « Ouvrir les avis Airbnb » menait à airbnb.com/hosting/reviews — une page 404 chez Airbnb. Le bon lien est
      dans l'email d'Airbnb « Write a review for Felipe’s group » / « Felipe is waiting for your review » :
      /hosting/reviews/<id>/edit, le formulaire de CET avis. On le lit dans les emails reçus entre la veille du départ et la
@@ -3558,6 +3562,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     D.stays.filter(function (c) { return c.d >= t && pendingOf(c).length; }).forEach(function (c) {
       out.push({ c: c, k: 'complete', due: t, late: false });
     });
+    D.stays.concat(D.past || []).filter(function (c) { return c.d === t && reviewDue(c) && !RVL[c.id]; }).forEach(function (c) { setTimeout(function () { reviewLink(c); }, 0); }); // 24/10 : départ du jour — l'email d'Airbnb est-il arrivé ?
     D.stays.concat(D.past || []).filter(reviewOpen).forEach(function (c) {
       out.push({ c: c, k: 'review', due: reviewWindowEnd(c), late: false });
     });
@@ -3637,6 +3642,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var rr = readyReport(c);
     if (rr) h += '<p class="state go"><i class="ti ti-bed" aria-hidden="true"></i><span>' + esc(l.roomsReadyAt + (linkName(rr.link_id) ? linkName(rr.link_id) + ' · ' : '') + new Date(rr.created_at).toLocaleString(U.lang === 'en' ? 'en-GB' : 'fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + '</span></p>';
     // 23/10 : le jour du départ, l'avis Airbnb est sur la carte du séjour (demain, il passe dans « Partis récemment »)
+    if (c.d === t && reviewDue(c) && !RVL[c.id]) setTimeout(function () { reviewLink(c); }, 0); // l'email d'Airbnb est-il arrivé ? (relu toutes les 10 min au plus)
     var rvb = c.d === t ? reviewBlock(c) : '';
     if (rvb) h += '<div class="rvday" id="rd-' + esc(c.id) + '" style="display:flex;flex-direction:column;gap:6px">' + rvb + '</div>';
     if (open) h += stayDetail(c);
