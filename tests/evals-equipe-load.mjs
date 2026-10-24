@@ -196,6 +196,25 @@ check('sélecteur : trois boutons, EN enfoncé', (await r.page.$$eval('#langBtn 
 await r.page.click('#langBtn .lb[data-l="fr"]'); await r.page.waitForTimeout(300);
 check('EN → FR : libellés français, relecture avec lang = fr', (await r.page.innerText('#title')) === 'Planning de la villa' && r.views[r.views.length - 1].lang === 'fr');
 await r.ctx.close();
+
+// 24/10 — [cas réel : vue de Fatima, séjour Seán] « Repas · Pas encore reçus » sous des repas commandés et des menus : le texte du client
+// était entièrement repris ailleurs (jours → commande, plats → menus, goûter → maison). Plus de « pas encore reçus » dans ce cas.
+{
+  const FS = { ...KSTAY, id: 's-fat', meals: 'Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? For the 3 dinners could we have: Starters - …',
+    orders: '3 × Déjeuner ou dîner — lun. 26 soir, ven. 30 soir, sam. 31 soir', menus: 'lun. 26 soir : Salade mechouia · Poisson · Pâtisseries',
+    lines: { ...KSTAY.lines, meals: [], orders: ['3 × Déjeuner ou dîner — lun. 26 soir, ven. 30 soir, sam. 31 soir'], menus: ['lun. 26 soir : Salade mechouia · Poisson · Pâtisseries'] } };
+  r = await open({ data: { ...DATA, name: 'Fatima', role: 'kitchen', stays: [FS] } });
+  const ft = await r.page.evaluate(() => document.getElementById('app').innerText);
+  check('prestataire : repas commandés et menus, texte du client déjà repris ailleurs → pas de « Repas · Pas encore reçus »', /Repas commandés par le client\s*3 × Déjeuner ou dîner/.test(ft) && /Menus/.test(ft) && !/Pas encore reçus/.test(ft) && !r.errs.length, ft);
+  await r.ctx.close();
+  r = await open({ data: { ...DATA, stays: [{ ...FS, id: 's-fat2', orders: '', menus: '', house_orders: '1 × Goûter — lun. 26', lines: { ...FS.lines, orders: [], menus: [], house_orders: ['1 × Goûter — lun. 26'] } }] } });
+  const fh = await r.page.evaluate(() => document.getElementById('app').innerText);
+  check('maison : le goûter « à préparer par la maison » suffit — pas de « Pas encore reçus » non plus', /À préparer par la maison\s*1 × Goûter/.test(fh) && !/Pas encore reçus/.test(fh), fh);
+  await r.ctx.close();
+  r = await open({ data: { ...DATA, name: 'Fatima', role: 'kitchen', stays: [{ ...FS, id: 's-fat3', meals: '', orders: '', menus: '', lines: { ...FS.lines, meals: [], orders: [], menus: [] } }] } });
+  check('rien commandé, rien écrit : « Repas · Pas encore reçus » reste', /Repas\s*Pas encore reçus/.test(await r.page.evaluate(() => document.getElementById('app').innerText)));
+  await r.ctx.close();
+}
 await browser.close(); server.close();
 
 console.log(`\n${pass}/${pass + fail} PASS`);
