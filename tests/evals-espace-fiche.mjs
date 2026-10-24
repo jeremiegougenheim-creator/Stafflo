@@ -1858,6 +1858,34 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('#rd-dj1 [data-a="rv"][data-v="ask"]'); await r.page.waitForTimeout(150);
   check('et l’inverse : « Demander un avis » ferme le panneau du séjour', (await r.page.$$('#tx-dj1')).length === 1 && !!(await r.page.$('#rd-dj1 #tx-dj1')) && !r.errs.length, r.errs);
   await r.ctx.close();
+  // 24/10 : l'avis retouché à la main reste après un rafraîchissement ; « Réécrire » avec une consigne retouche ce texte-là
+  {
+    let calls = 0;
+    r = await open({ tab: 'sejours', villa: V, stays: ST(), rvReq: RQ, ai: (b) => { calls++; return { text: /CONSIGNE DE L’HÔTE|HOST INSTRUCTION/.test(b.user || '') ? 'Thibaut and his family were lovely, and left the house spotless.' : 'Thibaut and his family were wonderful guests.' }; } });
+    await r.page.waitForTimeout(250);
+    await r.page.click('#rd-dj1 [data-a="rv"][data-v="host"]');
+    await r.page.waitForFunction(() => { const t = document.getElementById('tx-dj1'); return t && t.value; }, null, { timeout: 5000 });
+    await r.page.fill('#tx-dj1', 'Thibaut and his family were wonderful guests. We would host them again.');
+    await r.page.click('[data-a="toggle"][data-id="dj1"]'); await r.page.waitForTimeout(150); // un autre geste redessine l'écran
+    check('avis retouché à la main : gardé quand l’écran se redessine (avant : remplacé par le texte d’ARIA)', (await r.page.inputValue('#tx-dj1')) === 'Thibaut and his family were wonderful guests. We would host them again.', await r.page.inputValue('#tx-dj1'));
+    const pos = await r.page.evaluate(() => { const a = document.querySelector('#rd-dj1 [data-a="rvre"]'), w = document.querySelector('#rd-dj1 .drop'); return { re: !!a, field: !!document.getElementById('rw-dj1'), above: !w || !!(a && (a.compareDocumentPosition(w) & Node.DOCUMENT_POSITION_FOLLOWING)) }; });
+    check('« Réécrire » sous les boutons, avec le champ « Ce qu’il faut changer », avant l’import WhatsApp', pos.re && pos.field && pos.above, pos);
+    await r.page.fill('#rw-dj1', 'plus court, dire qu’ils ont laissé la maison impeccable');
+    await r.page.click('#rd-dj1 [data-a="rvre"]');
+    await r.page.waitForFunction(() => /spotless/.test((document.getElementById('tx-dj1') || {}).value || ''), null, { timeout: 5000 }).catch(() => {});
+    const bw = (r.calls.filter((x) => x.kind === 'ai').pop() || {}).body || {};
+    check('« Réécrire » avec une consigne : ARIA reçoit la version retouchée et la consigne, et la retouche',
+      /We would host them again\./.test(bw.user || '') && /laissé la maison impeccable/.test(bw.user || '') && /spotless/.test(await r.page.inputValue('#tx-dj1')) && calls === 2, (bw.user || '').slice(-500));
+    await r.page.fill('#rw-dj1', '');
+    await r.page.click('#rd-dj1 [data-a="rvre"]'); await r.page.waitForTimeout(300);
+    const b3 = (r.calls.filter((x) => x.kind === 'ai').pop() || {}).body || {};
+    check('« Réécrire » sans consigne : une nouvelle version, sans la précédente', calls === 3 && !/VERSION ACTUELLE|CURRENT VERSION|CONSIGNE|INSTRUCTION ===/.test(b3.user || '') && (await r.page.inputValue('#tx-dj1')) === 'Thibaut and his family were wonderful guests.' && !r.errs.length, r.errs);
+    await r.page.click('#rd-dj1 [data-a="rv"][data-v="ask"]'); await r.page.waitForTimeout(150);
+    await r.page.fill('#tx-dj1', 'Merci Thibaut ! Un petit avis nous aiderait beaucoup.');
+    await r.page.click('[data-a="toggle"][data-id="dj1"]'); await r.page.waitForTimeout(150);
+    check('« Demander un avis » retouché : gardé aussi', (await r.page.inputValue('#tx-dj1')) === 'Merci Thibaut ! Un petit avis nous aiderait beaucoup.');
+  }
+  await r.ctx.close();
   // « À faire » › Laisser l'avis, le jour du départ : mène à la carte du séjour, panneau « Demander un avis » ouvert
   r = await open({ tab: 'jour', villa: V, stays: ST(), rvReq: RQ });
   await r.page.waitForTimeout(250);
