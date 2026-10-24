@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], reports = [], share = false, clock = false, vis = false } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], stk = [], keep = null, opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], reports = [], share = false, clock = false, vis = false } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -65,6 +65,8 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/rest/v1/email_inbox') && u.includes('client_id=eq.')) { reads.push({ kind: 'rvmails', url: decodeURIComponent(u) }); return json(rvMails); }
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
     if (u.includes('/rest/v1/rpc/billing_status')) return json(bill || []);
+    if (u.includes('/rest/v1/rpc/staff_link_urls')) { reads.push({ kind: 'stk' }); return json(stk); }
+    if (u.includes('/rest/v1/rpc/staff_link_keep')) { calls.push({ kind: 'keep', body: JSON.parse(req.postData() || '{}') }); return json(keep === null ? false : keep); }
     if (u.includes('/rest/v1/wa_numbers')) return json(waNum);
     if (u.startsWith('https://connect.facebook.net/')) {
       reads.push({ kind: 'fbsdk', url: u });
@@ -1191,6 +1193,52 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   check('Léa n’a pas de lien → le brief prestataire n’en parle pas', !/lien Stafflo/.test(await r.page.inputValue('#tx-k1')));
   await r.ctx.close();
+  // 24/10 — le lien gardé chiffré par la base (rpc staff_link_urls) est AJOUTÉ au brief : le plus récent de la personne, dans la langue
+  // du brief s'il y en a un ; « Léa » dans la fiche = lien « Lea » ; jamais envoyé à l'IA ; un ancien lien (empreinte seule) garde le rappel.
+  {
+    const T1 = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCd', T2 = 'ZyXwVuTsRqPoNmLkJiHgFeDcBa9876543210_-ZyXw';
+    r = await open({ tab: 'sejours', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, stays: ST,
+      teamLinks: [{ id: 'l3', name: 'Saïd', lang: 'fr', role: 'house', created_at: iso(-1) }, { id: 'l1', name: 'saïd', lang: 'ar', created_at: iso(-3) }, { id: 'l2', name: 'Lea', lang: 'fr', role: 'kitchen', created_at: iso(-2) }],
+      stk: [{ link_id: 'l3', token: T1 }, { link_id: 'l2', token: T2 }],
+      ai: (b) => ({ text: JSON.stringify({ lines: {} }) }) });
+    await r.page.waitForTimeout(250);
+    await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(200);
+    const b1 = await r.page.inputValue('#tx-k1');
+    check('lien gardé → le brief maison finit par le lien de Saïd lui-même (le plus récent, en français), plus seulement le rappel',
+      new RegExp('\\n\\n🔗 \\*Détail à jour\\* : votre page Stafflo \\(arrivées, repas, chambres prêtes\\)\\nhttps?://[^\\s]+/equipe\\.html#k=' + T1 + '$').test(b1) && r.reads.some((x) => x.kind === 'stk'), b1.slice(-220));
+    await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(200);
+    const k1 = await r.page.inputValue('#tx-k1');
+    check('brief prestataire : le lien de « Lea » pour « Léa » de la fiche (accents ignorés)', new RegExp('/equipe\\.html#k=' + T2 + '$').test(k1), k1.slice(-160));
+    await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+    const enB = await r.page.$('#st-k1 [data-a="briefen"], #st-k1 [data-a="bren"], #st-k1 button[data-v="brief"][data-a*="en"]');
+    if (enB) { await enB.click(); await r.page.waitForTimeout(400); }
+    check('le lien n’est jamais envoyé à l’IA (traductions du brief comprises)', !r.calls.some((x) => x.kind === 'ai' && JSON.stringify(x.body).includes(T1)) && !r.errs.length, r.errs);
+    await r.ctx.close();
+    r = await open({ tab: 'maison', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF },
+      teamLinks: [{ id: 'l3', name: 'Saïd', lang: 'fr', role: 'house', created_at: iso(-1) }, { id: 'l2', name: 'Lea', lang: 'fr', role: 'kitchen', created_at: iso(-2) }], stk: [{ link_id: 'l3', token: T1 }] });
+    await r.page.waitForTimeout(250);
+    const tm2 = await txt(r.page);
+    check('Accès équipe : « lien dans les briefs » pour Saïd, « lien pas dans les briefs (créé avant le 24 oct.) » pour Léa ; jamais le lien affiché',
+      /Saïd[\s\S]{0,160}lien dans les briefs/.test(tm2) && /Léa[\s\S]{0,200}lien pas dans les briefs \(créé avant le 24 oct\.\)/.test(tm2) && !tm2.includes(T1), tm2.slice(0, 900));
+    await r.ctx.close();
+    // création : le lien est confié à la base (empreinte vérifiée côté serveur) puis ajouté aux briefs ; refusé → comme avant
+    r = await open({ tab: 'maison', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, stays: ST, keep: true });
+    await r.page.waitForTimeout(250);
+    await r.page.selectOption('#eq-who', 'Saïd'); await r.page.click('[data-a="eqcreate"]'); await r.page.waitForSelector('#eq-msg', { timeout: 8000 });
+    const kp = r.calls.find((x) => x.kind === 'keep'), em = await r.page.inputValue('#eq-msg'), tokm = /#k=([A-Za-z0-9_-]{32,})/.exec(em);
+    const pan = await r.page.$eval('#eq-msg', (x) => x.closest('.panel').innerText);
+    check('création : rpc staff_link_keep reçoit l’identifiant et le lien envoyé ; le panneau dit qu’il sera dans chaque brief',
+      !!kp && kp.body.p_link === 'nl1' && !!tokm && kp.body.p_token === tokm[1] && /Il sera aussi à la fin de chaque brief que vous envoyez à Saïd/.test(pan), { kp: kp && kp.body, pan: pan.slice(0, 300) });
+    await r.page.click('[data-a="tab"][data-v="sejours"]'); await r.page.waitForTimeout(150);
+    await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(200);
+    check('… et le brief de Saïd porte ce nouveau lien tout de suite', !!tokm && (await r.page.inputValue('#tx-k1')).endsWith('/equipe.html#k=' + tokm[1]));
+    await r.ctx.close();
+    r = await open({ tab: 'maison', villa: { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KF }, keep: false });
+    await r.page.waitForTimeout(250);
+    await r.page.selectOption('#eq-who', 'Saïd'); await r.page.click('[data-a="eqcreate"]'); await r.page.waitForSelector('#eq-msg', { timeout: 8000 });
+    check('base qui refuse de garder le lien : le panneau dit « ne s’affiche qu’une fois », comme avant', /ne s’affiche qu’une fois/.test(await r.page.$eval('#eq-msg', (x) => x.closest('.panel').innerText)) && !r.errs.length, r.errs);
+    await r.ctx.close();
+  }
   // 22/10/2026 — [Prestataire ménage] À DarJ, l'équipe de Léa et Fatima fait aussi l'interlocation et la remise en état. Case « Prestataire
   // ménage » dans la fiche (TEAM[].clean) → brief interlocation : le départ, et pour préparer la maison le séjour suivant (date, heure,
   // le jour même, chambres prêtes, groupe, couchages, bébés) — jamais un prix, ni le nom, le téléphone ou les repas des suivants.
@@ -1575,7 +1623,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     await r.page.click('#st-q1 [data-a="panel"][data-v="mrecap"]'); await r.page.waitForTimeout(250);
     const rc = await r.page.inputValue('#tx-q1');
     check('récap à Lise : « For your 3 dinners, … from your choices. Our suggestion: », noms anglais de la carte (Couscous (chicken)), « another order »',
-      /For your 3 dinners, one starter, one main and one dessert each time, from your choices\. Our suggestion:\n• Mon, 26 Oct — Dinner: Mechouia salad · Fish with charmoula · Assorted Moroccan pastries\n• Fri, 30 Oct — Dinner: Zaalouk · Lamb tajine with prunes & almonds · Pastilla au lait\n• Sat, 31 Oct — Dinner: Pumpkin salad with cinnamon · Couscous \(chicken\) · Gazelle horns\nTell us if you would like them in another order\./.test(rc), rc);
+      /For your 3 dinners, one starter, one main and one dessert each time, from your choices\. Our suggestion:\n• Mon,? 26 Oct — Dinner: Mechouia salad · Fish with charmoula · Assorted Moroccan pastries\n• Fri,? 30 Oct — Dinner: Zaalouk · Lamb tajine with prunes & almonds · Pastilla au lait\n• Sat,? 31 Oct — Dinner: Pumpkin salad with cinnamon · Couscous \(chicken\) · Gazelle horns\nTell us if you would like them in another order\./.test(rc), rc);
     await r.page.click('#st-q1 [data-a="mnsave"]'); await r.page.waitForTimeout(300);
     const ms = (r.calls.filter((x) => x.kind === 'stay').pop() || { body: {} }).body.details;
     check('« Enregistrer les menus » → details.menus : 3 repas, plats de la carte (clé, rang, variante) avec noms FR / EN pour le lien de l’équipe ; la commande intacte',
@@ -2084,7 +2132,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   let tm = await txt(r.page);
   check('une ligne par personne : Omar « 1 lien actif · FR · ouvert … » + Nouveau lien ; Lea (prestataire) retrouve son lien « Léa » (accent ignoré) ; Nok « pas de lien » + Créer le lien', /Omar\n1 lien actif · FR · ouvert /.test(tm) && /Lea · prestataire\n1 lien actif · FR · jamais ouvert/.test(tm) && /Nok\npas de lien/.test(tm) && (await r.page.$$('[data-a="eqfor"]')).length === 3 && (await r.page.innerText('[data-a="eqfor"][data-v="Omar"]')).includes('Nouveau lien') && (await r.page.innerText('[data-a="eqfor"][data-v="Nok"]')).includes('Créer le lien'), tm.slice(0, 500));
   const how = await r.page.$eval('#main', (e) => e.textContent); // replié (details) : textContent
-  check('« Comment ça marche » : adresse secrète, empreinte seule, montré une fois, ouvertures notées, Retirer, rôle depuis la fiche', /adresse secrète \(43 caractères\)/.test(how) && /empreinte/.test(how) && /s’affiche une seule fois/.test(how) && /« Retirer » coupe l’accès/.test(how) && /case « Prestataire repas »/.test(how));
+  check('« Comment ça marche » : adresse secrète, gardée chiffrée pour les briefs (24/10), ancien lien = empreinte seule, ouvertures notées, Retirer, rôle depuis la fiche', /adresse secrète \(43 caractères\)/.test(how) && /le garde chiffré \(clé à part\) pour l’ajouter à la fin de chaque brief/.test(how) && /n’a qu’une empreinte/.test(how) && /« Retirer » coupe l’accès/.test(how) && /case « Prestataire repas »/.test(how));
   await r.page.selectOption('#eq-lang', 'en'); await r.page.click('[data-a="eqfor"][data-v="Nok"]'); await r.page.waitForSelector('#eq-msg', { timeout: 8000 });
   const mk = r.calls.find((x) => x.kind === 'eqcreate');
   check('lien en anglais pour Nok : lang en, rôle maison, message d’envoi en anglais, panneau « Nok · EN »', !!mk && mk.body.lang === 'en' && mk.body.name === 'Nok' && mk.body.role === 'house' && /^Hello Nok, here is your Stafflo link/.test(await r.page.inputValue('#eq-msg')) && /Nok · EN/.test(await r.page.innerText('#main')) && !r.errs.length, [mk && mk.body, r.errs]);
