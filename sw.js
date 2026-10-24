@@ -1,5 +1,5 @@
 // Stafflo Service Worker — v554 (20/10 : vue équipe tout traduite, en arrière-plan — français et darija)
-const CACHE = 'stafflo-v557';
+const CACHE = 'stafflo-v558';
 const CORE = [
   './app.html',
   './fonts/tabler-icons.css',

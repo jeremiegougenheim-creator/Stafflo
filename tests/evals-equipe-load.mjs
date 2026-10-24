@@ -215,6 +215,24 @@ await r.ctx.close();
   check('rien commandé, rien écrit : « Repas · Pas encore reçus » reste', /Repas\s*Pas encore reçus/.test(await r.page.evaluate(() => document.getElementById('app').innerText)));
   await r.ctx.close();
 }
+// 24/10 — staff-view v25 : changé depuis la confirmation du prestataire → ce qui est nouveau, ce qui ne l'est plus, et le bouton revient
+{
+  const CS = { ...KSTAY, id: 's-chg', chg: { at: new Date(Date.now() - 2 * 3600e3).toISOString() },
+    lines: { ...KSTAY.lines, chg_now: ['lun. 26 soir : Salade mechouia · Poisson · Panna cotta aux fruits rouges'], chg_was: ['lun. 26 soir : Salade mechouia · Poisson · Pâtisseries marocaines assorties'] } };
+  r = await open({ data: { ...DATA, name: 'Fatima', role: 'kitchen', stays: [CS], reports: [{ id: 'ok1', kind: 'meals_ok', client_id: 's-chg', text: null, created_at: CS.chg.at }] } });
+  let ct = await r.page.evaluate(() => document.getElementById('app').innerText);
+  check('changé depuis la confirmation : titre avec le jour et l’heure, « Maintenant » / « Avant » (barré), bouton « Confirmer les changements », plus « Repas confirmés · HH:MM »',
+    /Changé depuis votre confirmation du .+ · \d{2}:\d{2}/.test(ct) && /Maintenant\s*lun\. 26 soir : .*Panna cotta/i.test(ct) && /Avant\s*lun\. 26 soir : .*Pâtisseries marocaines/i.test(ct) &&
+    (await r.page.$$eval('.chg .was li', (a) => a.map((x) => getComputedStyle(x).textDecorationLine))).join() === 'line-through' && /Confirmer les changements/.test(ct) && !/Repas confirmés · \d/.test(ct) && !r.errs.length, ct);
+  await r.page.click('[data-a="ready"]'); await r.page.waitForTimeout(300);
+  ct = await r.page.evaluate(() => document.getElementById('app').innerText);
+  check('« Confirmer les changements » → { action: report, kind: meals_ok } ; le bloc disparaît, « Repas confirmés · HH:MM »', r.posts.length === 1 && r.posts[0].kind === 'meals_ok' && r.posts[0].client_id === 's-chg' && !/Changé depuis/.test(ct) && /Repas confirmés · \d{2}:\d{2}/.test(ct), ct);
+  await r.ctx.close();
+  r = await open({ lang: 'ar', data: { ...DATA, name: 'Fatima', role: 'kitchen', stays: [{ ...CS, ar: { chg_now: ['التبديل الجديد'], chg_was: ['القديم'] } }], reports: [{ id: 'ok1', kind: 'meals_ok', client_id: 's-chg', text: null, created_at: CS.chg.at }] } });
+  const ca = await r.page.evaluate(() => document.getElementById('app').innerText);
+  check('en darija : libellés écrits à la main et lignes traduites', /تبدّل شي حاجة من بعد التأكيد ديالك/.test(ca) && /التبديل الجديد/.test(ca) && /أكّد التبديلات/.test(ca), ca.slice(0, 400));
+  await r.ctx.close();
+}
 await browser.close(); server.close();
 
 console.log(`\n${pass}/${pass + fail} PASS`);

@@ -12,6 +12,9 @@
 //   le voit dans l'Espace et reçoit une alerte. 30 par heure et par lien. Rien d'autre
 //   n'est modifiable depuis ce lien.
 //
+// v25 (24/10/2026) : « Repas confirmés » garde ce que le prestataire a confirmé (staff_reports.snapshot : ses repas commandés et
+//   ses menus) ; à son retour, ce qui a changé depuis (chg, lines.chg_now / chg_was, traduits) et le bouton revient ; body.check
+//   (propriétaire, depuis l'Espace avec le lien gardé) renvoie seulement ces changements. Confirmations sur 60 jours.
 // v24 (23/10/2026) : menus par repas (details.menus, enregistrés dans l'Espace) sur le lien maison et prestataire ; sous Repas, plus les
 // lignes du menu qu'ils portent ; le prestataire ne lit plus une phrase qui ne parle que d'un repas fait par la maison.
 // Lien prestataire (20/10/2026, staff_links.role = 'kitchen' — Lea, le prestataire repas) :
@@ -59,7 +62,7 @@ function cors(req: Request): Record<string, string> {
 // ── Calcul (pur, testé par tests/evals-staff.mjs) ─────────────────────────────────────────
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
-export type Lines = { arrival_time: string[]; departure_time: string[]; beds: string[]; meals: string[]; drinks: string[]; note: string[]; extras: string[]; orders: string[]; house_orders: string[]; next_time: string[]; menus: string[] };
+export type Lines = { arrival_time: string[]; departure_time: string[]; beds: string[]; meals: string[]; drinks: string[]; note: string[]; extras: string[]; orders: string[]; house_orders: string[]; next_time: string[]; menus: string[]; chg_now: string[]; chg_was: string[] };
 export type StaffStay = {
   id: string; name: string; a: string; d: string; nights: number;
   adults: number | null; children: number | null; infants: number | null; pax: number | null;
@@ -69,6 +72,9 @@ export type StaffStay = {
   orders: string; house_orders: string; next: { d: string; same_day: boolean } | null; next_time: string;
   /* 23/10 (v24) : les menus par repas enregistrés dans l'Espace (details.menus) — « lun. 26 soir : Salade mechouia · … ». */
   menus: string; ho?: string[];
+  /* 24/10 (v25) : changé depuis la confirmation du prestataire — `chg.at` = l'heure de sa confirmation ; lines.chg_now / chg_was =
+     les lignes (repas commandés, menus) apparues / disparues depuis, traduites comme le reste. */
+  chg?: { at: string } | null;
   lines: Lines; ar?: Partial<Lines>; fr?: Partial<Lines>;
 };
 export type LinkRole = "house" | "kitchen";
@@ -128,12 +134,47 @@ export function orderDedup(lines: string[], drop: string[]): string[] {
   const set = new Set(drop.map(orderKey));
   return lines.filter((x) => !set.has(orderKey(x)));
 }
-export const LINE_FIELDS: (keyof Lines)[] = ["arrival_time", "departure_time", "beds", "meals", "drinks", "note", "extras", "orders", "house_orders", "next_time", "menus"];
+export const LINE_FIELDS: (keyof Lines)[] = ["arrival_time", "departure_time", "beds", "meals", "drinks", "note", "extras", "orders", "house_orders", "next_time", "menus", "chg_now", "chg_was"];
 const nl = (t: string) => String(t || "").split("\n").map((x) => x.trim()).filter(Boolean);
 export function linesOf(s: Omit<StaffStay, "lines">): Lines {
   return { arrival_time: s.arrival_time ? [s.arrival_time] : [], departure_time: s.departure_time ? [s.departure_time] : [], beds: s.beds ? [s.beds] : [],
     meals: bulletsOf(s.meals, "sentences"), drinks: bulletsOf(s.drinks, "list"), note: bulletsOf(s.note, "sentences"), extras: s.extras ? s.extras.split(" · ").map((x) => x.trim()).filter(Boolean) : [],
-    orders: nl(s.orders), house_orders: nl(s.house_orders), next_time: s.next_time ? [s.next_time] : [], menus: nl(s.menus) };
+    orders: nl(s.orders), house_orders: nl(s.house_orders), next_time: s.next_time ? [s.next_time] : [], menus: nl(s.menus), chg_now: [], chg_was: [] };
+}
+/* 24/10/2026 (v25) — « Repas confirmés », puis un changement (cas réel : menus de Seán modifiés, client prévenu ou pas). Ce que le
+   prestataire confirme est gardé (staff_reports.snapshot = ses lignes : repas commandés, menus) ; à son retour, ce qui a changé
+   depuis lui est montré, et le bouton revient (« Confirmer les changements »). Comparaison sur ses propres lignes : un changement
+   qui ne le concerne pas (goûter fait par la maison, massage) ne lui demande rien. */
+export type MealSnap = { v: 1; o: string[]; m: string[] };
+export function mealSnap(s: StaffStay): MealSnap { return { v: 1, o: s.lines.orders.slice(0, 40), m: s.lines.menus.slice(0, 40) }; }
+export function snapOf(x: unknown): MealSnap | null {
+  const o = x && typeof x === "object" ? x as Row : null;
+  return o && o.v === 1 && Array.isArray(o.o) && Array.isArray(o.m) ? { v: 1, o: o.o.map(String), m: o.m.map(String) } : null;
+}
+/** Les lignes apparues (now) et disparues (was) depuis la confirmation, ordre gardé ; rien si rien n'a changé. */
+export function mealDiff(snap: MealSnap, s: StaffStay): { now: string[]; was: string[] } | null {
+  const cur = s.lines.orders.concat(s.lines.menus), old = snap.o.concat(snap.m);
+  const left = (a: string[], b: string[]) => { const pool = b.slice(); return a.filter((x) => { const i = pool.indexOf(x); if (i > -1) { pool.splice(i, 1); return false; } return true; }); };
+  const now = left(cur, old), was = left(old, cur);
+  return now.length || was.length ? { now, was } : null;
+}
+/** Sur chaque séjour du prestataire : sa dernière confirmation, et ce qui a changé depuis. Maison : rien. */
+export function attachChanges(stays: StaffStay[], reports: Row[], role: LinkRole): StaffStay[] {
+  if (role !== "kitchen") return stays;
+  return stays.map((s) => {
+    const r = (reports || []).filter((x) => x && x.kind === "meals_ok" && String(x.client_id) === s.id)[0];
+    const snap = r ? snapOf(r.snapshot) : null, df = snap ? mealDiff(snap, s) : null;
+    if (!df) return s;
+    return { ...s, chg: { at: String(r.created_at) }, lines: { ...s.lines, chg_now: df.now, chg_was: df.was } };
+  });
+}
+/** Une confirmation d'avant la v25 (sans snapshot) se complète si rien n'a bougé depuis : menus et commande enregistrés avant elle. */
+export function backfillable(r: Row, det: Row): boolean {
+  if (!r || r.kind !== "meals_ok" || snapOf(r.snapshot)) return false;
+  const at = Date.parse(String(r.created_at || "")); if (!isFinite(at)) return false;
+  const t = (x: unknown) => { const v = Date.parse(String(x || "")); return isFinite(v) ? v : 0; };
+  const m = det && det.menus, o = det && det.guest_orders;
+  return t(m && m.at) <= at && t(o && o.at) <= at;
 }
 /** Ce qu'un lien ne doit pas voir, selon son rôle (20/10) : vidé AVANT toute traduction, rien ne part. Prestataire : ni couchages,
  *  ni boissons, ni extras. Maison : pas la commande du prestataire (elle a la sienne, house_orders, et les extras). */
@@ -697,8 +738,9 @@ Deno.serve(async (req: Request) => {
       if (limited("r:" + link.id, 30, 60 * 60000)) return out({ error: "rate_limited" }, 429);
       const rep = cleanReport(body, stays.map((s) => s.id));
       if (!rep) return out({ error: "invalid_report" }, 400);
+      const sx = rep.kind === "meals_ok" ? stays.filter((x) => x.id === rep.client_id)[0] : null; // v25 : ce que le prestataire confirme
       const ins = await db(`staff_reports`, { method: "POST", headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ owner_id: link.owner_id, link_id: link.id, client_id: rep.client_id, kind: rep.kind, text: rep.text }) });
+        body: JSON.stringify({ owner_id: link.owner_id, link_id: link.id, client_id: rep.client_id, kind: rep.kind, text: rep.kind === "meals_ok" ? null : rep.text, ...(sx ? { snapshot: mealSnap(sx) } : {}) }) });
       const row = Array.isArray(ins) ? ins[0] : ins;
       return out({ ok: true, report: { id: row?.id, kind: rep.kind, client_id: rep.client_id, text: rep.text, created_at: row?.created_at } });
     }
@@ -710,7 +752,19 @@ Deno.serve(async (req: Request) => {
       await db(`staff_link_opens`, { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ owner_id: link.owner_id, link_id: link.id }) }).catch(() => {});
     }
     // Les retours récents de CE lien (7 jours) : « chambres prêtes » déjà envoyé reste coché.
-    const reports = await db(`staff_reports?select=id,kind,client_id,text,created_at&link_id=eq.${link.id}&deleted_at=is.null&created_at=gte.${new Date(Date.now() - 7 * 86400000).toISOString()}&order=created_at.desc&limit=50`).catch(() => []) || [];
+    // v25 : les confirmations de repas sur 60 jours (un séjour se confirme parfois des semaines avant), avec ce qui a été confirmé.
+    const d7 = new Date(Date.now() - 7 * 86400000).toISOString(), d60 = new Date(Date.now() - 60 * 86400000).toISOString();
+    const rawReports: Row[] = await db(`staff_reports?select=id,kind,client_id,text,created_at,snapshot&link_id=eq.${link.id}&deleted_at=is.null&or=(created_at.gte.${d7},and(kind.eq.meals_ok,created_at.gte.${d60}))&order=created_at.desc&limit=80`).catch(() => []) || [];
+    if (role === "kitchen") { // confirmation d'avant la v25 : complétée quand rien n'a changé depuis (menus et commande plus anciens)
+      for (const s of stays) {
+        const r = rawReports.filter((x) => x.kind === "meals_ok" && String(x.client_id) === s.id)[0], c = rows.filter((x: Row) => String(x.id) === s.id)[0];
+        if (r && c && backfillable(r, c.details || {})) { r.snapshot = mealSnap(s); await db(`staff_reports?id=eq.${r.id}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ snapshot: r.snapshot }) }).catch(() => {}); }
+      }
+    }
+    stays = attachChanges(stays, rawReports, role);
+    const reports = rawReports.map((r) => ({ id: r.id, kind: r.kind, client_id: r.client_id, text: r.text, created_at: r.created_at })); // le snapshot reste au serveur
+    // v25 : vérification depuis l'Espace (le propriétaire, avec le lien gardé) — ce qui a changé depuis chaque confirmation, sans traduction.
+    if (body.check === true && body.owner === true) return out({ check: true, changes: stays.filter((s) => s.chg).map((s) => ({ id: s.id, at: s.chg!.at, now: s.lines.chg_now, was: s.lines.chg_was })) });
     // Langue affichée par la page (body.lang), sinon celle du lien. Arabe : tout en darija ; français : ce que le client a
     // écrit dans une autre langue. Cache staff_i18n ; ce qui manque part en arrière-plan (la page se recharge : `pending`).
     const lang: TrLang = body.lang === "ar" || body.lang === "fr" || body.lang === "en" ? body.lang : (link.lang === "ar" ? "ar" : link.lang === "en" ? "en" : "fr");
@@ -728,7 +782,7 @@ Deno.serve(async (req: Request) => {
         // Une petite traduction arrive souvent en quelques secondes : on l'attend un peu, la page l'a tout de suite.
         let fin = false; tr.job.then(() => { fin = true; });
         await Promise.race([tr.job, new Promise((ok) => setTimeout(ok, 6000))]);
-        if (fin) { const again = await withTr(lang, forRole(staffView(rows, todayIso, facts), role), owner, read, write, async () => null).catch(() => null); if (again) { stays = again.stays; pending = again.pending; } }
+        if (fin) { const again = await withTr(lang, attachChanges(forRole(staffView(rows, todayIso, facts), role), rawReports, role), owner, read, write, async () => null).catch(() => null); if (again) { stays = again.stays; pending = again.pending; } }
       }
     }
     return out({ name: link.name, lang: link.lang, role, tr: lang, pending, today: todayIso, tz, stays, reports, at: new Date().toISOString() });

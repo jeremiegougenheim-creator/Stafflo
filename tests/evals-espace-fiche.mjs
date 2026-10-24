@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], stk = [], keep = null, opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], reports = [], share = false, clock = false, vis = false } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], stk = [], keep = null, svCheck = null, opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], reports = [], share = false, clock = false, vis = false } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -66,6 +66,7 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
     if (u.includes('/functions/v1/guest-registrations')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'regfn', body: b, auth: req.headers().authorization }); return json(regFn ? regFn(b) : { reg: null }); }
     if (u.includes('/rest/v1/rpc/billing_status')) return json(bill || []);
     if (u.includes('/rest/v1/rpc/staff_link_urls')) { reads.push({ kind: 'stk' }); return json(stk); }
+    if (u.includes('/functions/v1/staff-view')) { const b = JSON.parse(req.postData() || '{}'); calls.push({ kind: 'svcheck', body: b, auth: req.headers().authorization }); return json(svCheck ? svCheck(b) : { check: true, changes: [] }); }
     if (u.includes('/rest/v1/rpc/staff_link_keep')) { calls.push({ kind: 'keep', body: JSON.parse(req.postData() || '{}') }); return json(keep === null ? false : keep); }
     if (u.includes('/rest/v1/wa_numbers')) return json(waNum);
     if (u.startsWith('https://connect.facebook.net/')) {
@@ -2179,6 +2180,54 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     check('brief maison : pour Saïd seul, envoyé à Saïd', /^pour Saïd$/m.test(await r.page.inputValue('#tx-f1')) && /Envoyer à Saïd/.test(await r.page.innerText('#st-f1')));
     await r.page.click('#st-f1 [data-a="panel"][data-v="turn"]'); await r.page.waitForTimeout(150);
     check('brief ménage : envoyé à Fatima', /Envoyer à Fatima/.test(await r.page.innerText('#st-f1')) && !r.errs.length, r.errs);
+    await r.ctx.close();
+  }
+  // 24/10 — modifié après une confirmation (cas réel : Seán, menus changés le 24 ; commande confirmée à Lise le 22 ; Fatima confirme).
+  // Client : « Modifié depuis la confirmation au client : menus », récap « mis à jour », À faire. Prestataire : staff-view (lien gardé)
+  // dit ce qui a changé depuis sa confirmation → ligne d'état, avant / maintenant, « Renvoyer le brief à Fatima », À faire.
+  {
+    const LF = JSON.parse(JSON.stringify(PILOT));
+    LF.TEAM = [{ name: 'Saïd', brief: true, phone: '+212 600 000 011', role: ['majordome', 'house manager'] }, { name: 'Fatima', kitchen: true, clean: true, phone: '+212 600 000 055', role: ['prestataire', 'provider'] }];
+    const VL = { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: LF };
+    const ago = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+    const GO = { at: ago(72), by: 'owner', src: 'message', cur: 'MAD', total: 2550, items: [{ id: 'm1', kind: 'meal', n: ['Déjeuner ou dîner (sur demande)', 'Lunch or dinner (on request)'], q: 3, unit: 850, sub: 2550, when: [{ d: iso(2), s: 'd' }, { d: iso(5), s: 'd' }, { d: iso(6), s: 'd' }] }] };
+    const MENUS = { at: ago(1), by: 'owner', cells: [{ d: iso(2), s: 'd', mi: 1, st: { t: 'Salade mechouia', fr: 'Salade mechouia', en: 'Mechouia salad' }, mn: { t: 'Poisson', fr: 'Poisson', en: 'Fish' }, ds: { t: 'Panna cotta', fr: 'Panna cotta aux fruits rouges', en: 'Panna cotta' } }] };
+    const SE = (det) => [{ id: 'q9', name: 'Seán', arrival: iso(1), departure: iso(8), adults: 10, booking_status: 'confirmed', source: 'Airbnb', phone: '+44 7889 000000', meals: '',
+      details: { guest_orders: GO, menus: MENUS, orderConfirmedAt: ago(48), contact: { name: 'Lise Hickey', at: ago(100) }, ...(det || {}) } }];
+    const TK = 'FaTiMaFaTiMa0123456789abcdefghijklmnopqrst';
+    const REP = [{ id: 'mk1', link_id: 'lf', client_id: 'q9', kind: 'meals_ok', text: null, created_at: ago(0.5), seen_at: ago(0.4) }];
+    const LINKS = [{ id: 'lf', name: 'Fatima', lang: 'fr', role: 'kitchen', created_at: ago(3) }];
+    const CHG = { check: true, changes: [{ id: 'q9', at: ago(0.5), now: ['lun. 26 soir : Salade mechouia · Poisson · Panna cotta aux fruits rouges'], was: ['lun. 26 soir : Salade mechouia · Poisson · Pâtisseries marocaines assorties'] }] };
+    r = await open({ tab: 'sejours', villa: VL, stays: SE(), teamLinks: LINKS, stk: [{ link_id: 'lf', token: TK }], reports: REP, svCheck: () => CHG });
+    await r.page.waitForTimeout(1200);
+    const sc = await r.page.innerText('#st-q9');
+    const ck = r.calls.find((x) => x.kind === 'svcheck');
+    check('prestataire : l’Espace demande à staff-view avec le lien gardé (owner, check — ni ouverture comptée ni traduction), sans la session du propriétaire',
+      !!ck && ck.body.k === TK && ck.body.owner === true && ck.body.check === true && Object.keys(ck.body).sort().join() === 'check,k,owner', ck);
+    check('carte du séjour : « Modifié après la confirmation de Fatima (…) : à lui renvoyer » à la place de « Repas confirmés » ; « Modifié depuis la confirmation au client (…) : menus »',
+      /Modifié après la confirmation de Fatima \(.+\) : à lui renvoyer/.test(sc) && !/Repas confirmés · Fatima/.test(sc) && /Modifié depuis la confirmation au client \(.+\) : menus$/m.test(sc), sc);
+    await r.page.click('[data-a="toggle"][data-id="q9"]'); await r.page.waitForTimeout(200);
+    const dt = await r.page.innerText('#st-q9');
+    check('détail : maintenant / avant pour le prestataire, « Renvoyer le brief à Fatima » ; « Marquer les changements confirmés au client »',
+      /Maintenant : lun\. 26 soir : .*Panna cotta/.test(dt) && /Avant : lun\. 26 soir : .*Pâtisseries marocaines/.test(dt) && /Renvoyer le brief à Fatima/.test(dt) && /Marquer les changements confirmés au client/.test(dt), dt.slice(0, 1500));
+    await r.page.click('#st-q9 [data-a="panel"][data-v="mrecap"]'); await r.page.waitForTimeout(200);
+    check('récap au client : « Here is the updated recap », adressé à Lise', /^Hello Lise,\n\nHere is the updated recap of your meals/.test(await r.page.inputValue('#tx-q9')), (await r.page.inputValue('#tx-q9')).slice(0, 120));
+    await r.page.click('#st-q9 button[data-v="chef"].btn.gold'); await r.page.waitForTimeout(250);
+    check('« Renvoyer le brief à Fatima » ouvre le brief prestataire, prêt à envoyer', /Brief prestataire — Seán/.test(await r.page.inputValue('#tx-q9')) && /Envoyer à Fatima/.test(await r.page.innerText('#st-q9')) && !r.errs.length, r.errs);
+    await r.page.click('[data-a="tab"][data-v="jour"]'); await r.page.waitForTimeout(200);
+    const tj = await txt(r.page);
+    check('À faire : « Renvoyer le brief au prestataire (changé après sa confirmation) » et « Prévenir le client du changement »', /Renvoyer le brief au prestataire \(changé après sa confirmation\)/.test(tj) && /Prévenir le client du changement/.test(tj) && !/Confirmer la commande/.test(tj), tj.slice(0, 900));
+    await r.ctx.close();
+    // rien changé pour le prestataire, commande reconfirmée au client après les menus → comme avant
+    r = await open({ tab: 'sejours', villa: VL, stays: SE({ orderConfirmedAt: ago(0.2) }), teamLinks: LINKS, stk: [{ link_id: 'lf', token: TK }], reports: REP, svCheck: () => ({ check: true, changes: [] }) });
+    await r.page.waitForTimeout(1200);
+    const s2 = await r.page.innerText('#st-q9');
+    check('rien changé depuis : « Repas confirmés · Fatima · … », pas de « Modifié … »', /Repas confirmés · Fatima · /.test(s2) && !/Modifié/.test(s2) && !r.errs.length, s2);
+    await r.ctx.close();
+    // lien sans copie gardée (créé avant le 24/10) : aucune question à staff-view, rien d'inventé
+    r = await open({ tab: 'sejours', villa: VL, stays: SE({ orderConfirmedAt: ago(0.2) }), teamLinks: LINKS, stk: [], reports: REP, svCheck: () => CHG });
+    await r.page.waitForTimeout(1000);
+    check('lien sans copie gardée : pas d’appel, « Repas confirmés » comme avant', !r.calls.some((x) => x.kind === 'svcheck') && /Repas confirmés · Fatima · /.test(await r.page.innerText('#st-q9')));
     await r.ctx.close();
   }
   // Retour de l'équipe en darija → dans la langue de la page, original replié

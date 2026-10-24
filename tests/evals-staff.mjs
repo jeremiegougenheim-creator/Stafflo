@@ -142,8 +142,8 @@ check('retour « chambres prêtes » : séjour visible obligatoire', JSON.string
 check('retour « problème » : texte obligatoire, ≤ 300, espaces repliés, séjour facultatif', M.cleanReport({ kind: 'issue', text: '  fuite   salle de bain ' }, VIS).text === 'fuite salle de bain' && M.cleanReport({ kind: 'issue', text: 'x'.repeat(900), client_id: 's2' }, VIS).text.length === 300 && M.cleanReport({ kind: 'issue', text: '   ' }, VIS) === null);
 check('genre inconnu refusé (rien d’autre n’est modifiable depuis ce lien)', M.cleanReport({ kind: 'price', text: '1' }, VIS) === null && M.cleanReport({ kind: 'delete', client_id: 's1' }, VIS) === null);
 check('30 retours par heure et par lien, pas plus', (() => { let lim = false; for (let i = 0; i < 35; i++) if (M.limited('r:L1', 30, 3600000)) lim = true; return lim && !M.limited('r:L2', 30, 3600000); })());
-check('fonction : le retour part dans staff_reports avec le propriétaire et le lien ; les seules autres écritures sont le cache des traductions (staff_i18n) et les ouvertures (staff_link_opens)', /staff_reports`, \{ method: "POST"/.test(fnSrc) && /owner_id: link\.owner_id, link_id: link\.id, client_id: rep\.client_id, kind: rep\.kind, text: rep\.text/.test(fnSrc) && (fnSrc.match(/method: "POST"/g) || []).length === 4 && /staff_i18n\?on_conflict=client_id,lang,field`, \{ method: "POST"/.test(fnSrc) && /api\.mistral\.ai\/v1\/chat\/completions", \{ method: "POST"/.test(fnSrc));
-check('fonction : les retours récents du lien reviennent avec les séjours (chambres prêtes reste coché)', /staff_reports\?select=id,kind,client_id,text,created_at&link_id=eq\.\$\{link\.id\}&deleted_at=is\.null/.test(fnSrc) && /stays, reports, at:/.test(fnSrc));
+check('fonction : le retour part dans staff_reports avec le propriétaire et le lien ; les seules autres écritures sont le cache des traductions (staff_i18n) et les ouvertures (staff_link_opens)', /staff_reports`, \{ method: "POST"/.test(fnSrc) && /owner_id: link\.owner_id, link_id: link\.id, client_id: rep\.client_id, kind: rep\.kind, text: rep\.kind === "meals_ok" \? null : rep\.text, \.\.\.\(sx \? \{ snapshot: mealSnap\(sx\) \} : \{\}\)/.test(fnSrc) && (fnSrc.match(/method: "POST"/g) || []).length === 4 && /staff_i18n\?on_conflict=client_id,lang,field`, \{ method: "POST"/.test(fnSrc) && /api\.mistral\.ai\/v1\/chat\/completions", \{ method: "POST"/.test(fnSrc));
+check('fonction : les retours récents du lien reviennent avec les séjours (chambres prêtes reste coché) ; confirmations de repas sur 60 jours, le snapshot reste au serveur (v25)', /staff_reports\?select=id,kind,client_id,text,created_at,snapshot&link_id=eq\.\$\{link\.id\}&deleted_at=is\.null&or=\(created_at\.gte\.\$\{d7\},and\(kind\.eq\.meals_ok,created_at\.gte\.\$\{d60\}\)\)/.test(fnSrc) && /stays, reports, at:/.test(fnSrc) && /rawReports\.map\(\(r\) => \(\{ id: r\.id, kind: r\.kind, client_id: r\.client_id, text: r\.text, created_at: r\.created_at \}\)\)/.test(fnSrc));
 
 // ── Fonction : requêtes ──────────────────────────────────────────────────
 const sel = (fnSrc.match(/crm_clients\?select=([^&`]+)/) || [])[1] || '';
@@ -153,7 +153,7 @@ check('jeton jamais stocké : seule l’empreinte est cherchée', !/token_hash=e
 check('séjours du propriétaire du lien seulement', /user_id=eq\.\$\{link\.owner_id\}&deleted_at=is\.null/.test(fnSrc));
 check('réponse jamais en cache', /"Cache-Control": "no-store"/.test(fnSrc));
 check('ouverture (18/10) : last_seen_at + une ligne staff_link_opens (propriétaire, lien), au plus toutes les 30 min ; jamais quand le propriétaire ouvre lui-même le lien (owner)', /if \(body\.owner !== true && \(!link\.last_seen_at \|\| Date\.now\(\) - Date\.parse\(link\.last_seen_at\) > 30 \* 60000\)\) \{/.test(fnSrc) && /staff_link_opens`, \{ method: "POST"[^\n]*JSON\.stringify\(\{ owner_id: link\.owner_id, link_id: link\.id \}\)/.test(fnSrc));
-check('écritures : last_seen_at (PATCH), les ouvertures (POST staff_link_opens), le retour de l’équipe (POST staff_reports), le cache arabe (POST staff_i18n) — jamais de DELETE, jamais crm_clients', (fnSrc.match(/method: "PATCH"/g) || []).length === 1 && !/method: "(DELETE|PUT)"/.test(fnSrc) && /last_seen_at: new Date/.test(fnSrc) && !/crm_clients[^\n]*method: "(POST|PATCH)"/.test(fnSrc));
+check('écritures : last_seen_at (PATCH), le snapshot d’une ancienne confirmation (PATCH staff_reports, v25), les ouvertures (POST staff_link_opens), le retour de l’équipe (POST staff_reports), le cache arabe (POST staff_i18n) — jamais de DELETE, jamais crm_clients', (fnSrc.match(/method: "PATCH"/g) || []).length === 2 && /staff_reports\?id=eq\.\$\{r\.id\}`, \{ method: "PATCH"[^\n]*JSON\.stringify\(\{ snapshot: r\.snapshot \}\)/.test(fnSrc) && !/method: "(DELETE|PUT)"/.test(fnSrc) && /last_seen_at: new Date/.test(fnSrc) && !/crm_clients[^\n]*method: "(POST|PATCH)"/.test(fnSrc));
 check('même exclusion des demandes que l’Espace', (() => {
   const esp = fs.readFileSync(path.join(root, 'espace.html'), 'utf8');
   const a = (fnSrc.match(/FIRM_OUT = \[([^\]]+)\]/) || [])[1], b = (esp.match(/FIRM_OUT = \[([^\]]+)\]/) || [])[1];
@@ -367,6 +367,40 @@ check('sw.js ne met pas equipe.html en cache', sw.includes("url.includes('equipe
   check('sans menus enregistrés : les lignes du client restent (rien n’est retiré sans menus)', nomenu.lines.menus.length === 0 && nomenu.lines.meals.some((x) => /^Starters - /.test(x)) && nomenu.lines.meals.includes('For the 3 dinners could we have:'), nomenu.lines.meals);
   check('« menus » traduit et mis en cache comme les autres champs', M.LINE_FIELDS.includes('menus'));
   check('phrase « maison » seule : goûter oui, dîner non, phrase sans repas non', M.houseOnly('could we do the afternoon tea on Monday 26th?', FX, 10) && !M.houseOnly('Could we do dinner on Monday 26th?', FX, 10) && !M.houseOnly('1 vegetarian', FX, 10));
+}
+
+// 24/10/2026 (v25) — cas réel : menus de Seán modifiés après coup. Ce que le prestataire confirme est gardé (snapshot) ; à son retour,
+// les lignes changées depuis sont montrées et le bouton revient. Un changement qui ne le concerne pas ne lui demande rien.
+{
+  const FX = { MEALS: [{ n: ['Petit-déjeuner', 'Breakfast'] }, { n: ['Déjeuner ou dîner (sur demande)', 'Lunch or dinner (on request)'], a: ['650 MAD'], b: ['850 MAD'] }, { n: ['Goûter (sur demande)', 'Afternoon tea (on request)'], a: ['450 MAD'], b: ['450 MAD'], house: true }] };
+  const OW = { at: '2026-10-22T23:22:55Z', by: 'owner', total: 3000, items: [{ id: 'm1', kind: 'meal', n: ['Déjeuner ou dîner (sur demande)'], q: 3, when: [{ d: '2026-10-26', s: 'd' }, { d: '2026-10-30', s: 'd' }, { d: '2026-10-31', s: 'd' }] },
+    { id: 'm2', kind: 'meal', n: ['Goûter (sur demande)'], q: 1, when: [{ d: '2026-10-26', t: '14:00' }] }] };
+  const d = (fr) => ({ key: 'X', i: 0, fr, en: fr });
+  const MN = (ds26) => ({ at: '2026-10-24T10:23:17Z', by: 'owner', cells: [{ d: '2026-10-26', s: 'd', st: d('Salade mechouia'), mn: d('Poisson'), ds: d(ds26) }, { d: '2026-10-30', s: 'd', st: d('Zaalouk'), mn: d('Tajine'), ds: d('Pastilla au lait') }] });
+  const row = (det) => [{ id: 's1', name: 'Seán', arrival: '2026-10-25', departure: '2026-11-01', adults: 10, booking_status: 'confirmed', meals: '', details: det }];
+  const kv = (det) => M.forRole(M.staffView(row(det), '2026-10-24', FX), 'kitchen');
+  const before = kv({ guest_orders: OW, menus: MN('Pâtisseries marocaines assorties') })[0];
+  const snap = M.mealSnap(before);
+  check('snapshot : les lignes du prestataire (repas commandés, menus), jamais le goûter de la maison', snap.v === 1 && snap.o.length === 1 && /3 × Déjeuner ou dîner/.test(snap.o[0]) && snap.m.length === 2 && !JSON.stringify(snap).includes('Goûter'), snap);
+  const rep = [{ id: 'r1', kind: 'meals_ok', client_id: 's1', created_at: '2026-10-24T10:27:24Z', snapshot: snap }];
+  const same = M.attachChanges(kv({ guest_orders: OW, menus: MN('Pâtisseries marocaines assorties') }), rep, 'kitchen')[0];
+  check('rien changé depuis la confirmation → pas de « changé », bouton toujours « Repas confirmés »', !same.chg && same.lines.chg_now.length === 0 && same.lines.chg_was.length === 0);
+  const ch = M.attachChanges(kv({ guest_orders: OW, menus: MN('Panna cotta aux fruits rouges') }), rep, 'kitchen')[0];
+  check('dessert du lun. 26 changé → chg.at = l’heure de sa confirmation ; maintenant « Panna cotta », avant « Pâtisseries marocaines »',
+    ch.chg && ch.chg.at === '2026-10-24T10:27:24Z' && JSON.stringify(ch.lines.chg_now) === JSON.stringify(['lun. 26 soir : Salade mechouia · Poisson · Panna cotta aux fruits rouges']) && JSON.stringify(ch.lines.chg_was) === JSON.stringify(['lun. 26 soir : Salade mechouia · Poisson · Pâtisseries marocaines assorties']), ch.lines);
+  const OW2 = { ...OW, items: [OW.items[0], { ...OW.items[1], when: [{ d: '2026-10-27', t: '16:00' }] }, { id: 'x1', kind: 'extra', n: ['Massage 60 min'], q: 2, when: [{ d: '2026-10-28', s: 'pm' }] }] };
+  check('goûter déplacé, massage ajouté (rien pour le prestataire) → aucun changement à confirmer', !M.attachChanges(kv({ guest_orders: OW2, menus: MN('Pâtisseries marocaines assorties') }), rep, 'kitchen')[0].chg);
+  const OW3 = { ...OW, items: [{ ...OW.items[0], q: 4, when: OW.items[0].when.concat([{ d: '2026-10-28', s: 'd' }]) }, OW.items[1]] };
+  const ad = M.attachChanges(kv({ guest_orders: OW3, menus: MN('Pâtisseries marocaines assorties') }), rep, 'kitchen')[0];
+  check('un dîner ajouté (mer. 28) → la ligne de commande changée est montrée', ad.chg && /4 × Déjeuner ou dîner/.test(ad.lines.chg_now[0]) && /3 × Déjeuner ou dîner/.test(ad.lines.chg_was[0]), ad.lines);
+  check('maison : jamais de « changé » (la maison ne confirme pas les repas)', !M.attachChanges(M.forRole(M.staffView(row({ guest_orders: OW, menus: MN('Panna cotta') }), '2026-10-24', FX), 'house'), rep, 'house')[0].chg);
+  check('confirmation sans snapshot (avant v25) : pas de « changé » inventé', !M.attachChanges(kv({ guest_orders: OW, menus: MN('Panna cotta') }), [{ ...rep[0], snapshot: null }], 'kitchen')[0].chg);
+  check('« changé » traduit et mis en cache comme le reste (chg_now, chg_was)', M.LINE_FIELDS.includes('chg_now') && M.LINE_FIELDS.includes('chg_was'));
+  // Confirmation d'avant la v25 : complétée seulement si menus et commande sont plus anciens qu'elle
+  const old = { kind: 'meals_ok', created_at: '2026-10-24T10:27:24Z', snapshot: null };
+  check('ancienne confirmation : complétée si rien n’a bougé depuis (menus 10:23, commande le 22, confirmation 10:27)', M.backfillable(old, { menus: { at: '2026-10-24T10:23:17Z' }, guest_orders: { at: '2026-10-22T23:22:55Z' } }));
+  check('… pas complétée si les menus ont changé après elle (on ne sait pas ce qui a été confirmé)', !M.backfillable(old, { menus: { at: '2026-10-24T11:00:00Z' }, guest_orders: { at: '2026-10-22T23:22:55Z' } }) && !M.backfillable({ ...old, snapshot: snap }, {}));
+  check('snapshot illisible → ignoré', M.snapOf({ v: 2 }) === null && M.snapOf('x') === null && M.snapOf(null) === null);
 }
 
 console.log(`\n${pass}/${pass + fail} PASS`);
