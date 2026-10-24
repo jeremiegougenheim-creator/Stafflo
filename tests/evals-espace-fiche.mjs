@@ -2390,6 +2390,25 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('[data-a="toggle"][data-id="c1"]'); await r.page.waitForTimeout(300);
   check('interrupteur stafflo_card_v2 = off : l’ancienne carte (pas de bloc replié, tous les gestes, contact visible)', !(await r.page.$('#st-c1 details.sf')) && !(await r.page.$('#st-c1 .acts.v2')) && !!(await r.page.$('#st-c1 .acts [data-v="edit"]')) && /réservé par Seán/.test(await txt(r.page)));
   await r.ctx.close();
+  // 24/10 — cas réel (Lise, 21/10) : « We won’t need the baby cot and high chair as we’re bringing our own travel cot » → Modifier › « Lit bébé et
+  // chaise haute : Pas besoin » ; le brief maison ne dit plus « à installer », la carte le dit ; « À installer » revient en arrière.
+  r = await open({ tab: 'sejours', villa: VC, stays: SC(), clock: '2026-10-22T10:00:00Z' });
+  await r.page.waitForTimeout(250); await r.page.click('[data-a="toggle"][data-id="c1"]'); await r.page.click('#st-c1 [data-a="panel"][data-v="edit"]'); await r.page.waitForSelector('#ed-babygear-c1');
+  await r.page.selectOption('#ed-babygear-c1', 'own'); await r.page.click('#st-c1 [data-a="editsave"]'); await r.page.waitForTimeout(300);
+  const bg = (r.calls.filter((x) => x.kind === 'stay').pop() || { body: {} }).body;
+  check('Modifier › « Lit bébé et chaise haute : Pas besoin » → details.baby_gear = own, le reste des details intact, rien d’autre envoyé',
+    !!bg.details && bg.details.baby_gear === 'own' && !!bg.details.guest_orders && bg.details.contact && bg.details.contact.name === 'Lise Hickey' && Object.keys(bg).join() === 'details', bg);
+  await r.ctx.close();
+  r = await open({ tab: 'sejours', villa: VC, stays: SC({}, { baby_gear: 'own' }), clock: '2026-10-22T10:00:00Z' });
+  await r.page.waitForTimeout(250); await r.page.click('[data-a="toggle"][data-id="c1"]'); await r.page.click('#st-c1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(250);
+  const bb = await r.page.inputValue('#tx-c1');
+  check('brief maison : « Bébés (1) : pas de lit bébé ni de chaise haute, ils apportent les leurs » (plus « à installer ») ; la carte le dit',
+    /👶 \*Bébés \(1\)\* : pas de lit bébé ni de chaise haute, ils apportent les leurs$/m.test(bb) && !/à installer/.test(bb) && /Pas de lit bébé ni de chaise haute : ils apportent les leurs/.test(await txt(r.page)), (bb.match(/^.*Bébés.*$/m) || [])[0]);
+  await r.page.click('#st-c1 [data-a="panel"][data-v="edit"]'); await r.page.waitForSelector('#ed-babygear-c1');
+  await r.page.selectOption('#ed-babygear-c1', ''); await r.page.click('#st-c1 [data-a="editsave"]'); await r.page.waitForTimeout(300);
+  const bg2 = (r.calls.filter((x) => x.kind === 'stay').pop() || { body: {} }).body;
+  check('« À installer » → baby_gear retiré', !!bg2.details && !('baby_gear' in bg2.details), bg2.details && Object.keys(bg2.details));
+  await r.ctx.close();
 }
 
 await browser.close(); server.close();
