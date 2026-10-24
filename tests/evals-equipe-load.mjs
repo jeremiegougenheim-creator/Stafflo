@@ -99,8 +99,8 @@ const KDATA = { ...DATA, name: 'Léa', role: 'kitchen', stays: [KSTAY] };
 r = await open({ data: KDATA });
 let kt = await r.page.evaluate(() => document.getElementById('app').innerText);
 const khead = await r.page.evaluate(() => document.getElementById('hello').innerText);
-check('prestataire : 0 erreur ; en-tête « Léa · prestataire repas » ; couverts (pas adultes) ; ses repas jour par jour ; « Préparé par la maison, pas par vous » ; prochaine arrivée « le jour même · vers 15h30 » ; consigne',
-  !r.errs.length && /Léa · prestataire repas/.test(khead) && /10\s*Couverts/.test(kt) && !/Adultes/.test(kt) && /Repas commandés par le client\s*2 × Déjeuner ou dîner — mer\. 21 soir, jeu\. 22 midi\s*1 × Brunch — ven\. 23 brunch/.test(kt) && /Préparé par la maison, pas par vous\s*1 × Goûter — jeu\. 22 soir/.test(kt) && /Prochaine arrivée après ce départ\s*.*· le jour même · vers 15h30/.test(kt) && /Consigne\s*Clés sous le pot\./.test(kt), [r.errs, kt]);
+check('prestataire : 0 erreur ; en-tête « Léa · prestataire repas » ; couverts (pas adultes) ; ses repas jour par jour ; plus ce que prépare la maison (24/10) ; prochaine arrivée « le jour même · vers 15h30 » ; consigne',
+  !r.errs.length && /Léa · prestataire repas/.test(khead) && /10\s*Couverts/.test(kt) && !/Adultes/.test(kt) && /Repas commandés par le client\s*2 × Déjeuner ou dîner — mer\. 21 soir, jeu\. 22 midi\s*1 × Brunch — ven\. 23 brunch/.test(kt) && !/Préparé par la maison, pas par vous|Goûter/.test(kt) && /Prochaine arrivée après ce départ\s*.*· le jour même · vers 15h30/.test(kt) && /Consigne\s*Clés sous le pot\./.test(kt), [r.errs, kt]);
 check('prestataire : ni couchages, ni boissons, ni extras, ni « Chambres prêtes »', !/Couchages|Boissons|Commandé par le client|Chambres prêtes/.test(kt));
 check('« Repas confirmés » sur le séjour à venir', (await r.page.$$('[data-a="ready"]')).length === 1 && (await r.page.getAttribute('[data-a="ready"]', 'data-kind')) === 'meals_ok');
 await r.page.click('[data-a="ready"]'); await r.page.waitForTimeout(300);
@@ -110,7 +110,7 @@ check('« Signaler un problème » reste', !!(await r.page.$('#issueTxt')));
 await r.ctx.close();
 r = await open({ data: KDATA, lang: 'ar' });
 const kar = await r.page.evaluate(() => document.getElementById('app').innerText);
-check('prestataire en arabe : libellés en darija (couverts, repas commandés, maison, vossul jay, repas confirmés)', /عدد الناس ف الماكلة/.test(kar) && /الماكلة اللي طلب الكليان/.test(kar) && /كتوجدها الدار، ماشي نتوما/.test(kar) && /الوصول الجاي من بعد هاد الخروج/.test(kar) && /الماكلة مأكدة/.test(kar) && !/النعاس|المشروبات/.test(kar), kar);
+check('prestataire en arabe : libellés en darija (couverts, repas commandés, vossul jay, repas confirmés) — plus ce que fait la maison (24/10)', /عدد الناس ف الماكلة/.test(kar) && /الماكلة اللي طلب الكليان/.test(kar) && !/كتوجدها الدار، ماشي نتوما/.test(kar) && /الوصول الجاي من بعد هاد الخروج/.test(kar) && /الماكلة مأكدة/.test(kar) && !/النعاس|المشروبات/.test(kar), kar);
 await r.ctx.close();
 // 23/10 — menus par repas (staff-view v24 : details.menus enregistrés dans l'Espace) : une ligne par repas, prestataire et maison
 const MSTAY = { ...KSTAY, menus: 'mer. 21 soir : Salade mechouia · Poisson à la charmoula · Cornes de gazelle\njeu. 22 midi : Zaalouk · Couscous (poulet) · ?',

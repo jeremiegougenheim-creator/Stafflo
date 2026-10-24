@@ -1305,8 +1305,10 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
     await r.page.waitForTimeout(250);
     await r.page.$eval('[data-a="feopen"][data-v="team"]', (b) => b.click()); await r.page.waitForTimeout(300);
     const fe2 = await txt(r.page);
-    check('fiche › Équipe : « Prestataire ménage » expliqué (entreprise extérieure, pas le ménage de la maison), note sur Fatima', /Prestataire ménage/.test(fe2) && /Une entreprise extérieure qui fait l’interlocation et la remise en état, pas le ménage de la maison/.test(fe2) &&
-      (fe2.match(/Cette personne reçoit le brief interlocation, pas le brief maison/g) || []).length === 1, fe2.slice(0, 200));
+    // 24/10 : « Ce qu'elle reçoit » — Fatima « Le brief ménage », expliqué (entreprise extérieure, pas le ménage de la maison)
+    const fz = await r.page.$$eval('select[data-fe-role]', (a) => a.map((x) => x.value));
+    check('fiche › Équipe : Fatima « Le brief ménage (interlocation, remise en état) », expliqué (entreprise extérieure, pas le ménage de la maison)', fz[fz.length - 1] === 'clean' && /Le brief ménage \(interlocation, remise en état\)/.test(fe2) &&
+      /Une entreprise extérieure, pas le ménage de la maison/.test(fe2), { fz, fe2: fe2.slice(0, 200) });
     await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
     const fsv = r.calls.filter((x) => x.kind === 'PATCH').pop();
     const fsT = fsv && fsv.body && fsv.body.house_facts ? fsv.body.house_facts.TEAM : null;
@@ -1711,7 +1713,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kh = await r.page.inputValue('#tx-k1');
   check('brief prestataire : ses repas seulement ; le déjeuner léger est signalé « préparé par la maison, pas par vous »',
-    JSON.stringify(sect(kh, 'Commande du livret').items) === '["3 × Brunch, déjeuner ou dîner (sur demande)"]' && JSON.stringify(sect(kh, 'Préparé par la maison, pas par vous').items) === '["2 × Déjeuner léger (sur demande)"]' && !/450|850|MAD/.test(kh), kh);
+    JSON.stringify(sect(kh, 'Commande du livret').items) === '["3 × Brunch, déjeuner ou dîner (sur demande)"]' && !sect(kh, 'Préparé par la maison, pas par vous') && !/Déjeuner léger/.test(kh) && !/450|850|MAD/.test(kh), kh); // 24/10 : le prestataire ne voit plus ce que prépare la maison
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bh = await r.page.inputValue('#tx-k1');
   check('brief maison : « À préparer par la maison : 2 × Déjeuner léger », jamais les repas de la cuisinière ni un prix',
@@ -1726,7 +1728,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('[data-a="toggle"][data-id="k1"]'); await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kg = await r.page.inputValue('#tx-k1');
   check('7 personnes et plus : un repas « maison » marqué « par le prestataire » y part ; le goûter (toujours la maison) reste à la maison',
-    JSON.stringify(sect(kg, 'Commande du livret').items) === '["3 × Brunch, déjeuner ou dîner (sur demande)","2 × Déjeuner léger (sur demande)"]' && JSON.stringify(sect(kg, 'Préparé par la maison, pas par vous').items) === JSON.stringify(['1 × ' + KG.MEALS[2].n[0]]), kg);
+    JSON.stringify(sect(kg, 'Commande du livret').items) === '["3 × Brunch, déjeuner ou dîner (sur demande)","2 × Déjeuner léger (sur demande)"]' && !sect(kg, 'Préparé par la maison, pas par vous') && !kg.includes(KG.MEALS[2].n[0]), kg); // 24/10
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bg = await r.page.inputValue('#tx-k1');
   check('7 personnes et plus : le brief maison n’a plus que le goûter', JSON.stringify(sect(bg, 'À préparer par la maison').items) === JSON.stringify(['1 × ' + KG.MEALS[2].n[0]]) && !/Déjeuner léger/.test(bg) && !r.errs.length, bg);
@@ -1741,7 +1743,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const kd = await r.page.inputValue('#tx-k1');
   check('commande datée : le brief prestataire dit le jour et le service (« — mer. 21 soir, jeu. 22 midi »), jamais un prix',
-    JSON.stringify(sect(kd, 'Commande du livret').items) === '["2 × Brunch, déjeuner ou dîner (sur demande) — mer. 21 soir, jeu. 22 midi"]' && /^• 1 × .* — ven\. 23$/m.test(sect(kd, 'Préparé par la maison, pas par vous') ? '• ' + sect(kd, 'Préparé par la maison, pas par vous').items[0] : '') && !/850|MAD/.test(kd), kd);
+    JSON.stringify(sect(kd, 'Commande du livret').items) === '["2 × Brunch, déjeuner ou dîner (sur demande) — mer. 21 soir, jeu. 22 midi"]' && !sect(kd, 'Préparé par la maison, pas par vous') && !/850|MAD/.test(kd), kd); // 24/10 : ce que fait la maison reste au brief maison
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const bd = await r.page.inputValue('#tx-k1');
   check('commande datée : le brief maison aussi (« À préparer par la maison : 1 × Goûter … — ven. 23 »)', /^• 1 × .* — ven\. 23$/m.test((sect(bd, 'À préparer par la maison') || { items: [''] }).items.map((x) => '• ' + x).join('\n')) && !r.errs.length, bd);
@@ -1756,7 +1758,7 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('#st-k1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(150);
   const ke = await r.page.inputValue('#tx-k1');
   check('résumé du livret dans « repas » : les abréviations ne coupent plus (« ven. 23 »), et sous 🍽 Repas du brief prestataire il ne reste que les mots du client — la commande est dans 🧺 et 🏠',
-    JSON.stringify(sect(ke, 'Repas').items) === '["Dîner samedi : tajine de poulet.","Pas d’allergie."]' && sect(ke, 'Commande du livret').items.length === 1 && sect(ke, 'Préparé par la maison, pas par vous').items.length === 1, ke);
+    JSON.stringify(sect(ke, 'Repas').items) === '["Dîner samedi : tajine de poulet.","Pas d’allergie."]' && sect(ke, 'Commande du livret').items.length === 1 && !sect(ke, 'Préparé par la maison, pas par vous'), ke); // 24/10
   await r.page.click('#st-k1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
   const be = await r.page.inputValue('#tx-k1');
   check('brief maison : garde la ligne du prestataire sous Repas (le service du dîner), pas le goûter déjà sous 🏠',
@@ -2130,17 +2132,55 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   r = await open({ tab: 'maison', villa: V, teamLinks: [{ id: 'l1', name: 'Omar', lang: 'fr', role: 'house', created_at: iso(-3), last_seen_at: new Date(Date.now() - 3600e3).toISOString() }, { id: 'l2', name: 'Léa', lang: 'fr', role: 'kitchen', created_at: iso(-2) }] });
   await r.page.waitForTimeout(250);
   let tm = await txt(r.page);
-  check('une ligne par personne : Omar « 1 lien actif · FR · ouvert … » + Nouveau lien ; Lea (prestataire) retrouve son lien « Léa » (accent ignoré) ; Nok « pas de lien » + Créer le lien', /Omar\n1 lien actif · FR · ouvert /.test(tm) && /Lea · prestataire\n1 lien actif · FR · jamais ouvert/.test(tm) && /Nok\npas de lien/.test(tm) && (await r.page.$$('[data-a="eqfor"]')).length === 3 && (await r.page.innerText('[data-a="eqfor"][data-v="Omar"]')).includes('Nouveau lien') && (await r.page.innerText('[data-a="eqfor"][data-v="Nok"]')).includes('Créer le lien'), tm.slice(0, 500));
+  check('une ligne par personne : Omar « 1 lien actif · FR · ouvert … » + Nouveau lien ; Lea (prestataire) retrouve son lien « Léa » (accent ignoré) ; Nok « pas de lien » + Créer le lien', /Omar\n1 lien actif · FR · ouvert /.test(tm) && /Lea · prestataire\n1 lien actif · FR · jamais ouvert/.test(tm) && /Nok\npas de lien/.test(tm) && (await r.page.$$('[data-a="eqfor"]')).length === 4 && (await r.page.innerText('[data-a="eqfor"][data-v="Omar"]')).includes('Nouveau lien') && (await r.page.innerText('[data-a="eqfor"][data-v="Nok"]')).includes('Créer le lien'), tm.slice(0, 500));
   const how = await r.page.$eval('#main', (e) => e.textContent); // replié (details) : textContent
-  check('« Comment ça marche » : adresse secrète, gardée chiffrée pour les briefs (24/10), ancien lien = empreinte seule, ouvertures notées, Retirer, rôle depuis la fiche', /adresse secrète \(43 caractères\)/.test(how) && /le garde chiffré \(clé à part\) pour l’ajouter à la fin de chaque brief/.test(how) && /n’a qu’une empreinte/.test(how) && /« Retirer » coupe l’accès/.test(how) && /case « Prestataire repas »/.test(how));
+  check('« Comment ça marche » : adresse secrète, gardée chiffrée pour les briefs (24/10), ancien lien = empreinte seule, ouvertures notées, Retirer, rôle depuis la fiche', /adresse secrète \(43 caractères\)/.test(how) && /le garde chiffré \(clé à part\) pour l’ajouter à la fin de chaque brief/.test(how) && /n’a qu’une empreinte/.test(how) && /« Retirer » coupe l’accès/.test(how) && /« Ce qu’elle reçoit »/.test(how) && /« Renvoyer le lien »/.test(how));
   await r.page.selectOption('#eq-lang', 'en'); await r.page.click('[data-a="eqfor"][data-v="Nok"]'); await r.page.waitForSelector('#eq-msg', { timeout: 8000 });
   const mk = r.calls.find((x) => x.kind === 'eqcreate');
   check('lien en anglais pour Nok : lang en, rôle maison, message d’envoi en anglais, panneau « Nok · EN »', !!mk && mk.body.lang === 'en' && mk.body.name === 'Nok' && mk.body.role === 'house' && /^Hello Nok, here is your Stafflo link/.test(await r.page.inputValue('#eq-msg')) && /Nok · EN/.test(await r.page.innerText('#main')) && !r.errs.length, [mk && mk.body, r.errs]);
   await r.page.$eval('[data-a="feopen"][data-v="team"]', (b) => b.click()); await r.page.waitForTimeout(300); // bouton dans une carte repliée
   const fe = await txt(r.page);
-  check('fiche › Équipe : « Prestataire repas » (plus « Cuisine ») avec son explication, « Reçoit le brief » expliqué, note sur Lea (brief + prestataire), alerte sur Ali (prestataire sans brief : rien)', /Prestataire repas/.test(fe) && !/\nCuisine\n/.test(fe) && /Obligatoire pour un brief et un lien\. Seule : brief maison \(arrivée, couchages, départ, boissons\)/.test(fe) && /jamais les couchages, les boissons, les extras ni un prix/.test(fe) && (fe.match(/Cette personne reçoit le brief prestataire, pas le brief maison/g) || []).length === 1 && (fe.match(/Sans « Reçoit le brief », cette personne ne reçoit rien/g) || []).length === 1, fe.slice(0, 300));
-  check('Accès équipe : Ali (prestataire sans brief) n’a pas de ligne ni de lien possible — la fiche décide (3 boutons, pas 4)', !/Ali/.test(tm));
+  // 24/10 : un seul choix « Ce qu'elle reçoit » par personne, à la place des trois cases
+  const rs = await r.page.$$eval('select[data-fe-role]', (a) => a.map((x) => x.value));
+  check('fiche › Équipe : « Ce qu’elle reçoit », un choix par personne (Omar maison, Lea prestataire repas, Nok maison, Ali prestataire repas), plus de cases ni d’alerte « ne reçoit rien »',
+    JSON.stringify(rs) === JSON.stringify(['house', 'kitchen', 'house', 'kitchen']) && /Ce qu’elle reçoit/.test(fe) && /Brief prestataire : couverts, repas commandés, menus, heures — jamais les couchages, les boissons ni un prix/.test(fe) && !(await r.page.$('input[type="checkbox"][data-fe$=".kitchen"]')) && !/ne reçoit rien/.test(fe), { rs, fe: fe.slice(0, 300) });
+  await r.page.selectOption('select[data-fe-role="TEAM.0"]', 'both'); await r.page.waitForTimeout(150);
+  check('choisir « Repas et ménage » pour Omar : l’indication suit, et le choix reste', (await r.page.$eval('select[data-fe-role="TEAM.0"]', (x) => x.value)) === 'both' && /Brief prestataire et brief interlocation/.test(await txt(r.page)));
+  await r.page.selectOption('select[data-fe-role="TEAM.0"]', 'none'); await r.page.waitForTimeout(150);
+  check('« Rien » : ni brief ni lien, dit sous le choix', /Ni brief ni lien/.test(await txt(r.page)) && !r.errs.length, r.errs);
+  check('Accès équipe : Ali (prestataire repas, sans « Reçoit le brief » dans l’ancienne fiche) a sa ligne et son lien — un prestataire reçoit toujours son brief', /Ali · prestataire\npas de lien/.test(tm) && !!(await r.page.$('[data-a="eqfor"][data-v="Ali"]')) || /Ali · prestataire\npas de lien/.test(tm), tm.slice(0, 700));
   await r.ctx.close();
+  // 24/10 — cas réel : Léa et Fatima, la même équipe (repas + ménage), cochées « prestataire » sans « Reçoit le brief » ; Saïd maison.
+  // Les deux ont leur ligne et leur lien ; le brief prestataire et le brief ménage partent à Fatima (la seule avec un téléphone).
+  {
+    const LF = JSON.parse(JSON.stringify(PILOT));
+    LF.TEAM = [{ name: 'Saïd', brief: true, phone: '+212 600 000 011', role: ['majordome', 'house manager'] }, { name: 'Bouchra', role: ['ménage', 'housekeeping'] },
+      { name: 'Léa', kitchen: true, clean: true, role: ['prestataire repas', 'meal provider'] }, { name: 'Houda', role: ['massage', 'massage'] },
+      { name: 'Fatima', kitchen: true, clean: true, phone: '+212 600 000 055', role: ['prestataire de service avec Léa', 'provider with Léa'] }];
+    const VL = { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: LF };
+    const SL = [{ id: 'f1', name: 'Ana Ruiz', arrival: iso(1), departure: iso(4), adults: 4, booking_status: 'confirmed', source: 'Airbnb', phone: '+33600000000', details: {} }];
+    const TK = 'FaTiMaFaTiMa0123456789abcdefghijklmnopqrst';
+    r = await open({ tab: 'maison', villa: VL, stays: SL, teamLinks: [{ id: 'lf', name: 'Fatima', lang: 'fr', role: 'kitchen', created_at: iso(0) }], stk: [{ link_id: 'lf', token: TK }] });
+    await r.page.waitForTimeout(250);
+    const tq = await txt(r.page);
+    check('Léa et Fatima (prestataires repas + ménage, sans « Reçoit le brief ») ont leur ligne ; Saïd maison sans « prestataire » ; Houda et Bouchra non',
+      /\nSaïd\npas de lien/.test(tq) && /Léa · prestataire\npas de lien/.test(tq) && /Fatima · prestataire\n1 lien actif/.test(tq) && !(await r.page.$('[data-a="eqfor"][data-v="Houda"]')) && !(await r.page.$('[data-a="eqfor"][data-v="Bouchra"]')) &&
+      JSON.stringify(await r.page.$$eval('#eq-who option', (o) => o.map((x) => x.textContent))) === JSON.stringify(['Saïd', 'Léa', 'Fatima']), tq.slice(0, 900));
+    // Renvoyer le lien gardé de Fatima : le même lien, son message, le QR — sans en créer un nouveau
+    await r.page.click('[data-a="eqshow"][data-v="lf"]'); await r.page.waitForSelector('#eq-qr svg', { timeout: 8000 }).catch(() => {});
+    const rp = await r.page.evaluate(() => ({ msg: (document.getElementById('eq-msg') || {}).value || '', qr: !!document.querySelector('#eq-qr svg'), pan: ((document.getElementById('eq-msg') || {}).closest ? document.getElementById('eq-msg').closest('.panel').innerText : '') }));
+    check('« Renvoyer le lien » : le même lien de Fatima dans le message, le QR, « le même que la première fois », aucun lien créé',
+      rp.msg.includes('equipe.html#k=' + TK) && rp.qr && /le même que la première fois/.test(rp.pan) && /« Renvoyer le lien »/.test(rp.pan) && !r.calls.some((x) => x.kind === 'eqcreate' || x.kind === 'keep') && !r.errs.length, { rp, e: r.errs });
+    await r.page.click('[data-a="tab"][data-v="sejours"]'); await r.page.waitForTimeout(150);
+    await r.page.click('[data-a="toggle"][data-id="f1"]'); await r.page.click('#st-f1 [data-a="panel"][data-v="chef"]'); await r.page.waitForTimeout(200);
+    const kb = await r.page.inputValue('#tx-f1'), kp = await r.page.innerText('#st-f1');
+    check('brief prestataire : « pour Léa, Fatima », envoyé à Fatima (la seule avec un téléphone), son lien à la fin', /^pour Léa, Fatima$/m.test(kb) && /Envoyer à Fatima/.test(kp) && kb.endsWith('/equipe.html#k=' + TK), kb.slice(0, 200) + ' … ' + kb.slice(-120));
+    await r.page.click('#st-f1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150);
+    check('brief maison : pour Saïd seul, envoyé à Saïd', /^pour Saïd$/m.test(await r.page.inputValue('#tx-f1')) && /Envoyer à Saïd/.test(await r.page.innerText('#st-f1')));
+    await r.page.click('#st-f1 [data-a="panel"][data-v="turn"]'); await r.page.waitForTimeout(150);
+    check('brief ménage : envoyé à Fatima', /Envoyer à Fatima/.test(await r.page.innerText('#st-f1')) && !r.errs.length, r.errs);
+    await r.ctx.close();
+  }
   // Retour de l'équipe en darija → dans la langue de la page, original replié
   const REP = [{ id: 'rp9', link_id: 'l1', client_id: null, kind: 'issue', text: 'الما كيقطر ف الحمام ديال السويت، خاص بلومبي', created_at: new Date().toISOString(), seen_at: null }];
   const ai = (b) => b.task === 'write_staff' && /Tu traduis en français/.test(b.system) ? mapLines(b, () => 'Il y a une fuite d’eau dans la salle de bain de la suite, il faut un plombier') : { text: '' };
