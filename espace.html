@@ -97,6 +97,16 @@ details.more{display:inline}details.more summary{display:inline;cursor:pointer;c
 .act:active{transform:scale(.97)}
 .act i{font-size:20px}
 .act[aria-pressed="true"]{border-color:var(--gold);background:#fffaf0}
+/* 24/10 — carte du séjour : gestes d'abord (4 + Plus), informations repliées (Client, Repas, Argent) */
+.acts.v2{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.acts.v2:not(.all) .x{display:none}.acts.v2:not(.all) .p4{display:none}
+.acts.v2 .act{min-height:52px;padding:6px 3px;word-break:normal;overflow-wrap:normal}.acts.v2 .act i{font-size:19px}
+@media (min-width:480px){.acts.v2{grid-template-columns:repeat(5,minmax(0,1fr))}.acts.v2:not(.all) .p4{display:flex}.acts.v2 .m4{display:none}}
+.act.more{color:var(--muted);border-style:dashed}
+details.sf{border-top:1px solid var(--line2)}details.sf>summary{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;list-style:none;font-size:13px}
+details.sf>summary::-webkit-details-marker{display:none}details.sf>summary>i:first-child{color:var(--gm);font-size:17px;flex:none}details.sf>summary b{flex:none;font-weight:600}
+details.sf>summary .fs{flex:1;min-width:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}details.sf.attn>summary .fs{color:var(--wait);font-weight:600}
+details.sf>summary .chev{color:var(--muted);flex:none;transition:transform .15s}details.sf[open]>summary .chev{transform:rotate(90deg)}
+details.sf>.fb{display:flex;flex-direction:column;gap:8px;padding:0 0 8px}
 .btn{min-height:46px;padding:0 16px;border:0;border-radius:var(--r-md);font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
 .btn.gold{background:var(--gold);color:var(--gd)}
 .btn.green{background:var(--gd);color:#F4EFE3}
@@ -466,6 +476,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       bTier: function (n, u, g) { return 'Tarif ' + (n ? 'groupe de ' + n + ' pers.' : 'à choisir') + ' : ' + u + ' MAD par service' + (g ? ', goûter ' + g + ' MAD' : '') + ' — fiche maison'; },
       bNoPax: 'Nombre de personnes inconnu : choisissez le tarif.', bTotal: 'Total', bSave: 'Enregistrer le décompte', bSaved: 'Décompte enregistré le ', bMsg: 'Message au client',
       act2: { edit: 'Modifier', bill: 'Décompte' },
+      card: { more: 'Plus', less: 'Moins', client: 'Client', meals: 'Repas', money: 'Argent', none: 'Rien de noté', msgs: function (n) { return n + (n > 1 ? ' messages' : ' message'); },
+        ord: 'commande', ordNoted: 'commande notée', changed: 'Modifiée après confirmation', menusTodo: 'menus à enregistrer', comp: 'Séjour offert', pays: function (n) { return n + (n > 1 ? ' versements' : ' versement'); } }, // 24/10 : carte du séjour
       /* v13 — fiche maison modifiable ici (tout compte) */
       fe: {
         edit: 'Modifier la fiche maison', fill: 'Remplir la fiche maison', title: 'Fiche maison',
@@ -684,6 +696,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       bTier: function (n, u, g) { return (n ? 'Group of ' + n : 'Rate to choose') + ': ' + u + ' MAD per service' + (g ? ', afternoon tea ' + g + ' MAD' : '') + ' — house facts'; },
       bNoPax: 'Group size unknown: choose the rate.', bTotal: 'Total', bSave: 'Save the bill', bSaved: 'Bill saved on ', bMsg: 'Message to the guest',
       act2: { edit: 'Edit', bill: 'Bill' },
+      card: { more: 'More', less: 'Less', client: 'Guest', meals: 'Meals', money: 'Money', none: 'Nothing noted', msgs: function (n) { return n + (n > 1 ? ' messages' : ' message'); },
+        ord: 'order', ordNoted: 'order noted', changed: 'Changed after confirmation', menusTodo: 'menus to save', comp: 'Complimentary stay', pays: function (n) { return n + (n > 1 ? ' payouts' : ' payout'); } },
       fe: {
         edit: 'Edit the house sheet', fill: 'Fill in the house sheet', title: 'House sheet',
         intro: 'Everything the guest booklet, the team view, the messages and ARIA use. French is enough: an empty English field falls back to the French. Nothing is invented: what is not written here is “to be confirmed”.',
@@ -714,7 +728,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
   };
 
   /* ── État ─────────────────────────────────────────────────────────── */
-  var U = { tab: 'jour', lang: 'fr', open: {}, panel: {}, toast: '', toastErr: false, busy: false, loginErr: '' };
+  var U = { tab: 'jour', lang: 'fr', open: {}, panel: {}, more: {}, fold: {}, toast: '', toastErr: false, busy: false, loginErr: '' }; // more, fold : carte du séjour (24/10)
   var D = { stays: [], past: [], msgs: [], events: [], links: [], reports: [], sync: null, loaded: false, online: navigator.onLine !== false, error: false, user: null };
   var DR = {}; /* brouillons ARIA par message : { busy, text } */
   var RV = {}; /* panneau avis ouvert par séjour : 'ask' | 'host' */
@@ -3628,18 +3642,77 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     return '<span class="sub"><b>' + esc(label) + '</b> ' + esc(flat(x.text).slice(0, 300)) + (wait ? ' <i>' + esc(l.trWait) + '</i>' : '') +
       (x.orig ? '<details class="more"><summary>' + esc(l.trOrig) + '</summary>' + esc(flat(x.orig).slice(0, 300)) + '</details>' : '') + '</span>';
   }
+  /* 24/10 — la carte ouverte, lisible sur téléphone (avant : une douzaine de lignes d'informations, puis douze boutons, puis
+     le panneau tout en bas). D'abord les gestes : quatre au plus, choisis selon le moment (ce qui manque, en retard d'abord ;
+     puis WhatsApp, le livret et les briefs avant l'arrivée, les briefs et le décompte pendant, le décompte après), les autres
+     sous « Plus ». Le panneau du geste s'ouvre juste dessous. Puis les informations, repliées en trois blocs — Client, Repas,
+     Argent — chacun avec une ligne de résumé. Un bloc s'ouvre seul quand il porte quelque chose à faire (message à traiter,
+     commande à confirmer, changement après une confirmation, prestataire à prévenir) ; ce que le propriétaire ouvre ou ferme
+     est gardé pour la session (U.fold). Interrupteur : localStorage.stafflo_card_v2 = 'off' → l'ancienne carte. */
+  var CARD_V2 = (function () { try { return localStorage.getItem('stafflo_card_v2') !== 'off'; } catch (e) { return true; } })();
+  function cardPrimary(c, keys) {
+    var t = todayNum(), want = [];
+    var add = function (k) { if (k && keys.indexOf(k) > -1 && want.indexOf(k) < 0) want.push(k); };
+    if (PCHG[c.id]) add('chef'); // changé après la confirmation du prestataire : lui renvoyer le brief
+    if (c.d - t <= 2 && c.d >= t - 1) add('depart');
+    if (c.a >= t) checks(c).filter(function (x) { return !x.done; }).sort(function (x, y) { return (y.late - x.late) || (x.due - y.due); }).forEach(function (x) {
+      add({ phone: 'phone', livret: 'livret', meals: 'meals', team: 'arrival', brief: 'brief', reg: regOf(c) ? 'reg' : 'passports' }[x.k]);
+    });
+    if (nudgeable(c)) add('lnudge');
+    if (c.d >= t && c.d - t <= 2 && turnPending(c)) add('turn'); // même fenêtre que « À faire »
+    add('wa');
+    if (c.a > t) { add('livret'); add('brief'); add('chef'); add('meals'); }
+    else if (c.d >= t) { add('brief'); add('chef'); add('turn'); add('bill'); }
+    else { add('bill'); add('edit'); }
+    add('edit');
+    return want.slice(0, 4);
+  }
+  function cardV2(c, pn, P, A, jl, ph) {
+    var l = L(), k = l.card, t = todayNum(), id = esc(c.id);
+    var keys = A.map(function (x) { return x[0]; }), prim = cardPrimary(c, keys);
+    var rest = A.filter(function (x) { return prim.indexOf(x[0]) < 0; });
+    var all = !!U.more[c.id] || rest.some(function (x) { return x[0] === pn; }); // le geste ouvert reste visible
+    var bar = '<div class="acts v2' + (all ? ' all' : '') + '">' +
+      prim.map(function (p, i) { var b = A.filter(function (x) { return x[0] === p; })[0][1]; return i === 3 && pn !== p ? b.replace('class="act"', 'class="act p4"') : b; }).join('') + // téléphone : trois gestes + Plus
+      rest.map(function (x) { return x[1].replace('class="act"', 'class="act x"'); }).join('') +
+      (rest.length || prim.length > 3 ? '<button type="button" class="act more' + (rest.length ? '' : ' m4') + '" data-a="more" data-id="' + id + '" aria-expanded="' + all + '"><i class="ti ti-' + (all ? 'chevron-up' : 'dots') + '" aria-hidden="true"></i>' + esc(all ? k.less : k.more) + '</button>' : '') + '</div>';
+    var part = function (b) { return P.filter(function (x) { return x[0] === b; }).map(function (x) { return x[1]; }).join(''); };
+    var fold = function (b, icon, title, sum, body, attn) {
+      var key = c.id + ':' + b, op = U.fold[key] != null ? !!U.fold[key] : !!attn;
+      return '<details class="sf' + (attn ? ' attn' : '') + '" data-sfold="' + esc(key) + '"' + (op ? ' open' : '') + '><summary><i class="ti ti-' + icon + '" aria-hidden="true"></i><b>' + esc(title) + '</b>' +
+        '<span class="fs">' + esc(sum) + '</span><i class="ti ti-chevron-right chev" aria-hidden="true"></i></summary><div class="fb">' + (body || '<span class="sub">' + esc(k.none) + '</span>') + '</div></details>';
+    };
+    // Client : qui, le contact, les messages à traiter ; le parcours du livret en tête du bloc
+    var nm = msgsFor(c).length, ct = contactOf(c);
+    var cSum = [l.composition(c.ad, c.ch, c.inf) || (c.pax ? l.pax(c.pax) : '?'), ct ? l.contactLbl + ' ' + ct.split(/\s+/)[0] : '', nm ? k.msgs(nm) : ''].filter(Boolean).join(' · ');
+    // Repas : la commande et son état, sinon ce que le client a écrit
+    var go = orderOf(c), mt = String(c.meals || '').trim(), mx = mt ? flat(shown(c, 'meals', mt).text) : '';
+    var ms = go && HAS_FACTS && c.d >= t ? menuState(c) : null, mUns = !!(ms && !ms.saved && ms.any); // menus proposés, pas encore enregistrés
+    var mSum = go ? (PCHG[c.id] ? k.changed : orderOpen(c) ? l.ex.toConf : mUns ? k.menusTodo : l.ex.conf) + ' · ' + (go.by === 'owner' ? k.ordNoted : k.ord) + ' ' + money(go.total, go.cur) // l'état d'abord : il ne doit pas tomber dans les points de suspension
+      : mx ? mx.slice(0, 80) + (mx.length > 80 ? '…' : '') : k.none;
+    var mAttn = c.d >= t && (!!PCHG[c.id] || (!!go && orderOpen(c)) || mUns || provPending(c).length > 0);
+    var mealsBody = part('meals');
+    // Argent : le net (« ? » s'il manque — jamais estimé) et les versements
+    var np = payoutsOf(c).length;
+    var aSum = (c.is_comp ? k.comp : +c.price > 0 ? l.ed.net + ' ' + euro(+c.price) : l.ed.net + ' ?') + (np ? ' · ' + k.pays(np) : '');
+    return bar + ph +
+      fold('client', 'user', k.client, cSum, jl + part('client'), nm > 0) +
+      (mealsBody || mealsOn() ? fold('meals', 'tools-kitchen-2', k.meals, mSum, mealsBody, mAttn) : '') +
+      fold('money', 'cash', k.money, aSum, part('money'), false);
+  }
   function stayDetail(c) {
     var l = L(), pn = U.panel[c.id] || '', h = '';
+    var P = [], B = 'client', flush = function (k) { if (h) P.push([B, h]); h = ''; B = k; }; // 24/10 : [bloc, html] dans l'ordre de l'ancienne carte
     var pl = pageLang(); if (trTodo(c, pl).length && !(TRD[pl].mem[c.id] && TRD[pl].mem[c.id].busy)) setTimeout(function () { ensureTr(c, pl); }, 0); // la carte dans la langue de la page (22/10)
     var comp = l.composition(c.ad, c.ch, c.inf);
     if (comp) h += '<span class="sub">' + esc(comp) + '</span>';
     if (contactOf(c)) h += '<span class="sub"><i class="ti ti-user-check" aria-hidden="true"></i> <b>' + esc(l.contactLbl + (U.lang === 'en' ? ':' : ' :')) + '</b> ' + esc(contactOf(c) + (c.name ? ' · ' + l.bookedBy + c.name : '')) + '</span>';
-    // Montant du séjour (propriétaire seulement : la vue équipe ne lit jamais ces champs).
+    flush('money'); // Montant du séjour (propriétaire seulement : la vue équipe ne lit jamais ces champs).
     var fn = finOf(c), gt = fn && fn.guestTotal != null && isFinite(+fn.guestTotal) ? +fn.guestTotal : null;
     if (c.is_comp) h += '<span class="sub">' + esc(l.ed.comp) + '</span>';
     else if (+c.price > 0) h += '<span class="sub"><b>' + esc(l.ed.net + (U.lang === 'en' ? ':' : ' :')) + '</b> ' + esc(euro(+c.price) + (gt && Math.round(gt) !== Math.round(+c.price) ? ' · ' + l.ed.paid.toLowerCase() + ' ' + euro(gt) : '')) + '</span>';
     var colon = U.lang === 'en' ? ':' : ' :';
-    // v12 — ce que le client a répondu depuis son livret (livret-view) : affiché tel quel, jamais réécrit.
+    flush('client'); // v12 — ce que le client a répondu depuis son livret (livret-view) : affiché tel quel, jamais réécrit.
     var ga = c.details.guest_answers;
     if (ga && typeof ga === 'object' && ga.at) {
       var parts = [];
@@ -3649,6 +3722,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       if (ga.meals) parts.push(l.gaMeals + colon + ' ' + flat(shown(c, 'meals', String(ga.meals)).text).slice(0, 300));
       if (parts.length) h += '<span class="sub" style="color:var(--house)"><i class="ti ti-message-2" aria-hidden="true"></i> <b>' + esc(l.guestAns + ' · ' + fmtDay(dayNum(String(ga.at).slice(0, 10)))) + colon + '</b> ' + esc(parts.join(' · ')) + '</span>';
     }
+    flush('meals');
     var go = orderOf(c);
     if (go) {
       h += '<span class="sub" style="color:var(--house)"><i class="ti ti-shopping-bag" aria-hidden="true"></i> <b>' + esc(l.ordLine + (go.by === 'owner' ? ' ' + l.mp.fromMsg : '') + (go.at ? ' · ' + fmtDay(dayNum(String(go.at).slice(0, 10))) : '')) + colon + '</b> ' + esc(orderText(go)) + '</span>';
@@ -3669,6 +3743,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
           ' · ' + esc(ok ? l.ex.provSent(g.who, fmtDay(dayNum(at.slice(0, 10)))) : l.ex.provTodo(g.who)) + (c.d >= todayNum() - 1 ? ' <button type="button" class="btn ghost" style="min-height:34px;padding:4px 10px" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + esc(pk) + '" aria-pressed="' + (pn === pk) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(g.who)) + '</button>' : '') + '</span>';
       });
     }
+    flush('client');
     if (regOnF() && c.d >= todayNum()) {
       var rgm = regOf(c), rgl = l.rg;
       h += '<span class="sub"' + (rgm ? ' style="color:var(--house)"' : '') + '><i class="ti ti-id" aria-hidden="true"></i> <b>' + esc(rgl.line + colon) + '</b> ' +
@@ -3677,38 +3752,45 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var hist = otherStays(c);
     if (hist.length) h += '<span class="sub"><i class="ti ti-history" aria-hidden="true"></i> <b>' + esc(l.cl.other(hist.length) + colon) + '</b> ' +
       esc(hist.slice(0, 4).map(function (x) { return fmtDay(x.a) + ' → ' + fmtDay(x.d); }).join(' · ') + (hist.length > 4 ? ' …' : '')) + '</span>';
+    flush('meals');
     if (String(c.meals || '').trim()) h += subTr(l.mealsTxt + colon, c, 'meals', String(c.meals).trim());
     if (HAS_FACTS && !go && c.d >= todayNum() && String(c.meals || '').trim()) { var mpl = mealPlan(c); if (mpl) h += planBlock(c, mpl); } // 22/10 : repas demandés, jour par jour
+    flush('client');
     var notes = [c.notes, c.remarks].filter(function (x) { return x && String(x).trim(); }).map(flat).join(' · ');
     if (notes) h += '<span class="sub"><b>' + esc(l.notes) + colon + '</b> ' + esc(notes.slice(0, 300)) +
       (notes.length > 300 ? '<details class="more"><summary>' + esc(l.more) + '</summary>' + esc(notes.slice(300)) + '</details>' : '') + '</span>';
     [['arrival_time', l.arrTime], ['departure_time', l.depTime], ['beds', l.beds], ['drinks', l.drinksTxt], ['staff_note', l.staffNote]].forEach(function (p) {
       var v = String(c.details[p[0]] || '').trim();
-      if (v) h += subTr(p[1] + colon, c, p[0], v);
+      if (v) { flush(p[0] === 'drinks' ? 'meals' : 'client'); h += subTr(p[1] + colon, c, p[0], v); } // les boissons vont avec les repas
     });
+    flush('client');
     h += wlBlock(c);
+    flush('money');
     payoutLines(c).forEach(function (x) { h += '<span class="sub" style="color:var(--go)"><i class="ti ti-cash" aria-hidden="true"></i> ' + esc(x) + '</span>'; });
+    flush('client');
     msgsFor(c).forEach(function (m) { h += inboxItem(m, true); });
+    flush('end');
     var wa = waDigits(c.phone);
-    h += '<div class="acts">' +
-      (HAS_FACTS && LINKS && LINKS.get(c.id) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="livret" aria-pressed="' + (pn === 'livret') + '"><i class="ti ti-file-text" aria-hidden="true"></i>' + esc(l.act.livret) + '</button>' : '') +
-      '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="wa" aria-pressed="' + (pn === 'wa') + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.act.wa) + '</button>' +
-      (c.d < todayNum() - 1 ? [] : c.a < todayNum() || !HAS_FACTS ? ['chef', 'brief', 'turn'].filter(function (k) { return k === 'chef' ? kitchenOn() : k === 'turn' ? cleanOn() : true; }) : (['meals', 'arrival', 'passports', 'chef', 'brief', 'turn'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'chef' ? kitchenOn() : k === 'turn' ? cleanOn() : k === 'passports' ? !regOf(c) && (!!passRule() || (regOnF() && !!(LINKS && LINKS.get(c.id)))) : true; }))).map(function (k) { // séjour commencé : plus de messages d'avant arrivée
-        return '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + k + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', chef: 'chef-hat', brief: 'clipboard-list', turn: 'spray' })[k] + '" aria-hidden="true"></i>' + esc(l.act[k]) + '</button>';
-      }).join('') +
-      (regOnF() && regOf(c) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="reg" aria-pressed="' + (pn === 'reg') + '"><i class="ti ti-id" aria-hidden="true"></i>' + esc(l.act.reg) + '</button>' : '') +
-      // 22/10 — extras : proposer le dîner des soirs libres (jusqu'au départ), relancer un livret jamais ouvert
-      (HAS_FACTS && c.d > todayNum() && LINKS && LINKS.get(c.id) && dinnerRow(c) && freeEvenings(c).length ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="extra" aria-pressed="' + (pn === 'extra') + '"><i class="ti ti-moon-stars" aria-hidden="true"></i>' + esc(l.act.extra) + '</button>' : '') +
-      (nudgeable(c) ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="lnudge" aria-pressed="' + (pn === 'lnudge') + '"><i class="ti ti-bell-ringing" aria-hidden="true"></i>' + esc(l.act.lnudge) + '</button>' : '') +
-      (wa ? '' : '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="phone" aria-pressed="' + (pn === 'phone') + '"><i class="ti ti-phone" aria-hidden="true"></i>' + esc(l.act.phone) + '</button>') +
-      (HAS_FACTS && c.d - todayNum() <= 2 && c.d >= todayNum() - 1 ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="depart" aria-pressed="' + (pn === 'depart') + '"><i class="ti ti-door-exit" aria-hidden="true"></i>' + esc(l.actDepart) + '</button>' : '') +
-      '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="edit" aria-pressed="' + (pn === 'edit') + '"><i class="ti ti-pencil" aria-hidden="true"></i>' + esc(l.act2.edit) + '</button>' +
-      (HAS_FACTS && mealsOn() ? '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="bill" aria-pressed="' + (pn === 'bill') + '"><i class="ti ti-receipt" aria-hidden="true"></i>' + esc(l.act2.bill) + '</button>' : '') +
-      '</div>';
+    var A = [], act = function (k, ic, lab) { A.push([k, '<button type="button" class="act" data-a="panel" data-id="' + esc(c.id) + '" data-v="' + esc(k) + '" aria-pressed="' + (pn === k) + '"><i class="ti ti-' + ic + '" aria-hidden="true"></i>' + esc(lab) + '</button>']); };
+    if (HAS_FACTS && LINKS && LINKS.get(c.id)) act('livret', 'file-text', l.act.livret);
+    act('wa', 'brand-whatsapp', l.act.wa);
+    (c.d < todayNum() - 1 ? [] : c.a < todayNum() || !HAS_FACTS ? ['chef', 'brief', 'turn'].filter(function (k) { return k === 'chef' ? kitchenOn() : k === 'turn' ? cleanOn() : true; }) : (['meals', 'arrival', 'passports', 'chef', 'brief', 'turn'].filter(function (k) { return k === 'meals' ? mealsOn() : k === 'chef' ? kitchenOn() : k === 'turn' ? cleanOn() : k === 'passports' ? !regOf(c) && (!!passRule() || (regOnF() && !!(LINKS && LINKS.get(c.id)))) : true; }))).forEach(function (k) { // séjour commencé : plus de messages d'avant arrivée
+      act(k, ({ meals: 'tools-kitchen-2', arrival: 'plane-arrival', passports: 'id-badge-2', chef: 'chef-hat', brief: 'clipboard-list', turn: 'spray' })[k], l.act[k]);
+    });
+    if (regOnF() && regOf(c)) act('reg', 'id', l.act.reg);
+    // 22/10 — extras : proposer le dîner des soirs libres (jusqu'au départ), relancer un livret jamais ouvert
+    if (HAS_FACTS && c.d > todayNum() && LINKS && LINKS.get(c.id) && dinnerRow(c) && freeEvenings(c).length) act('extra', 'moon-stars', l.act.extra);
+    if (nudgeable(c)) act('lnudge', 'bell-ringing', l.act.lnudge);
+    if (!wa) act('phone', 'phone', l.act.phone);
+    if (HAS_FACTS && c.d - todayNum() <= 2 && c.d >= todayNum() - 1) act('depart', 'door-exit', l.actDepart);
+    act('edit', 'pencil', l.act2.edit);
+    if (HAS_FACTS && mealsOn()) act('bill', 'receipt', l.act2.bill);
+    var acts = '<div class="acts">' + A.map(function (x) { return x[1]; }).join('') + '</div>';
     var ls = c.details.livretSentAt;
     if (HAS_FACTS) h += '<span class="sub"><i class="ti ti-route" aria-hidden="true"></i> <b>' + esc(l.ex.line + colon) + '</b> ' + esc(jLine(c)) + '</span>'; // parcours du livret (22/10)
     if (HAS_FACTS && c.a >= todayNum()) h += '<div class="row2"><button type="button" class="btn ghost" data-a="livret" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-' + (ls ? 'check' : 'file-text') + '" aria-hidden="true"></i>' +
       esc(ls ? l.livretDone + fmtDay(dayNum(String(ls).slice(0, 10))) : l.markLivret) + '</button></div>';
+    var jl = h; h = ''; // parcours du livret + « Marquer le livret envoyé »
     if (pn === 'phone') {
       h += '<div class="panel"><span class="ttl">' + esc(l.act.phone) + '</span><input class="t" type="tel" id="ph-' + esc(c.id) + '" placeholder="' + esc(l.phonePh) + '" autocomplete="off">' +
         '<button type="button" class="btn green" data-a="savephone" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '>' + esc(l.savePhone) + '</button></div>';
@@ -3743,6 +3825,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         '<button type="button" class="btn gold" data-a="copy" data-id="' + esc(c.id) + '"' + dis + '><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' + (frBusy ? shareBtn(c.id).replace('<button ', '<button disabled ') : shareBtn(c.id)) +
         (wa && !team ? '<button type="button" class="btn ghost" data-a="sendwa" data-id="' + esc(c.id) + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.openWa) + '</button>' : '') +
         (pn === 'livret' ? '<a class="btn ghost" href="' + esc(livretUrl(c)) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.seeLivret) + '</a>' : '') +
+        (CARD_V2 && pn === 'livret' && c.a >= todayNum() ? '<button type="button" class="btn ghost" data-a="livret" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-' + (ls ? 'check' : 'file-text') + '" aria-hidden="true"></i>' + esc(ls ? l.livretDone + fmtDay(dayNum(String(ls).slice(0, 10))) : l.markLivret) + '</button>' : '') + // 24/10
         (pn === 'mrecap' && orderOpen(c) ? '<button type="button" class="btn ghost" data-a="ordok" data-id="' + esc(c.id) + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' + esc(l.ordConfirm) + '</button>' : '') +
         (pn === 'chef' && kitchenWa() ? '<button type="button" class="btn ghost" data-a="sendchef" data-id="' + esc(c.id) + '"' + dis + '><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(kitchenName())) + '</button>' : '') +
         (pn === 'brief' && saidWa() ? '<button type="button" class="btn ghost" data-a="sendsaid" data-id="' + esc(c.id) + '"' + dis + '><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>' + esc(l.sendTo(saidName())) + '</button>' : '') +
@@ -3762,7 +3845,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         (pn === 'turn' && turnStale(c) ? '<span class="sub" style="color:var(--wait)"><i class="ti ti-alert-circle" aria-hidden="true"></i> ' + esc(l.turnStale) + '</span>' : '') +
         (!wa && !team ? '<span class="sub">' + esc(l.noPhone) + '</span>' : '') + '</div>';
     }
-    return h;
+    if (!CARD_V2) return P.map(function (x) { return x[1]; }).join('') + acts + jl + h; // ancienne carte : infos, gestes, livret, panneau
+    return cardV2(c, pn, P, A, jl, h);
   }
   function viewJour() {
     var l = L(), t = todayNum(), h = '';
@@ -5489,6 +5573,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     else if (a === 'rvre') { var cre = byId(id) || pastById(id) || allById(id); if (cre) reviewDraft(cre); }
     else if (a === 'rvdone') { var cd = byId(id) || pastById(id); if (cd && !cd.details.reviewDoneAt) { RV[cd.id] = ''; setDetail(cd, 'reviewDoneAt', new Date().toISOString()); } }
     else if (a === 'panel' && c) { U.panel[c.id] = U.panel[c.id] === v ? '' : v; render(); }
+    else if (a === 'more' && c) { var ex9 = el.getAttribute('aria-expanded') === 'true'; U.more[c.id] = !ex9; if (ex9 && U.panel[c.id] && el.parentNode.querySelector('.act.x[data-v="' + U.panel[c.id] + '"]')) U.panel[c.id] = ''; render(); } // 24/10 : « Plus » / « Moins » (« Moins » ferme aussi un panneau rangé sous « Plus »)
     else if (a === 'nsopen') { U.newStay = true; U.ns = U.ns || {}; U.tab = 'sejours'; try { history.replaceState(null, '', '#sejours'); } catch (er) {} render(); var nf = document.getElementById('ns-name'); if (nf) { nf.focus(); if (nf.scrollIntoView) nf.scrollIntoView({ block: 'center' }); } }
     else if (a === 'nscancel') { U.newStay = false; U.ns = null; render(); }
     else if (a === 'nspaste') { U.ns = Object.assign(nsRead(), { pasteOpen: true }); render(); var pe = document.getElementById('ns-paste'); if (pe) pe.focus(); }
@@ -5665,6 +5750,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     signIn(em, pw).then(function (ok) { U.busy = false; if (!ok) { U.loginErr = L().loginErr; render(); return; } D.loaded = false; render(); load(); });
   });
   document.addEventListener('toggle', function (e) { var k = e.target && e.target.getAttribute && e.target.getAttribute('data-fold'); if (k) FE.open[k] = !!e.target.open; }, true);
+  document.addEventListener('toggle', function (e) { var k = e.target && e.target.getAttribute && e.target.getAttribute('data-sfold'); if (k) U.fold[k] = !!e.target.open; }, true); // carte du séjour : bloc ouvert / fermé gardé (24/10)
   window.addEventListener('online', function () { D.online = true; render(); });
   window.addEventListener('offline', function () { D.online = false; render(); });
 

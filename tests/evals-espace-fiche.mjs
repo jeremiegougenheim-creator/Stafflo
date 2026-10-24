@@ -39,7 +39,7 @@ const UID = '11111111-2222-4333-8444-555555555555';
 const PILOT = JSON.parse(fs.readFileSync(path.join(root, '_private/house-facts-pilot.json'), 'utf8'));
 const SESSION = { access_token: 'tok', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: UID, email: 'x@y.z' } };
 
-async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], stk = [], keep = null, svCheck = null, opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], reports = [], share = false, clock = false, vis = false } = {}) {
+async function open({ villa, staff = [], ai = null, stays = [], links = [], regs = [], regFn = null, inbound = [], inMails = [], emailIn = false, tab = 'maison', width = 390, bill = null, sync = [], once = false, files = [], waNum = [], waMsgs = [], waMeta = null, fbEvil = false, fbMode = 'ok', rvReq = [], stk = [], keep = null, svCheck = null, opens = [], rvMails = [], ical = [], icalRun = [], icalFn = null, teamLinks = [], reports = [], share = false, clock = false, vis = false, fold = false } = {}) {
   const ctx = await browser.newContext({ serviceWorkers: 'block', locale: 'fr-FR', viewport: { width, height: 900 } });
   const calls = [], reads = [];
   await ctx.route('**/*', (route) => {
@@ -123,6 +123,16 @@ async function open({ villa, staff = [], ai = null, stays = [], links = [], regs
   // clock : horloge de la page simulée (onglet laissé des heures) ; vis : visibilité de l'onglet pilotée par window.__vis
   if (clock) await page.clock.install({ time: clock === true ? new Date() : new Date(clock) }); // 22/10 : une date fixe (repas demandés, jours écrits en toutes lettres)
   if (vis) await page.addInitScript(() => { Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get() { return window.__vis || 'visible'; } }); });
+  // 24/10 — carte du séjour : les blocs Client / Repas / Argent sont repliés et des gestes rangés sous « Plus ». Les contrôles
+  // existants lisent et cliquent tout : on déplie et on montre tout, comme le ferait le propriétaire. fold: true = la carte telle quelle.
+  if (!fold) await page.addInitScript(() => {
+    const go = () => {
+      const st = document.createElement('style'); st.id = '__allacts'; st.textContent = '.acts.v2 .act.x,.acts.v2 .act.p4{display:flex!important}'; document.head.appendChild(st);
+      const op = () => document.querySelectorAll('details.sf:not([open]):not([data-t])').forEach((d) => { d.setAttribute('data-t', '1'); d.open = true; });
+      new MutationObserver(op).observe(document.documentElement, { childList: true, subtree: true }); op();
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+  });
   await page.goto(`http://127.0.0.1:${PORT}/espace.html#${tab}`);
   await page.waitForSelector(tab === 'maison' ? '[data-a="feopen"]:not([data-v])' : 'article, .card', { timeout: 8000 });
   return { page, ctx, calls, errs, reads };
@@ -2303,6 +2313,82 @@ const mapLines = (b, f) => ({ text: '```json\n' + JSON.stringify({ lines: Object
   await r.page.click('[data-a="fesave"]'); await r.page.waitForTimeout(400);
   const sv = r.calls.filter((c) => c.kind === 'PATCH' && c.body && c.body.house_facts).pop();
   check('enregistrer : who / wa / take gardés par extra (Abde : wa et take ajoutés ; le panier sans rien)', !!sv && sv.body.house_facts.EXTRAS[0].who === 'Houda — Aura & Soul' && sv.body.house_facts.EXTRAS[0].take === 100 && sv.body.house_facts.EXTRAS[1].wa === '+212 661 000 000' && sv.body.house_facts.EXTRAS[1].take === 50 && !('who' in sv.body.house_facts.EXTRAS[2]) && !('take' in sv.body.house_facts.EXTRAS[2]) && sv.body.house_facts.EXTRAS[1].cat[0] === 'Transferts' && !('cat' in sv.body.house_facts.EXTRAS[0]), sv && sv.body.house_facts.EXTRAS);
+  await r.ctx.close();
+}
+
+// ── 24/10 — Carte du séjour lisible sur téléphone : gestes d'abord (3 + Plus sur téléphone, 4 + Plus sur ordinateur), le panneau juste
+// dessous, les informations repliées en trois blocs (Client, Repas, Argent) avec une ligne de résumé ; un bloc s'ouvre seul quand il porte
+// quelque chose à faire ; ouvert / fermé gardé ; interrupteur stafflo_card_v2 = 'off' → l'ancienne carte.
+{
+  const KC = JSON.parse(JSON.stringify(PILOT));
+  KC.TEAM = [{ name: 'Saïd', brief: true, phone: '+212 600 000 011', role: ['majordome', 'house manager'] }, { name: 'Léa', kitchen: true, phone: '+33 6 20 80 11 27', role: ['prestataire repas', 'meal provider'] }];
+  const VC = { villa_name: 'Villa Dar J', owner_name: 'Jérémie', house_facts_ref: 'villa-facts.js', house_facts: KC };
+  const GOc = { at: '2026-10-21T10:00:00Z', by: 'owner', src: 'message', cur: 'MAD', total: 2550, items: [{ id: 'm1', kind: 'meal', n: ['Brunch, déjeuner ou dîner (sur demande)', 'Brunch, lunch or dinner (on request)'], q: 3, unit: 850, sub: 2550, when: [{ d: '2026-10-26', s: 'd' }, { d: '2026-10-30', s: 'd' }, { d: '2026-10-31', s: 'd' }] }] };
+  const SC = (over, det) => [{ id: 'c1', name: 'Seán', arrival: '2026-10-25', departure: '2026-11-01', adults: 10, children: 0, infants: 1, booking_status: 'confirmed', source: 'Airbnb', phone: '+44 7700 900123', price: 4200, meals: 'Could we do dinner on Monday 26th, Friday 30th and Saturday 31st?',
+    details: { guest_orders: GOc, contact: { name: 'Lise Hickey', at: '2026-10-20T10:00:00Z' }, arrival_time: '14h', beds: '4 couples, 2 singles', ...(det || {}) }, ...(over || {}) }];
+  const vis = (sel) => r.page.$$eval(sel, (els) => els.filter((e) => e.offsetParent !== null).map((e) => e.getAttribute('data-v') || e.getAttribute('data-a')));
+  r = await open({ tab: 'sejours', villa: VC, stays: SC(), links: [{ client_id: 'c1', token: 'T'.repeat(43) }], clock: '2026-10-22T10:00:00Z', fold: true });
+  await r.page.waitForTimeout(250);
+  await r.page.click('[data-a="toggle"][data-id="c1"]'); await r.page.waitForTimeout(300);
+  const shown1 = await vis('#st-c1 .acts.v2 .act');
+  const order1 = await r.page.$$eval('#st-c1 > *', (els) => els.map((e) => e.className.split(' ')[0] + (e.tagName === 'DETAILS' ? ':' + e.getAttribute('data-sfold').split(':')[1] + (e.open ? '+' : '-') : '')).join(' '));
+  check('carte ouverte (téléphone) : les gestes juste sous la ligne d’état — trois + « Plus » —, puis Client (fermé), Repas (ouvert : commande à confirmer), Argent (fermé)',
+    shown1.length === 4 && shown1[3] === 'more' && /^top( state)* acts sf:client- sf:meals\+ sf:money-$/.test(order1), { shown1, order1 });
+  check('gestes choisis selon le moment : avant l’arrivée, ce qui manque, par échéance (livret J-3, brief J-1, fiches voyageurs J0) ; WhatsApp sous « Plus » sur téléphone',
+    JSON.stringify(shown1) === JSON.stringify(['livret', 'brief', 'passports', 'more']), shown1);
+  const sums = await r.page.$$eval('#st-c1 details.sf > summary', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
+  check('résumés : « Client 10 adultes, 1 bébé · Contact Lise », « Repas à confirmer · commande notée 2 550 MAD » (l’état d’abord), « Argent Net reçu 4 200 € »',
+    /^Client 10 adultes, 1 bébé · Contact Lise$/.test(sums[0]) && /^Repas à confirmer · commande notée 2\s?550 MAD$/.test(sums[1]) && /^Argent Net reçu 4\s?200 €$/.test(sums[2]), sums);
+  const closedTxt = await txt(r.page);
+  check('bloc fermé : son contenu ne s’affiche pas (heure d’arrivée, couchages, contact détaillé)', !/Couchages/.test(closedTxt) && !/réservé par Seán/.test(closedTxt), closedTxt.slice(0, 600));
+  await r.page.click('#st-c1 [data-a="more"]'); await r.page.waitForTimeout(150);
+  const shown2 = await vis('#st-c1 .acts.v2 .act');
+  check('« Plus » montre les autres gestes (Modifier, Décompte…) et devient « Moins »', shown2.includes('edit') && shown2.includes('bill') && shown2.length > 5 && /Moins/.test(await r.page.innerText('#st-c1 [data-a="more"]')), shown2);
+  await r.page.click('#st-c1 [data-a="panel"][data-v="edit"]'); await r.page.waitForTimeout(150);
+  const after = await r.page.$$eval('#st-c1 .acts.v2 + *', (els) => els.map((e) => e.className));
+  check('le panneau du geste s’ouvre juste sous les gestes (avant les blocs)', after[0] === 'panel' || /panel|ed/.test(after[0]), after);
+  await r.page.click('#st-c1 [data-a="more"]'); await r.page.waitForTimeout(150);
+  check('« Moins » range les gestes et ferme le panneau rangé sous « Plus »', (await vis('#st-c1 .acts.v2 .act')).length === 4 && !(await r.page.$('#ed-name-c1')), await vis('#st-c1 .acts.v2 .act'));
+  await r.page.click('#st-c1 details.sf[data-sfold="c1:client"] > summary'); await r.page.waitForTimeout(100);
+  await r.page.click('#st-c1 details.sf[data-sfold="c1:meals"] > summary'); await r.page.waitForTimeout(100);
+  await r.page.click('#st-c1 [data-a="panel"][data-v="brief"]'); await r.page.waitForTimeout(150); // un rendu complet
+  const st2 = await r.page.$$eval('#st-c1 details.sf', (els) => els.map((e) => e.getAttribute('data-sfold').split(':')[1] + (e.open ? '+' : '-')).join(' '));
+  const openTxt = await txt(r.page);
+  check('ouvert / fermé gardé d’un rendu à l’autre (Client ouvert, Repas fermé) ; Client ouvert : contact, heure d’arrivée, couchages, parcours du livret', st2 === 'client+ meals- money-' && /Contact : Lise Hickey · réservé par Seán/.test(openTxt) && /Heure d’arrivée : 14h/.test(openTxt) && /Couchages : 4 couples, 2 singles/.test(openTxt) && /Livret :/.test(openTxt), { st2, t: openTxt.slice(0, 900) });
+  await r.page.click('#st-c1 [data-a="panel"][data-v="livret"]'); await r.page.waitForTimeout(150);
+  check('panneau Livret : « Marquer le livret envoyé » y est aussi', !!(await r.page.$('#st-c1 .panel [data-a="livret"]')), await r.page.innerText('#st-c1 .panel').catch(() => ''));
+  check('aucune erreur de page', r.errs.length === 0, r.errs);
+  await r.ctx.close();
+  // ordinateur : quatre gestes + Plus
+  r = await open({ tab: 'sejours', villa: VC, stays: SC(), links: [{ client_id: 'c1', token: 'T'.repeat(43) }], clock: '2026-10-22T10:00:00Z', fold: true, width: 1280 });
+  await r.page.waitForTimeout(250); await r.page.click('[data-a="toggle"][data-id="c1"]'); await r.page.waitForTimeout(300);
+  const wide = await vis('#st-c1 .acts.v2 .act');
+  check('ordinateur : quatre gestes + « Plus »', wide.length === 5 && wide[4] === 'more', wide);
+  await r.ctx.close();
+  // jour du départ : le message de départ d'abord ; commande confirmée et rien à faire → Repas fermé
+  r = await open({ tab: 'sejours', villa: VC, stays: SC({ arrival: '2026-10-18', departure: '2026-10-22' }, { orderConfirmedAt: '2026-10-21T12:00:00Z' }), clock: '2026-10-22T10:00:00Z', fold: true });
+  await r.page.waitForTimeout(250); await r.page.click('[data-a="toggle"][data-id="c1"]'); await r.page.waitForTimeout(300);
+  const dep = await vis('#st-c1 .acts.v2 .act'), dst = await r.page.$$eval('#st-c1 details.sf', (els) => els.map((e) => e.getAttribute('data-sfold').split(':')[1] + (e.open ? '+' : '-')).join(' '));
+  const dsum = await r.page.innerText('#st-c1 details.sf[data-sfold="c1:meals"] > summary');
+  check('jour du départ : « Départ » en premier ; commande confirmée → Repas fermé, « confirmée · commande notée … »', dep[0] === 'depart' && dst === 'client- meals- money-' && /^Repas\s+confirmée · commande notée/.test(dsum.trim()), { dep, dst, dsum });
+  await r.ctx.close();
+  // commande confirmée mais menus proposés d'après le message, pas encore enregistrés → Repas ouvert, « menus à enregistrer »
+  r = await open({ tab: 'sejours', villa: VC, stays: SC({ meals: 'Could we do dinner on Monday 26th, Friday 30th and Saturday 31st? For the 3 dinners could we have: Starters - mechouia salad, zaolouk, pumpkin salad with cinnamon Mains - fish with charmoula, lamb tajine, chicken couscous Desserts - assorted Morrocon pastries, pastilla au lait, gazelle horns' }, { orderConfirmedAt: '2026-10-21T12:00:00Z' }), clock: '2026-10-22T10:00:00Z', fold: true });
+  await r.page.waitForTimeout(250); await r.page.click('[data-a="toggle"][data-id="c1"]'); await r.page.waitForTimeout(300);
+  const msum = await r.page.innerText('#st-c1 details.sf[data-sfold="c1:meals"] > summary'), mop = await r.page.$eval('#st-c1 details.sf[data-sfold="c1:meals"]', (e) => e.open);
+  check('menus proposés pas encore enregistrés : Repas ouvert, « menus à enregistrer · commande notée … »', mop && /^Repas\s+menus à enregistrer · commande notée/.test(msum.trim()) && !!(await r.page.$('#st-c1 [data-a="mnsave"]')), { mop, msum });
+  await r.ctx.close();
+  // montant absent : « ? », jamais estimé
+  r = await open({ tab: 'sejours', villa: VC, stays: SC({ price: null }), clock: '2026-10-22T10:00:00Z', fold: true });
+  await r.page.waitForTimeout(250); await r.page.click('[data-a="toggle"][data-id="c1"]').catch(() => {}); await r.page.waitForTimeout(300);
+  const asum = await r.page.innerText('#st-c1 details.sf[data-sfold="c1:money"] > summary').catch(() => '');
+  check('montant absent : « Argent Net reçu ? » (rien d’estimé)', /^Argent\s+Net reçu \?$/.test(asum.trim()), asum);
+  await r.ctx.close();
+  // interrupteur : l'ancienne carte (informations, puis les gestes en une grille, aucun bloc replié)
+  r = await open({ tab: 'sejours', villa: VC, stays: SC(), clock: '2026-10-22T10:00:00Z', fold: true });
+  await r.page.evaluate(() => localStorage.setItem('stafflo_card_v2', 'off')); await r.page.reload(); await r.page.waitForTimeout(400);
+  await r.page.click('[data-a="toggle"][data-id="c1"]'); await r.page.waitForTimeout(300);
+  check('interrupteur stafflo_card_v2 = off : l’ancienne carte (pas de bloc replié, tous les gestes, contact visible)', !(await r.page.$('#st-c1 details.sf')) && !(await r.page.$('#st-c1 .acts.v2')) && !!(await r.page.$('#st-c1 .acts [data-v="edit"]')) && /réservé par Seán/.test(await txt(r.page)));
   await r.ctx.close();
 }
 
