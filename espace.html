@@ -330,7 +330,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       rvUntil: function (d) { return 'avis possible jusqu’au ' + d; },
       rvRead: function (a, w) { return 'ARIA a lu ' + a + ' message' + (a > 1 ? 's' : '') + ' Airbnb et ' + w + ' message' + (w > 1 ? 's' : '') + ' WhatsApp de ce séjour.'; },
       rvAddWa: 'Ajouter la discussion WhatsApp (export .zip ou .txt) — lue sur cet appareil, envoyée à ARIA pour l’avis, jamais gardée',
-      rvRedo: 'Réécrire',
+      rvRedo: 'Réécrire', rvWantPh: 'Ce qu’il faut changer (facultatif) : plus court, en anglais, dire qu’ils ont laissé la maison propre…', rvWantLbl: 'Ce qu’il faut changer dans l’avis',
+      rvRedoHint: 'Vide : une nouvelle version. Rempli : ARIA retouche le texte ci-dessus, vos modifications comprises.',
       bSessions: 'Sessions de courses', bAdvance: 'Avance déjà reçue (MAD)', bRate: 'Taux : 1 € = … MAD (facultatif)', bRest: 'Reste à payer',
       mPlanning: 'Planning équipe', mPlanningTxt: 'Les plannings à envoyer à Saïd et à Léa (arrivées, groupes, repas), générés depuis les séjours.', mPlanningBtn: 'Ouvrir le planning équipe',
       act: { livret: 'Livret', wa: 'WhatsApp', meals: 'Msg repas', arrival: 'Msg arrivée', passports: 'Passeports', brief: 'Brief maison', chef: 'Brief prestataire', turn: 'Brief ménage', phone: 'Téléphone', reg: 'Fiches voyageurs', extra: 'Proposer le dîner', lnudge: 'Relance livret', mrecap: 'Récap repas' },
@@ -552,7 +553,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       rvUntil: function (d) { return 'review possible until ' + d; },
       rvRead: function (a, w) { return 'ARIA read ' + a + ' Airbnb message' + (a === 1 ? '' : 's') + ' and ' + w + ' WhatsApp message' + (w === 1 ? '' : 's') + ' from this stay.'; },
       rvAddWa: 'Add the WhatsApp chat (.zip or .txt export) — read on this device, sent to ARIA for the review, never kept',
-      rvRedo: 'Rewrite',
+      rvRedo: 'Rewrite', rvWantPh: 'What to change (optional): shorter, in French, say they left the house tidy…', rvWantLbl: 'What to change in the review',
+      rvRedoHint: 'Empty: a new version. Filled in: ARIA edits the text above, your changes included.',
       bSessions: 'Shopping runs', bAdvance: 'Advance already received (MAD)', bRate: 'Rate: €1 = … MAD (optional)', bRest: 'Balance due',
       mPlanning: 'Team planning', mPlanningTxt: 'The schedules to send to Saïd and Léa (arrivals, groups, meals), built from the stays.', mPlanningBtn: 'Open the team planning',
       act: { livret: 'Guide', wa: 'WhatsApp', meals: 'Meals msg', arrival: 'Arrival msg', passports: 'Passports', brief: 'House brief', chef: 'Provider brief', turn: 'Cleaning brief', phone: 'Phone', reg: 'Guest forms', extra: 'Offer dinner', lnudge: 'Guide reminder', mrecap: 'Meals recap' },
@@ -2192,6 +2194,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
      fin des 14 jours, dont l'objet porte le prénom du séjour ; un seul avis possible, sinon aucun (jamais deviné).
      Repli : /users/reviews (la page des avis du compte, celle des emails « X has left a review »). */
   var RVL = {}, RVL_AT = {}, RV_ALL = 'https://www.airbnb.com/users/reviews';
+  var RVA = {}, RVW = {}; // 24/10 : « Demander un avis » retouché à la main ; consigne de « Réécrire » (gardés au rafraîchissement)
   function reviewLink(c) {
     // 23/10 : l'avis s'ouvre le jour du départ, l'email d'Airbnb arrive l'après-midi — pas encore trouvé → nouvelle lecture après 10 min
     if (Object.prototype.hasOwnProperty.call(RVL, c.id) && (RVL[c.id] || Date.now() - (RVL_AT[c.id] || 0) < 600000)) return;
@@ -2253,8 +2256,12 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
     var q = /^\s*["“«]\s*([\s\S]*?)\s*["”»]\s*$/.exec(s);
     return (q ? q[1] : s).trim();
   }
-  function reviewDraft(c) {
+  /* 24/10/2026 : « Réécrire » avec une consigne de l'hôte (plus court, en anglais, un fait qu'il ajoute…) retouche le texte
+     affiché, ses modifications à la main comprises ; sans consigne, une nouvelle version comme avant. */
+  function reviewDraft(c, want) {
     var k = 'rv-' + c.id; if (DR[k] && DR[k].busy) return;
+    want = String(want || '').trim().slice(0, 400);
+    var cur = want && DR[k] && DR[k].text && DR[k].text !== L().ariaErr ? DR[k].text : '';
     var g = guestLang(c), fr = g === 'fr';
     var notes = [c.notes, c.remarks].filter(function (x) { return x && String(x).trim(); }).join('\n').split(/\n+/)
       .filter(function (x) { return x.trim() && !RV_PRICE.test(x); }).map(flat).join(' · ').slice(0, 700);
@@ -2265,7 +2272,8 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         '- Ne décris jamais la maison, les chambres, le jardin, l’équipe, les repas, les transferts ni aucun service, et ne cite aucun prix : ce n’est pas une annonce pour la villa.\n' +
         '- L’occasion du voyage (mariage, anniversaire…) seulement si les voyageurs l’ont dite eux-mêmes, en quelques mots neutres. Jamais la santé, l’argent, un conflit, ni le prénom d’un enfant.\n' +
         '- Nomme les voyageurs par les prénoms qu’ils utilisent pour signer (« Anna & Tom » → « Anna et Tom »), sinon « ' + firstName(c) + ' et son groupe ». N’écris jamais « ' + firstName(c) + '’s group ».\n' +
-        '- 2 à 4 phrases chaleureuses et factuelles, à la 3e personne, en français. Pas d’adresse directe au client, pas de signature.\n' +
+        '- 2 à 4 phrases chaleureuses et factuelles, à la 3e personne, en français (ou dans la langue que l’hôte demande). Pas d’adresse directe au client, pas de signature.\n' +
+        '- Si l’hôte donne une consigne, suis-la : ce qu’il y affirme sur ses voyageurs compte comme ses notes. Les autres règles restent valables.\n' +
         '- Texte brut prêt à coller : pas de markdown, pas d’astérisques, pas de titre, pas de guillemets autour, aucune phrase d’introduction.'
       : 'You write the public review an Airbnb host leaves about their guests. Future hosts read it on the guest’s profile to decide whether to accept them.\nRules:\n' +
         '- Talk about the guests as guests: how they communicated, whether they respected the house and its rules, how they left it.\n' +
@@ -2273,13 +2281,16 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
         '- Never describe the house, rooms, garden, team, meals, transfers or any service, and never mention a price: this is not an ad for the villa.\n' +
         '- The occasion of the trip (wedding, birthday…) only if the guests said it themselves, in a few neutral words. Never health, money, a dispute, or a child’s name.\n' +
         '- Name the guests by the first names they sign with (“Anna & Tom” → “Anna and Tom”), otherwise “' + firstName(c) + ' and their group”. Never write “' + firstName(c) + '’s group”.\n' +
-        '- 2 to 4 warm, factual sentences in the third person, in English. No direct address to the guest, no signature.\n' +
+        '- 2 to 4 warm, factual sentences in the third person, in English (or in the language the host asks for). No direct address to the guest, no signature.\n' +
+        '- If the host gives an instruction, follow it: what it states about the guests counts as their notes. The other rules still apply.\n' +
         '- Plain text ready to paste: no markdown, no asterisks, no title, no surrounding quotes, no introduction.';
     DR[k] = { busy: true, text: '' }; render();
     reviewConvo(c).then(function (cv) {
       var user = (fr ? 'Séjour : ' : 'Stay: ') + (c.name || '?') + ' · ' + fmtLongDay(c.a, g) + ' → ' + fmtLongDay(c.d, g) + ' · ' + L().nights(c.n) + (c.pax ? ' · ' + L().pax(c.pax) : '') +
         (notes ? '\n' + (fr ? 'Notes de l’hôte : ' : 'Host notes: ') + notes : '') +
-        '\n\n=== ' + (fr ? 'CONVERSATION DU SÉJOUR' : 'CONVERSATION FOR THIS STAY') + ' ===\n' + (cv.text || (fr ? '(aucun message enregistré)' : '(no saved messages)'));
+        '\n\n=== ' + (fr ? 'CONVERSATION DU SÉJOUR' : 'CONVERSATION FOR THIS STAY') + ' ===\n' + (cv.text || (fr ? '(aucun message enregistré)' : '(no saved messages)')) +
+        (want ? (cur ? '\n\n=== ' + (fr ? 'VERSION ACTUELLE (peut-être retouchée par l’hôte)' : 'CURRENT VERSION (possibly edited by the host)') + ' ===\n' + cur : '') +
+          '\n\n=== ' + (fr ? 'CONSIGNE DE L’HÔTE' : 'HOST INSTRUCTION') + ' ===\n' + want + '\n' + (cur ? (fr ? 'Réécris la version actuelle en suivant cette consigne.' : 'Rewrite the current version following this instruction.') : '') : '');
       return aiPost({ task: fr ? 'write_fr' : 'write_en', system: sys, user: user, max_tokens: 400 })
         .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
         .then(function (x) { DR[k] = { busy: false, text: x.ok && x.d && x.d.text ? plainReview(x.d.text) : L().ariaErr, a: cv.a, w: cv.w }; });
@@ -3898,19 +3909,20 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       '<button type="button" class="act" data-a="rv" data-id="' + id + '" data-v="ask" aria-pressed="' + (pv === 'ask') + '"><i class="ti ti-message" aria-hidden="true"></i>' + esc(l.rvAsk) + '</button>' +
       '<button type="button" class="act" data-a="rv" data-id="' + id + '" data-v="host" aria-pressed="' + (pv === 'host') + '"><i class="ti ti-sparkles" aria-hidden="true"></i>' + esc(l.rvHost) + '</button>' +
       '<button type="button" class="act" data-a="rvdone" data-id="' + id + '"' + (U.busy ? ' disabled' : '') + '><i class="ti ti-check" aria-hidden="true"></i>' + esc(l.rvDone) + '</button></div>';
-    if (pv === 'ask') h += '<div class="panel"><textarea class="t" id="tx-' + id + '">' + esc(msgReviewAsk(c)) + '</textarea><div class="row2">' +
+    if (pv === 'ask') h += '<div class="panel"><textarea class="t" id="tx-' + id + '" data-rva="' + id + '">' + esc(RVA[c.id] != null ? RVA[c.id] : msgReviewAsk(c)) + '</textarea><div class="row2">' +
       '<button type="button" class="btn gold" data-a="copy" data-id="' + id + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' + shareBtn(id) +
       (thread ? '<a class="btn ghost" href="https://www.airbnb.com/hosting/thread/' + esc(thread) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(l.rvThread) + '</a>' : '') + '</div></div>';
     // 17/10/2026 : ce qu'ARIA a lu (messages Airbnb, WhatsApp) ; sans WhatsApp enregistré, l'export de la discussion
     // privée s'ajoute ici (lu sur l'appareil, jamais gardé) et l'avis est réécrit avec.
     var wst = WA[c.id] || {};
-    if (pv === 'host') h += '<div class="panel">' + (dr && dr.busy || wst.busy ? '<span class="sub">' + esc(wst.busy ? l.wa.reading : l.drafting) + '</span>' : '<textarea class="t" id="tx-' + id + '">' + esc(dr && dr.text || '') + '</textarea>' +
+    if (pv === 'host') h += '<div class="panel">' + (dr && dr.busy || wst.busy ? '<span class="sub">' + esc(wst.busy ? l.wa.reading : l.drafting) + '</span>' : '<textarea class="t" id="tx-' + id + '" data-rv="' + id + '">' + esc(dr && dr.text || '') + '</textarea>' +
         (dr && dr.a != null ? '<span class="sub">' + esc(l.rvRead(dr.a, dr.w)) + '</span>' : '')) +
       '<div class="row2"><button type="button" class="btn gold" data-a="copy" data-id="' + id + '"><i class="ti ti-copy" aria-hidden="true"></i>' + esc(l.copy) + '</button>' + shareBtn(id) +
       '<a class="btn ghost" href="' + esc(RVL[c.id] || RV_ALL) + '" target="_blank" rel="noopener"><i class="ti ti-external-link" aria-hidden="true"></i>' + esc(RVL[c.id] ? l.rvWrite : l.rvOpen) + '</a></div>' +
+      (dr && !dr.busy && !wst.busy ? '<div class="row2"><input class="t" type="text" style="flex:1 1 240px;width:auto" id="rw-' + id + '" data-rvw="' + id + '" maxlength="400" autocomplete="off" value="' + esc(RVW[c.id] || '') + '" placeholder="' + esc(l.rvWantPh) + '" aria-label="' + esc(l.rvWantLbl) + '">' +
+        '<button type="button" class="btn ghost" data-a="rvre" data-id="' + id + '"><i class="ti ti-refresh" aria-hidden="true"></i>' + esc(l.rvRedo) + '</button></div><span class="sub">' + esc(l.rvRedoHint) + '</span>' : '') +
       (dr && !dr.busy && !wst.busy && !dr.w ? '<label class="drop" data-drop="rvwa" data-id="' + id + '"><input type="file" accept=".zip,.txt,text/plain,application/zip" data-file="rvwa" data-id="' + id + '"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i><span>' + esc(l.rvAddWa) + '</span></label>' : '') +
       (wst.err ? '<span class="err">' + esc(wst.err) + '</span>' : '') +
-      (dr && !dr.busy && !wst.busy ? '<button type="button" class="btn ghost" data-a="rvre" data-id="' + id + '"><i class="ti ti-refresh" aria-hidden="true"></i>' + esc(l.rvRedo) + '</button>' : '') +
       '</div>';
     return h;
   }
@@ -5580,7 +5592,7 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       }
     }
     else if (a === 'rv') { var cr = byId(id) || pastById(id); if (cr) { RV[cr.id] = RV[cr.id] === v ? '' : v; if (RV[cr.id]) U.panel[cr.id] = ''; if (v === 'host') reviewLink(cr); if (v === 'host' && !(DR['rv-' + cr.id] && DR['rv-' + cr.id].text)) reviewDraft(cr); render(); } }
-    else if (a === 'rvre') { var cre = byId(id) || pastById(id) || allById(id); if (cre) reviewDraft(cre); }
+    else if (a === 'rvre') { var cre = byId(id) || pastById(id) || allById(id); if (cre) { var rwi = document.getElementById('rw-' + cre.id); reviewDraft(cre, rwi ? rwi.value : RVW[cre.id]); } }
     else if (a === 'rvdone') { var cd = byId(id) || pastById(id); if (cd && !cd.details.reviewDoneAt) { RV[cd.id] = ''; setDetail(cd, 'reviewDoneAt', new Date().toISOString()); } }
     else if (a === 'panel' && c) { U.panel[c.id] = U.panel[c.id] === v ? '' : v; if (U.panel[c.id]) RV[c.id] = ''; render(); } // 23/10 : un seul panneau à la fois (avis du jour du départ)
     else if (a === 'more' && c) { var ex9 = el.getAttribute('aria-expanded') === 'true'; U.more[c.id] = !ex9; if (ex9 && U.panel[c.id] && el.parentNode.querySelector('.act.x[data-v="' + U.panel[c.id] + '"]')) U.panel[c.id] = ''; render(); } // 24/10 : « Plus » / « Moins » (« Moins » ferme aussi un panneau rangé sous « Plus »)
@@ -5741,6 +5753,11 @@ details.dig pre{white-space:pre-wrap;font-size:12px;background:#fff;border:1px s
       return;
     }
     if (e.target && e.target.tagName === 'TEXTAREA' && e.target.classList.contains('t')) fitMsgBox(e.target);
+    // 24/10 : l'avis retouché à la main reste tel quel (avant : remplacé par le texte d'ARIA au rafraîchissement suivant)
+    var rvk = e.target && e.target.getAttribute && e.target.getAttribute('data-rv');
+    if (rvk && DR['rv-' + rvk] && !DR['rv-' + rvk].busy) { DR['rv-' + rvk].text = e.target.value; return; }
+    var rva = e.target && e.target.getAttribute && e.target.getAttribute('data-rva'); if (rva) { RVA[rva] = e.target.value; return; }
+    var rvw = e.target && e.target.getAttribute && e.target.getAttribute('data-rvw'); if (rvw) { RVW[rvw] = e.target.value; return; }
     var k = e.target && e.target.getAttribute && e.target.getAttribute('data-bill'); if (!k) return;
     var c = byId(e.target.getAttribute('data-id')); if (!c) return;
     billOf(c)[k] = k === 'otherLbl' ? e.target.value : k === 'rate' ? e.target.value.replace(/[^0-9.,]/g, '') : e.target.value.replace(/[^0-9]/g, '');
